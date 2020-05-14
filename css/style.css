@@ -1,0 +1,38 @@
+body * {
+	font-family: monospace;
+	font-size: 30px;
+	line-height: 28px;
+	margin: 0;
+	padding: 0;
+	text-align: center;
+}
+
+#root {
+	margin: 100px 0;
+}
+
+span {
+	display: inline-block;
+	height: 30px;
+	margin-right: 5px;
+	width: 30px;
+}
+
+span.wall {
+	background: #000;
+}
+
+span.dot {
+	position: relative;
+}
+
+span.dot span {
+	position: absolute;
+	background: #000;
+	left: 50%;
+	top: 50%;
+	transform: translate(-50%, -50%);
+	height: 5px;
+	width: 5px;
+	margin: 0;
+}
