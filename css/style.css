@@ -36,3 +36,14 @@ span.dot span {
 	width: 5px;
 	margin: 0;
 }
+
+.me {
+	position: relative;
+}
+
+.me span {
+	position: absolute;
+	left: 50%;
+	top: 50%;
+	transform: translate(-50%, -50%);
+}
