@@ -74,8 +74,8 @@ function init() {
 	initDots();
 	enemies[0] = characters[character.enemy1];
 	enemies[1] = characters[character.enemy2];
-	enemies[0].pos = new Vec2(1, 4);
-	enemies[1].pos = new Vec2(7, 4);
+	enemies[0].pos = new Vec2(2, 1);
+	enemies[1].pos = new Vec2(3, 2);
 
 	for (let i = 0; i < enemies.length; i++) {
 		enemies[i].lastPos = new Vec2(enemies[i].pos.x, enemies[i].pos.y);
@@ -156,9 +156,6 @@ function enemyMove(enemy) {
 		pos.push(v);
 	}
 	let nearest = pos[0];
-	function distanceToPlayer(v) {
-		return Math.sqrt(Math.pow(player.pos.x - v.x, 2) + Math.pow(player.pos.y - v.y, 2))
-	}
 	for (let i = 1; i < pos.length; i++) {
 		if (distanceToPlayer(nearest) > distanceToPlayer(pos[i])) {
 			nearest = pos[i];
@@ -166,7 +163,20 @@ function enemyMove(enemy) {
 	}
 	distanceToPlayer(v);
 	enemy.lastPos = new Vec2(enemy.pos.x, enemy.pos.y);
+	if (checkIfThereIsAnEnemy(nearest)) {
+		return false;
+	};
 	enemy.pos = nearest;
+
+	function distanceToPlayer(v) {
+		return Math.sqrt(Math.pow(player.pos.x - v.x, 2) + Math.pow(player.pos.y - v.y, 2))
+	}
+
+	function checkIfThereIsAnEnemy(v) {
+		for (let i = 0; i <enemies.length; i++) {
+			return (v.x === enemies[i].pos.x) && (v.y === enemies[i].pos.y) ? true : false;
+		}
+	}
 }
 
 function loopPos(v) {
