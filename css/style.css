@@ -37,11 +37,11 @@ span.dot span {
 	margin: 0;
 }
 
-.me {
+.character {
 	position: relative;
 }
 
-.me span {
+.character span {
 	position: absolute;
 	left: 50%;
 	top: 50%;

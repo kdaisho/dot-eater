@@ -35,8 +35,7 @@ const cells = [
 const character = {
 	player: 0,
 	enemy1: 1,
-	enemy2: 2,
-	// max: 3
+	enemy2: 2
 };
 
 const cellAA = [
@@ -54,10 +53,16 @@ function Character(aa) {
 	this.aa = aa;
 }
 
+// class Character {
+// 	constructor(aa) {
+// 		this.aa = aa;
+// 	}
+// }
+
 const characters = [
-	new Character("<span class=\"me\"><span>@</span></span>"),
-	new Character("<span class=\"me\"><span>E</span></span>"),
-	new Character("<span class=\"me\"><span>D</span></span>")
+	new Character("<span class=\"character\"><span>@</span></span>"),
+	new Character("<span class=\"character\"><span>E</span></span>"),
+	new Character("<span class=\"character\"><span>D</span></span>")
 ];
 
 const player = characters[character.player];
@@ -69,9 +74,9 @@ function init() {
 	initDots();
 	enemies[0] = characters[character.enemy1];
 	enemies[1] = characters[character.enemy2];
-
 	enemies[0].pos = new Vec2(1, 4);
 	enemies[1].pos = new Vec2(7, 4);
+
 	for (let i = 0; i < enemies.length; i++) {
 		enemies[i].lastPos = new Vec2(enemies[i].pos.x, enemies[i].pos.y);
 	}
@@ -95,14 +100,10 @@ function onKeyDown(event) {
 	let targetPos = new Vec2(player.pos.x, player.pos.y);
 	switch (event.key) {
 		case "w":
-			// if (targetPos.y > 0) {
-				targetPos.y--;
-			// }
+			targetPos.y--;
 			break;
 		case "s":
-			// if (targetPos.y < cell.maxHeight) {
-				targetPos.y++
-			// }
+			targetPos.y++
 			break;
 		case "a":
 			targetPos.x--;
@@ -141,27 +142,38 @@ function interval() {
 }
 
 function enemyMove(enemy) {
+	console.log(enemy);
 	const pos = [];
 	let v = null;
-	console.log('yo');
 	for (let i = 0; i < Object.keys(direction).length; i++) {
 		v = new Vec2(enemy.pos.x + directions[i].x, enemy.pos.y + directions[i].y);
-		console.log(v);
-		if (cells[v.y][v.x] !== cell.wall) {
-			pos.push(v);
+		loopPos(v);
+		if (cells[v.y][v.x] === cell.wall) {
+			continue;
 		}
+		if (v.x === enemy.lastPos.x && v.y === enemy.lastPos.y) {
+			continue;
+		}
+		pos.push(v);
 	}
 	const r = Math.floor(Math.random() * pos.length);
+	enemy.lastPos = new Vec2(enemy.pos.x, enemy.pos.y);
+	console.log(enemy.lastPos);
 	enemy.pos = pos[r];
 }
 
 function loopPos(v) {
-	console.log("V", v);
 	if (v.x < 0) {
-		v.x = cells[v.y].length - 1;
+		v.x = cells[0].length - 1;
 	}
-	if (v.x >= cells[v.y].length) {
+	if (v.x >= cells[0].length) {
 		v.x = 0;
+	}
+	if (v.y < 0) {
+		v.y = cells.length - 1;
+	}
+	if (v.y >= cells.length) {
+		v.y = 0;
 	}
 }
 
