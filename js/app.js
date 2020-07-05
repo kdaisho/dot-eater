@@ -142,7 +142,6 @@ function interval() {
 }
 
 function enemyMove(enemy) {
-	console.log(enemy);
 	const pos = [];
 	let v = null;
 	for (let i = 0; i < Object.keys(direction).length; i++) {
@@ -156,10 +155,18 @@ function enemyMove(enemy) {
 		}
 		pos.push(v);
 	}
-	const r = Math.floor(Math.random() * pos.length);
+	let nearest = pos[0];
+	function distanceToPlayer(v) {
+		return Math.sqrt(Math.pow(player.pos.x - v.x, 2) + Math.pow(player.pos.y - v.y, 2))
+	}
+	for (let i = 1; i < pos.length; i++) {
+		if (distanceToPlayer(nearest) > distanceToPlayer(pos[i])) {
+			nearest = pos[i];
+		}
+	}
+	distanceToPlayer(v);
 	enemy.lastPos = new Vec2(enemy.pos.x, enemy.pos.y);
-	console.log(enemy.lastPos);
-	enemy.pos = pos[r];
+	enemy.pos = nearest;
 }
 
 function loopPos(v) {
