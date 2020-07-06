@@ -32,6 +32,11 @@ const cells = [
 	[1,1,1,1,0,1,1,1,1]
 ];
 
+const ai = {
+	random: 0,
+	chase: 1
+};
+
 const character = {
 	player: 0,
 	enemy1: 1,
@@ -53,16 +58,10 @@ function Character(aa) {
 	this.aa = aa;
 }
 
-// class Character {
-// 	constructor(aa) {
-// 		this.aa = aa;
-// 	}
-// }
-
 const characters = [
-	new Character("<span class=\"character\"><span>@</span></span>"),
-	new Character("<span class=\"character\"><span>E</span></span>"),
-	new Character("<span class=\"character\"><span>D</span></span>")
+	new Character("<span class=\"character\"><span>😎</span></span>"),
+	new Character("<span class=\"character\"><span>👹</span></span>"),
+	new Character("<span class=\"character\"><span>👺</span></span>")
 ];
 
 const player = characters[character.player];
@@ -74,11 +73,17 @@ function init() {
 	initDots();
 	enemies[0] = characters[character.enemy1];
 	enemies[1] = characters[character.enemy2];
-	enemies[0].pos = new Vec2(2, 1);
-	enemies[1].pos = new Vec2(3, 2);
+	enemies[0].pos = new Vec2(1, 4);
+	enemies[1].pos = new Vec2(7, 4);
+	enemies[0].ai = ai.random;
+	enemies[1].ai = ai.chase;
 
 	for (let i = 0; i < enemies.length; i++) {
 		enemies[i].lastPos = new Vec2(enemies[i].pos.x, enemies[i].pos.y);
+	}
+
+	if (intervalId) {
+		clearInterval(intervalId);
 	}
 
 	intervalId = setInterval(interval, 1000);
@@ -99,16 +104,16 @@ function initDots() {
 function onKeyDown(event) {
 	let targetPos = new Vec2(player.pos.x, player.pos.y);
 	switch (event.key) {
-		case "w":
+		case "ArrowUp":
 			targetPos.y--;
 			break;
-		case "s":
-			targetPos.y++
+		case "ArrowDown":
+			targetPos.y++;
 			break;
-		case "a":
+		case "ArrowLeft":
 			targetPos.x--;
 			break;
-		case "d":
+		case "ArrowRight":
 			targetPos.x++;
 			break;
 	}
@@ -131,6 +136,11 @@ function onKeyDown(event) {
 		default:
 			console.log("No element found");
 	}
+
+	if (isEnd()) {
+		init();
+	}
+
 	draw();
 }
 
@@ -155,27 +165,33 @@ function enemyMove(enemy) {
 		}
 		pos.push(v);
 	}
-	let nearest = pos[0];
-	for (let i = 1; i < pos.length; i++) {
-		if (distanceToPlayer(nearest) > distanceToPlayer(pos[i])) {
-			nearest = pos[i];
-		}
-	}
-	distanceToPlayer(v);
+
 	enemy.lastPos = new Vec2(enemy.pos.x, enemy.pos.y);
-	if (checkIfThereIsAnEnemy(nearest)) {
-		nearest = new Vec2(enemy.lastPos.x, enemy.lastPos.y);
+
+	switch (enemy.ai) {
+		case ai.random:
+			const r = parseInt(Math.random() * pos.length);
+			enemy.pos = pos[r];
+			break;
+		case ai.chase:
+			let nearest = pos[0];
+			for (let i = 1; i < pos.length; i++) {
+				if (distanceToPlayer(nearest) > distanceToPlayer(pos[i])) {
+					nearest = pos[i];
+				}
+			}
+			distanceToPlayer(v);
+			enemy.pos = nearest;
+		default:
+			console.log("No AI type found");
 	}
-	enemy.pos = nearest;
+
+	if (isEnd()) {
+		init();
+	}
 
 	function distanceToPlayer(v) {
 		return Math.sqrt(Math.pow(player.pos.x - v.x, 2) + Math.pow(player.pos.y - v.y, 2))
-	}
-
-	function checkIfThereIsAnEnemy(v) {
-		for (let i = 0; i <enemies.length; i++) {
-			return (v.x === enemies[i].pos.x) && (v.y === enemies[i].pos.y) ? true : false;
-		}
 	}
 }
 
@@ -192,6 +208,22 @@ function loopPos(v) {
 	if (v.y >= cells.length) {
 		v.y = 0;
 	}
+}
+
+function isEnd() {
+	for (let i = 0; i < enemies.length; i++) {
+		if (enemies[i].pos.x === player.pos.x && enemies[i].pos.y === player.pos.y) {
+			return true;
+		}
+	}
+	for (let i = 0; i < cells.length; i++) {
+		for (let j = 0; j < cells[i].length; j++) {
+			if (cells[i][j] === cell.dot) {
+				return false;
+			}
+		}
+	}
+	return true;
 }
 
 function draw() {
