@@ -21,15 +21,15 @@ const directions = [
 ];
 
 const cells = [
-	[1,1,1,1,0,1,1,1,1,1,0,0,0,0,1],
-	[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
-	[1,0,1,0,1,0,1,0,1,1,1,1,1,0,1],
-	[1,0,1,0,1,0,1,0,1,0,0,0,0,0,1],
-	[0,0,0,0,1,0,0,0,0,0,1,1,1,0,0],
-	[1,0,1,0,0,0,1,0,0,1,0,0,0,0,1],
-	[1,0,1,1,1,1,1,0,1,0,0,0,0,0,1],
-	[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
-	[1,1,1,1,0,1,1,1,1,1,0,0,0,0,1]
+	[1,1,1,1,0,1,1,1,1],
+	[1,0,0,0,0,0,0,0,1],
+	[1,0,1,0,1,0,1,0,1],
+	[1,0,1,0,1,0,1,0,1],
+	[0,0,0,0,1,0,0,0,0],
+	[1,0,1,0,0,0,1,0,1],
+	[1,0,1,1,1,1,1,0,1],
+	[1,0,0,0,0,0,0,0,1],
+	[1,1,1,1,0,1,1,1,1]
 ];
 
 const ai = {
@@ -67,6 +67,7 @@ const characters = [
 const player = characters[character.player];
 const enemies = [];
 let intervalId = null;
+let lock = false;
 
 function init() {
 	player.pos = new Vec2(4, 1);
@@ -137,10 +138,7 @@ function onKeyDown(event) {
 			console.log("No element found");
 	}
 
-	if (isEnd()) {
-		init();
-	}
-
+	isEnd();
 	draw();
 }
 
@@ -186,9 +184,7 @@ function enemyMove(enemy) {
 			console.log("No AI type found");
 	}
 
-	if (isEnd()) {
-		init();
-	}
+	isEnd();
 
 	function distanceToPlayer(v) {
 		return Math.sqrt(Math.pow(player.pos.x - v.x, 2) + Math.pow(player.pos.y - v.y, 2))
@@ -213,7 +209,7 @@ function loopPos(v) {
 function isEnd() {
 	for (let i = 0; i < enemies.length; i++) {
 		if (enemies[i].pos.x === player.pos.x && enemies[i].pos.y === player.pos.y) {
-			return true;
+			displayMessage(true);
 		}
 	}
 	for (let i = 0; i < cells.length; i++) {
@@ -223,7 +219,31 @@ function isEnd() {
 			}
 		}
 	}
-	return true;
+	displayMessage();
+}
+
+function displayMessage(dead) {
+	const overlay = document.createElement("div");
+	overlay.setAttribute("id", "overlay");
+	overlay.setAttribute("class", "overlay");
+	document.body.appendChild(overlay);
+
+	const msg = document.createElement("div");
+	const txt = dead ? document.createTextNode("You're dead. Click to restart.") : document.createTextNode("Congrats! Click to restart.");
+
+	msg.appendChild(txt);
+	msg.setAttribute("id", "msg");
+	msg.setAttribute("class", "overlaymsg");
+
+    msg.addEventListener("click", restore);
+
+	document.body.appendChild(msg);
+
+	function restore() {
+		document.body.removeChild(document.getElementById("overlay"));
+		document.body.removeChild(document.getElementById("msg"));
+		init();
+	}
 }
 
 function draw() {
