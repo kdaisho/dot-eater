@@ -164,8 +164,8 @@ function enemyMove(enemy) {
 	distanceToPlayer(v);
 	enemy.lastPos = new Vec2(enemy.pos.x, enemy.pos.y);
 	if (checkIfThereIsAnEnemy(nearest)) {
-		return false;
-	};
+		nearest = new Vec2(enemy.lastPos.x, enemy.lastPos.y);
+	}
 	enemy.pos = nearest;
 
 	function distanceToPlayer(v) {
