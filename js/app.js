@@ -70,8 +70,9 @@ let intervalId = null;
 let lock = false;
 
 function init() {
+	lock = false;
 	player.pos = new Vec2(4, 1);
-	initDots();
+	setDots();
 	enemies[0] = characters[character.enemy1];
 	enemies[1] = characters[character.enemy2];
 	enemies[0].pos = new Vec2(1, 4);
@@ -92,10 +93,10 @@ function init() {
 	draw();
 }
 
-function initDots() {
+function setDots() {
 	for (let i = 0; i < cells.length; i++) {
 		for (let j = 0; j < cells[i].length; j++) {
-			if (cells[i][j] === cell.none) {
+			if (!(player.pos.y === i && player.pos.x === j) && cells[i][j] === cell.none) {
 				cells[i][j] = cell.dot;
 			}
 		}
@@ -103,7 +104,9 @@ function initDots() {
 }
 
 function onKeyDown(event) {
+	if (lock) return;
 	let targetPos = new Vec2(player.pos.x, player.pos.y);
+
 	switch (event.key) {
 		case "ArrowUp":
 			targetPos.y--;
@@ -207,9 +210,11 @@ function loopPos(v) {
 }
 
 function isEnd() {
+	if (lock) return;
 	for (let i = 0; i < enemies.length; i++) {
 		if (enemies[i].pos.x === player.pos.x && enemies[i].pos.y === player.pos.y) {
 			displayMessage(true);
+			return true;
 		}
 	}
 	for (let i = 0; i < cells.length; i++) {
@@ -220,30 +225,34 @@ function isEnd() {
 		}
 	}
 	displayMessage();
+	return true;
 }
 
 function displayMessage(dead) {
-	const overlay = document.createElement("div");
-	overlay.setAttribute("id", "overlay");
-	overlay.setAttribute("class", "overlay");
-	document.body.appendChild(overlay);
+	if (lock) return;
+	clearInterval(intervalId);
+	const backdrop = document.createElement("div");
+	backdrop.setAttribute("id", "backdrop");
+	backdrop.setAttribute("class", "backdrop");
+	document.body.appendChild(backdrop);
 
 	const msg = document.createElement("div");
 	const txt = dead ? document.createTextNode("You're dead. Click to restart.") : document.createTextNode("Congrats! Click to restart.");
 
 	msg.appendChild(txt);
 	msg.setAttribute("id", "msg");
-	msg.setAttribute("class", "overlaymsg");
+	msg.setAttribute("class", "msg");
 
-    msg.addEventListener("click", restore);
+    backdrop.addEventListener("click", restore);
 
 	document.body.appendChild(msg);
 
 	function restore() {
-		document.body.removeChild(document.getElementById("overlay"));
+		document.body.removeChild(document.getElementById("backdrop"));
 		document.body.removeChild(document.getElementById("msg"));
 		init();
 	}
+	lock = true;
 }
 
 function draw() {
