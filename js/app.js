@@ -63,11 +63,6 @@ const characters = [
 	new Character("<span class=\"character\"><span>👹</span></span>"),
 	new Character("<span class=\"character\"><span>👺</span></span>")
 ];
-// const characters = [
-// 	new Character("<span class=\"character\"><span>@</span></span>"),
-// 	new Character("<span class=\"character\"><span>T</span></span>"),
-// 	new Character("<span class=\"character\"><span>K</span></span>")
-// ];
 
 const player = characters[character.player];
 const enemies = [];
