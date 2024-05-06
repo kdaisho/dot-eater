@@ -19,7 +19,7 @@ span {
 }
 
 span.wall {
-	background: #000;
+	background: hotpink;
 }
 
 span.dot {
@@ -28,7 +28,7 @@ span.dot {
 
 span.dot span {
 	position: absolute;
-	background: #000;
+	background: orange;
 	left: 50%;
 	top: 50%;
 	transform: translate(-50%, -50%);
