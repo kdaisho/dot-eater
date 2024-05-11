@@ -235,8 +235,8 @@ function displayMessage(dead) {
     document.body.appendChild(backdrop);
     const msg = document.createElement("div");
     const txt = dead
-        ? document.createTextNode("You're dead. Click to restart.")
-        : document.createTextNode("Congrats! Click to restart.");
+        ? document.createTextNode("💀 Press Space to restart.")
+        : document.createTextNode("Congrats! Press Space to restart.");
     msg.appendChild(txt);
     msg.setAttribute("id", "msg");
     msg.setAttribute("class", "msg");
