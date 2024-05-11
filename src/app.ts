@@ -67,7 +67,7 @@ class Character {
 }
 
 const characters = [
-    new Character('<span class="character"><span>Od</span></span>'),
+    new Character('<span class="character"><span>🪰</span></span>'),
     new Character('<span class="character"><span>👹</span></span>'),
     new Character('<span class="character"><span>👺</span></span>'),
 ]
@@ -226,16 +226,6 @@ function loopPos(v: Vec2) {
     }
 }
 
-// const confettiOptions = {
-//     particleCount: 100,
-//     startVelocity: 30,
-//     spread: 360,
-//     origin: {
-//         x: 1,
-//         y: 1,
-//     },
-// }
-
 function genConfetti(interval: number = 20) {
     let counter = 0
     return (count: number = 10) => {
@@ -292,7 +282,9 @@ function displayMessage(dead?: boolean) {
     msg.setAttribute("id", "msg")
     msg.setAttribute("class", "msg")
 
-    backdrop.addEventListener("click", restore)
+    addEventListener("keydown", (event) => {
+        if (event.key === " ") restore()
+    })
 
     document.body.appendChild(msg)
 
