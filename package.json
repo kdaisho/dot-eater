@@ -1,0 +1,16 @@
+{
+  "name": "dot-eater",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "dev": "pnpm tsc --watch --preserveWatchOutput",
+    "build": "pnpm tsc"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "typescript": "^5.4.5"
+  }
+}

@@ -59,7 +59,7 @@ function Character(aa) {
 }
 
 const characters = [
-    new Character('<span class="character"><span>😎</span></span>'),
+    new Character('<span class="character"><span>DK</span></span>'),
     new Character('<span class="character"><span>👹</span></span>'),
     new Character('<span class="character"><span>👺</span></span>')
 ];
@@ -275,7 +275,7 @@ function draw() {
     for (let i = 0; i < cells.length; i++) {
         for (let j = 0; j < cells[i].length; j++) {
             str = cellAA[cells[i][j]];
-            for (k = 0; k < characters.length; k++) {
+            for (let k = 0; k < characters.length; k++) {
                 if (i === characters[k].pos.y && j === characters[k].pos.x) {
                     str = characters[k].aa;
                 }
