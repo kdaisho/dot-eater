@@ -5,11 +5,25 @@ settings:
   excludeLinksFromLockfile: false
 
 dependencies:
+  '@types/canvas-confetti':
+    specifier: ^1.6.4
+    version: 1.6.4
+  canvas-confetti:
+    specifier: ^1.9.3
+    version: 1.9.3
   typescript:
     specifier: ^5.4.5
     version: 5.4.5
 
 packages:
+
+  /@types/canvas-confetti@1.6.4:
+    resolution: {integrity: sha512-fNyZ/Fdw/Y92X0vv7B+BD6ysHL4xVU5dJcgzgxLdGbn8O3PezZNIJpml44lKM0nsGur+o/6+NZbZeNTt00U1uA==}
+    dev: false
+
+  /canvas-confetti@1.9.3:
+    resolution: {integrity: sha512-rFfTURMvmVEX1gyXFgn5QMn81bYk70qa0HLzcIOSVEyl57n6o9ItHeBtUSWdvKAPY0xlvBHno4/v3QPrT83q9g==}
+    dev: false
 
   /typescript@5.4.5:
     resolution: {integrity: sha512-vcI4UpRgg81oIRUFwR0WSIHKt11nJ7SAVlYNIu+QpqeyXP+gpQJy/Z4+F0aGxSE4MqwjyXvW/TzgkLAx2AGHwQ==}
