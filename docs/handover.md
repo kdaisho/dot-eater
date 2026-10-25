@@ -23,7 +23,10 @@ Later milestones (Stages, Characters & breaths, Controllers & local 2-player, Po
 ## Decisions already made
 
 - **Gameplay:** grid-based movement with smooth animation (not free movement); each character has a signature breath plus one stat; breaths use an energy meter refilled by eating dots; local 2-player has both co-op and versus; stages unlock in order.
-- **Code:** the swap-collision check in `collides()` stays even though it can't trigger yet (it is for the fixed-tick loop); an unknown AI type throws; `GameState.intervalId` is `ReturnType<typeof setInterval>`.
+- **Code:** the swap-collision check in `collides()` now matters: on the fixed-tick loop all moves in a tick apply together, so a player and enemy swapping cells never share one; an unknown AI type throws; `GameState.intervalId` is gone (the rAF loop in `main.ts` replaced `setInterval`).
+- **Collisions** are checked once per tick against start-of-tick positions (not `lastPos`, which may be from an older tick), and enemies aim at the player's start-of-tick cell.
+- **Tap buffer:** the newest freshly pressed direction is kept in `GameState.bufferedStep` and tried first at the player's next move opportunity, falling back to the held direction if blocked; it is cleared at that opportunity either way. This stops quick taps made mid-move from being lost.
+- **Level 1 speeds:** player 4 cells/s, enemies 2 cells/s (the defaults; level 1 sets no speeds). Levels may override `playerSpeed` and per-enemy `speed`.
 - **Tooling:** CI uses `setup-vp` with `run-install: false` and runs on PRs only; pnpm 10 pinned.
 
 ## How we work
