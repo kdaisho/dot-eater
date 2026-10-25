@@ -1,15 +1,8 @@
-import { AiType, Cell, CharacterId } from "./constants"
+import { Cell, CharacterId, ENEMY_IDS } from "./constants"
 import { enemyMove, type Random } from "./ai"
 import { createCharacter, type Character } from "./character"
-import {
-    createCells,
-    ENEMY_STARTS,
-    hasDots,
-    loopPos,
-    PLAYER_START,
-    setDots,
-    type Cells,
-} from "./level"
+import { hasDots, loopPos, type Cells, type Level } from "./level"
+import { levels } from "./levels"
 import { samePos, vec2, type Vec2 } from "./vec2"
 
 export type Outcome = "dead" | "won"
@@ -23,25 +16,14 @@ export type GameState = {
     intervalId: ReturnType<typeof setInterval> | undefined
 }
 
-export function createGameState(): GameState {
-    const player = createCharacter(
-        CharacterId.player,
-        vec2(PLAYER_START.x, PLAYER_START.y)
+export function createGameState(level: Level = levels[0]): GameState {
+    // Copy everything out of the level, which is shared between games.
+    const spawn = level.playerSpawns[0]
+    const player = createCharacter(CharacterId.player, vec2(spawn.x, spawn.y))
+    const cells = level.cells.map((row) => [...row])
+    const enemies = level.enemies.map((enemy, i) =>
+        createCharacter(ENEMY_IDS[i], vec2(enemy.pos.x, enemy.pos.y), enemy.ai)
     )
-    const cells = createCells()
-    setDots(cells, player.pos)
-    const enemies = [
-        createCharacter(
-            CharacterId.enemy1,
-            vec2(ENEMY_STARTS[0].x, ENEMY_STARTS[0].y),
-            AiType.random
-        ),
-        createCharacter(
-            CharacterId.enemy2,
-            vec2(ENEMY_STARTS[1].x, ENEMY_STARTS[1].y),
-            AiType.chase
-        ),
-    ]
     return { cells, player, enemies, locked: false, intervalId: undefined }
 }
 
