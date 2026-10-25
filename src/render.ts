@@ -13,8 +13,12 @@ export type Renderer = {
     // Draw the game. `alpha` in [0, 1) is how far the loop is between the last
     // logic tick and the next; characters glide between cells with it.
     draw(state: GameState, alpha: number, hud?: Hud): void
+    // Paint the background only, for screens without a game, so the canvas
+    // doesn't keep showing an old board. The canvas keeps its size.
+    clear(): void
     // Refit the canvas to the window (size and devicePixelRatio) and redraw
-    // the last frame. Call it when the window is resized.
+    // the last frame (or the cleared background). Call it when the window is
+    // resized.
     resize(): void
 }
 
@@ -97,12 +101,21 @@ export function createRenderer(
         ctx.restore()
     }
 
+    function clear() {
+        last = undefined
+        if (!ctx) return
+        ctx.setTransform(1, 0, 0, 1, 0, 0)
+        ctx.fillStyle = COLORS.background
+        ctx.fillRect(0, 0, canvas.width, canvas.height)
+    }
+
     return {
         draw,
+        clear,
         resize() {
-            if (!last) return
-            fit()
-            draw(last.state, last.alpha, last.hud)
+            if (layout) fit()
+            if (last) draw(last.state, last.alpha, last.hud)
+            else clear()
         },
     }
 }

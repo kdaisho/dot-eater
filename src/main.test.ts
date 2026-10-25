@@ -10,6 +10,29 @@ import { vec2 } from "./vec2"
 // doesn't provide.
 vi.mock("canvas-confetti", () => ({ default: vi.fn() }))
 
+// Keep the real renderer, but watch what main asks it to draw.
+const drawn = vi.hoisted(() => ({ draw: 0, clear: 0 }))
+vi.mock("./render", async (importOriginal) => {
+    const actual = await importOriginal<typeof import("./render")>()
+    return {
+        ...actual,
+        createRenderer: (...args: Parameters<typeof actual.createRenderer>) => {
+            const renderer = actual.createRenderer(...args)
+            return {
+                ...renderer,
+                draw: (...a: Parameters<typeof renderer.draw>) => {
+                    drawn.draw++
+                    renderer.draw(...a)
+                },
+                clear: () => {
+                    drawn.clear++
+                    renderer.clear()
+                },
+            }
+        },
+    }
+})
+
 // Keep the real game, but let the test decide when the next step ends it, and
 // how.
 let nextOutcome: Outcome | null = null
@@ -102,6 +125,8 @@ describe("main", () => {
         expect(screen()).toBe("title")
         vi.advanceTimersByTime(1000)
         expect(screen()).toBe("title")
+        expect(drawn.draw).toBe(0)
+        expect(drawn.clear).toBeGreaterThan(0)
         expect(starts()).toBe(0)
         expect(steps()).toBe(0)
 
@@ -259,6 +284,18 @@ describe("main", () => {
         pressAndTick("Space")
         expect(starts()).toBe(before)
         expect(screen()).toBe("playing")
+    })
+
+    it("clears the old board from the canvas on stage select", () => {
+        gameOver()
+        pressAndTick("ArrowDown")
+        pressAndTick("Space")
+        expect(screen()).toBe("stage-select")
+        drawn.draw = 0
+        drawn.clear = 0
+        vi.advanceTimersByTime(FRAMES_MS)
+        expect(drawn.draw).toBe(0)
+        expect(drawn.clear).toBeGreaterThan(0)
     })
 
     it("goes from game over to stage select and back into play", () => {

@@ -70,13 +70,14 @@ function enter(prev: Screen, next: Screen) {
     showOverlay(next)
 }
 
-// Interpolation only moves on during play; other screens keep the last
-// picture still.
+// Interpolation only moves on during play; other screens with a game keep
+// the last picture still. Screens without one (title, stage select) show an
+// empty canvas rather than the previous game's board.
 let lastAlpha = 0
 
 function render(alpha: number) {
     const game = gameOf(screen)
-    if (!game) return
+    if (!game) return renderer.clear()
     if (screen.kind === "playing") lastAlpha = alpha
     renderer.draw(game, lastAlpha)
 }
