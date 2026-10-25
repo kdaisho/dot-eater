@@ -37,10 +37,14 @@ export function enemyMove(
         }
         case AiType.chase: {
             // Follow the shortest path (wrap-around included) to the target.
-            // Ties go to the first candidate in direction order. If the
-            // target is unreachable every candidate is Infinity, so this
-            // falls back to the first candidate and keeps the enemy moving.
-            const dist = distanceMap(cells, target)
+            // The enemy's own cell is blocked, so each candidate is scored by
+            // its shortest path that doesn't double back through the enemy;
+            // otherwise every forward candidate could score "back the way it
+            // came" and tie. Ties go to the first candidate in direction
+            // order. If the target is unreachable every candidate is
+            // Infinity, so this falls back to the first candidate and keeps
+            // the enemy moving.
+            const dist = distanceMap(cells, target, enemy.pos)
             let nearest = pos[0]
             for (let i = 1; i < pos.length; i++) {
                 if (dist[pos[i].y][pos[i].x] < dist[nearest.y][nearest.x]) {

@@ -63,6 +63,23 @@ const sealed = [
     [1, 1, 1, 1, 1],
 ] as const
 
+// An enemy at the junction (4, 7) that came from (3, 7), with the player at
+// (2, 7). Up is a 6-cell dead end; right loops back round to the player in
+// 10 moves (down is a wall).
+const junction = [
+    [1, 1, 1, 1, 1, 1, 1, 1],
+    [1, 1, 1, 1, 0, 1, 1, 1],
+    [1, 1, 1, 1, 0, 1, 1, 1],
+    [1, 1, 1, 1, 0, 1, 1, 1],
+    [1, 1, 1, 1, 0, 1, 1, 1],
+    [1, 1, 1, 1, 0, 1, 1, 1],
+    [1, 1, 1, 1, 0, 1, 1, 1],
+    [1, 1, 0, 0, 0, 0, 0, 1],
+    [1, 1, 0, 1, 1, 1, 0, 1],
+    [1, 1, 0, 0, 0, 0, 0, 1],
+    [1, 1, 1, 1, 1, 1, 1, 1],
+] as const
+
 // (1, 1) is walled in on every side.
 const boxed = [
     [1, 1, 1],
@@ -166,6 +183,23 @@ describe("enemyMove (chase)", () => {
         // Reversing to (1, 2) is excluded. Right (3, 2) reaches (0, 2) in 2
         // steps across the east edge; up and down need 3 via the centre.
         expect(enemy.pos).toEqual(vec2(3, 2))
+    })
+
+    it("scores candidates by paths that don't double back through the enemy", () => {
+        const cells = cellsFrom(junction)
+        const enemy = makeEnemy(4, 7, AiType.chase, { x: 3, y: 7 })
+        // Through the enemy's own cell, up and right would both be 3 steps
+        // from the player and up would win the tie, costing 14 moves.
+        enemyMove(cells, enemy, vec2(2, 7), fixedRandom(0))
+        expect(enemy.pos).toEqual(vec2(5, 7))
+
+        // Following the chase all the way reaches the player in 10 moves.
+        let moves = 1
+        while (!(enemy.pos.x === 2 && enemy.pos.y === 7) && moves < 30) {
+            enemyMove(cells, enemy, vec2(2, 7), fixedRandom(0))
+            moves++
+        }
+        expect(moves).toBe(10)
     })
 
     it("breaks ties by direction order", () => {

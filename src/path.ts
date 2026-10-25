@@ -1,6 +1,6 @@
 import { Cell } from "./constants"
 import { loopPos, type Cells } from "./level"
-import { allDirections, directions, vec2, type Vec2 } from "./vec2"
+import { allDirections, directions, samePos, vec2, type Vec2 } from "./vec2"
 
 // Steps from one cell to another; Infinity when there is no path.
 export type DistanceMap = number[][]
@@ -25,8 +25,13 @@ export function openNeighbours(cells: Cells, pos: Vec2): Vec2[] {
 // every cell, indexed [y][x]. Walls and cells that cannot be reached are
 // Infinity. The source itself is 0, even if it is a wall. Moves are
 // symmetric (wrap-around works both ways), so this is also the distance from
-// every cell back to `source`.
-export function distanceMap(cells: Cells, source: Vec2): DistanceMap {
+// every cell back to `source`. An optional `blocked` cell is treated like a
+// wall (unless it is the source), so distances are along paths that avoid it.
+export function distanceMap(
+    cells: Cells,
+    source: Vec2,
+    blocked?: Vec2
+): DistanceMap {
     const dist: DistanceMap = cells.map((row) => row.map(() => Infinity))
     dist[source.y][source.x] = 0
     const queue: Vec2[] = [source]
@@ -34,6 +39,7 @@ export function distanceMap(cells: Cells, source: Vec2): DistanceMap {
         const pos = queue[head]
         const next = dist[pos.y][pos.x] + 1
         for (const v of openNeighbours(cells, pos)) {
+            if (blocked && samePos(v, blocked)) continue
             if (dist[v.y][v.x] === Infinity) {
                 dist[v.y][v.x] = next
                 queue.push(v)

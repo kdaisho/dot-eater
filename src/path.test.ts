@@ -98,4 +98,32 @@ describe("distanceMap", () => {
             [I, I, I],
         ])
     })
+
+    it("routes around a blocked cell", () => {
+        // A ring: with (3, 1) blocked, the right side is only reached the
+        // long way round.
+        const cells = cellsFrom([
+            [1, 1, 1, 1, 1],
+            [1, 0, 0, 0, 1],
+            [1, 0, 1, 0, 1],
+            [1, 0, 0, 0, 1],
+            [1, 1, 1, 1, 1],
+        ])
+        expect(distanceMap(cells, vec2(2, 1), vec2(3, 1))).toEqual([
+            [I, I, I, I, I],
+            [I, 1, 0, I, I],
+            [I, 2, I, 6, I],
+            [I, 3, 4, 5, I],
+            [I, I, I, I, I],
+        ])
+    })
+
+    it("keeps the source at 0 when it is also the blocked cell", () => {
+        const cells = cellsFrom([
+            [1, 1, 1],
+            [0, 0, 0],
+            [1, 1, 1],
+        ])
+        expect(distanceMap(cells, vec2(1, 1), vec2(1, 1))[1]).toEqual([1, 0, 1])
+    })
 })
