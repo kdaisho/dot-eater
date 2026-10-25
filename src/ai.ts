@@ -50,10 +50,13 @@ export function enemyMove(
                 }
             }
             enemy.pos = nearest
+            break
         }
-        // falls through
-        default:
-            console.log("No AI type found")
+        default: {
+            // Compile-time check that every AiType is handled above.
+            const unhandled: never = enemy.ai
+            throw new Error(`Unknown AI type: ${String(unhandled)}`)
+        }
     }
 }
 

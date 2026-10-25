@@ -1,4 +1,4 @@
-import { AiType, CELL_MAX, Cell, CharacterId } from "./constants"
+import { AiType, Cell, CharacterId } from "./constants"
 import { enemyMove, type Random } from "./ai"
 import { createCharacter, type Character } from "./character"
 import {
@@ -48,8 +48,8 @@ export function createGameState(): GameState {
     return { cells, player, enemies, locked: false, intervalId: undefined }
 }
 
-// Try to move the player one step. Returns false when the move was ignored
-// entirely (game locked, or target cell out of range).
+// Try to move the player one step. Returns false only when the game is locked
+// and the input was ignored; otherwise true, even if a wall blocked the step.
 export function movePlayer(state: GameState, step: Vec2): boolean {
     if (state.locked) return false
     const { cells, player } = state
@@ -59,22 +59,21 @@ export function movePlayer(state: GameState, step: Vec2): boolean {
     )
     const value = cells[target.y][target.x]
 
-    if (value >= CELL_MAX) {
-        return false
-    }
-
     switch (value) {
         case Cell.none:
             player.pos = target
-        // falls through
+            break
         case Cell.wall:
             break
         case Cell.dot:
             cells[target.y][target.x] = Cell.none
             player.pos = target
             break
-        default:
-            console.log("No element found")
+        default: {
+            // Compile-time check that every Cell is handled above.
+            const unhandled: never = value
+            throw new Error(`Unknown cell: ${String(unhandled)}`)
+        }
     }
     return true
 }
