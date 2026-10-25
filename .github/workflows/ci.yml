@@ -1,0 +1,30 @@
+name: CI
+
+# Pull requests only: pushes to main are checked by deploy.yml before deploying.
+on:
+    pull_request:
+
+permissions:
+    contents: read
+
+concurrency:
+    group: ci-${{ github.ref }}
+    cancel-in-progress: true
+
+jobs:
+    ci:
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v7
+
+            # Installs vp and Node; pnpm version comes from package.json#packageManager.
+            - uses: voidzero-dev/setup-vp@v1.22.0
+              with:
+                  node-version: 24
+                  cache: true
+                  run-install: false
+
+            - run: pnpm install --frozen-lockfile
+            - run: pnpm check
+            - run: pnpm test
+            - run: pnpm build
