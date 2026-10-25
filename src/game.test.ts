@@ -186,6 +186,44 @@ describe("step: speeds", () => {
         expect(fast.pos).toEqual(vec2(8, 1))
     })
 
+    it("keeps leftover progress, so speeds that don't divide the tick rate average out", () => {
+        // 7 cells/s is 8.57 ticks per cell; rounding up to 9 would give 6.67.
+        // An empty wrap-around corridor, with a dot sealed off below so the
+        // game never ends.
+        const state = makeState(
+            [
+                [1, 1, 1, 1, 1],
+                [0, 0, 0, 0, 0],
+                [1, 1, 1, 1, 1],
+                [1, 1, 2, 1, 1],
+                [1, 1, 1, 1, 1],
+            ],
+            { x: 0, y: 1 }
+        )
+        state.player.speed = 7
+        let moves = 0
+        let last = state.player.pos
+        for (let i = 0; i < TICK_RATE * 60; i++) {
+            run(state, 1, east)
+            if (state.player.pos !== last) moves++
+            last = state.player.pos
+        }
+        expect(Math.abs(moves - 7 * 60)).toBeLessThanOrEqual(1)
+    })
+
+    it("doesn't bank progress while waiting to move", () => {
+        const state = makeState(corridor, { x: 0, y: 1 })
+        run(state, TICK_RATE) // ready long ago, nothing held
+        run(state, 1, east)
+        expect(state.player.pos).toEqual(vec2(1, 1))
+        expect(state.player.moveProgress).toBe(0)
+        // The next move still takes a whole 1/speed seconds.
+        run(state, TICK_RATE / PLAYER_SPEED - 1, east)
+        expect(state.player.pos).toEqual(vec2(1, 1))
+        run(state, 1, east)
+        expect(state.player.pos).toEqual(vec2(2, 1))
+    })
+
     it("moves at most one cell per tick, however fast", () => {
         const state = makeState(corridor, { x: 0, y: 1 })
         state.player.speed = TICK_RATE * 10

@@ -11,7 +11,9 @@ export type Character = {
     speed: number
     // Progress towards the next move, from 0 (just moved) to 1 (ready to
     // move). It grows by speed * dt each tick and stays at 1 while the
-    // character can't or doesn't want to move.
+    // character can't or doesn't want to move. Just after a move it can be a
+    // little above 0: the progress left over past 1, so slow ticks don't
+    // round speeds down.
     moveProgress: number
 }
 

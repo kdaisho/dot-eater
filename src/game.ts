@@ -94,17 +94,26 @@ export function movePlayer(state: GameState, step: Vec2): boolean {
 }
 
 // Add one tick's progress. Returns true if the character may move this tick.
+// A character already waiting at 1 gains nothing more, so waiting doesn't
+// bank time towards the move after next.
 function advance(character: Character, dt: number): boolean {
-    character.moveProgress = Math.min(
-        character.moveProgress + character.speed * dt,
-        1
-    )
+    if (character.moveProgress < 1 - EPSILON) {
+        character.moveProgress += character.speed * dt
+    }
     return character.moveProgress >= 1 - EPSILON
 }
 
-// After a move, start working towards the next one.
+// After a move, start working towards the next one. Progress past 1 is kept,
+// so speeds that don't divide the tick rate still average out right (7
+// cells/s doesn't round down to a move every 9 ticks).
 function spend(character: Character) {
     character.moveProgress = Math.max(character.moveProgress - 1, 0)
+}
+
+// Ready but not moving this tick: wait at exactly 1 for the first tick it
+// can, dropping any overflow.
+function wait(character: Character) {
+    character.moveProgress = 1
 }
 
 // Advance the game by one fixed tick of `dt` seconds.
@@ -130,13 +139,15 @@ export function step(
     const from = positions(state)
 
     if (!isZero(move.pressed)) state.bufferedStep = move.pressed
-    if (advance(player, dt) && movePlayerTick(state, move.held)) {
-        spend(player)
+    if (advance(player, dt)) {
+        if (movePlayerTick(state, move.held)) spend(player)
+        else wait(player)
     }
     enemies.forEach((enemy, i) => {
         if (!advance(enemy, dt)) return
         enemyMove(cells, enemy, from[0], random)
-        if (!samePos(enemy.pos, from[i + 1])) spend(enemy)
+        if (samePos(enemy.pos, from[i + 1])) wait(enemy)
+        else spend(enemy)
     })
 
     return checkEnd(state, from)
