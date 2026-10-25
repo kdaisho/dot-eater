@@ -6,23 +6,21 @@ import { allDirections, directions, samePos, vec2, type Vec2 } from "./vec2"
 export type Random = () => number
 
 // Neighbouring cells the enemy may step into: not a wall, and not where it
-// just came from.
+// just came from. In a dead end, turning back is the only way out, so the
+// previous cell is allowed after all. Empty only when boxed in on every side.
 export function candidateMoves(cells: Cells, enemy: Character): Vec2[] {
-    const pos: Vec2[] = []
+    const open: Vec2[] = []
     for (const d of allDirections) {
         const v = loopPos(
             cells,
             vec2(enemy.pos.x + directions[d].x, enemy.pos.y + directions[d].y)
         )
-        if (cells[v.y][v.x] === Cell.wall) {
-            continue
+        if (cells[v.y][v.x] !== Cell.wall) {
+            open.push(v)
         }
-        if (samePos(v, enemy.lastPos)) {
-            continue
-        }
-        pos.push(v)
     }
-    return pos
+    const forward = open.filter((v) => !samePos(v, enemy.lastPos))
+    return forward.length > 0 ? forward : open
 }
 
 // Move one enemy according to its AI. `target` is the player's position.
@@ -35,6 +33,9 @@ export function enemyMove(
     const pos = candidateMoves(cells, enemy)
 
     enemy.lastPos = vec2(enemy.pos.x, enemy.pos.y)
+
+    // Boxed in on every side: stay put.
+    if (pos.length === 0) return
 
     switch (enemy.ai) {
         case AiType.random: {
