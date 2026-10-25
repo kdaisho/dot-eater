@@ -13,5 +13,6 @@ export function createCharacter(
     pos: Vec2,
     ai: AiType = AiType.random
 ): Character {
-    return { id, pos, lastPos: vec2(0, 0), ai }
+    // Until its first move a character has not come from anywhere else.
+    return { id, pos, lastPos: vec2(pos.x, pos.y), ai }
 }

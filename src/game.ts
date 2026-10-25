@@ -42,9 +42,6 @@ export function createGameState(): GameState {
             AiType.chase
         ),
     ]
-    for (const enemy of enemies) {
-        enemy.lastPos = vec2(enemy.pos.x, enemy.pos.y)
-    }
     return { cells, player, enemies, locked: false, intervalId: undefined }
 }
 
@@ -58,6 +55,8 @@ export function movePlayer(state: GameState, step: Vec2): boolean {
         vec2(player.pos.x + step.x, player.pos.y + step.y)
     )
     const value = cells[target.y][target.x]
+
+    player.lastPos = vec2(player.pos.x, player.pos.y)
 
     switch (value) {
         case Cell.none:
@@ -88,15 +87,26 @@ export function tick(state: GameState, random: Random): Outcome | null {
     return outcome
 }
 
+// Two characters collide when they share a cell, or when they have just
+// swapped cells (each moved into where the other was) and so passed through
+// each other.
+export function collides(a: Character, b: Character): boolean {
+    return (
+        samePos(a.pos, b.pos) ||
+        (samePos(a.pos, b.lastPos) && samePos(a.lastPos, b.pos))
+    )
+}
+
+function samePos(a: Vec2, b: Vec2): boolean {
+    return a.x === b.x && a.y === b.y
+}
+
 // Detect a collision (dead) or all dots eaten (won). The first detection
 // locks the game; once locked this always returns null.
 export function checkEnd(state: GameState): Outcome | null {
     if (state.locked) return null
     for (const enemy of state.enemies) {
-        if (
-            enemy.pos.x === state.player.pos.x &&
-            enemy.pos.y === state.player.pos.y
-        ) {
+        if (collides(state.player, enemy)) {
             state.locked = true
             return "dead"
         }
