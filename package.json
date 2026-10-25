@@ -1,19 +1,27 @@
 {
     "name": "dot-eater",
     "version": "1.0.0",
-    "description": "",
-    "main": "index.js",
-    "scripts": {
-        "dev": "pnpm tsc --watch --preserveWatchOutput",
-        "build": "pnpm tsc"
-    },
-    "keywords": [],
-    "author": "",
+    "private": true,
+    "description": "A tiny browser maze game: eat all the dots.",
     "license": "ISC",
     "type": "module",
+    "scripts": {
+        "dev": "vp dev",
+        "build": "vp build",
+        "preview": "vp preview",
+        "check": "vp check",
+        "test": "vp test",
+        "fmt": "vp fmt"
+    },
     "dependencies": {
+        "canvas-confetti": "^1.9.3"
+    },
+    "devDependencies": {
         "@types/canvas-confetti": "^1.6.4",
-        "canvas-confetti": "^1.9.3",
-        "typescript": "^5.4.5"
-    }
+        "vite-plus": "1.4.0"
+    },
+    "engines": {
+        "node": "^22.18.0 || ^24.11.0 || >=26.0.0"
+    },
+    "packageManager": "pnpm@10.34.9"
 }

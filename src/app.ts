@@ -1,3 +1,5 @@
+import confetti from "canvas-confetti"
+
 const cell = {
     none: 0,
     wall: 1,
@@ -230,7 +232,7 @@ function genConfetti(interval: number = 20) {
     let counter = 0
     return (count: number = 10) => {
         const intId = setInterval(() => {
-            confetti({ origin: { x: 0.1 * counter, y: 0.65 } })
+            void confetti({ origin: { x: 0.1 * counter, y: 0.65 } })
             counter++
 
             if (counter > count) {

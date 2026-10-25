@@ -1,71 +1,71 @@
 body * {
-	font-family: monospace;
-	font-size: 30px;
-	line-height: 28px;
-	margin: 0;
-	padding: 0;
-	text-align: center;
+    font-family: monospace;
+    font-size: 30px;
+    line-height: 28px;
+    margin: 0;
+    padding: 0;
+    text-align: center;
 }
 
 #root {
-	margin: 100px 0;
+    margin: 100px 0;
 }
 
 span {
-	display: inline-block;
-	height: 30px;
-	margin-right: 5px;
-	width: 30px;
+    display: inline-block;
+    height: 30px;
+    margin-right: 5px;
+    width: 30px;
 }
 
 span.wall {
-	background: #000;
+    background: #000;
 }
 
 span.dot {
-	position: relative;
+    position: relative;
 }
 
 span.dot span {
-	position: absolute;
-	background: #000;
-	left: 50%;
-	top: 50%;
-	transform: translate(-50%, -50%);
-	height: 5px;
-	width: 5px;
-	margin: 0;
+    position: absolute;
+    background: #000;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    height: 5px;
+    width: 5px;
+    margin: 0;
 }
 
 .character {
-	position: relative;
+    position: relative;
 }
 
 .character span {
-	position: absolute;
-	left: 50%;
-	top: 50%;
-	transform: translate(-50%, -50%);
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
 }
 
 .backdrop {
-    background: rgba(0,0,0,.8);
+    background: rgba(0, 0, 0, 0.8);
     height: 100vh;
     left: 0;
-	position: fixed;
+    position: fixed;
     top: 0;
     width: 100%;
     z-index: 10;
 }
 
 .backdrop:hover {
-	cursor: pointer;
+    cursor: pointer;
 }
 
 .msg {
     color: #fff;
-	left: 50%;
-	position: absolute;
+    left: 50%;
+    position: absolute;
     top: 100px;
     transform: translateX(-50%);
     z-index: 30;
