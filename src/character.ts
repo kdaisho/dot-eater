@@ -21,8 +21,18 @@ export function createCharacter(
     id: CharacterId,
     pos: Vec2,
     ai: AiType = AiType.random,
-    speed: number = id === CharacterId.player ? PLAYER_SPEED : ENEMY_SPEED
+    // Cells per second. Omitted means the default speed for the id: the one
+    // place the default speeds are applied.
+    speed?: number
 ): Character {
-    // Until its first move a character has not come from anywhere else.
-    return { id, pos, lastPos: vec2(pos.x, pos.y), ai, speed, moveProgress: 0 }
+    return {
+        id,
+        pos,
+        // Until its first move a character has not come from anywhere else.
+        lastPos: vec2(pos.x, pos.y),
+        ai,
+        speed:
+            speed ?? (id === CharacterId.player ? PLAYER_SPEED : ENEMY_SPEED),
+        moveProgress: 0,
+    }
 }

@@ -1,10 +1,4 @@
-import {
-    Cell,
-    CharacterId,
-    ENEMY_IDS,
-    ENEMY_SPEED,
-    PLAYER_SPEED,
-} from "./constants"
+import { Cell, CharacterId, ENEMY_IDS } from "./constants"
 import { enemyMove, type Random } from "./ai"
 import { createCharacter, type Character } from "./character"
 import { hasDots, loopPos, type Cells, type Level } from "./level"
@@ -42,13 +36,13 @@ const EPSILON = 1e-9
 
 export function createGameState(level: Level = levels[0]): GameState {
     // Copy everything out of the level, which is shared between games.
-    // Speeds the level leaves out fall back to the defaults.
+    // Speeds the level leaves out fall back to createCharacter's defaults.
     const spawn = level.playerSpawns[0]
     const player = createCharacter(
         CharacterId.player,
         vec2(spawn.x, spawn.y),
         undefined,
-        level.playerSpeed ?? PLAYER_SPEED
+        level.playerSpeed
     )
     // The player can move on the first tick; enemies start from 0, which
     // gives the player a short grace period before they move.
@@ -59,7 +53,7 @@ export function createGameState(level: Level = levels[0]): GameState {
             ENEMY_IDS[i],
             vec2(enemy.pos.x, enemy.pos.y),
             enemy.ai,
-            enemy.speed ?? ENEMY_SPEED
+            enemy.speed
         )
     )
     return { cells, player, enemies, locked: false, bufferedStep: vec2(0, 0) }
