@@ -33,8 +33,20 @@ export function enemyMove(
     random: Random
 ) {
     const pos = candidateMoves(cells, enemy)
+    const back = enemy.lastPos
+    if (
+        pos.length === 0 &&
+        cells[back.y][back.x] !== Cell.wall &&
+        !(back.x === enemy.pos.x && back.y === enemy.pos.y)
+    ) {
+        // Dead end: turning back is the only way out.
+        pos.push(vec2(back.x, back.y))
+    }
 
     enemy.lastPos = vec2(enemy.pos.x, enemy.pos.y)
+
+    // Boxed in on every side: stay put.
+    if (pos.length === 0) return
 
     switch (enemy.ai) {
         case AiType.random: {

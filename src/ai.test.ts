@@ -93,3 +93,36 @@ describe("enemyMove (chase)", () => {
         expect(enemy.pos).toEqual(vec2(2, 1))
     })
 })
+
+describe("enemyMove in a dead end", () => {
+    // (1, 1) is a dead end whose only exit is east, back to (2, 1).
+    const deadEnd = [
+        [1, 1, 1, 1],
+        [1, 0, 0, 1],
+        [1, 1, 1, 1],
+    ] as const
+
+    for (const ai of [AiType.random, AiType.chase]) {
+        const name = ai === AiType.random ? "random" : "chase"
+
+        it(`${name}: turns back when there is nowhere else to go`, () => {
+            const cells = cellsFrom(deadEnd)
+            const enemy = makeEnemy(1, 1, ai, { x: 2, y: 1 })
+            enemyMove(cells, enemy, vec2(1, 1), fixedRandom(0.5))
+            expect(enemy.pos).toEqual(vec2(2, 1))
+            expect(enemy.lastPos).toEqual(vec2(1, 1))
+        })
+
+        it(`${name}: stays put when boxed in on every side`, () => {
+            const cells = cellsFrom([
+                [1, 1, 1],
+                [1, 0, 1],
+                [1, 1, 1],
+            ])
+            const enemy = makeEnemy(1, 1, ai)
+            enemyMove(cells, enemy, vec2(0, 0), fixedRandom(0.5))
+            expect(enemy.pos).toEqual(vec2(1, 1))
+            expect(enemy.lastPos).toEqual(vec2(1, 1))
+        })
+    }
+})
