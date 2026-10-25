@@ -35,7 +35,8 @@ const expectSingle = () => {
     expect(document.querySelectorAll("#backdrop")).toHaveLength(1)
 }
 
-const endView = (choice: 0 | 1) => ({
+const endView = (choice: 0 | 1, score = 0) => ({
+    score,
     items: ["Retry", "Stage select"].map((label, i) => ({
         label,
         selected: i === choice,
@@ -85,22 +86,24 @@ describe("showPause", () => {
 })
 
 describe("showStageClear", () => {
-    it("shows the clear screen with its menu", () => {
-        showStageClear(endView(0))
+    it("shows the clear screen with the final score and its menu", () => {
+        showStageClear(endView(0, 340))
         expectSingle()
         expect(overlay()?.dataset.screen).toBe("stage-clear")
         expect(title()).toBe("Stage clear!")
+        expect(lines()).toEqual(["Score 340"])
         expect(items()).toEqual(["Retry", "Stage select"])
         expect(selected()).toEqual(["Retry"])
     })
 })
 
 describe("showGameOver", () => {
-    it("shows the game-over screen with its menu", () => {
-        showGameOver(endView(1))
+    it("shows the game-over screen with the final score and its menu", () => {
+        showGameOver(endView(1, 0))
         expectSingle()
         expect(overlay()?.dataset.screen).toBe("game-over")
         expect(title()).toBe("💀 Game over")
+        expect(lines()).toEqual(["Score 0"])
         expect(selected()).toEqual(["Stage select"])
     })
 })

@@ -8,6 +8,7 @@ import {
     type EndChoice,
     type Screen,
 } from "./flow"
+import type { GameState } from "./game"
 import { InputState, KeyboardSource } from "./input"
 import { levels } from "./levels"
 import { createLoop } from "./loop"
@@ -80,7 +81,7 @@ function render(alpha: number) {
     const game = gameOf(screen)
     if (!game) return renderer.clear()
     if (screen.kind === "playing") lastAlpha = alpha
-    renderer.draw(game, lastAlpha)
+    renderer.draw(game, lastAlpha, { score: game.score, lives: game.lives })
 }
 
 function showOverlay(s: Screen) {
@@ -97,16 +98,17 @@ function showOverlay(s: Screen) {
         case "paused":
             return showPause()
         case "stageClear":
-            return showStageClear(endView(s.choice))
+            return showStageClear(endView(s.game, s.choice))
         case "gameOver":
-            return showGameOver(endView(s.choice))
+            return showGameOver(endView(s.game, s.choice))
     }
 }
 
 const END_LABELS = { retry: "Retry", stageSelect: "Stage select" } as const
 
-function endView(choice: EndChoice): EndScreenView {
+function endView(game: GameState, choice: EndChoice): EndScreenView {
     return {
+        score: game.score,
         items: END_CHOICES.map((c) => ({
             label: END_LABELS[c],
             selected: c === choice,

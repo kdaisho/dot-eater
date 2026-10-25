@@ -25,8 +25,10 @@ export const celebrate = genConfetti()
 
 export type MenuItem = { label: string; selected: boolean }
 
-// What the end screens show. KDA-198 adds the final score here.
+// What the end screens show.
 export type EndScreenView = {
+    // The final score.
+    score: number
     // The menu, in order; exactly one item is selected.
     items: readonly MenuItem[]
 }
@@ -34,7 +36,7 @@ export type EndScreenView = {
 type Overlay = {
     id: string
     title: string
-    // Short lines under the title (hints, and later the final score).
+    // Short lines under the title (hints, the final score).
     lines?: readonly string[]
     items?: readonly MenuItem[]
 }
@@ -65,11 +67,15 @@ export function showPause() {
 }
 
 export function showStageClear(view: EndScreenView) {
-    show({ id: "stage-clear", title: "Stage clear!", items: view.items })
+    show({ id: "stage-clear", title: "Stage clear!", ...endScreen(view) })
 }
 
 export function showGameOver(view: EndScreenView) {
-    show({ id: "game-over", title: "💀 Game over", items: view.items })
+    show({ id: "game-over", title: "💀 Game over", ...endScreen(view) })
+}
+
+function endScreen({ score, items }: EndScreenView) {
+    return { lines: [`Score ${score}`], items }
 }
 
 export function hideOverlay() {
