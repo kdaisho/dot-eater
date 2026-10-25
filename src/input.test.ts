@@ -101,6 +101,19 @@ describe("PlayerInput", () => {
         expect(p.step()).toEqual(vec2(0, 0))
     })
 
+    it("reports the direction newly pressed this tick, not held ones", () => {
+        const p = input.player(0)
+        expect(p.pressedStep()).toEqual(vec2(0, 0))
+        p.press("left", "a")
+        p.press("up", "b")
+        p.release("up", "b")
+        expect(p.pressedStep()).toEqual(vec2(0, -1))
+        input.endTick()
+        // Left is still held, but it was pressed in an earlier tick.
+        expect(p.isDown("left")).toBe(true)
+        expect(p.pressedStep()).toEqual(vec2(0, 0))
+    })
+
     it("keeps players separate", () => {
         input.player(1).press("up", "a")
         expect(input.player(0).isDown("up")).toBe(false)

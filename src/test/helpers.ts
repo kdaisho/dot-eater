@@ -52,6 +52,7 @@ export function makeState(
         player: createCharacter(CharacterId.player, vec2(player.x, player.y)),
         enemies,
         locked: false,
+        bufferedStep: vec2(0, 0),
     }
 }
 

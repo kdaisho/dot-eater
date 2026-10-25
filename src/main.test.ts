@@ -51,8 +51,15 @@ function gameOver(outcome: Outcome = "dead") {
 
 const starts = () => vi.mocked(createGameState).mock.calls.length
 const steps = () => vi.mocked(step).mock.calls.length
-// The player step passed to the latest game step.
-const lastPlayerStep = () => vi.mocked(step).mock.lastCall?.[2]
+// The player input passed to each game step since call `from`.
+const moves = (from = 0) =>
+    vi
+        .mocked(step)
+        .mock.calls.slice(from)
+        .map((c) => c[2])
+// The held direction passed to the latest game step.
+const lastHeld = () => vi.mocked(step).mock.lastCall?.[2].held
+const isZero = (v: { x: number; y: number }) => v.x === 0 && v.y === 0
 
 // Every keydown listener added to the window, to catch listeners piling up.
 // (vi.spyOn doesn't see main's import-time call, so wrap it by hand.)
@@ -102,30 +109,41 @@ describe("main", () => {
 
     it("passes the most recently pressed held arrow to the game", () => {
         vi.advanceTimersByTime(FRAMES_MS)
-        expect(lastPlayerStep()).toEqual(vec2(0, 0))
+        expect(lastHeld()).toEqual(vec2(0, 0))
         keydown("ArrowRight")
         vi.advanceTimersByTime(FRAMES_MS)
-        expect(lastPlayerStep()).toEqual(vec2(1, 0))
+        expect(lastHeld()).toEqual(vec2(1, 0))
         keydown("ArrowUp")
         // Auto-repeat doesn't change which arrow is held or newest.
         keydown("ArrowRight", true)
         vi.advanceTimersByTime(FRAMES_MS)
-        expect(lastPlayerStep()).toEqual(vec2(0, -1))
+        expect(lastHeld()).toEqual(vec2(0, -1))
         keyup("ArrowUp")
         vi.advanceTimersByTime(FRAMES_MS)
-        expect(lastPlayerStep()).toEqual(vec2(1, 0))
+        expect(lastHeld()).toEqual(vec2(1, 0))
         keyup("ArrowRight")
         vi.advanceTimersByTime(FRAMES_MS)
-        expect(lastPlayerStep()).toEqual(vec2(0, 0))
+        expect(lastHeld()).toEqual(vec2(0, 0))
     })
 
     it("counts an arrow tapped between two steps once", () => {
         press("ArrowLeft")
         const before = steps()
         vi.advanceTimersByTime(FRAMES_MS)
-        const calls = vi.mocked(step).mock.calls.slice(before)
-        expect(calls.map((c) => c[2])).toContainEqual(vec2(-1, 0))
-        expect(calls.filter((c) => c[2].x !== 0)).toHaveLength(1)
+        const pressed = moves(before).map((m) => m.pressed)
+        expect(pressed).toContainEqual(vec2(-1, 0))
+        expect(pressed.filter((v) => !isZero(v))).toHaveLength(1)
+    })
+
+    it("passes a held arrow as pressed only on the tick it went down", () => {
+        keydown("ArrowDown")
+        const before = steps()
+        vi.advanceTimersByTime(FRAMES_MS)
+        const pressed = moves(before).map((m) => m.pressed)
+        expect(pressed[0]).toEqual(vec2(0, 1))
+        expect(pressed.slice(1).every(isZero)).toBe(true)
+        expect(lastHeld()).toEqual(vec2(0, 1))
+        keyup("ArrowDown")
     })
 
     it("pauses and resumes on P", () => {
@@ -156,9 +174,11 @@ describe("main", () => {
         press("KeyP")
         const before = steps()
         vi.advanceTimersByTime(FRAMES_MS)
-        const calls = vi.mocked(step).mock.calls.slice(before)
+        const calls = moves(before)
         expect(calls.length).toBeGreaterThan(0)
-        expect(calls.every((c) => c[2].x === 0 && c[2].y === 0)).toBe(true)
+        expect(calls.every((m) => isZero(m.held) && isZero(m.pressed))).toBe(
+            true
+        )
     })
 
     it("restarts exactly once per Space after several game-overs", () => {

@@ -45,18 +45,25 @@ function ready(state: GameState) {
     for (const enemy of state.enemies) enemy.moveProgress = 1
 }
 
-// Run `n` ticks with the same input, returning the last outcome seen.
+// Run `n` ticks holding the same direction (and pressing nothing new),
+// returning the last outcome seen.
 function run(
     state: GameState,
     n: number,
-    playerStep: Vec2 = none,
+    held: Vec2 = none,
     random: Random = fixedRandom(0)
 ): Outcome | null {
     let outcome: Outcome | null = null
     for (let i = 0; i < n; i++) {
-        outcome = step(state, TICK, playerStep, random) ?? outcome
+        outcome = step(state, TICK, { held, pressed: none }, random) ?? outcome
     }
     return outcome
+}
+
+// One tick in which `pressed` is tapped (pressed and released within the
+// tick) while `held` stays held.
+function tap(state: GameState, pressed: Vec2, held: Vec2 = none) {
+    return step(state, TICK, { held, pressed }, fixedRandom(0))
 }
 
 describe("movePlayer", () => {
@@ -181,6 +188,70 @@ describe("step: speeds", () => {
         run(a, 30, east, fixedRandom(0))
         run(b, 30, east, fixedRandom(0.99))
         expect(a.player.pos).toEqual(b.player.pos)
+    })
+})
+
+// A corridor along row 1 with one side opening north at x = 2.
+const junction = [
+    [1, 1, 2, 1, 1, 1],
+    [2, 2, 2, 2, 2, 2],
+    [1, 1, 1, 1, 1, 1],
+] as const
+
+describe("step: tap buffer", () => {
+    const ticksPerCell = TICK_RATE / PLAYER_SPEED
+
+    it("uses a direction tapped mid-move at the next move opportunity", () => {
+        const state = makeState(junction, { x: 1, y: 1 })
+        run(state, ticksPerCell, east)
+        expect(state.player.pos).toEqual(vec2(2, 1))
+        // Partway to the next move, tap north while still holding east.
+        run(state, 5, east)
+        tap(state, north, east)
+        run(state, ticksPerCell - 7, east)
+        expect(state.player.pos).toEqual(vec2(2, 1))
+        run(state, 1, east)
+        expect(state.player.pos).toEqual(vec2(2, 0))
+        expect(state.bufferedStep).toEqual(none)
+    })
+
+    it("uses a tap made mid-move with nothing held, once", () => {
+        const state = makeState(junction, { x: 1, y: 1 })
+        tap(state, east)
+        expect(state.player.pos).toEqual(vec2(1, 1))
+        run(state, ticksPerCell - 1)
+        expect(state.player.pos).toEqual(vec2(2, 1))
+        run(state, TICK_RATE)
+        expect(state.player.pos).toEqual(vec2(2, 1))
+    })
+
+    it("falls back to the held direction when the buffered turn is blocked", () => {
+        const state = makeState(junction, { x: 0, y: 1 })
+        run(state, 1, east)
+        tap(state, north, east) // north of (0, 1) is a wall
+        run(state, ticksPerCell - 2, east)
+        expect(state.player.pos).toEqual(vec2(1, 1))
+    })
+
+    it("clears the buffer after one move opportunity", () => {
+        const state = makeState(junction, { x: 0, y: 1 })
+        run(state, 1, east)
+        tap(state, north, east)
+        run(state, ticksPerCell - 2, east)
+        expect(state.player.pos).toEqual(vec2(1, 1))
+        expect(state.bufferedStep).toEqual(none)
+        // The north turn at (2, 1) is open, but the tap is long gone.
+        run(state, ticksPerCell * 2, east)
+        expect(state.player.pos).toEqual(vec2(3, 1))
+    })
+
+    it("clears the buffer even when no move is possible", () => {
+        const state = makeState(junction, { x: 1, y: 1 })
+        run(state, ticksPerCell) // ready, nothing held
+        tap(state, north) // a wall
+        expect(state.player.pos).toEqual(vec2(1, 1))
+        expect(state.bufferedStep).toEqual(none)
+        expect(state.player.moveProgress).toBe(1)
     })
 })
 

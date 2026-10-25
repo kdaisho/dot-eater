@@ -98,10 +98,24 @@ export class PlayerInput {
     // that is held or was pressed since the last endTick (so a tap shorter
     // than a tick still counts). Zero when there is none.
     step(): Vec2 {
+        return this.newestStep(
+            (action) => this.isDown(action) || this.wasPressed(action)
+        )
+    }
+
+    // The most recently pressed direction since the last endTick, even if
+    // already released. Zero when none was. Holding doesn't count, so this
+    // marks a fresh press the game can remember for a moment (a tap buffer).
+    pressedStep(): Vec2 {
+        return this.newestStep((action) => this.wasPressed(action))
+    }
+
+    // The step for the most recently pressed direction matching `include`.
+    private newestStep(include: (action: DirectionAction) => boolean): Vec2 {
         let best: DirectionAction | undefined
         let bestAt = -1
         for (const action of DIRECTION_ACTIONS) {
-            if (!this.isDown(action) && !this.wasPressed(action)) continue
+            if (!include(action)) continue
             const at = this.pressedAt.get(action) ?? 0
             if (at > bestAt) {
                 best = action

@@ -19,6 +19,20 @@ export type GameState = {
     enemies: Character[]
     // Set once the game has ended; nothing changes after that.
     locked: boolean
+    // The direction most recently newly pressed (not just held); zero for
+    // none. It is tried first at the player's next move opportunity and then
+    // cleared, so a quick tap made mid-move isn't lost.
+    bufferedStep: Vec2
+}
+
+// The player's movement input for one tick.
+export type MoveInput = {
+    // The direction being held (zero for none). The player keeps moving this
+    // way while it is held.
+    held: Vec2
+    // The direction newly pressed this tick (zero for none), even if it was
+    // already released again.
+    pressed: Vec2
 }
 
 // Tolerance for moveProgress reaching 1, so floating-point sums of speed * dt
@@ -44,14 +58,14 @@ export function createGameState(level: Level = levels[0]): GameState {
             enemy.speed ?? ENEMY_SPEED
         )
     )
-    return { cells, player, enemies, locked: false }
+    return { cells, player, enemies, locked: false, bufferedStep: vec2(0, 0) }
 }
 
 // Try to move the player one step, eating any dot there. Returns true if the
 // player moved; false if a wall blocked the step, the step was zero, or the
 // game is locked.
 export function movePlayer(state: GameState, step: Vec2): boolean {
-    if (state.locked || (step.x === 0 && step.y === 0)) return false
+    if (state.locked || isZero(step)) return false
     const { cells, player } = state
     const target = loopPos(
         cells,
@@ -102,19 +116,20 @@ function spend(character: Character) {
 // checked once, after everyone has moved. Once the game is locked nothing
 // changes.
 //
-// `playerStep` is the direction the player wants to move this tick (zero for
-// none), and `random` drives the enemy AI, so a tick is deterministic.
+// `move` is the player's input this tick (see MoveInput and movePlayerTick),
+// and `random` drives the enemy AI, so a tick is deterministic.
 export function step(
     state: GameState,
     dt: number,
-    playerStep: Vec2,
+    move: MoveInput,
     random: Random
 ): Outcome | null {
     if (state.locked) return null
     const { cells, player, enemies } = state
     const from = positions(state)
 
-    if (advance(player, dt) && movePlayer(state, playerStep)) {
+    if (!isZero(move.pressed)) state.bufferedStep = move.pressed
+    if (advance(player, dt) && movePlayerTick(state, move.held)) {
         spend(player)
     }
     enemies.forEach((enemy, i) => {
@@ -124,6 +139,19 @@ export function step(
     })
 
     return checkEnd(state, from)
+}
+
+// The player's move opportunity: try the buffered direction first and fall
+// back to the held one if it is blocked. The buffer is cleared either way, so
+// it never outlives one opportunity. Returns true if the player moved.
+function movePlayerTick(state: GameState, held: Vec2): boolean {
+    const buffered = state.bufferedStep
+    state.bufferedStep = vec2(0, 0)
+    return movePlayer(state, buffered) || movePlayer(state, held)
+}
+
+function isZero(v: Vec2): boolean {
+    return v.x === 0 && v.y === 0
 }
 
 // Where every character stands: the player first, then the enemies in order.
