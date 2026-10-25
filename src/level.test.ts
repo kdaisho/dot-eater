@@ -202,6 +202,26 @@ describe("parseLevel", () => {
             ])
         })
 
+        it("an empty row 0 without misleading width errors", () => {
+            expect(problemsOf({ ...valid, map: ["", "###", "#P#"] })).toEqual([
+                "map row 0 is empty",
+            ])
+        })
+
+        it("an emoji as one unknown character with its true width", () => {
+            const rows = ["#####", "#P.E#", "#.\u{1F600}.#", "#####"]
+            expect(problemsOf({ ...valid, map: rows })).toEqual([
+                'unknown map character "\u{1F600}" at (2, 2)',
+            ])
+        })
+
+        it("a map without dots", () => {
+            const rows = ["#####", "#P  #", "#####"]
+            expect(problemsOf({ ...valid, map: rows, enemies: [] })).toEqual([
+                'map must have at least one dot ("." or an "E" spawn)',
+            ])
+        })
+
         it("rows of different widths", () => {
             const rows = ["#####", "#P.E#", "#. #", "#####"]
             expect(problemsOf({ ...valid, map: rows })).toEqual([

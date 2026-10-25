@@ -111,17 +111,23 @@ export function parseLevel(data: LevelData): Level {
         }
         checkSpeed(problems, `enemies[${i}].speed`, enemy.speed)
     })
-    const width = map[0]?.length ?? 0
-    if (width === 0) {
+    // Split rows by code point, not UTF-16 unit, so a character outside the
+    // BMP (e.g. an emoji) counts as one cell.
+    const rows = map.map((row) => Array.from(row))
+    const width = rows[0]?.length ?? 0
+    if (rows.every((row) => row.length === 0)) {
         problems.push("map must have at least one non-empty row")
+    } else if (width === 0) {
+        // Row widths are checked against row 0, which is meaningless here.
+        problems.push("map row 0 is empty")
     }
-    map.forEach((row, y) => {
-        if (row.length !== width) {
+    rows.forEach((row, y) => {
+        if (width > 0 && row.length !== width) {
             problems.push(
                 `map row ${y} is ${row.length} wide, expected ${width} (the width of row 0)`
             )
         }
-        row.split("").forEach((ch, x) => {
+        row.forEach((ch, x) => {
             if (!MAP_CHARS.has(ch)) {
                 problems.push(
                     `unknown map character ${JSON.stringify(ch)} at (${x}, ${y})`
@@ -135,9 +141,9 @@ export function parseLevel(data: LevelData): Level {
     const cells: Cells = []
     const enemyPositions: Vec2[] = []
     const playerPositions: Vec2[][] = PLAYER_CHARS.map(() => [])
-    map.forEach((row, y) => {
+    rows.forEach((row, y) => {
         cells.push(
-            row.split("").map((ch, x) => {
+            row.map((ch, x) => {
                 const player = PLAYER_CHARS.indexOf(ch)
                 if (player !== -1) {
                     playerPositions[player].push(vec2(x, y))
@@ -173,6 +179,12 @@ export function parseLevel(data: LevelData): Level {
     if (data.enemies.length > ENEMY_IDS.length) {
         problems.push(
             `at most ${ENEMY_IDS.length} enemies are supported, got ${data.enemies.length}`
+        )
+    }
+    // A level without dots would be won on the first tick.
+    if (!hasDots(cells)) {
+        problems.push(
+            `map must have at least one dot ("${DOT}" or an "${ENEMY}" spawn)`
         )
     }
     problems.push(...tunnelProblems(cells))
