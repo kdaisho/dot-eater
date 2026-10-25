@@ -7,7 +7,13 @@ import {
     type GameState,
     type Outcome,
 } from "./game"
-import { keyToStep, shouldRestart } from "./input"
+import {
+    directionStep,
+    InputState,
+    isDirection,
+    KeyboardSource,
+    type Action,
+} from "./input"
 import { draw } from "./render"
 import { celebrate, displayMessage, hideMessage } from "./ui"
 
@@ -22,18 +28,19 @@ function init() {
     draw(state)
 }
 
-// The only keydown handler: moves the player during play, and restarts on
-// Space once the game has ended.
-function onKeyDown(event: KeyboardEvent) {
-    if (!state) return
+// Player 1's presses: move one cell per press during play, and restart on
+// confirm (Space) once the game has ended.
+function onPress(player: number, action: Action) {
+    if (!state || player !== 0) return
     if (state.locked) {
-        if (shouldRestart(state, event)) {
+        if (action === "confirm") {
             hideMessage()
             init()
         }
         return
     }
-    if (!movePlayer(state, keyToStep(event.key))) return
+    if (!isDirection(action)) return
+    if (!movePlayer(state, directionStep(action))) return
     endGame(state, checkEnd(state))
     draw(state)
 }
@@ -51,5 +58,11 @@ function endGame(state: GameState, outcome: Outcome | null) {
     displayMessage(outcome === "dead")
 }
 
-addEventListener("keydown", onKeyDown)
+// Event-driven until the tick loop polls the input instead.
+const input = new InputState()
+input.onPress((player, action) => {
+    onPress(player, action)
+    input.endTick()
+})
+new KeyboardSource().attach(input)
 init()
