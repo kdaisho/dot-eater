@@ -97,6 +97,13 @@ export function update(
     }
 }
 
+// Pause a game in progress; every other screen comes back unchanged (the
+// same object). For events outside the tick input, such as the window losing
+// focus or the tab being hidden.
+export function pauseIfPlaying(screen: Screen): Screen {
+    return screen.kind === "playing" ? { ...screen, kind: "paused" } : screen
+}
+
 function updateStageSelect(
     screen: Extract<Screen, { kind: "stageSelect" }>,
     input: TickInput,

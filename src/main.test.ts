@@ -298,6 +298,36 @@ describe("main", () => {
         expect(drawn.clear).toBeGreaterThan(0)
     })
 
+    it("pauses when the window loses focus during play", () => {
+        dispatchEvent(new Event("blur"))
+        expect(screen()).toBe("pause")
+        const before = steps()
+        vi.advanceTimersByTime(1000)
+        expect(steps()).toBe(before)
+        pressAndTick("KeyP")
+        expect(screen()).toBe("playing")
+    })
+
+    it("pauses when the tab is hidden during play", () => {
+        const hidden = vi.spyOn(document, "hidden", "get")
+        try {
+            hidden.mockReturnValue(false)
+            document.dispatchEvent(new Event("visibilitychange"))
+            expect(screen()).toBe("playing")
+            hidden.mockReturnValue(true)
+            document.dispatchEvent(new Event("visibilitychange"))
+            expect(screen()).toBe("pause")
+        } finally {
+            hidden.mockRestore()
+        }
+    })
+
+    it("doesn't auto-pause outside of play", () => {
+        gameOver()
+        dispatchEvent(new Event("blur"))
+        expect(screen()).toBe("game-over")
+    })
+
     it("goes from game over to stage select and back into play", () => {
         gameOver()
         pressAndTick("ArrowDown")

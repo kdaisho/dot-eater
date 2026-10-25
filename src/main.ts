@@ -3,6 +3,7 @@ import {
     END_CHOICES,
     gameOf,
     initialScreen,
+    pauseIfPlaying,
     update,
     type EndChoice,
     type Screen,
@@ -112,6 +113,17 @@ function endView(choice: EndChoice): EndScreenView {
         })),
     }
 }
+
+// Auto-pause: leaving the window or hiding the tab mid-game pauses it, so
+// the game doesn't play on unwatched.
+function autoPause() {
+    const next = pauseIfPlaying(screen)
+    if (next !== screen) enter(screen, next)
+}
+addEventListener("blur", autoPause)
+document.addEventListener("visibilitychange", () => {
+    if (document.hidden) autoPause()
+})
 
 new KeyboardSource().attach(input)
 showOverlay(screen)

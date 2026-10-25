@@ -4,6 +4,7 @@ import {
     END_CHOICES,
     gameOf,
     initialScreen,
+    pauseIfPlaying,
     startLevel,
     update,
     type FlowDeps,
@@ -210,6 +211,29 @@ describe("playing", () => {
             screen = update(screen, tickInput([], east), deps({ dt: 1 }))
         }
         expect(screen.kind).toBe("stageClear")
+    })
+})
+
+describe("pauseIfPlaying", () => {
+    it("pauses a game in progress, keeping the same game", () => {
+        const screen = playing()
+        const next = pauseIfPlaying(screen)
+        expect(next).toEqual({ ...screen, kind: "paused" })
+        expect(gameOf(next)).toBe(gameOf(screen))
+    })
+
+    it("leaves every other screen as it is", () => {
+        const game = playing()
+        const others: Screen[] = [
+            initialScreen(),
+            { kind: "stageSelect", selected: 0 },
+            { ...game, kind: "paused" },
+            { ...game, kind: "stageClear", choice: "retry" },
+            { ...game, kind: "gameOver", choice: "retry" },
+        ]
+        for (const screen of others) {
+            expect(pauseIfPlaying(screen)).toBe(screen)
+        }
     })
 })
 
