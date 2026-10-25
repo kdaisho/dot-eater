@@ -16,7 +16,7 @@ Play it at [kdaisho.github.io/dot-eater](https://kdaisho.github.io/dot-eater).
 
 Prerequisites:
 
-- Node.js 22.12+ or 24
+- Node.js 22.18+, 24.11+ or 26+ (CI uses Node 24)
 - pnpm 10 (pinned in `package.json#packageManager`; run `corepack enable` to use it)
 
 Install dependencies:
