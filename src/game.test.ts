@@ -588,6 +588,18 @@ describe("createGameState", () => {
         expect(state.enemies[0].ai).toBe(AiType.chase)
     })
 
+    it("has the player ready to move at once and the enemies wait", () => {
+        const state = createGameState()
+        expect(state.player.moveProgress).toBe(1)
+        expect(state.enemies.map((e) => e.moveProgress)).toEqual([0, 0])
+        const start = state.player.pos
+        const enemies = state.enemies.map((e) => e.pos)
+        // Level 1's player starts with open cells to the west and east.
+        step(state, TICK, { held: [east], pressed: east }, fixedRandom(0))
+        expect(state.player.pos).toEqual(vec2(start.x + 1, start.y))
+        expect(state.enemies.map((e) => e.pos)).toEqual(enemies)
+    })
+
     it("gives the characters the level's speeds", () => {
         const level = parseLevel({
             name: "fast",

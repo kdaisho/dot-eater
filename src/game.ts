@@ -50,6 +50,9 @@ export function createGameState(level: Level = levels[0]): GameState {
         undefined,
         level.playerSpeed ?? PLAYER_SPEED
     )
+    // The player can move on the first tick; enemies start from 0, which
+    // gives the player a short grace period before they move.
+    player.moveProgress = 1
     const cells = level.cells.map((row) => [...row])
     const enemies = level.enemies.map((enemy, i) =>
         createCharacter(
