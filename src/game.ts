@@ -1,4 +1,10 @@
-import { Cell, CharacterId, ENEMY_IDS } from "./constants"
+import {
+    Cell,
+    CharacterId,
+    DOT_POINTS,
+    ENEMY_IDS,
+    START_LIVES,
+} from "./constants"
 import { enemyMove, type Random } from "./ai"
 import { createCharacter, type Character } from "./character"
 import { hasDots, loopPos, type Cells, type Level } from "./level"
@@ -15,6 +21,20 @@ export type GameState = {
     // none. It is tried first at the player's next move opportunity and then
     // cleared, so a quick tap made mid-move isn't lost.
     bufferedStep: Vec2
+    // Points so far: DOT_POINTS per dot eaten.
+    score: number
+    // Lives left, counting the one being played. A collision costs one;
+    // losing the last ends the game.
+    lives: number
+    // Where everyone starts, and goes back to after losing a life (copied
+    // from the level).
+    spawns: Spawns
+}
+
+export type Spawns = {
+    player: Vec2
+    // In the same order as GameState.enemies.
+    enemies: readonly Vec2[]
 }
 
 // The player's movement input for one tick.
@@ -54,10 +74,38 @@ export function createGameState(level: Level = levels[0]): GameState {
             enemy.speed
         )
     )
-    return { cells, player, enemies, bufferedStep: vec2(0, 0) }
+    return {
+        cells,
+        player,
+        enemies,
+        bufferedStep: vec2(0, 0),
+        score: 0,
+        lives: START_LIVES,
+        spawns: {
+            player: vec2(spawn.x, spawn.y),
+            enemies: level.enemies.map((e) => vec2(e.pos.x, e.pos.y)),
+        },
+    }
 }
 
-// Try to move the player one step, eating any dot there. Returns true if the
+// Put everyone back where they started, as at the start of a game: the
+// player ready to move, the enemies waiting out the grace period again, no
+// tap buffered. Dots and score are left alone.
+function respawn(state: GameState) {
+    const { player, enemies, spawns } = state
+    player.pos = vec2(spawns.player.x, spawns.player.y)
+    player.lastPos = vec2(spawns.player.x, spawns.player.y)
+    player.moveProgress = 1
+    enemies.forEach((enemy, i) => {
+        const spawn = spawns.enemies[i]
+        enemy.pos = vec2(spawn.x, spawn.y)
+        enemy.lastPos = vec2(spawn.x, spawn.y)
+        enemy.moveProgress = 0
+    })
+    state.bufferedStep = vec2(0, 0)
+}
+
+// Try to move the player one step, eating (and scoring) any dot there. Returns true if the
 // player moved; false if a wall blocked the step or the step was zero.
 export function movePlayer(state: GameState, step: Vec2): boolean {
     if (isZero(step)) return false
@@ -75,6 +123,7 @@ export function movePlayer(state: GameState, step: Vec2): boolean {
             return false
         case Cell.dot:
             cells[target.y][target.x] = Cell.none
+            state.score += DOT_POINTS
             break
         default: {
             // Compile-time check that every Cell is handled above.
@@ -117,7 +166,8 @@ function wait(character: Character) {
 // direction or walks into a wall, an enemy is boxed in) stays ready and moves
 // on the first tick it can. All moves in a tick happen together: enemies aim
 // at where the player stood at the start of the tick, and collisions are
-// checked once, after everyone has moved. Callers stop stepping once a step
+// checked once, after everyone has moved (see checkEnd for what a collision
+// costs). Callers stop stepping once a step
 // returns an outcome (see flow.ts), so nothing changes after the game ends.
 //
 // `move` is the player's input this tick (see MoveInput and movePlayerTick),
@@ -178,21 +228,41 @@ function collides(a: Vec2, aFrom: Vec2, b: Vec2, bFrom: Vec2): boolean {
     return samePos(a, b) || (samePos(a, bFrom) && samePos(aFrom, b))
 }
 
-// Detect a collision (dead) or all dots eaten (won). `from` holds where
-// everyone stood at the start of the tick (see positions); without it only
-// shared cells count as collisions.
+// Settle the end of a tick: collisions, lives and winning. `from` holds
+// where everyone stood at the start of the tick (see positions); without it
+// only shared cells count as collisions.
+//
+// - Caught on the last life: lives drop to 0 and the game is lost ("dead").
+// - Caught with lives left: one life is lost and everyone respawns at once
+//   (see respawn), keeping the dots and score. That is no outcome; the game
+//   goes on, and callers can watch `lives` if they need to notice it.
+// - No dots left: won. That includes being caught with lives left on the
+//   tick the last dot is eaten, which costs no life, as respawning would
+//   leave nothing to play for. On the last life the collision still wins
+//   over the win, as it did before lives existed.
 export function checkEnd(
     state: GameState,
     from: readonly Vec2[] = positions(state)
 ): Outcome | null {
-    const { player, enemies } = state
-    for (let i = 0; i < enemies.length; i++) {
-        if (collides(player.pos, from[0], enemies[i].pos, from[i + 1])) {
+    const cleared = !hasDots(state.cells)
+    if (caught(state, from)) {
+        if (state.lives <= 1) {
+            state.lives = 0
             return "dead"
         }
+        if (!cleared) {
+            state.lives--
+            respawn(state)
+            return null
+        }
     }
-    if (hasDots(state.cells)) {
-        return null
-    }
-    return "won"
+    return cleared ? "won" : null
+}
+
+// Whether any enemy collides with the player this tick.
+function caught(state: GameState, from: readonly Vec2[]): boolean {
+    const { player, enemies } = state
+    return enemies.some((enemy, i) =>
+        collides(player.pos, from[0], enemy.pos, from[i + 1])
+    )
 }

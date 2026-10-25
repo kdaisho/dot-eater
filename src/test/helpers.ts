@@ -37,11 +37,14 @@ export function makeEnemy(
     return enemy
 }
 
-// Like createGameState, the player's start cell never holds a dot.
+// Like createGameState, the player's start cell never holds a dot, and the
+// spawns are where the characters start. The player is on their last life
+// unless `lives` says otherwise, so any collision ends the game.
 export function makeState(
     map: MapLiteral,
     player: { x: number; y: number },
-    enemies: Character[] = []
+    enemies: Character[] = [],
+    { lives = 1 }: { lives?: number } = {}
 ): GameState {
     const cells = cellsFrom(map)
     if (cells[player.y][player.x] === Cell.dot) {
@@ -52,6 +55,12 @@ export function makeState(
         player: createCharacter(CharacterId.player, vec2(player.x, player.y)),
         enemies,
         bufferedStep: vec2(0, 0),
+        score: 0,
+        lives,
+        spawns: {
+            player: vec2(player.x, player.y),
+            enemies: enemies.map((e) => vec2(e.pos.x, e.pos.y)),
+        },
     }
 }
 

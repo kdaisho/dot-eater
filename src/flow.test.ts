@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vite-plus/test"
-import { Cell } from "./constants"
+import { Cell, DOT_POINTS, START_LIVES } from "./constants"
 import {
     END_CHOICES,
     gameOf,
@@ -33,6 +33,14 @@ const second = parseLevel({
     enemies: [{ ai: "random" }],
 })
 const levels = [corridor, second]
+
+// The player walks east straight into the enemy, losing a life every tick
+// (with dt 1), while dots remain.
+const trap = parseLevel({
+    name: "trap",
+    map: ["#######", "#PE...#", "#######"],
+    enemies: [{ ai: "random", speed: 60 }],
+})
 
 // Input for one tick: these actions pressed, `held` held for movement.
 function tickInput(pressed: Action[] = [], held = none): TickInput {
@@ -212,6 +220,21 @@ describe("playing", () => {
         }
         expect(screen.kind).toBe("stageClear")
     })
+
+    it("keeps playing the same game after losing a life, until the last", () => {
+        const d = deps({ levels: [trap], dt: 1 })
+        const start = startLevel([trap], 0)
+        let screen: Screen = start
+        for (let lives = START_LIVES - 1; lives > 0; lives--) {
+            screen = update(screen, tickInput([], east), d)
+            expect(screen).toBe(start)
+            expect(gameOf(screen)?.lives).toBe(lives)
+        }
+        screen = update(screen, tickInput([], east), d)
+        expect(screen.kind).toBe("gameOver")
+        expect(gameOf(screen)).toBe(gameOf(start))
+        expect(gameOf(screen)?.lives).toBe(0)
+    })
 })
 
 describe("pauseIfPlaying", () => {
@@ -272,6 +295,16 @@ describe.each(["stageClear", "gameOver"] as const)("%s", (kind) => {
         expect(next.game.cells).toEqual(second.cells.map((row) => [...row]))
     })
 
+    it("retries with the score reset and full lives", () => {
+        const screen = end(kind, "retry")
+        const finished = gameOf(screen)!
+        finished.score = 5 * DOT_POINTS
+        finished.lives = kind === "gameOver" ? 0 : 1
+        const next = update(screen, tickInput(["confirm"]), deps())
+        expect(gameOf(next)?.score).toBe(0)
+        expect(gameOf(next)?.lives).toBe(START_LIVES)
+    })
+
     it("goes to stage select on confirm with stage select selected", () => {
         const screen = end(kind, "stageSelect", 1)
         expect(update(screen, tickInput(["confirm"]), deps())).toEqual({
@@ -321,16 +354,13 @@ describe("after the game ends", () => {
     )
 
     it("leaves the finished game's state untouched", () => {
-        // The trap level ends on the first tick, with dots left and the
-        // enemy free to wander off.
-        const trap = parseLevel({
-            name: "trap",
-            map: ["#######", "#PE...#", "#######"],
-            enemies: [{ ai: "random", speed: 60 }],
-        })
+        // In the trap level every tick costs a life, so the game ends after
+        // START_LIVES ticks, with dots left and the enemy free to wander off.
         const d = deps({ levels: [trap], dt: 1 })
         let screen: Screen = startLevel([trap], 0)
-        screen = update(screen, tickInput([], east), d)
+        for (let i = 0; i < START_LIVES; i++) {
+            screen = update(screen, tickInput([], east), d)
+        }
         expect(screen.kind).toBe("gameOver")
         const game = gameOf(screen)!
         const snapshot = structuredClone(game)
