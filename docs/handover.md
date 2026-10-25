@@ -4,21 +4,27 @@ Last updated: 2026-10-25. Read `CLAUDE.md` first for project conventions.
 
 ## Where things stand
 
-- **Milestone 1 "Organize code & tooling" is done and live.** Vite+ toolchain, modules, 54 unit tests, CI on PRs, deploy to Pages via Actions, and fixes for the chase AI, restart listeners, swap collision, dead-end enemies and confetti. All issues are Done in Linear; PRs #2–#12 are merged.
-- **Next: milestone "Engine foundations"** (KDA-193 to KDA-199). Nothing started yet.
+- **Milestone 1 "Organize code & tooling" is done and live** (PRs #2–#12 merged).
+- **Milestone 2 "Engine foundations" (KDA-193 to KDA-199) is implemented and in review** as one stack of PRs, each verified on a clean `pnpm install --frozen-lockfile` + check + test + build, code-reviewed, and with review fixes applied:
 
-## Next milestone: Engine foundations
+  | PR | Issue | Base |
+  | --- | --- | --- |
+  | #14 | KDA-196 BFS chase AI | `main` |
+  | #15 | KDA-195 level data format and loader | #14 |
+  | #16 | KDA-194 input action layer | #15 |
+  | #17 | KDA-193 fixed-tick game loop (+ stack integration) | #16 |
+  | #18 | KDA-199 canvas renderer with animated movement | #17 |
+  | #19 | KDA-197 game state machine | #18 |
+  | #20 | KDA-198 score and lives | #19 |
 
-All issues are in Linear with checklists and "blocked by" links. Suggested order:
+- **To land it:** merge #14 → #20 in order with merge commits, back to back (#16 alone changes movement to one cell per press, and every push to `main` deploys). Before deleting each merged branch, retarget the next PR to `main` (see CLAUDE.md). Then mark the issues Done in Linear.
+- Not yet play-tested end to end in a browser; worth a manual pass (`pnpm dev`) for movement feel and speeds.
 
-1. In parallel (independent): **KDA-193** fixed-tick game loop, **KDA-194** input action layer, **KDA-195** level data format and loader, **KDA-196** BFS chase AI.
-2. Then: **KDA-199** canvas renderer with animated movement (blocked by KDA-193), **KDA-197** game state machine, **KDA-198** score and lives.
+## Next
 
-Expect overlap in `main.ts` and `game.ts` between KDA-193, KDA-197 and KDA-198; stack those branches or run them in sequence.
-
-Read the comments on KDA-193 and KDA-196 before starting them: they carry deferred findings from the M1 review (enemies keep moving after the game ends; `lastPos` timing for simultaneous moves; chase AI ignoring wrap-around).
-
-Later milestones (Stages, Characters & breaths, Controllers & local 2-player, Polish) and an idea backlog (KDA-223 to KDA-227) are also in Linear.
+- **Milestone "Stages"** is next: start with KDA-200 (stage select with unlocks; the screen machine in `src/flow.ts` already has a stage select), then the stage issues KDA-203 to KDA-207.
+- Follow-ups noted on issues: a runtime shape check for untrusted level JSON (KDA-225), lifting the 2-enemy cap (KDA-202), and maybe a short "ready" pause or a lost-life signal after a respawn (KDA-198 comment).
+- Later milestones (Characters & breaths, Controllers & local 2-player, Polish) and an idea backlog (KDA-223 to KDA-227) are in Linear.
 
 ## Decisions already made
 
