@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vite-plus/test"
-import { AiType, Cell } from "./constants"
+import { AiType, Cell, TICK_RATE } from "./constants"
 import {
     hasDots,
     LevelError,
@@ -190,6 +190,18 @@ describe("parseLevel", () => {
             ).toEqual([
                 "playerSpeed must be a positive number, got 0",
                 "enemies[0].speed must be a positive number, got Infinity",
+            ])
+        })
+
+        it("speeds above one cell per tick", () => {
+            expect(
+                problemsOf({
+                    ...valid,
+                    playerSpeed: TICK_RATE + 1,
+                    enemies: [{ ai: "random", speed: TICK_RATE }],
+                })
+            ).toEqual([
+                `playerSpeed must be at most ${TICK_RATE} (one cell per tick), got ${TICK_RATE + 1}`,
             ])
         })
 
