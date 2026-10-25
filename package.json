@@ -23,17 +23,5 @@
         "typescript": "^5.4.5",
         "vite-plus": "1.4.0"
     },
-    "pnpm": {
-        "overrides": {
-            "vite@*": "npm:@voidzero-dev/vite-plus-core@1.4.0"
-        },
-        "peerDependencyRules": {
-            "allowAny": [
-                "vite"
-            ],
-            "ignoreMissing": [
-                "vitest"
-            ]
-        }
-    }
+    "packageManager": "pnpm@10.34.9"
 }
