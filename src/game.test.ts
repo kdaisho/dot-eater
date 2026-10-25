@@ -83,8 +83,8 @@ describe("checkEnd", () => {
 })
 
 describe("swap collisions", () => {
-    // Enemies here start with lastPos at (4, 1), so from (2, 1) the only
-    // way they can go is west.
+    // Each enemy's lastPos is set so it can only move one way: from (2, 1)
+    // with lastPos (3, 1) it goes west; from (1, 1) with lastPos (0, 1) east.
     const corridor = [
         [1, 1, 1, 1, 1],
         [2, 2, 2, 2, 2],
@@ -96,7 +96,12 @@ describe("swap collisions", () => {
             makeEnemy(2, 1, AiType.chase, { x: 3, y: 1 }),
         ])
         // Both move "at once": the enemy west, the player east.
-        enemyMove(state.cells, state.enemies[0], state.player.pos, Math.random)
+        enemyMove(
+            state.cells,
+            state.enemies[0],
+            state.player.pos,
+            fixedRandom(0)
+        )
         movePlayer(state, vec2(1, 0))
         expect(state.player.pos).toEqual(vec2(2, 1))
         expect(state.enemies[0].pos).toEqual(vec2(1, 1))

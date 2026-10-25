@@ -10,7 +10,7 @@ import {
     setDots,
     type Cells,
 } from "./level"
-import { vec2, type Vec2 } from "./vec2"
+import { samePos, vec2, type Vec2 } from "./vec2"
 
 export type Outcome = "dead" | "won"
 
@@ -90,15 +90,16 @@ export function tick(state: GameState, random: Random): Outcome | null {
 // Two characters collide when they share a cell, or when they have just
 // swapped cells (each moved into where the other was) and so passed through
 // each other.
-export function collides(a: Character, b: Character): boolean {
+//
+// With today's loop, checkEnd runs after every single move (each key press,
+// each enemy step), so a swap is always caught as a shared cell first and the
+// swap branch can't trigger. It's here for the upcoming fixed-tick loop
+// (KDA-193), where the player and enemies move simultaneously.
+function collides(a: Character, b: Character): boolean {
     return (
         samePos(a.pos, b.pos) ||
         (samePos(a.pos, b.lastPos) && samePos(a.lastPos, b.pos))
     )
-}
-
-function samePos(a: Vec2, b: Vec2): boolean {
-    return a.x === b.x && a.y === b.y
 }
 
 // Detect a collision (dead) or all dots eaten (won). The first detection

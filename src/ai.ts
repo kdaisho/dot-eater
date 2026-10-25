@@ -1,7 +1,7 @@
 import { AiType, Cell } from "./constants"
 import type { Character } from "./character"
 import { loopPos, type Cells } from "./level"
-import { allDirections, directions, vec2, type Vec2 } from "./vec2"
+import { allDirections, directions, samePos, vec2, type Vec2 } from "./vec2"
 
 export type Random = () => number
 
@@ -17,7 +17,7 @@ export function candidateMoves(cells: Cells, enemy: Character): Vec2[] {
         if (cells[v.y][v.x] === Cell.wall) {
             continue
         }
-        if (v.x === enemy.lastPos.x && v.y === enemy.lastPos.y) {
+        if (samePos(v, enemy.lastPos)) {
             continue
         }
         pos.push(v)
