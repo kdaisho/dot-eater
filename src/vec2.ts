@@ -9,6 +9,10 @@ export function vec2(x: number, y: number): Vec2 {
     return { x, y }
 }
 
+export function samePos(a: Vec2, b: Vec2): boolean {
+    return a.x === b.x && a.y === b.y
+}
+
 // Unit steps indexed by Direction.
 export const directions: Record<Direction, Vec2> = {
     [Direction.up]: vec2(0, -1),
