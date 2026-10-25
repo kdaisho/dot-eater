@@ -16,12 +16,10 @@ function genConfetti(interval: number = 20) {
 
 export const celebrate = genConfetti()
 
-// Tears down the message currently on screen (its elements and its Space
-// handler), if any. At most one message and handler exist at a time.
-let dismissMessage: (() => void) | undefined
-
-export function displayMessage(dead: boolean, onRestart: () => void) {
-    dismissMessage?.()
+// Show the end-of-game message. Any message already on screen is replaced, so
+// at most one exists at a time. Restarting is handled by main's key handler.
+export function displayMessage(dead: boolean) {
+    hideMessage()
 
     const backdrop = document.createElement("div")
     backdrop.setAttribute("id", "backdrop")
@@ -37,20 +35,9 @@ export function displayMessage(dead: boolean, onRestart: () => void) {
     msg.setAttribute("id", "msg")
     msg.setAttribute("class", "msg")
     document.body.appendChild(msg)
+}
 
-    // Other keys may be pressed first, so `{ once: true }` would not do: keep
-    // listening until Space, then unregister before restarting.
-    const onKeyDown = (event: KeyboardEvent) => {
-        if (event.key !== " ") return
-        dismiss()
-        onRestart()
-    }
-    const dismiss = () => {
-        removeEventListener("keydown", onKeyDown)
-        backdrop.remove()
-        msg.remove()
-        if (dismissMessage === dismiss) dismissMessage = undefined
-    }
-    dismissMessage = dismiss
-    addEventListener("keydown", onKeyDown)
+export function hideMessage() {
+    document.getElementById("backdrop")?.remove()
+    document.getElementById("msg")?.remove()
 }
