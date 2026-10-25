@@ -105,8 +105,9 @@ function respawn(state: GameState) {
     state.bufferedStep = vec2(0, 0)
 }
 
-// Try to move the player one step, eating (and scoring) any dot there. Returns true if the
-// player moved; false if a wall blocked the step or the step was zero.
+// Try to move the player one step, eating (and scoring) any dot there.
+// Returns true if the player moved; false if a wall blocked the step or the
+// step was zero.
 export function movePlayer(state: GameState, step: Vec2): boolean {
     if (isZero(step)) return false
     const { cells, player } = state
@@ -236,27 +237,21 @@ function collides(a: Vec2, aFrom: Vec2, b: Vec2, bFrom: Vec2): boolean {
 // - Caught with lives left: one life is lost and everyone respawns at once
 //   (see respawn), keeping the dots and score. That is no outcome; the game
 //   goes on, and callers can watch `lives` if they need to notice it.
-// - No dots left: won. That includes being caught with lives left on the
-//   tick the last dot is eaten, which costs no life, as respawning would
-//   leave nothing to play for. On the last life the collision still wins
-//   over the win, as it did before lives existed.
+// - No dots left: won, checked first. Eating the last dot clears the stage
+//   even if the player is caught on that same tick, and costs no life.
 export function checkEnd(
     state: GameState,
     from: readonly Vec2[] = positions(state)
 ): Outcome | null {
-    const cleared = !hasDots(state.cells)
-    if (caught(state, from)) {
-        if (state.lives <= 1) {
-            state.lives = 0
-            return "dead"
-        }
-        if (!cleared) {
-            state.lives--
-            respawn(state)
-            return null
-        }
+    if (!hasDots(state.cells)) return "won"
+    if (!caught(state, from)) return null
+    if (state.lives <= 1) {
+        state.lives = 0
+        return "dead"
     }
-    return cleared ? "won" : null
+    state.lives--
+    respawn(state)
+    return null
 }
 
 // Whether any enemy collides with the player this tick.

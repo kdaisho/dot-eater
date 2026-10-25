@@ -771,10 +771,10 @@ describe("step: caught on the tick the last dot is eaten", () => {
         expect(state.player.pos).toEqual(vec2(2, 1))
     })
 
-    it("is a loss on the last life", () => {
+    it("is a win that costs no life, on the last life too", () => {
         const state = caughtOnLastDot(1)
-        expect(run(state, 1, east)).toBe("dead")
-        expect(state.lives).toBe(0)
+        expect(run(state, 1, east)).toBe("won")
+        expect(state.lives).toBe(1)
     })
 
     it("is a lost life when other dots remain", () => {
