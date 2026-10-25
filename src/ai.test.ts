@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vite-plus/test"
+import { describe, expect, it, vi } from "vite-plus/test"
 import { AiType } from "./constants"
 import { candidateMoves, enemyMove } from "./ai"
 import { cellsFrom, fixedRandom, makeEnemy } from "./test/helpers"
@@ -58,7 +58,8 @@ describe("enemyMove (random)", () => {
 
 describe("enemyMove (chase)", () => {
     // Also guards the missing-break regression: falling through from the
-    // chase case would hit the default branch, which throws.
+    // chase case would hit the default branch (which throws now, and used to
+    // console.log), so assert neither happens.
     it("moves to the candidate closest to the target", () => {
         const cells = cellsFrom(cross)
         const cases = [
@@ -67,11 +68,19 @@ describe("enemyMove (chase)", () => {
             { target: vec2(4, 2), expected: vec2(3, 2) },
             { target: vec2(0, 2), expected: vec2(1, 2) },
         ]
-        for (const { target, expected } of cases) {
-            const enemy = makeEnemy(2, 2, AiType.chase)
-            enemyMove(cells, enemy, target, fixedRandom(0))
-            expect(enemy.pos).toEqual(expected)
-            expect(enemy.lastPos).toEqual(vec2(2, 2))
+        const log = vi.spyOn(console, "log").mockImplementation(() => {})
+        try {
+            for (const { target, expected } of cases) {
+                const enemy = makeEnemy(2, 2, AiType.chase)
+                expect(() =>
+                    enemyMove(cells, enemy, target, fixedRandom(0))
+                ).not.toThrow()
+                expect(enemy.pos).toEqual(expected)
+                expect(enemy.lastPos).toEqual(vec2(2, 2))
+            }
+            expect(log).not.toHaveBeenCalled()
+        } finally {
+            log.mockRestore()
         }
     })
 
