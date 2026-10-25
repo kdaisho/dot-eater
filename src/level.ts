@@ -1,5 +1,6 @@
 import { AiType, Cell, ENEMY_IDS } from "./constants"
-import { allDirections, directions, vec2, type Vec2 } from "./vec2"
+import { distanceMap } from "./path"
+import { vec2, type Vec2 } from "./vec2"
 
 export type Cells = Cell[][]
 
@@ -179,10 +180,10 @@ export function parseLevel(data: LevelData): Level {
 
     // Stage 3: every dot must be reachable from player 1's spawn.
     const playerSpawns = playerPositions.map(([pos]) => pos)
-    const reached = floodFill(cells, playerSpawns[0])
+    const dist = distanceMap(cells, playerSpawns[0])
     cells.forEach((row, y) =>
         row.forEach((cell, x) => {
-            if (cell === Cell.dot && !reached[y][x]) {
+            if (cell === Cell.dot && dist[y][x] === Infinity) {
                 problems.push(
                     `dot at (${x}, ${y}) can't be reached from the player spawn`
                 )
@@ -247,30 +248,6 @@ function tunnelProblems(cells: Cells): string[] {
         check(vec2(x, height - 1), vec2(x, 0))
     }
     return problems
-}
-
-// Every cell reachable from `start` by stepping between non-wall cells,
-// wrapping around the edges. Kept local to the level loader on purpose.
-function floodFill(cells: Cells, start: Vec2): boolean[][] {
-    const reached = cells.map((row) => row.map(() => false))
-    reached[start.y][start.x] = true
-    const stack = [start]
-    for (let pos = stack.pop(); pos; pos = stack.pop()) {
-        for (const d of allDirections) {
-            const next = loopPos(
-                cells,
-                vec2(pos.x + directions[d].x, pos.y + directions[d].y)
-            )
-            if (
-                !reached[next.y][next.x] &&
-                cells[next.y][next.x] !== Cell.wall
-            ) {
-                reached[next.y][next.x] = true
-                stack.push(next)
-            }
-        }
-    }
-    return reached
 }
 
 // ---- Runtime helpers ----
