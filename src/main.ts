@@ -23,7 +23,7 @@ const loop = createLoop({
 // One logic tick: read player 1's movement, advance the game, then clear this
 // tick's press edges.
 function update(dt: number) {
-    const move = { held: player1.step(), pressed: player1.pressedStep() }
+    const move = { held: player1.heldSteps(), pressed: player1.pressedStep() }
     endGame(step(state, dt, move, Math.random))
     input.endTick()
 }

@@ -55,7 +55,13 @@ function run(
 ): Outcome | null {
     let outcome: Outcome | null = null
     for (let i = 0; i < n; i++) {
-        outcome = step(state, TICK, { held, pressed: none }, random) ?? outcome
+        outcome =
+            step(
+                state,
+                TICK,
+                { held: heldList(held), pressed: none },
+                random
+            ) ?? outcome
     }
     return outcome
 }
@@ -63,7 +69,12 @@ function run(
 // One tick in which `pressed` is tapped (pressed and released within the
 // tick) while `held` stays held.
 function tap(state: GameState, pressed: Vec2, held: Vec2 = none) {
-    return step(state, TICK, { held, pressed }, fixedRandom(0))
+    return step(state, TICK, { held: heldList(held), pressed }, fixedRandom(0))
+}
+
+// A single held direction as MoveInput.held.
+function heldList(held: Vec2): Vec2[] {
+    return held.x === 0 && held.y === 0 ? [] : [held]
 }
 
 describe("movePlayer", () => {
@@ -256,6 +267,42 @@ describe("step: tap buffer", () => {
 })
 
 describe("step: player movement", () => {
+    it("falls back to an older held direction when the newest is blocked", () => {
+        // Hold east, then press south early (at (2, 1), a wall below) while
+        // still holding east: the player keeps going east until the turn.
+        const state = makeState(
+            [
+                [1, 1, 1, 1, 1, 1, 1],
+                [1, 2, 2, 2, 2, 2, 1],
+                [1, 1, 1, 1, 2, 1, 1],
+                [1, 1, 1, 1, 2, 1, 1],
+                [1, 1, 1, 1, 1, 1, 1],
+            ],
+            { x: 1, y: 1 }
+        )
+        const south = vec2(0, 1)
+        const ticksPerCell = TICK_RATE / PLAYER_SPEED
+        ready(state)
+        run(state, 1, east)
+        expect(state.player.pos).toEqual(vec2(2, 1))
+        step(
+            state,
+            TICK,
+            { held: [south, east], pressed: south },
+            fixedRandom(0)
+        )
+        for (let i = 0; i < ticksPerCell * 3; i++) {
+            step(
+                state,
+                TICK,
+                { held: [south, east], pressed: none },
+                fixedRandom(0)
+            )
+        }
+        // East to (3, 1) and (4, 1), then south down the side passage.
+        expect(state.player.pos).toEqual(vec2(4, 2))
+    })
+
     it("stays put with no direction held, then moves on the first tick one is", () => {
         const state = makeState(corridor, { x: 0, y: 1 })
         run(state, TICK_RATE)

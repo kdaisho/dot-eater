@@ -103,6 +103,18 @@ export class PlayerInput {
         )
     }
 
+    // Every held direction's step, most recently pressed first. Taps that
+    // are no longer held don't count (pressedStep covers those). Empty when
+    // nothing is held.
+    heldSteps(): Vec2[] {
+        return DIRECTION_ACTIONS.filter((action) => this.isDown(action))
+            .sort(
+                (a, b) =>
+                    (this.pressedAt.get(b) ?? 0) - (this.pressedAt.get(a) ?? 0)
+            )
+            .map(directionStep)
+    }
+
     // The most recently pressed direction since the last endTick, even if
     // already released. Zero when none was. Holding doesn't count, so this
     // marks a fresh press the game can remember for a moment (a tap buffer).

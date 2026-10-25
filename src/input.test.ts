@@ -101,6 +101,18 @@ describe("PlayerInput", () => {
         expect(p.step()).toEqual(vec2(0, 0))
     })
 
+    it("lists held directions newest first, leaving out taps", () => {
+        const p = input.player(0)
+        expect(p.heldSteps()).toEqual([])
+        p.press("right", "a")
+        p.press("down", "b")
+        p.press("left", "c")
+        p.release("left", "c")
+        expect(p.heldSteps()).toEqual([vec2(0, 1), vec2(1, 0)])
+        p.release("down", "b")
+        expect(p.heldSteps()).toEqual([vec2(1, 0)])
+    })
+
     it("reports the direction newly pressed this tick, not held ones", () => {
         const p = input.player(0)
         expect(p.pressedStep()).toEqual(vec2(0, 0))

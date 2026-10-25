@@ -57,7 +57,7 @@ const moves = (from = 0) =>
         .mocked(step)
         .mock.calls.slice(from)
         .map((c) => c[2])
-// The held direction passed to the latest game step.
+// The held directions passed to the latest game step, newest first.
 const lastHeld = () => vi.mocked(step).mock.lastCall?.[2].held
 const isZero = (v: { x: number; y: number }) => v.x === 0 && v.y === 0
 
@@ -107,23 +107,23 @@ describe("main", () => {
         expect(vi.mocked(step).mock.lastCall?.[1]).toBeCloseTo(TICK_MS / 1000)
     })
 
-    it("passes the most recently pressed held arrow to the game", () => {
+    it("passes the held arrows to the game, newest first", () => {
         vi.advanceTimersByTime(FRAMES_MS)
-        expect(lastHeld()).toEqual(vec2(0, 0))
+        expect(lastHeld()).toEqual([])
         keydown("ArrowRight")
         vi.advanceTimersByTime(FRAMES_MS)
-        expect(lastHeld()).toEqual(vec2(1, 0))
+        expect(lastHeld()).toEqual([vec2(1, 0)])
         keydown("ArrowUp")
         // Auto-repeat doesn't change which arrow is held or newest.
         keydown("ArrowRight", true)
         vi.advanceTimersByTime(FRAMES_MS)
-        expect(lastHeld()).toEqual(vec2(0, -1))
+        expect(lastHeld()).toEqual([vec2(0, -1), vec2(1, 0)])
         keyup("ArrowUp")
         vi.advanceTimersByTime(FRAMES_MS)
-        expect(lastHeld()).toEqual(vec2(1, 0))
+        expect(lastHeld()).toEqual([vec2(1, 0)])
         keyup("ArrowRight")
         vi.advanceTimersByTime(FRAMES_MS)
-        expect(lastHeld()).toEqual(vec2(0, 0))
+        expect(lastHeld()).toEqual([])
     })
 
     it("counts an arrow tapped between two steps once", () => {
@@ -142,7 +142,7 @@ describe("main", () => {
         const pressed = moves(before).map((m) => m.pressed)
         expect(pressed[0]).toEqual(vec2(0, 1))
         expect(pressed.slice(1).every(isZero)).toBe(true)
-        expect(lastHeld()).toEqual(vec2(0, 1))
+        expect(lastHeld()).toEqual([vec2(0, 1)])
         keyup("ArrowDown")
     })
 
@@ -176,9 +176,9 @@ describe("main", () => {
         vi.advanceTimersByTime(FRAMES_MS)
         const calls = moves(before)
         expect(calls.length).toBeGreaterThan(0)
-        expect(calls.every((m) => isZero(m.held) && isZero(m.pressed))).toBe(
-            true
-        )
+        expect(
+            calls.every((m) => m.held.length === 0 && isZero(m.pressed))
+        ).toBe(true)
     })
 
     it("restarts exactly once per Space after several game-overs", () => {

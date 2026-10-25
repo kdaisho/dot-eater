@@ -27,9 +27,10 @@ export type GameState = {
 
 // The player's movement input for one tick.
 export type MoveInput = {
-    // The direction being held (zero for none). The player keeps moving this
-    // way while it is held.
-    held: Vec2
+    // The directions being held, most recently pressed first (empty for
+    // none). The player keeps moving the newest way that is open, so holding
+    // an older direction still works while a newer one is blocked.
+    held: readonly Vec2[]
     // The direction newly pressed this tick (zero for none), even if it was
     // already released again.
     pressed: Vec2
@@ -141,13 +142,17 @@ export function step(
     return checkEnd(state, from)
 }
 
-// The player's move opportunity: try the buffered direction first and fall
-// back to the held one if it is blocked. The buffer is cleared either way, so
-// it never outlives one opportunity. Returns true if the player moved.
-function movePlayerTick(state: GameState, held: Vec2): boolean {
+// The player's move opportunity: try the buffered direction first, then each
+// held direction, newest first, until one is open. The buffer is cleared
+// either way, so it never outlives one opportunity. Returns true if the
+// player moved.
+function movePlayerTick(state: GameState, held: readonly Vec2[]): boolean {
     const buffered = state.bufferedStep
     state.bufferedStep = vec2(0, 0)
-    return movePlayer(state, buffered) || movePlayer(state, held)
+    return (
+        movePlayer(state, buffered) ||
+        held.some((direction) => movePlayer(state, direction))
+    )
 }
 
 function isZero(v: Vec2): boolean {
