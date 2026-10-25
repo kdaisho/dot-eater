@@ -11,8 +11,6 @@ export type GameState = {
     cells: Cells
     player: Character
     enemies: Character[]
-    // Set once the game has ended; nothing changes after that.
-    locked: boolean
     // The direction most recently newly pressed (not just held); zero for
     // none. It is tried first at the player's next move opportunity and then
     // cleared, so a quick tap made mid-move isn't lost.
@@ -56,14 +54,13 @@ export function createGameState(level: Level = levels[0]): GameState {
             enemy.speed
         )
     )
-    return { cells, player, enemies, locked: false, bufferedStep: vec2(0, 0) }
+    return { cells, player, enemies, bufferedStep: vec2(0, 0) }
 }
 
 // Try to move the player one step, eating any dot there. Returns true if the
-// player moved; false if a wall blocked the step, the step was zero, or the
-// game is locked.
+// player moved; false if a wall blocked the step or the step was zero.
 export function movePlayer(state: GameState, step: Vec2): boolean {
-    if (state.locked || isZero(step)) return false
+    if (isZero(step)) return false
     const { cells, player } = state
     const target = loopPos(
         cells,
@@ -120,8 +117,8 @@ function wait(character: Character) {
 // direction or walks into a wall, an enemy is boxed in) stays ready and moves
 // on the first tick it can. All moves in a tick happen together: enemies aim
 // at where the player stood at the start of the tick, and collisions are
-// checked once, after everyone has moved. Once the game is locked nothing
-// changes.
+// checked once, after everyone has moved. Callers stop stepping once a step
+// returns an outcome (see flow.ts), so nothing changes after the game ends.
 //
 // `move` is the player's input this tick (see MoveInput and movePlayerTick),
 // and `random` drives the enemy AI, so a tick is deterministic.
@@ -131,7 +128,6 @@ export function step(
     move: MoveInput,
     random: Random
 ): Outcome | null {
-    if (state.locked) return null
     const { cells, player, enemies } = state
     const from = positions(state)
 
@@ -184,23 +180,19 @@ function collides(a: Vec2, aFrom: Vec2, b: Vec2, bFrom: Vec2): boolean {
 
 // Detect a collision (dead) or all dots eaten (won). `from` holds where
 // everyone stood at the start of the tick (see positions); without it only
-// shared cells count as collisions. The first detection locks the game; once
-// locked this always returns null.
+// shared cells count as collisions.
 export function checkEnd(
     state: GameState,
     from: readonly Vec2[] = positions(state)
 ): Outcome | null {
-    if (state.locked) return null
     const { player, enemies } = state
     for (let i = 0; i < enemies.length; i++) {
         if (collides(player.pos, from[0], enemies[i].pos, from[i + 1])) {
-            state.locked = true
             return "dead"
         }
     }
     if (hasDots(state.cells)) {
         return null
     }
-    state.locked = true
     return "won"
 }

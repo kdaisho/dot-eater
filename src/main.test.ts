@@ -2,7 +2,8 @@
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vite-plus/test"
 import confetti from "canvas-confetti"
 import { TICK_MS } from "./constants"
-import { createGameState, step, type GameState, type Outcome } from "./game"
+import { createGameState, step, type Outcome } from "./game"
+import { levels } from "./levels"
 import { vec2 } from "./vec2"
 
 // canvas-confetti touches a 2D canvas context on import, which happy-dom
@@ -17,11 +18,9 @@ vi.mock("./game", async (importOriginal) => {
     return {
         ...actual,
         createGameState: vi.fn(actual.createGameState),
-        step: vi.fn((state: GameState) => {
+        step: vi.fn(() => {
             const outcome = nextOutcome
-            if (!outcome) return null
             nextOutcome = null
-            state.locked = true
             return outcome
         }),
     }
@@ -43,13 +42,32 @@ function press(code: string) {
 // Long enough for several frames and logic steps.
 const FRAMES_MS = 100
 
+// Press a key and let the loop tick it.
+function pressAndTick(code: string) {
+    press(code)
+    vi.advanceTimersByTime(FRAMES_MS)
+}
+
+// The screen showing: its overlay's name, or "playing" when there is none.
+function screen(): string {
+    const overlays = document.querySelectorAll<HTMLElement>("#overlay")
+    expect(overlays.length).toBeLessThanOrEqual(1)
+    expect(document.querySelectorAll("#backdrop")).toHaveLength(overlays.length)
+    return overlays[0]?.dataset.screen ?? "playing"
+}
+
+// The selected menu item on the overlay.
+const selectedItem = () =>
+    document.querySelector("#overlay li.selected")?.textContent
+
 function gameOver(outcome: Outcome = "dead") {
     nextOutcome = outcome
     vi.advanceTimersByTime(FRAMES_MS)
-    expect(document.querySelectorAll("#msg")).toHaveLength(1)
+    expect(screen()).toBe(outcome === "won" ? "stage-clear" : "game-over")
 }
 
 const starts = () => vi.mocked(createGameState).mock.calls.length
+const lastStartedLevel = () => vi.mocked(createGameState).mock.lastCall?.[0]
 const steps = () => vi.mocked(step).mock.calls.length
 // The player input passed to each game step since call `from`.
 const moves = (from = 0) =>
@@ -79,20 +97,53 @@ describe("main", () => {
             return realAdd(type as never, listener as never, options as never)
         }) as typeof addEventListener
         await import("./main")
+
+        // Opens on the title screen, with no game yet.
+        expect(screen()).toBe("title")
+        vi.advanceTimersByTime(1000)
+        expect(screen()).toBe("title")
+        expect(starts()).toBe(0)
+        expect(steps()).toBe(0)
+
+        // Space: the stage list, with the first stage selected.
+        pressAndTick("Space")
+        expect(screen()).toBe("stage-select")
+        expect(selectedItem()).toBe(levels[0].name)
+        expect(steps()).toBe(0)
+
+        // Space: play the selected stage.
+        pressAndTick("Space")
+        expect(screen()).toBe("playing")
         expect(starts()).toBe(1)
+        expect(lastStartedLevel()).toBe(levels[0])
+        expect(steps()).toBeGreaterThan(0)
     })
 
     // main is imported once, so its state carries over between tests. Start
     // each test during play, unpaused and with no keys held, so they don't
     // depend on the order they run in.
     beforeEach(() => {
-        if (document.querySelector("#msg")) press("Space")
-        expect(document.querySelector("#msg")).toBeNull()
-        for (const key of ["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"])
+        for (const key of [
+            "ArrowUp",
+            "ArrowDown",
+            "ArrowLeft",
+            "ArrowRight",
+            "Space",
+        ]) {
             keyup(key)
+        }
+        nextOutcome = null
+        for (let i = 0; i < 4 && screen() !== "playing"; i++) {
+            if (screen() === "pause") {
+                pressAndTick("KeyP")
+            } else {
+                // A menu: pick its first item.
+                pressAndTick("ArrowUp")
+                pressAndTick("Space")
+            }
+        }
+        expect(screen()).toBe("playing")
         const before = steps()
-        vi.advanceTimersByTime(FRAMES_MS)
-        if (steps() === before) press("KeyP")
         vi.advanceTimersByTime(FRAMES_MS)
         expect(steps()).toBeGreaterThan(before)
     })
@@ -147,29 +198,38 @@ describe("main", () => {
     })
 
     it("pauses and resumes on P", () => {
-        press("KeyP")
+        pressAndTick("KeyP")
+        expect(screen()).toBe("pause")
         const paused = steps()
         vi.advanceTimersByTime(1000)
         expect(steps()).toBe(paused)
-        press("KeyP")
-        vi.advanceTimersByTime(FRAMES_MS)
+        pressAndTick("KeyP")
+        expect(screen()).toBe("playing")
         expect(steps()).toBeGreaterThan(paused)
         // Time spent paused is not caught up on.
         expect(steps() - paused).toBeLessThan(FRAMES_MS / TICK_MS + 2)
     })
 
     it("pauses and resumes on Escape", () => {
-        press("Escape")
+        pressAndTick("Escape")
+        expect(screen()).toBe("pause")
         const paused = steps()
         vi.advanceTimersByTime(1000)
         expect(steps()).toBe(paused)
-        press("Escape")
-        vi.advanceTimersByTime(FRAMES_MS)
+        pressAndTick("Escape")
+        expect(screen()).toBe("playing")
         expect(steps()).toBeGreaterThan(paused)
     })
 
+    it("resumes on Space", () => {
+        pressAndTick("KeyP")
+        expect(screen()).toBe("pause")
+        pressAndTick("Space")
+        expect(screen()).toBe("playing")
+    })
+
     it("drops arrow taps made while paused", () => {
-        press("KeyP")
+        pressAndTick("KeyP")
         press("ArrowLeft")
         press("KeyP")
         const before = steps()
@@ -181,33 +241,48 @@ describe("main", () => {
         ).toBe(true)
     })
 
-    it("restarts exactly once per Space after several game-overs", () => {
+    it("retries exactly once per Space after several game-overs", () => {
         for (let i = 0; i < 3; i++) {
             gameOver()
+            expect(selectedItem()).toBe("Retry")
             const before = starts()
-            press("Space")
+            pressAndTick("Space")
             expect(starts()).toBe(before + 1)
-            expect(document.querySelector("#msg")).toBeNull()
-            expect(document.querySelector("#backdrop")).toBeNull()
+            expect(lastStartedLevel()).toBe(levels[0])
+            expect(screen()).toBe("playing")
         }
         expect(keydownListeners.size).toBe(1)
     })
 
     it("does nothing on Space during play", () => {
         const before = starts()
-        press("Space")
+        pressAndTick("Space")
         expect(starts()).toBe(before)
-        expect(document.querySelector("#msg")).toBeNull()
+        expect(screen()).toBe("playing")
+    })
+
+    it("goes from game over to stage select and back into play", () => {
+        gameOver()
+        pressAndTick("ArrowDown")
+        expect(selectedItem()).toBe("Stage select")
+        pressAndTick("Space")
+        expect(screen()).toBe("stage-select")
+        expect(selectedItem()).toBe(levels[0].name)
+        const before = starts()
+        pressAndTick("Space")
+        expect(screen()).toBe("playing")
+        expect(starts()).toBe(before + 1)
     })
 
     it("ignores other keys after the game ends", () => {
         gameOver()
         const before = starts()
-        press("ArrowUp")
-        press("Enter")
+        pressAndTick("ArrowUp")
+        pressAndTick("Enter")
+        vi.advanceTimersByTime(FRAMES_MS)
         expect(starts()).toBe(before)
-        expect(document.querySelector("#msg")).not.toBeNull()
-        press("Space")
+        expect(screen()).toBe("game-over")
+        pressAndTick("Space")
         expect(starts()).toBe(before + 1)
     })
 
@@ -217,10 +292,25 @@ describe("main", () => {
         const before = starts()
         keydown("Space", true)
         keydown("Space", true)
+        vi.advanceTimersByTime(FRAMES_MS)
         expect(starts()).toBe(before)
         keyup("Space")
-        press("Space")
+        pressAndTick("Space")
         expect(starts()).toBe(before + 1)
+    })
+
+    it("doesn't carry an arrow tapped on the game-over screen into the retry", () => {
+        gameOver()
+        press("ArrowLeft")
+        press("Space")
+        const before = steps()
+        vi.advanceTimersByTime(FRAMES_MS)
+        expect(screen()).toBe("playing")
+        const calls = moves(before)
+        expect(calls.length).toBeGreaterThan(0)
+        expect(
+            calls.every((m) => m.held.length === 0 && isZero(m.pressed))
+        ).toBe(true)
     })
 
     it("stops stepping once the game has ended, even with an arrow held", () => {
@@ -232,12 +322,29 @@ describe("main", () => {
         keyup("ArrowRight")
     })
 
-    it("steps again after a restart", () => {
+    it("steps again after a retry", () => {
         gameOver()
-        press("Space")
+        pressAndTick("Space")
         const before = steps()
         vi.advanceTimersByTime(FRAMES_MS)
         expect(steps()).toBeGreaterThan(before)
+    })
+
+    it("shows stage clear on a win, then retries or goes to stage select", () => {
+        gameOver("won")
+        expect(selectedItem()).toBe("Retry")
+        const before = steps()
+        vi.advanceTimersByTime(1000)
+        expect(steps()).toBe(before)
+        const starting = starts()
+        pressAndTick("Space")
+        expect(screen()).toBe("playing")
+        expect(starts()).toBe(starting + 1)
+
+        gameOver("won")
+        pressAndTick("ArrowDown")
+        pressAndTick("Space")
+        expect(screen()).toBe("stage-select")
     })
 
     it("fires the full confetti on every win and none on a loss", () => {
@@ -252,11 +359,11 @@ describe("main", () => {
 
         gameOver("won")
         expect(bursts()).toBe(11)
-        press("Space")
+        pressAndTick("Space")
 
         gameOver("dead")
         expect(bursts()).toBe(0)
-        press("Space")
+        pressAndTick("Space")
 
         gameOver("won")
         expect(bursts()).toBe(11)

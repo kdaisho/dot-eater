@@ -31,15 +31,38 @@ body * {
     z-index: 10;
 }
 
-.backdrop:hover {
-    cursor: pointer;
-}
-
-.msg {
+.overlay {
     color: #fff;
     left: 50%;
-    position: absolute;
+    position: fixed;
     top: 100px;
     transform: translateX(-50%);
+    width: 90%;
     z-index: 30;
+}
+
+.overlay-title {
+    margin-bottom: 30px;
+}
+
+.overlay-line {
+    font-size: 20px;
+    margin-bottom: 20px;
+}
+
+.overlay-menu {
+    list-style: none;
+}
+
+.overlay-menu li {
+    margin-bottom: 10px;
+    opacity: 0.6;
+}
+
+.overlay-menu li.selected {
+    opacity: 1;
+}
+
+.overlay-menu li.selected::before {
+    content: "▶ ";
 }

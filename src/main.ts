@@ -1,11 +1,28 @@
 import { MAX_FRAME_MS, TICK_MS } from "./constants"
-import { createGameState, step, type GameState, type Outcome } from "./game"
-import { InputState, KeyboardSource, type Action } from "./input"
+import {
+    END_CHOICES,
+    gameOf,
+    initialScreen,
+    update,
+    type EndChoice,
+    type Screen,
+} from "./flow"
+import { InputState, KeyboardSource } from "./input"
+import { levels } from "./levels"
 import { createLoop } from "./loop"
 import { createRenderer } from "./render"
-import { celebrate, displayMessage, hideMessage } from "./ui"
+import {
+    celebrate,
+    hideOverlay,
+    showGameOver,
+    showPause,
+    showStageClear,
+    showStageSelect,
+    showTitle,
+    type EndScreenView,
+} from "./ui"
 
-let state: GameState = createGameState()
+let screen: Screen = initialScreen()
 
 const canvas = document.getElementById("game")
 if (!(canvas instanceof HTMLCanvasElement)) throw new Error("No #game canvas")
@@ -14,9 +31,18 @@ addEventListener("resize", () => renderer.resize())
 
 const input = new InputState()
 const player1 = input.player(0)
+const tickInput = {
+    wasPressed: player1.wasPressed.bind(player1),
+    move: () => ({
+        held: player1.heldSteps(),
+        pressed: player1.pressedStep(),
+    }),
+}
 
+// The loop ticks on every screen; menus and pause poll their input per tick
+// like play does. Only `playing` steps the game.
 const loop = createLoop({
-    update,
+    update: tick,
     render,
     stepMs: TICK_MS,
     maxFrameMs: MAX_FRAME_MS,
@@ -25,55 +51,67 @@ const loop = createLoop({
     cancelFrame: (id) => cancelAnimationFrame(id),
 })
 
-// One logic tick: read player 1's movement, advance the game, then clear this
-// tick's press edges.
-function update(dt: number) {
-    const move = { held: player1.heldSteps(), pressed: player1.pressedStep() }
-    endGame(step(state, dt, move, Math.random))
+// One logic tick: advance the screen machine with player 1's input, then
+// clear this tick's press edges, so a press is seen by exactly one tick (and
+// one screen).
+function tick(dt: number) {
+    const next = update(screen, tickInput, {
+        levels,
+        dt,
+        random: Math.random,
+    })
     input.endTick()
+    if (next !== screen) enter(screen, next)
 }
+
+function enter(prev: Screen, next: Screen) {
+    screen = next
+    if (next.kind === "stageClear" && prev.kind === "playing") celebrate(10)
+    showOverlay(next)
+}
+
+// Interpolation only moves on during play; other screens keep the last
+// picture still.
+let lastAlpha = 0
 
 function render(alpha: number) {
-    renderer.draw(state, alpha)
+    const game = gameOf(screen)
+    if (!game) return
+    if (screen.kind === "playing") lastAlpha = alpha
+    renderer.draw(game, lastAlpha)
 }
 
-function start() {
-    // Presses made while the loop wasn't ticking don't carry into play.
-    input.endTick()
-    loop.start()
-    renderer.draw(state, 0)
-}
-
-function endGame(outcome: Outcome | null) {
-    if (!outcome) return
-    loop.stop()
-    if (outcome === "won") celebrate(10)
-    displayMessage(outcome === "dead")
-}
-
-// The loop stops after game over and doesn't tick while paused, so pause and
-// restart react to presses as they happen instead of being polled.
-function onPress(player: number, action: Action) {
-    if (player !== 0) return
-    if (state.locked) {
-        if (action === "confirm") {
-            hideMessage()
-            state = createGameState()
-            start()
-        }
-        return
-    }
-    if (action === "pause") {
-        if (loop.paused) {
-            // Presses made while paused don't carry into play.
-            input.endTick()
-            loop.resume()
-        } else {
-            loop.pause()
-        }
+function showOverlay(s: Screen) {
+    switch (s.kind) {
+        case "title":
+            return showTitle()
+        case "stageSelect":
+            return showStageSelect(
+                levels.map((level) => level.name),
+                s.selected
+            )
+        case "playing":
+            return hideOverlay()
+        case "paused":
+            return showPause()
+        case "stageClear":
+            return showStageClear(endView(s.choice))
+        case "gameOver":
+            return showGameOver(endView(s.choice))
     }
 }
 
-input.onPress(onPress)
+const END_LABELS = { retry: "Retry", stageSelect: "Stage select" } as const
+
+function endView(choice: EndChoice): EndScreenView {
+    return {
+        items: END_CHOICES.map((c) => ({
+            label: END_LABELS[c],
+            selected: c === choice,
+        })),
+    }
+}
+
 new KeyboardSource().attach(input)
-start()
+showOverlay(screen)
+loop.start()
