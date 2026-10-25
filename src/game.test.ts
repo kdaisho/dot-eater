@@ -92,9 +92,13 @@ describe("swap collisions", () => {
     ] as const
 
     it("is a collision when the player moves into the cell an enemy just left", () => {
-        const state = makeState(corridor, { x: 1, y: 1 }, [
+        const state = makeState(corridor, { x: 0, y: 1 }, [
             makeEnemy(2, 1, AiType.chase, { x: 3, y: 1 }),
         ])
+        // An earlier move, so the swap below is the player's second move and
+        // relies on movePlayer keeping lastPos up to date.
+        movePlayer(state, vec2(1, 0))
+        expect(checkEnd(state)).toBeNull()
         // Both move "at once": the enemy west, the player east.
         enemyMove(
             state.cells,
@@ -117,6 +121,35 @@ describe("swap collisions", () => {
         expect(tick(state, fixedRandom(0))).toBe("dead")
         expect(state.player.pos).toEqual(vec2(2, 1))
         expect(state.enemies[0].pos).toEqual(vec2(1, 1))
+    })
+
+    it("is a collision when the swapping enemy is not the first one", () => {
+        const state = makeState(
+            [
+                [1, 1, 1, 1, 1, 1, 1],
+                [2, 2, 2, 2, 2, 2, 2],
+                [1, 1, 1, 1, 1, 1, 1],
+            ],
+            { x: 1, y: 1 },
+            [
+                // Moves west to (4, 1), away from the player.
+                makeEnemy(5, 1, AiType.random, { x: 6, y: 1 }),
+                // Swaps with the player.
+                makeEnemy(
+                    2,
+                    1,
+                    AiType.random,
+                    { x: 3, y: 1 },
+                    CharacterId.enemy2
+                ),
+            ]
+        )
+        // Both move "at once": the player east, then the enemies.
+        movePlayer(state, vec2(1, 0))
+        expect(tick(state, fixedRandom(0))).toBe("dead")
+        expect(state.enemies[0].pos).toEqual(vec2(4, 1))
+        expect(state.enemies[1].pos).toEqual(vec2(1, 1))
+        expect(state.player.pos).toEqual(vec2(2, 1))
     })
 
     it("is not a collision when an enemy follows the player", () => {
