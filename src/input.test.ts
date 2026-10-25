@@ -199,15 +199,52 @@ describe("KeyboardSource", () => {
         expect(p1().wasPressed("confirm")).toBe(false)
     })
 
-    it("ignores auto-repeat", () => {
-        key("keydown", "Space", { repeat: true })
-        expect(p1().isDown("confirm")).toBe(false)
-        expect(p1().wasPressed("confirm")).toBe(false)
-
+    it("ignores auto-repeat of a held key", () => {
         key("keydown", "Space")
         input.endTick()
         key("keydown", "Space", { repeat: true })
+        expect(p1().isDown("confirm")).toBe(true)
         expect(p1().wasPressed("confirm")).toBe(false)
+    })
+
+    it("presses again on a fresh keydown whose keyup was missed", () => {
+        key("keydown", "ArrowLeft")
+        input.endTick()
+        // No keyup (macOS sends none for other keys while Cmd is held).
+        key("keydown", "ArrowLeft")
+        expect(p1().wasPressed("left")).toBe(true)
+        expect(p1().isDown("left")).toBe(true)
+        key("keyup", "ArrowLeft")
+        expect(p1().isDown("left")).toBe(false)
+    })
+
+    it("keeps another source's hold when re-pressing after a missed keyup", () => {
+        p1().press("left", "pad:0")
+        key("keydown", "ArrowLeft")
+        key("keydown", "ArrowLeft")
+        key("keyup", "ArrowLeft")
+        expect(p1().isDown("left")).toBe(true)
+    })
+
+    it("counts auto-repeat of a key whose keydown was missed as a press", () => {
+        // Pressed with Ctrl held, then Ctrl released while the key stays down.
+        key("keydown", "ArrowUp", { ctrlKey: true })
+        expect(p1().isDown("up")).toBe(false)
+        key("keydown", "ArrowUp", { repeat: true })
+        expect(p1().isDown("up")).toBe(true)
+        expect(p1().wasPressed("up")).toBe(true)
+        // Further repeats don't press again.
+        input.endTick()
+        key("keydown", "ArrowUp", { repeat: true })
+        expect(p1().wasPressed("up")).toBe(false)
+    })
+
+    it("picks up a key held while the window regains focus", () => {
+        key("keydown", "ArrowRight")
+        target.dispatchEvent(new Event("blur"))
+        expect(p1().isDown("right")).toBe(false)
+        key("keydown", "ArrowRight", { repeat: true })
+        expect(p1().isDown("right")).toBe(true)
     })
 
     it("keeps an action held while another key on it is down", () => {

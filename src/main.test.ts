@@ -102,12 +102,11 @@ describe("main key handler", () => {
         expect(document.querySelector("#msg")).toBeNull()
     })
 
-    it("ignores other keys and auto-repeated Space after the game ends", () => {
+    it("ignores other keys after the game ends", () => {
         gameOver()
         const before = starts()
         press("ArrowUp")
         press("Enter")
-        keydown("Space", true)
         expect(starts()).toBe(before)
         expect(document.querySelector("#msg")).not.toBeNull()
         press("Space")

@@ -83,10 +83,6 @@ export class PlayerInput {
         this.holders.get(action)?.delete(control)
     }
 
-    releaseAll(): void {
-        this.holders.clear()
-    }
-
     // Held right now, by any control.
     isDown(action: Action): boolean {
         return (this.holders.get(action)?.size ?? 0) > 0
@@ -238,7 +234,20 @@ export class KeyboardSource implements InputSource {
         if (bindings.length === 0) return
         // Stop arrows and Space from scrolling the page.
         e.preventDefault()
-        if (e.repeat) return
+        const held = this.held.has(e.code)
+        // Auto-repeat of a key we already hold never presses again. An
+        // auto-repeat for a key we don't hold means its first keydown was
+        // missed (made with Ctrl/Alt/Meta held, or before the window had
+        // focus), so it counts as the press.
+        if (e.repeat && held) return
+        if (held) {
+            // A fresh keydown for a key we think is held: its keyup was
+            // missed (e.g. macOS sends none while Cmd is held). Release it
+            // first so this is a press edge again.
+            for (const [player, action] of bindings) {
+                player.release(action, control(e.code))
+            }
+        }
         this.held.add(e.code)
         for (const [player, action] of bindings) {
             player.press(action, control(e.code))
