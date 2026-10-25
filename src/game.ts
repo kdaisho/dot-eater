@@ -1,4 +1,10 @@
-import { Cell, CharacterId, ENEMY_IDS } from "./constants"
+import {
+    Cell,
+    CharacterId,
+    ENEMY_IDS,
+    ENEMY_SPEED,
+    PLAYER_SPEED,
+} from "./constants"
 import { enemyMove, type Random } from "./ai"
 import { createCharacter, type Character } from "./character"
 import { hasDots, loopPos, type Cells, type Level } from "./level"
@@ -21,11 +27,22 @@ const EPSILON = 1e-9
 
 export function createGameState(level: Level = levels[0]): GameState {
     // Copy everything out of the level, which is shared between games.
+    // Speeds the level leaves out fall back to the defaults.
     const spawn = level.playerSpawns[0]
-    const player = createCharacter(CharacterId.player, vec2(spawn.x, spawn.y))
+    const player = createCharacter(
+        CharacterId.player,
+        vec2(spawn.x, spawn.y),
+        undefined,
+        level.playerSpeed ?? PLAYER_SPEED
+    )
     const cells = level.cells.map((row) => [...row])
     const enemies = level.enemies.map((enemy, i) =>
-        createCharacter(ENEMY_IDS[i], vec2(enemy.pos.x, enemy.pos.y), enemy.ai)
+        createCharacter(
+            ENEMY_IDS[i],
+            vec2(enemy.pos.x, enemy.pos.y),
+            enemy.ai,
+            enemy.speed ?? ENEMY_SPEED
+        )
     )
     return { cells, player, enemies, locked: false }
 }

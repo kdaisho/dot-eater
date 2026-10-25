@@ -432,6 +432,29 @@ describe("createGameState", () => {
         expect(state.enemies[0].ai).toBe(AiType.chase)
     })
 
+    it("gives the characters the level's speeds", () => {
+        const level = parseLevel({
+            name: "fast",
+            map: ["#######", "#P.E.E#", "#######"],
+            playerSpeed: 6,
+            enemies: [{ ai: "chase", speed: 3 }, { ai: "random" }],
+        })
+        const state = createGameState(level)
+        expect(state.player.speed).toBe(6)
+        expect(state.enemies.map((e) => e.speed)).toEqual([3, ENEMY_SPEED])
+    })
+
+    it("uses the default speeds when the level leaves them out", () => {
+        const level = parseLevel({
+            name: "default",
+            map: ["#####", "#P.E#", "#####"],
+            enemies: [{ ai: "chase" }],
+        })
+        const state = createGameState(level)
+        expect(state.player.speed).toBe(PLAYER_SPEED)
+        expect(state.enemies[0].speed).toBe(ENEMY_SPEED)
+    })
+
     it("returns a fresh state each time", () => {
         const a = createGameState()
         a.cells[0][0] = Cell.none
