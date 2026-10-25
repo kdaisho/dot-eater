@@ -28,6 +28,19 @@ describe("loopPos", () => {
         const v = vec2(1, 1)
         expect(loopPos(cells, v)).not.toBe(v)
     })
+
+    it("wraps using width for x and height for y on a non-square grid", () => {
+        // 4 wide, 3 tall
+        const wide = cellsFrom([
+            [1, 0, 1, 1],
+            [0, 0, 0, 0],
+            [1, 0, 1, 1],
+        ])
+        expect(loopPos(wide, vec2(-1, 1))).toEqual(vec2(3, 1))
+        expect(loopPos(wide, vec2(4, 1))).toEqual(vec2(0, 1))
+        expect(loopPos(wide, vec2(1, -1))).toEqual(vec2(1, 2))
+        expect(loopPos(wide, vec2(1, 3))).toEqual(vec2(1, 0))
+    })
 })
 
 describe("setDots / hasDots", () => {

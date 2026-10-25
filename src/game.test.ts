@@ -133,12 +133,15 @@ describe("createGameState", () => {
 
     it("returns a fresh state each time", () => {
         const a = createGameState()
-        a.cells[1][1] = Cell.none
+        a.cells[0][0] = Cell.none // a wall; setDots would turn a shared none into a dot
         a.player.pos.x = 99
+        a.enemies[0].pos.x = 99
         a.locked = true
         const b = createGameState()
-        expect(b.cells[1][1]).toBe(Cell.dot)
-        expect(b.player.pos).toEqual(PLAYER_START)
+        expect(b.cells[0][0]).toBe(Cell.wall)
+        // Literals, not PLAYER_START / ENEMY_STARTS, which aliasing would have mutated.
+        expect(b.player.pos).toEqual(vec2(4, 1))
+        expect(b.enemies[0].pos).toEqual(vec2(1, 4))
         expect(b.locked).toBe(false)
     })
 })
