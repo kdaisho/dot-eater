@@ -20,7 +20,7 @@ export type GameState = {
     enemies: Character[]
     // Set once the game has ended; blocks input and further end checks.
     locked: boolean
-    intervalId: number | undefined
+    intervalId: ReturnType<typeof setInterval> | undefined
 }
 
 export function createGameState(): GameState {

@@ -1,4 +1,14 @@
+import type { GameState } from "./game"
 import { vec2, type Vec2 } from "./vec2"
+
+// Space restarts once the game has ended. Auto-repeat is ignored so a Space
+// held down through the game-over doesn't skip the message.
+export function shouldRestart(
+    state: Pick<GameState, "locked">,
+    event: Pick<KeyboardEvent, "key" | "repeat">
+): boolean {
+    return state.locked && event.key === " " && !event.repeat
+}
 
 // Map a key to the step the player attempts. Any other key yields a zero
 // step, which still counts as a (no-op) move.

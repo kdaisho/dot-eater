@@ -18,6 +18,7 @@
     },
     "devDependencies": {
         "@types/canvas-confetti": "^1.6.4",
+        "happy-dom": "^21.0.4",
         "vite-plus": "1.4.0"
     },
     "engines": {

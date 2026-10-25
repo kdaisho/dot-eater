@@ -16,7 +16,11 @@ function genConfetti(interval: number = 20) {
 
 export const celebrate = genConfetti()
 
-export function displayMessage(dead: boolean, onRestart: () => void) {
+// Show the end-of-game message. Any message already on screen is replaced, so
+// at most one exists at a time. Restarting is handled by main's key handler.
+export function displayMessage(dead: boolean) {
+    hideMessage()
+
     const backdrop = document.createElement("div")
     backdrop.setAttribute("id", "backdrop")
     backdrop.setAttribute("class", "backdrop")
@@ -30,19 +34,10 @@ export function displayMessage(dead: boolean, onRestart: () => void) {
     msg.appendChild(txt)
     msg.setAttribute("id", "msg")
     msg.setAttribute("class", "msg")
-
-    addEventListener("keydown", (event) => {
-        if (event.key === " ") restore()
-    })
-
     document.body.appendChild(msg)
+}
 
-    function restore() {
-        const backdrop = document.getElementById("backdrop")
-        const msg = document.getElementById("msg")
-        if (!backdrop || !msg) return
-        document.body.removeChild(backdrop)
-        document.body.removeChild(msg)
-        onRestart()
-    }
+export function hideMessage() {
+    document.getElementById("backdrop")?.remove()
+    document.getElementById("msg")?.remove()
 }

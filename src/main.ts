@@ -7,9 +7,9 @@ import {
     type GameState,
     type Outcome,
 } from "./game"
-import { keyToStep } from "./input"
+import { keyToStep, shouldRestart } from "./input"
 import { draw } from "./render"
-import { celebrate, displayMessage } from "./ui"
+import { celebrate, displayMessage, hideMessage } from "./ui"
 
 let state: GameState | undefined
 
@@ -19,13 +19,20 @@ function init() {
     }
     state = createGameState()
     state.intervalId = setInterval(onInterval, TICK_MS)
-    // Same function reference every time, so the listener is only added once.
-    addEventListener("keydown", onKeyDown)
     draw(state)
 }
 
+// The only keydown handler: moves the player during play, and restarts on
+// Space once the game has ended.
 function onKeyDown(event: KeyboardEvent) {
     if (!state) return
+    if (state.locked) {
+        if (shouldRestart(state, event)) {
+            hideMessage()
+            init()
+        }
+        return
+    }
     if (!movePlayer(state, keyToStep(event.key))) return
     endGame(state, checkEnd(state))
     draw(state)
@@ -41,7 +48,8 @@ function endGame(state: GameState, outcome: Outcome | null) {
     if (!outcome) return
     if (outcome === "won") celebrate(10)
     clearInterval(state.intervalId)
-    displayMessage(outcome === "dead", init)
+    displayMessage(outcome === "dead")
 }
 
+addEventListener("keydown", onKeyDown)
 init()
