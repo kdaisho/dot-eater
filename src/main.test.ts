@@ -1,24 +1,27 @@
 // @vitest-environment happy-dom
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vite-plus/test"
+import confetti from "canvas-confetti"
 import { TICK_MS } from "./constants"
-import { createGameState, tick, type GameState } from "./game"
+import { createGameState, tick, type GameState, type Outcome } from "./game"
 
 // canvas-confetti touches a 2D canvas context on import, which happy-dom
 // doesn't provide.
 vi.mock("canvas-confetti", () => ({ default: vi.fn() }))
 
-// Keep the real game, but let the test decide when the next tick ends it.
-let endOnNextTick = false
+// Keep the real game, but let the test decide when the next tick ends it, and
+// how.
+let nextOutcome: Outcome | null = null
 vi.mock("./game", async (importOriginal) => {
     const actual = await importOriginal<typeof import("./game")>()
     return {
         ...actual,
         createGameState: vi.fn(actual.createGameState),
         tick: vi.fn((state: GameState) => {
-            if (!endOnNextTick) return null
-            endOnNextTick = false
+            const outcome = nextOutcome
+            if (!outcome) return null
+            nextOutcome = null
             state.locked = true
-            return "dead"
+            return outcome
         }),
     }
 })
@@ -27,8 +30,8 @@ function press(key: string, repeat = false) {
     dispatchEvent(new KeyboardEvent("keydown", { key, repeat }))
 }
 
-function gameOver() {
-    endOnNextTick = true
+function gameOver(outcome: Outcome = "dead") {
+    nextOutcome = outcome
     vi.advanceTimersByTime(TICK_MS)
     expect(document.querySelectorAll("#msg")).toHaveLength(1)
 }
@@ -98,5 +101,27 @@ describe("main key handler", () => {
         const ticks = vi.mocked(tick).mock.calls.length
         vi.advanceTimersByTime(TICK_MS * 5)
         expect(vi.mocked(tick).mock.calls.length).toBe(ticks)
+    })
+
+    it("fires the full confetti on every win and none on a loss", () => {
+        const bursts = () => {
+            // Let any running celebration finish first.
+            vi.advanceTimersByTime(TICK_MS)
+            const n = vi.mocked(confetti).mock.calls.length
+            vi.mocked(confetti).mockClear()
+            return n
+        }
+        bursts()
+
+        gameOver("won")
+        expect(bursts()).toBe(11)
+        press(" ")
+
+        gameOver("dead")
+        expect(bursts()).toBe(0)
+        press(" ")
+
+        gameOver("won")
+        expect(bursts()).toBe(11)
     })
 })
