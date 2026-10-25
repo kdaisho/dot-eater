@@ -1,16 +1,15 @@
 name: CI
 
+# Pull requests only: pushes to main are checked by deploy.yml before deploying.
 on:
     pull_request:
-    push:
-        branches: [main]
 
 permissions:
     contents: read
 
 concurrency:
     group: ci-${{ github.ref }}
-    cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+    cancel-in-progress: true
 
 jobs:
     ci:
@@ -18,13 +17,12 @@ jobs:
         steps:
             - uses: actions/checkout@v7
 
-            # pnpm version comes from package.json#packageManager.
-            - uses: pnpm/action-setup@v6
-
-            - uses: actions/setup-node@v7
+            # Installs vp and Node; pnpm version comes from package.json#packageManager.
+            - uses: voidzero-dev/setup-vp@v1.22.0
               with:
                   node-version: 24
-                  cache: pnpm
+                  cache: true
+                  run-install: false
 
             - run: pnpm install --frozen-lockfile
             - run: pnpm check
