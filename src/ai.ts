@@ -1,7 +1,8 @@
-import { AiType, Cell } from "./constants"
+import { AiType } from "./constants"
 import type { Character } from "./character"
-import { loopPos, type Cells } from "./level"
-import { allDirections, directions, samePos, vec2, type Vec2 } from "./vec2"
+import type { Cells } from "./level"
+import { distanceMap, openNeighbours } from "./path"
+import { samePos, vec2, type Vec2 } from "./vec2"
 
 export type Random = () => number
 
@@ -9,16 +10,7 @@ export type Random = () => number
 // just came from. In a dead end, turning back is the only way out, so the
 // previous cell is allowed after all. Empty only when boxed in on every side.
 export function candidateMoves(cells: Cells, enemy: Character): Vec2[] {
-    const open: Vec2[] = []
-    for (const d of allDirections) {
-        const v = loopPos(
-            cells,
-            vec2(enemy.pos.x + directions[d].x, enemy.pos.y + directions[d].y)
-        )
-        if (cells[v.y][v.x] !== Cell.wall) {
-            open.push(v)
-        }
-    }
+    const open = openNeighbours(cells, enemy.pos)
     const forward = open.filter((v) => !samePos(v, enemy.lastPos))
     return forward.length > 0 ? forward : open
 }
@@ -44,9 +36,14 @@ export function enemyMove(
             break
         }
         case AiType.chase: {
+            // Follow the shortest path (wrap-around included) to the target.
+            // Ties go to the first candidate in direction order. If the
+            // target is unreachable every candidate is Infinity, so this
+            // falls back to the first candidate and keeps the enemy moving.
+            const dist = distanceMap(cells, target)
             let nearest = pos[0]
             for (let i = 1; i < pos.length; i++) {
-                if (distance(target, nearest) > distance(target, pos[i])) {
+                if (dist[pos[i].y][pos[i].x] < dist[nearest.y][nearest.x]) {
                     nearest = pos[i]
                 }
             }
@@ -59,8 +56,4 @@ export function enemyMove(
             throw new Error(`Unknown AI type: ${String(unhandled)}`)
         }
     }
-}
-
-function distance(a: Vec2, b: Vec2) {
-    return Math.sqrt(Math.pow(a.x - b.x, 2) + Math.pow(a.y - b.y, 2))
 }
