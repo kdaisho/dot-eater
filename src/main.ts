@@ -1,11 +1,14 @@
 import { MAX_FRAME_MS, TICK_MS } from "./constants"
 import { createGameState, step, type GameState, type Outcome } from "./game"
+import { InputState, KeyboardSource, type Action } from "./input"
 import { createLoop } from "./loop"
 import { draw } from "./render"
 import { celebrate, displayMessage, hideMessage } from "./ui"
-import { vec2, type Vec2 } from "./vec2"
 
 let state: GameState = createGameState()
+
+const input = new InputState()
+const player1 = input.player(0)
 
 const loop = createLoop({
     update,
@@ -17,8 +20,11 @@ const loop = createLoop({
     cancelFrame: (id) => cancelAnimationFrame(id),
 })
 
+// One logic tick: read player 1's movement, advance the game, then clear this
+// tick's press edges.
 function update(dt: number) {
-    endGame(step(state, dt, playerStep(), Math.random))
+    endGame(step(state, dt, player1.step(), Math.random))
+    input.endTick()
 }
 
 function render(alpha: number) {
@@ -26,7 +32,8 @@ function render(alpha: number) {
 }
 
 function start() {
-    releaseAll()
+    // Presses made while the loop wasn't ticking don't carry into play.
+    input.endTick()
     loop.start()
     draw(state, 0)
 }
@@ -38,61 +45,29 @@ function endGame(outcome: Outcome | null) {
     displayMessage(outcome === "dead")
 }
 
-// Temporary held-arrow tracker and pause key, replaced by the KDA-194 input
-// action layer. Like its step(), the most recently pressed arrow that is
-// still held wins, and a tap released before the next tick still counts once.
-const ARROW_STEPS: Record<string, Vec2> = {
-    ArrowUp: vec2(0, -1),
-    ArrowDown: vec2(0, 1),
-    ArrowLeft: vec2(-1, 0),
-    ArrowRight: vec2(1, 0),
-}
-const ARROWS = Object.keys(ARROW_STEPS)
-let held: string[] = []
-let tapped: Vec2 = vec2(0, 0)
-
-function playerStep(): Vec2 {
-    const key = held.at(-1)
-    const result = key ? ARROW_STEPS[key] : tapped
-    tapped = vec2(0, 0)
-    return result
-}
-
-function releaseAll() {
-    held = []
-    tapped = vec2(0, 0)
-}
-
-function onKeyDown(event: KeyboardEvent) {
+// The loop stops after game over and doesn't tick while paused, so pause and
+// restart react to presses as they happen instead of being polled.
+function onPress(player: number, action: Action) {
+    if (player !== 0) return
     if (state.locked) {
-        if (event.key === " " && !event.repeat) {
+        if (action === "confirm") {
             hideMessage()
             state = createGameState()
             start()
         }
         return
     }
-    if (ARROWS.includes(event.key)) {
-        if (event.repeat) return
-        held = [...held.filter((k) => k !== event.key), event.key]
-        tapped = ARROW_STEPS[event.key]
-        return
-    }
-    if (
-        (event.key.toLowerCase() === "p" || event.key === "Escape") &&
-        !event.repeat
-    ) {
-        if (loop.paused) loop.resume()
-        else loop.pause()
+    if (action === "pause") {
+        if (loop.paused) {
+            // Presses made while paused don't carry into play.
+            input.endTick()
+            loop.resume()
+        } else {
+            loop.pause()
+        }
     }
 }
 
-function onKeyUp(event: KeyboardEvent) {
-    held = held.filter((k) => k !== event.key)
-}
-
-addEventListener("keydown", onKeyDown)
-addEventListener("keyup", onKeyUp)
-// Keys released while the window is unfocused never send keyup.
-addEventListener("blur", releaseAll)
+input.onPress(onPress)
+new KeyboardSource().attach(input)
 start()

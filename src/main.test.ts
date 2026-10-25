@@ -27,12 +27,17 @@ vi.mock("./game", async (importOriginal) => {
     }
 })
 
-function press(key: string, repeat = false) {
-    dispatchEvent(new KeyboardEvent("keydown", { key, repeat }))
+function keydown(code: string, repeat = false) {
+    dispatchEvent(new KeyboardEvent("keydown", { code, repeat }))
 }
 
-function release(key: string) {
-    dispatchEvent(new KeyboardEvent("keyup", { key }))
+function keyup(code: string) {
+    dispatchEvent(new KeyboardEvent("keyup", { code }))
+}
+
+function press(code: string) {
+    keydown(code)
+    keyup(code)
 }
 
 // Long enough for several frames and logic steps.
@@ -51,7 +56,7 @@ const lastPlayerStep = () => vi.mocked(step).mock.lastCall?.[2]
 
 // Every keydown listener added to the window, to catch listeners piling up.
 // (vi.spyOn doesn't see main's import-time call, so wrap it by hand.)
-const keydown = new Set<unknown>()
+const keydownListeners = new Set<unknown>()
 
 describe("main", () => {
     beforeAll(async () => {
@@ -63,7 +68,7 @@ describe("main", () => {
             listener: unknown,
             options?: unknown
         ) => {
-            if (type === "keydown") keydown.add(listener)
+            if (type === "keydown") keydownListeners.add(listener)
             return realAdd(type as never, listener as never, options as never)
         }) as typeof addEventListener
         await import("./main")
@@ -74,13 +79,13 @@ describe("main", () => {
     // each test during play, unpaused and with no keys held, so they don't
     // depend on the order they run in.
     beforeEach(() => {
-        if (document.querySelector("#msg")) press(" ")
+        if (document.querySelector("#msg")) press("Space")
         expect(document.querySelector("#msg")).toBeNull()
         for (const key of ["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"])
-            release(key)
+            keyup(key)
         const before = steps()
         vi.advanceTimersByTime(FRAMES_MS)
-        if (steps() === before) press("p")
+        if (steps() === before) press("KeyP")
         vi.advanceTimersByTime(FRAMES_MS)
         expect(steps()).toBeGreaterThan(before)
     })
@@ -98,23 +103,24 @@ describe("main", () => {
     it("passes the most recently pressed held arrow to the game", () => {
         vi.advanceTimersByTime(FRAMES_MS)
         expect(lastPlayerStep()).toEqual(vec2(0, 0))
-        press("ArrowRight")
+        keydown("ArrowRight")
         vi.advanceTimersByTime(FRAMES_MS)
         expect(lastPlayerStep()).toEqual(vec2(1, 0))
-        press("ArrowUp")
+        keydown("ArrowUp")
+        // Auto-repeat doesn't change which arrow is held or newest.
+        keydown("ArrowRight", true)
         vi.advanceTimersByTime(FRAMES_MS)
         expect(lastPlayerStep()).toEqual(vec2(0, -1))
-        release("ArrowUp")
+        keyup("ArrowUp")
         vi.advanceTimersByTime(FRAMES_MS)
         expect(lastPlayerStep()).toEqual(vec2(1, 0))
-        release("ArrowRight")
+        keyup("ArrowRight")
         vi.advanceTimersByTime(FRAMES_MS)
         expect(lastPlayerStep()).toEqual(vec2(0, 0))
     })
 
     it("counts an arrow tapped between two steps once", () => {
         press("ArrowLeft")
-        release("ArrowLeft")
         const before = steps()
         vi.advanceTimersByTime(FRAMES_MS)
         const calls = vi.mocked(step).mock.calls.slice(before)
@@ -123,11 +129,11 @@ describe("main", () => {
     })
 
     it("pauses and resumes on P", () => {
-        press("p")
+        press("KeyP")
         const paused = steps()
         vi.advanceTimersByTime(1000)
         expect(steps()).toBe(paused)
-        press("p")
+        press("KeyP")
         vi.advanceTimersByTime(FRAMES_MS)
         expect(steps()).toBeGreaterThan(paused)
         // Time spent paused is not caught up on.
@@ -144,46 +150,71 @@ describe("main", () => {
         expect(steps()).toBeGreaterThan(paused)
     })
 
+    it("drops arrow taps made while paused", () => {
+        press("KeyP")
+        press("ArrowLeft")
+        press("KeyP")
+        const before = steps()
+        vi.advanceTimersByTime(FRAMES_MS)
+        const calls = vi.mocked(step).mock.calls.slice(before)
+        expect(calls.length).toBeGreaterThan(0)
+        expect(calls.every((c) => c[2].x === 0 && c[2].y === 0)).toBe(true)
+    })
+
     it("restarts exactly once per Space after several game-overs", () => {
         for (let i = 0; i < 3; i++) {
             gameOver()
             const before = starts()
-            press(" ")
+            press("Space")
             expect(starts()).toBe(before + 1)
             expect(document.querySelector("#msg")).toBeNull()
             expect(document.querySelector("#backdrop")).toBeNull()
         }
-        expect(keydown.size).toBe(1)
+        expect(keydownListeners.size).toBe(1)
     })
 
     it("does nothing on Space during play", () => {
         const before = starts()
-        press(" ")
+        press("Space")
         expect(starts()).toBe(before)
         expect(document.querySelector("#msg")).toBeNull()
     })
 
-    it("ignores other keys and auto-repeated Space after the game ends", () => {
+    it("ignores other keys after the game ends", () => {
         gameOver()
         const before = starts()
         press("ArrowUp")
-        press(" ", true)
+        press("Enter")
         expect(starts()).toBe(before)
         expect(document.querySelector("#msg")).not.toBeNull()
-        press(" ")
+        press("Space")
         expect(starts()).toBe(before + 1)
     })
 
-    it("stops stepping once the game has ended", () => {
+    it("ignores a Space held through the game-over until it is pressed again", () => {
+        keydown("Space")
+        gameOver()
+        const before = starts()
+        keydown("Space", true)
+        keydown("Space", true)
+        expect(starts()).toBe(before)
+        keyup("Space")
+        press("Space")
+        expect(starts()).toBe(before + 1)
+    })
+
+    it("stops stepping once the game has ended, even with an arrow held", () => {
         gameOver()
         const before = steps()
+        keydown("ArrowRight")
         vi.advanceTimersByTime(1000)
         expect(steps()).toBe(before)
+        keyup("ArrowRight")
     })
 
     it("steps again after a restart", () => {
         gameOver()
-        press(" ")
+        press("Space")
         const before = steps()
         vi.advanceTimersByTime(FRAMES_MS)
         expect(steps()).toBeGreaterThan(before)
@@ -201,11 +232,11 @@ describe("main", () => {
 
         gameOver("won")
         expect(bursts()).toBe(11)
-        press(" ")
+        press("Space")
 
         gameOver("dead")
         expect(bursts()).toBe(0)
-        press(" ")
+        press("Space")
 
         gameOver("won")
         expect(bursts()).toBe(11)
