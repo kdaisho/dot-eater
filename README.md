@@ -6,13 +6,18 @@ Play it at [kdaisho.github.io/dot-eater](https://kdaisho.github.io/dot-eater).
 
 ## How to play
 
-- Move with the arrow keys.
+- You are the fly 🪰. Move with the arrow keys.
 - Eat every dot in the maze to win.
 - Avoid the two enemies, 👹 and 👺. If one catches you, you lose.
-- The edges of the maze wrap around to the opposite side.
+- The openings in the outer wall lead to the opposite side.
 - After a win or a loss, press Space to restart.
 
 ## Development
+
+Prerequisites:
+
+- Node.js 22.12+ or 24
+- pnpm 10 (pinned in `package.json#packageManager`; run `corepack enable` to use it)
 
 Install dependencies:
 
@@ -31,6 +36,8 @@ Scripts:
 | `pnpm test`    | Run tests (Vitest)                                 |
 | `pnpm fmt`     | Format the code                                    |
 
+CI runs `pnpm check`, `pnpm test` and `pnpm build` on every pull request.
+
 ## Tech
 
 TypeScript, built with [Vite+](https://viteplus.dev).
@@ -38,3 +45,5 @@ TypeScript, built with [Vite+](https://viteplus.dev).
 ## Deployment
 
 On every push to `main`, GitHub Actions builds the site and publishes it to GitHub Pages.
+
+One-time setup: in the repository's Settings → Pages, set Source to "GitHub Actions".
