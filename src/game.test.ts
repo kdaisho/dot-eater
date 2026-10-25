@@ -3,7 +3,7 @@ import { AiType, Cell, CharacterId } from "./constants"
 import { enemyMove } from "./ai"
 import { checkEnd, createGameState, movePlayer, tick } from "./game"
 import { parseLevel } from "./level"
-import { fixedRandom, makeEnemy, makeState } from "./test/helpers"
+import { fixedRandom, makeEnemy, makeState, OLD_MAP } from "./test/helpers"
 import { vec2 } from "./vec2"
 
 const map = [
@@ -180,18 +180,6 @@ describe("tick", () => {
     })
 })
 
-// The map that was hard-coded before levels became data (KDA-195).
-const OLD_MAP = [
-    [1, 1, 1, 1, 0, 1, 1, 1, 1],
-    [1, 0, 0, 0, 0, 0, 0, 0, 1],
-    [1, 0, 1, 0, 1, 0, 1, 0, 1],
-    [1, 0, 1, 0, 1, 0, 1, 0, 1],
-    [0, 0, 0, 0, 1, 0, 0, 0, 0],
-    [1, 0, 1, 0, 0, 0, 1, 0, 1],
-    [1, 0, 1, 1, 1, 1, 1, 0, 1],
-    [1, 0, 0, 0, 0, 0, 0, 0, 1],
-    [1, 1, 1, 1, 0, 1, 1, 1, 1],
-] as const
 const OLD_PLAYER_START = vec2(4, 1)
 
 describe("createGameState", () => {

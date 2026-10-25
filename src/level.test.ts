@@ -9,7 +9,7 @@ import {
 } from "./level"
 import { levels } from "./levels"
 import { level1 } from "./levels/level1"
-import { cellsFrom } from "./test/helpers"
+import { cellsFrom, OLD_MAP } from "./test/helpers"
 import { vec2 } from "./vec2"
 
 const map = [
@@ -316,21 +316,10 @@ describe("level 1", () => {
     })
 
     it("has the old hard-coded map's walls", () => {
-        const old = [
-            [1, 1, 1, 1, 0, 1, 1, 1, 1],
-            [1, 0, 0, 0, 0, 0, 0, 0, 1],
-            [1, 0, 1, 0, 1, 0, 1, 0, 1],
-            [1, 0, 1, 0, 1, 0, 1, 0, 1],
-            [0, 0, 0, 0, 1, 0, 0, 0, 0],
-            [1, 0, 1, 0, 0, 0, 1, 0, 1],
-            [1, 0, 1, 1, 1, 1, 1, 0, 1],
-            [1, 0, 0, 0, 0, 0, 0, 0, 1],
-            [1, 1, 1, 1, 0, 1, 1, 1, 1],
-        ]
         expect(
             levels[0].cells.map((row) =>
                 row.map((c) => (c === Cell.wall ? 1 : 0))
             )
-        ).toEqual(old)
+        ).toEqual(OLD_MAP)
     })
 })
