@@ -20,7 +20,4 @@ export default defineConfig(({ command, isPreview }) => ({
             typeCheck: true,
         },
     },
-    test: {
-        passWithNoTests: true,
-    },
 }))

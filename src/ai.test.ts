@@ -40,7 +40,6 @@ describe("enemyMove (random)", () => {
             expect([vec2(2, 1), vec2(2, 3), vec2(3, 2)]).toContainEqual(
                 enemy.pos
             )
-            expect(enemy.pos).not.toEqual(vec2(1, 2))
             expect(enemy.lastPos).toEqual(vec2(2, 2))
         }
     })
@@ -78,6 +77,8 @@ describe("enemyMove (chase)", () => {
         const cells = cellsFrom(cross)
         const enemy = makeEnemy(2, 2, AiType.chase, { x: 1, y: 2 })
         enemyMove(cells, enemy, vec2(0, 2), fixedRandom(0))
-        expect([vec2(2, 1), vec2(2, 3), vec2(3, 2)]).toContainEqual(enemy.pos)
+        // Reversing to (1, 2) is excluded. Up (2, 1) and down (2, 3) tie at
+        // sqrt(5), closer than right (3, 2); the first in direction order wins.
+        expect(enemy.pos).toEqual(vec2(2, 1))
     })
 })

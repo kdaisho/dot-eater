@@ -1,4 +1,4 @@
-import { AiType, CharacterId, type Cell } from "../constants"
+import { AiType, Cell, CharacterId } from "../constants"
 import { createCharacter, type Character } from "../character"
 import type { GameState } from "../game"
 import type { Cells } from "../level"
@@ -15,20 +15,26 @@ export function makeEnemy(
     x: number,
     y: number,
     ai: AiType = AiType.random,
-    last: { x: number; y: number } = { x, y }
+    last: { x: number; y: number } = { x, y },
+    id: CharacterId = CharacterId.enemy1
 ): Character {
-    const enemy = createCharacter(CharacterId.enemy1, vec2(x, y), ai)
+    const enemy = createCharacter(id, vec2(x, y), ai)
     enemy.lastPos = vec2(last.x, last.y)
     return enemy
 }
 
+// Like createGameState, the player's start cell never holds a dot.
 export function makeState(
     map: MapLiteral,
     player: { x: number; y: number },
     enemies: Character[] = []
 ): GameState {
+    const cells = cellsFrom(map)
+    if (cells[player.y][player.x] === Cell.dot) {
+        cells[player.y][player.x] = Cell.none
+    }
     return {
-        cells: cellsFrom(map),
+        cells,
         player: createCharacter(CharacterId.player, vec2(player.x, player.y)),
         enemies,
         locked: false,

@@ -60,11 +60,10 @@ describe("checkEnd", () => {
     })
 
     it("wins when all dots are eaten", () => {
-        const state = makeState(map, { x: 1, y: 1 })
-        movePlayer(state, vec2(1, 0))
+        const state = makeState(map, { x: 0, y: 1 })
+        movePlayer(state, vec2(1, 0)) // eats the dot at (1, 1)
         expect(checkEnd(state)).toBeNull()
-        movePlayer(state, vec2(1, 0)) // wraps to (0, 1), empty
-        movePlayer(state, vec2(1, 0)) // eats the last dot at (1, 1)
+        movePlayer(state, vec2(1, 0)) // eats the last dot at (2, 1)
         expect(checkEnd(state)).toBe("won")
         expect(state.locked).toBe(true)
     })
@@ -91,7 +90,7 @@ describe("tick", () => {
         ] as const
         const state = makeState(corridor, { x: 2, y: 1 }, [
             makeEnemy(1, 1, AiType.chase, { x: 0, y: 1 }),
-            makeEnemy(4, 1, AiType.random, { x: 0, y: 1 }),
+            makeEnemy(4, 1, AiType.random, { x: 0, y: 1 }, CharacterId.enemy2),
         ])
         expect(tick(state, fixedRandom(0))).toBe("dead")
         expect(state.enemies[0].pos).toEqual(vec2(2, 1))
