@@ -1,8 +1,9 @@
 import confetti from "canvas-confetti"
 
 function genConfetti(interval: number = 20) {
-    let counter = 0
     return (count: number = 10) => {
+        // Per celebration, so every win sweeps across the screen from x = 0.
+        let counter = 0
         const intId = setInterval(() => {
             void confetti({ origin: { x: 0.1 * counter, y: 0.65 } })
             counter++
