@@ -265,5 +265,14 @@ describe("enemyMove in a dead end", () => {
             expect(enemy.pos).toEqual(vec2(1, 1))
             expect(enemy.lastPos).toEqual(vec2(1, 1))
         })
+
+        it(`${name}: remembers where it came from when boxed in`, () => {
+            const cells = cellsFrom(boxed)
+            // Came from (1, 0), which has since been walled off.
+            const enemy = makeEnemy(1, 1, ai, { x: 1, y: 0 })
+            enemyMove(cells, enemy, vec2(0, 0), fixedRandom(0.5))
+            expect(enemy.pos).toEqual(vec2(1, 1))
+            expect(enemy.lastPos).toEqual(vec2(1, 0))
+        })
     }
 })

@@ -24,10 +24,10 @@ export function enemyMove(
 ) {
     const pos = candidateMoves(cells, enemy)
 
-    enemy.lastPos = vec2(enemy.pos.x, enemy.pos.y)
-
-    // Boxed in on every side: stay put.
+    // Boxed in on every side: stay put, still remembering where it came from.
     if (pos.length === 0) return
+
+    enemy.lastPos = vec2(enemy.pos.x, enemy.pos.y)
 
     switch (enemy.ai) {
         case AiType.random: {
