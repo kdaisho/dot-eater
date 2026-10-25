@@ -5,9 +5,6 @@ export const Cell = {
 } as const
 export type Cell = (typeof Cell)[keyof typeof Cell]
 
-// Any cell value at or above this is treated as impassable by the player.
-export const CELL_MAX = 3
-
 export const Direction = {
     up: 0,
     left: 1,

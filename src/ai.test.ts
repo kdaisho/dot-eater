@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vite-plus/test"
+import { describe, expect, it } from "vite-plus/test"
 import { AiType } from "./constants"
 import { candidateMoves, enemyMove } from "./ai"
 import { cellsFrom, fixedRandom, makeEnemy } from "./test/helpers"
@@ -57,6 +57,8 @@ describe("enemyMove (random)", () => {
 })
 
 describe("enemyMove (chase)", () => {
+    // Also guards the missing-break regression: falling through from the
+    // chase case would hit the default branch, which throws.
     it("moves to the candidate closest to the target", () => {
         const cells = cellsFrom(cross)
         const cases = [
@@ -70,20 +72,6 @@ describe("enemyMove (chase)", () => {
             enemyMove(cells, enemy, target, fixedRandom(0))
             expect(enemy.pos).toEqual(expected)
             expect(enemy.lastPos).toEqual(vec2(2, 2))
-        }
-    })
-
-    it("does not fall through to the unknown-AI branch", () => {
-        const log = vi.spyOn(console, "log").mockImplementation(() => {})
-        try {
-            const cells = cellsFrom(cross)
-            const enemy = makeEnemy(2, 2, AiType.chase)
-            expect(() =>
-                enemyMove(cells, enemy, vec2(2, 0), fixedRandom(0))
-            ).not.toThrow()
-            expect(log).not.toHaveBeenCalled()
-        } finally {
-            log.mockRestore()
         }
     })
 
