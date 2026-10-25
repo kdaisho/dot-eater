@@ -32,4 +32,13 @@ export const ENEMY_IDS: readonly CharacterId[] = [
     CharacterId.enemy2,
 ]
 
-export const TICK_MS = 1000
+// Game logic runs this many fixed ticks per second, whatever the frame rate.
+export const TICK_RATE = 60
+export const TICK_MS = 1000 / TICK_RATE
+// Longest frame gap the loop catches up on. After a longer one (e.g. the tab
+// was in the background) the game carries on instead of jumping ahead.
+export const MAX_FRAME_MS = 250
+
+// Default movement speeds in cells per second.
+export const PLAYER_SPEED = 4
+export const ENEMY_SPEED = 2

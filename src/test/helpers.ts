@@ -52,7 +52,6 @@ export function makeState(
         player: createCharacter(CharacterId.player, vec2(player.x, player.y)),
         enemies,
         locked: false,
-        intervalId: undefined,
     }
 }
 

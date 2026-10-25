@@ -1,10 +1,30 @@
 import { describe, expect, it } from "vite-plus/test"
-import { AiType, Cell, CharacterId } from "./constants"
-import { enemyMove } from "./ai"
-import { checkEnd, createGameState, movePlayer, tick } from "./game"
+import {
+    AiType,
+    Cell,
+    CharacterId,
+    ENEMY_SPEED,
+    PLAYER_SPEED,
+    TICK_RATE,
+} from "./constants"
+import type { Random } from "./ai"
+import {
+    checkEnd,
+    createGameState,
+    movePlayer,
+    step,
+    type GameState,
+    type Outcome,
+} from "./game"
 import { parseLevel } from "./level"
 import { fixedRandom, makeEnemy, makeState, OLD_MAP } from "./test/helpers"
-import { vec2 } from "./vec2"
+import { vec2, type Vec2 } from "./vec2"
+
+const TICK = 1 / TICK_RATE
+const none = vec2(0, 0)
+const east = vec2(1, 0)
+const west = vec2(-1, 0)
+const north = vec2(0, -1)
 
 const map = [
     [1, 0, 1],
@@ -12,17 +32,52 @@ const map = [
     [1, 1, 1],
 ] as const
 
+// A long horizontal corridor full of dots.
+const corridor = [
+    [1, 1, 1, 1, 1, 1, 1, 1, 1],
+    [2, 2, 2, 2, 2, 2, 2, 2, 2],
+    [1, 1, 1, 1, 1, 1, 1, 1, 1],
+] as const
+
+// Make every character ready to move on the next tick.
+function ready(state: GameState) {
+    state.player.moveProgress = 1
+    for (const enemy of state.enemies) enemy.moveProgress = 1
+}
+
+// Run `n` ticks with the same input, returning the last outcome seen.
+function run(
+    state: GameState,
+    n: number,
+    playerStep: Vec2 = none,
+    random: Random = fixedRandom(0)
+): Outcome | null {
+    let outcome: Outcome | null = null
+    for (let i = 0; i < n; i++) {
+        outcome = step(state, TICK, playerStep, random) ?? outcome
+    }
+    return outcome
+}
+
 describe("movePlayer", () => {
     it("is blocked by walls", () => {
         const state = makeState(map, { x: 1, y: 1 })
-        expect(movePlayer(state, vec2(0, 1))).toBe(true)
+        expect(movePlayer(state, vec2(0, 1))).toBe(false)
         expect(state.player.pos).toEqual(vec2(1, 1))
+        expect(state.player.lastPos).toEqual(vec2(1, 1))
     })
 
-    it("moves into empty cells", () => {
+    it("moves into empty cells and records where it came from", () => {
         const state = makeState(map, { x: 1, y: 1 })
-        movePlayer(state, vec2(0, -1))
+        expect(movePlayer(state, vec2(0, -1))).toBe(true)
         expect(state.player.pos).toEqual(vec2(1, 0))
+        expect(state.player.lastPos).toEqual(vec2(1, 1))
+    })
+
+    it("does not move on a zero step", () => {
+        const state = makeState(map, { x: 1, y: 1 })
+        expect(movePlayer(state, none)).toBe(false)
+        expect(state.player.pos).toEqual(vec2(1, 1))
     })
 
     it("eats dots", () => {
@@ -82,101 +137,234 @@ describe("checkEnd", () => {
     })
 })
 
-describe("swap collisions", () => {
-    // Each enemy's lastPos is set so it can only move one way: from (2, 1)
-    // with lastPos (3, 1) it goes west; from (1, 1) with lastPos (0, 1) east.
-    const corridor = [
-        [1, 1, 1, 1, 1],
-        [2, 2, 2, 2, 2],
-        [1, 1, 1, 1, 1],
-    ] as const
-
-    it("is a collision when the player moves into the cell an enemy just left", () => {
-        const state = makeState(corridor, { x: 0, y: 1 }, [
-            makeEnemy(2, 1, AiType.chase, { x: 3, y: 1 }),
-        ])
-        // An earlier move, so the swap below is the player's second move and
-        // relies on movePlayer keeping lastPos up to date.
-        movePlayer(state, vec2(1, 0))
-        expect(checkEnd(state)).toBeNull()
-        // Both move "at once": the enemy west, the player east.
-        enemyMove(
-            state.cells,
-            state.enemies[0],
-            state.player.pos,
-            fixedRandom(0)
-        )
-        movePlayer(state, vec2(1, 0))
-        expect(state.player.pos).toEqual(vec2(2, 1))
-        expect(state.enemies[0].pos).toEqual(vec2(1, 1))
-        expect(checkEnd(state)).toBe("dead")
+describe("step: speeds", () => {
+    it("moves the player one cell per 1/speed seconds while a direction is held", () => {
+        const state = makeState(corridor, { x: 0, y: 1 })
+        const ticksPerCell = TICK_RATE / PLAYER_SPEED
+        run(state, ticksPerCell - 1, east)
+        expect(state.player.pos).toEqual(vec2(0, 1))
+        run(state, 1, east)
+        expect(state.player.pos).toEqual(vec2(1, 1))
+        run(state, ticksPerCell * 2, east)
+        expect(state.player.pos).toEqual(vec2(3, 1))
+        expect(state.cells[1][3]).toBe(Cell.none)
     })
 
-    it("is a collision when an enemy moves into the cell the player just left", () => {
+    it("moves each enemy at its own speed", () => {
+        const slow = makeEnemy(3, 1, AiType.random, { x: 2, y: 1 })
+        const fast = makeEnemy(
+            5,
+            1,
+            AiType.random,
+            { x: 4, y: 1 },
+            CharacterId.enemy2
+        )
+        expect(slow.speed).toBe(ENEMY_SPEED)
+        fast.speed = 3
+        const state = makeState(corridor, { x: 0, y: 1 }, [slow, fast])
+        // One second: 2 cells for the default speed, 3 for the faster one.
+        run(state, TICK_RATE)
+        expect(slow.pos).toEqual(vec2(5, 1))
+        expect(fast.pos).toEqual(vec2(8, 1))
+    })
+
+    it("moves at most one cell per tick, however fast", () => {
+        const state = makeState(corridor, { x: 0, y: 1 })
+        state.player.speed = TICK_RATE * 10
+        run(state, 3, east)
+        expect(state.player.pos).toEqual(vec2(3, 1))
+    })
+
+    it("does not depend on the random source for the player", () => {
+        const a = makeState(corridor, { x: 0, y: 1 })
+        const b = makeState(corridor, { x: 0, y: 1 })
+        run(a, 30, east, fixedRandom(0))
+        run(b, 30, east, fixedRandom(0.99))
+        expect(a.player.pos).toEqual(b.player.pos)
+    })
+})
+
+describe("step: player movement", () => {
+    it("stays put with no direction held, then moves on the first tick one is", () => {
+        const state = makeState(corridor, { x: 0, y: 1 })
+        run(state, TICK_RATE)
+        expect(state.player.pos).toEqual(vec2(0, 1))
+        run(state, 1, east)
+        expect(state.player.pos).toEqual(vec2(1, 1))
+    })
+
+    it("stops at a wall and turns on the first tick a free direction is held", () => {
+        const state = makeState(map, { x: 1, y: 1 })
+        run(state, TICK_RATE, vec2(0, 1)) // south is a wall
+        expect(state.player.pos).toEqual(vec2(1, 1))
+        run(state, 1, north)
+        expect(state.player.pos).toEqual(vec2(1, 0))
+    })
+
+    it("keeps its pace when the held direction changes mid-move", () => {
+        const state = makeState(corridor, { x: 4, y: 1 })
+        ready(state)
+        run(state, 1, east)
+        expect(state.player.pos).toEqual(vec2(5, 1))
+        // Reversing straight away still waits for the next whole cell.
+        run(state, TICK_RATE / PLAYER_SPEED - 1, west)
+        expect(state.player.pos).toEqual(vec2(5, 1))
+        run(state, 1, west)
+        expect(state.player.pos).toEqual(vec2(4, 1))
+    })
+
+    it("wins on the tick the last dot is eaten", () => {
+        const state = makeState(map, { x: 0, y: 1 })
+        ready(state)
+        expect(run(state, 1, east)).toBeNull()
+        expect(run(state, TICK_RATE / PLAYER_SPEED, east)).toBe("won")
+    })
+})
+
+describe("step: simultaneous moves", () => {
+    // Each enemy's lastPos is set so it can only move one way: from (2, 1)
+    // with lastPos (3, 1) it goes west; from (1, 1) with lastPos (0, 1) east.
+
+    it("is a collision when the player and an enemy swap cells", () => {
         const state = makeState(corridor, { x: 1, y: 1 }, [
             makeEnemy(2, 1, AiType.random, { x: 3, y: 1 }),
         ])
-        // Both move "at once": the player east, then the enemy west.
-        movePlayer(state, vec2(1, 0))
-        expect(tick(state, fixedRandom(0))).toBe("dead")
+        ready(state)
+        expect(run(state, 1, east)).toBe("dead")
         expect(state.player.pos).toEqual(vec2(2, 1))
         expect(state.enemies[0].pos).toEqual(vec2(1, 1))
     })
 
     it("is a collision when the swapping enemy is not the first one", () => {
-        const state = makeState(
-            [
-                [1, 1, 1, 1, 1, 1, 1],
-                [2, 2, 2, 2, 2, 2, 2],
-                [1, 1, 1, 1, 1, 1, 1],
-            ],
-            { x: 1, y: 1 },
-            [
-                // Moves west to (4, 1), away from the player.
-                makeEnemy(5, 1, AiType.random, { x: 6, y: 1 }),
-                // Swaps with the player.
-                makeEnemy(
-                    2,
-                    1,
-                    AiType.random,
-                    { x: 3, y: 1 },
-                    CharacterId.enemy2
-                ),
-            ]
-        )
-        // Both move "at once": the player east, then the enemies.
-        movePlayer(state, vec2(1, 0))
-        expect(tick(state, fixedRandom(0))).toBe("dead")
+        const state = makeState(corridor, { x: 1, y: 1 }, [
+            // Moves west to (4, 1), away from the player.
+            makeEnemy(5, 1, AiType.random, { x: 6, y: 1 }),
+            // Swaps with the player.
+            makeEnemy(2, 1, AiType.random, { x: 3, y: 1 }, CharacterId.enemy2),
+        ])
+        ready(state)
+        expect(run(state, 1, east)).toBe("dead")
         expect(state.enemies[0].pos).toEqual(vec2(4, 1))
         expect(state.enemies[1].pos).toEqual(vec2(1, 1))
         expect(state.player.pos).toEqual(vec2(2, 1))
     })
 
-    it("is not a collision when an enemy follows the player", () => {
-        const state = makeState(corridor, { x: 2, y: 1 }, [
-            makeEnemy(1, 1, AiType.chase, { x: 0, y: 1 }),
+    it("is a collision when both step into the same cell", () => {
+        const state = makeState(corridor, { x: 1, y: 1 }, [
+            makeEnemy(3, 1, AiType.random, { x: 4, y: 1 }),
         ])
-        movePlayer(state, vec2(1, 0))
-        expect(checkEnd(state)).toBeNull()
-        expect(tick(state, fixedRandom(0))).toBeNull()
+        ready(state)
+        expect(run(state, 1, east)).toBe("dead")
+        expect(state.player.pos).toEqual(vec2(2, 1))
         expect(state.enemies[0].pos).toEqual(vec2(2, 1))
+    })
+
+    it("is not a collision when an enemy steps into the cell the player leaves", () => {
+        const state = makeState(corridor, { x: 2, y: 1 }, [
+            makeEnemy(1, 1, AiType.random, { x: 0, y: 1 }),
+        ])
+        ready(state)
+        expect(run(state, 1, east)).toBeNull()
+        expect(state.player.pos).toEqual(vec2(3, 1))
+        expect(state.enemies[0].pos).toEqual(vec2(2, 1))
+    })
+
+    it("is not a collision when the player steps into the cell an enemy leaves", () => {
+        const state = makeState(corridor, { x: 1, y: 1 }, [
+            makeEnemy(2, 1, AiType.random, { x: 1, y: 1 }),
+        ])
+        ready(state)
+        expect(run(state, 1, east)).toBeNull()
+        expect(state.player.pos).toEqual(vec2(2, 1))
+        expect(state.enemies[0].pos).toEqual(vec2(3, 1))
+    })
+
+    it("is a collision when an enemy walks into a player who stays put", () => {
+        const state = makeState(corridor, { x: 1, y: 1 }, [
+            makeEnemy(2, 1, AiType.random, { x: 3, y: 1 }),
+        ])
+        ready(state)
+        expect(run(state, 1)).toBe("dead")
+    })
+
+    it("is a collision when the player walks into an enemy that stays put", () => {
+        const state = makeState(corridor, { x: 1, y: 1 }, [
+            makeEnemy(2, 1, AiType.random, { x: 3, y: 1 }),
+        ])
+        ready(state)
+        state.enemies[0].moveProgress = 0
+        expect(run(state, 1, east)).toBe("dead")
     })
 })
 
-describe("tick", () => {
-    it("moves every enemy and reports a collision", () => {
-        const corridor = [
-            [1, 1, 1, 1, 1],
-            [0, 2, 2, 2, 0],
-            [1, 1, 1, 1, 1],
-        ] as const
+describe("step: once the game has ended", () => {
+    it("moves every character in the tick that ends the game, then nothing", () => {
         const state = makeState(corridor, { x: 2, y: 1 }, [
-            makeEnemy(1, 1, AiType.chase, { x: 0, y: 1 }),
-            makeEnemy(4, 1, AiType.random, { x: 0, y: 1 }, CharacterId.enemy2),
+            // Walks into the player.
+            makeEnemy(1, 1, AiType.random, { x: 0, y: 1 }),
+            makeEnemy(6, 1, AiType.random, { x: 7, y: 1 }, CharacterId.enemy2),
         ])
-        expect(tick(state, fixedRandom(0))).toBe("dead")
+        ready(state)
+        expect(run(state, 1)).toBe("dead")
+        expect(state.enemies[1].pos).toEqual(vec2(5, 1))
+        const cells = state.cells.map((row) => [...row])
+
+        expect(run(state, TICK_RATE * 5, east)).toBeNull()
+        expect(state.player.pos).toEqual(vec2(2, 1))
         expect(state.enemies[0].pos).toEqual(vec2(2, 1))
-        expect(state.enemies[1].pos).toEqual(vec2(3, 1))
+        expect(state.enemies[1].pos).toEqual(vec2(5, 1))
+        expect(state.cells).toEqual(cells)
+    })
+
+    it("changes nothing while locked", () => {
+        const state = makeState(corridor, { x: 0, y: 1 }, [
+            makeEnemy(4, 1, AiType.random, { x: 5, y: 1 }),
+        ])
+        state.locked = true
+        expect(run(state, TICK_RATE * 5, east)).toBeNull()
+        expect(state.player.pos).toEqual(vec2(0, 1))
+        expect(state.player.moveProgress).toBe(0)
+        expect(state.enemies[0].pos).toEqual(vec2(4, 1))
+        expect(state.enemies[0].moveProgress).toBe(0)
+        expect(state.cells[1][1]).toBe(Cell.dot)
+    })
+})
+
+describe("step: enemies", () => {
+    it("aim at where the player stood at the start of the tick", () => {
+        // The chase enemy at the junction (2, 1) can go west or east. The
+        // player starts west of it, at (0, 1), and in the same tick steps
+        // west across the edge to (4, 1), east of it.
+        const state = makeState(
+            [
+                [1, 1, 1, 1, 1],
+                [2, 2, 2, 2, 2],
+                [1, 1, 2, 1, 1],
+            ],
+            { x: 0, y: 1 },
+            [makeEnemy(2, 1, AiType.chase, { x: 2, y: 2 })]
+        )
+        ready(state)
+        run(state, 1, west)
+        expect(state.player.pos).toEqual(vec2(4, 1))
+        expect(state.enemies[0].pos).toEqual(vec2(1, 1))
+    })
+
+    it("stay ready when boxed in, keeping where they came from", () => {
+        const state = makeState(
+            [
+                // A dot out of reach, so the game doesn't end as won.
+                [1, 1, 1, 2],
+                [0, 1, 0, 1],
+                [1, 1, 1, 1],
+            ],
+            { x: 0, y: 1 },
+            [makeEnemy(2, 1, AiType.random, { x: 2, y: 0 })]
+        )
+        run(state, TICK_RATE)
+        expect(state.enemies[0].pos).toEqual(vec2(2, 1))
+        expect(state.enemies[0].lastPos).toEqual(vec2(2, 0))
+        expect(state.enemies[0].moveProgress).toBe(1)
     })
 })
 
@@ -187,6 +375,7 @@ describe("createGameState", () => {
         const state = createGameState()
         expect(state.player.id).toBe(CharacterId.player)
         expect(state.player.pos).toEqual(OLD_PLAYER_START)
+        expect(state.player.speed).toBe(PLAYER_SPEED)
         expect(state.enemies.map((e) => e.id)).toEqual([
             CharacterId.enemy1,
             CharacterId.enemy2,
@@ -201,9 +390,9 @@ describe("createGameState", () => {
         ])
         for (const enemy of state.enemies) {
             expect(enemy.lastPos).toEqual(enemy.pos)
+            expect(enemy.speed).toBe(ENEMY_SPEED)
         }
         expect(state.locked).toBe(false)
-        expect(state.intervalId).toBeUndefined()
     })
 
     it("puts dots everywhere except walls and the player start", () => {
