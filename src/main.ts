@@ -2,10 +2,15 @@ import { MAX_FRAME_MS, TICK_MS } from "./constants"
 import { createGameState, step, type GameState, type Outcome } from "./game"
 import { InputState, KeyboardSource, type Action } from "./input"
 import { createLoop } from "./loop"
-import { draw } from "./render"
+import { createRenderer } from "./render"
 import { celebrate, displayMessage, hideMessage } from "./ui"
 
 let state: GameState = createGameState()
+
+const canvas = document.getElementById("game")
+if (!(canvas instanceof HTMLCanvasElement)) throw new Error("No #game canvas")
+const renderer = createRenderer(canvas)
+addEventListener("resize", () => renderer.resize())
 
 const input = new InputState()
 const player1 = input.player(0)
@@ -29,14 +34,14 @@ function update(dt: number) {
 }
 
 function render(alpha: number) {
-    draw(state, alpha)
+    renderer.draw(state, alpha)
 }
 
 function start() {
     // Presses made while the loop wasn't ticking don't carry into play.
     input.endTick()
     loop.start()
-    draw(state, 0)
+    renderer.draw(state, 0)
 }
 
 function endGame(outcome: Outcome | null) {
