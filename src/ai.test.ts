@@ -13,6 +13,27 @@ const cross = [
     [1, 1, 0, 1, 1],
 ] as const
 
+// (1, 1) is a dead end whose only exit is east, to (2, 1).
+const deadEnd = [
+    [1, 1, 1, 1],
+    [1, 0, 0, 1],
+    [1, 1, 1, 1],
+] as const
+
+// (0, 1) is a dead end whose only exit is west, across the edge to (2, 1).
+const wrapDeadEnd = [
+    [1, 1, 1],
+    [0, 1, 0],
+    [1, 1, 1],
+] as const
+
+// (1, 1) is walled in on every side.
+const boxed = [
+    [1, 1, 1],
+    [1, 0, 1],
+    [1, 1, 1],
+] as const
+
 describe("candidateMoves", () => {
     it("excludes walls and the previous cell", () => {
         const cells = cellsFrom([
@@ -28,6 +49,24 @@ describe("candidateMoves", () => {
         const cells = cellsFrom(cross)
         const enemy = makeEnemy(0, 2, AiType.random, { x: 1, y: 2 })
         expect(candidateMoves(cells, enemy)).toEqual([vec2(4, 2)])
+    })
+
+    it("allows only the previous cell in a dead end", () => {
+        const cells = cellsFrom(deadEnd)
+        const enemy = makeEnemy(1, 1, AiType.random, { x: 2, y: 1 })
+        expect(candidateMoves(cells, enemy)).toEqual([vec2(2, 1)])
+    })
+
+    it("allows the way back across the map edge in a dead end", () => {
+        const cells = cellsFrom(wrapDeadEnd)
+        const enemy = makeEnemy(0, 1, AiType.random, { x: 2, y: 1 })
+        expect(candidateMoves(cells, enemy)).toEqual([vec2(2, 1)])
+    })
+
+    it("is empty when boxed in on every side", () => {
+        const cells = cellsFrom(boxed)
+        const enemy = makeEnemy(1, 1, AiType.random)
+        expect(candidateMoves(cells, enemy)).toEqual([])
     })
 })
 
@@ -95,13 +134,6 @@ describe("enemyMove (chase)", () => {
 })
 
 describe("enemyMove in a dead end", () => {
-    // (1, 1) is a dead end whose only exit is east, back to (2, 1).
-    const deadEnd = [
-        [1, 1, 1, 1],
-        [1, 0, 0, 1],
-        [1, 1, 1, 1],
-    ] as const
-
     for (const ai of [AiType.random, AiType.chase]) {
         const name = ai === AiType.random ? "random" : "chase"
 
@@ -113,12 +145,16 @@ describe("enemyMove in a dead end", () => {
             expect(enemy.lastPos).toEqual(vec2(1, 1))
         })
 
+        it(`${name}: turns back across the map edge`, () => {
+            const cells = cellsFrom(wrapDeadEnd)
+            const enemy = makeEnemy(0, 1, ai, { x: 2, y: 1 })
+            enemyMove(cells, enemy, vec2(1, 1), fixedRandom(0.5))
+            expect(enemy.pos).toEqual(vec2(2, 1))
+            expect(enemy.lastPos).toEqual(vec2(0, 1))
+        })
+
         it(`${name}: stays put when boxed in on every side`, () => {
-            const cells = cellsFrom([
-                [1, 1, 1],
-                [1, 0, 1],
-                [1, 1, 1],
-            ])
+            const cells = cellsFrom(boxed)
             const enemy = makeEnemy(1, 1, ai)
             enemyMove(cells, enemy, vec2(0, 0), fixedRandom(0.5))
             expect(enemy.pos).toEqual(vec2(1, 1))
