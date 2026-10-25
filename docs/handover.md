@@ -7,15 +7,15 @@ Last updated: 2026-10-25. Read `CLAUDE.md` first for project conventions.
 - **Milestone 1 "Organize code & tooling" is done and live** (PRs #2–#12 merged).
 - **Milestone 2 "Engine foundations" (KDA-193 to KDA-199) is implemented and in review** as one stack of PRs, each verified on a clean `pnpm install --frozen-lockfile` + check + test + build, code-reviewed, and with review fixes applied:
 
-  | PR | Issue | Base |
-  | --- | --- | --- |
-  | #14 | KDA-196 BFS chase AI | `main` |
-  | #15 | KDA-195 level data format and loader | #14 |
-  | #16 | KDA-194 input action layer | #15 |
-  | #17 | KDA-193 fixed-tick game loop (+ stack integration) | #16 |
-  | #18 | KDA-199 canvas renderer with animated movement | #17 |
-  | #19 | KDA-197 game state machine | #18 |
-  | #20 | KDA-198 score and lives | #19 |
+    | PR  | Issue                                              | Base   |
+    | --- | -------------------------------------------------- | ------ |
+    | #14 | KDA-196 BFS chase AI                               | `main` |
+    | #15 | KDA-195 level data format and loader               | #14    |
+    | #16 | KDA-194 input action layer                         | #15    |
+    | #17 | KDA-193 fixed-tick game loop (+ stack integration) | #16    |
+    | #18 | KDA-199 canvas renderer with animated movement     | #17    |
+    | #19 | KDA-197 game state machine                         | #18    |
+    | #20 | KDA-198 score and lives                            | #19    |
 
 - **To land it:** merge #14 → #20 in order with merge commits, back to back (#16 alone changes movement to one cell per press, and every push to `main` deploys). Before deleting each merged branch, retarget the next PR to `main` (see CLAUDE.md). Then mark the issues Done in Linear.
 - Not yet play-tested end to end in a browser; worth a manual pass (`pnpm dev`) for movement feel and speeds.
