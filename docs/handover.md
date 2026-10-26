@@ -6,7 +6,7 @@ Last updated: 2026-10-26. Read `CLAUDE.md` first for project conventions.
 
 - **Milestone 1 "Organize code & tooling"** is done and live (PRs #2–#12).
 - **Milestone 2 "Engine foundations"** is done and live (PRs #14–#20, all KDA-193 to KDA-199 Done in Linear), plus the fix #21 (the last move finishes before the end screen). `main` is at the #21 merge; 275 tests.
-- The game now has: a 60 Hz fixed-tick loop, an input action layer, ASCII level files, BFS chase AI, a canvas renderer with gliding movement and a HUD, a screen state machine (title → stage select → playing ⇄ paused → ending → stage clear / game over), and score and lives. There is one level (`src/levels/level1.ts`).
+- The game now has: a 60 Hz fixed-tick loop, an input action layer, ASCII level files, BFS chase AI, a canvas renderer with gliding movement and a HUD, a screen state machine (title → stage select → playing ⇄ paused → ending → stage clear / game over), and score and lives. There is one level, Stage 1 "Classic" (`src/levels/stage1.ts`, 17x15).
 - **Next: milestone "Stages"** (KDA-200 to KDA-207). Nothing started yet.
 
 ## Code map
