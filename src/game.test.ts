@@ -3,8 +3,10 @@ import {
     AiType,
     Cell,
     CharacterId,
+    DOT_POINTS,
     ENEMY_SPEED,
     PLAYER_SPEED,
+    START_LIVES,
     TICK_RATE,
 } from "./constants"
 import type { Random } from "./ai"
@@ -554,6 +556,12 @@ describe("createGameState", () => {
         expect(state.enemies[0].ai).toBe(AiType.chase)
     })
 
+    it("starts with no score and full lives", () => {
+        const state = createGameState()
+        expect(state.score).toBe(0)
+        expect(state.lives).toBe(START_LIVES)
+    })
+
     it("has the player ready to move at once and the enemies wait", () => {
         const state = createGameState()
         expect(state.player.moveProgress).toBe(1)
@@ -601,5 +609,179 @@ describe("createGameState", () => {
         // Literals, so a shared (aliased) level spawn would be caught.
         expect(b.player.pos).toEqual(vec2(4, 1))
         expect(b.enemies[0].pos).toEqual(vec2(1, 4))
+    })
+})
+
+describe("score", () => {
+    it("scores DOT_POINTS per dot eaten", () => {
+        const state = makeState(corridor, { x: 0, y: 1 })
+        expect(state.score).toBe(0)
+        movePlayer(state, east)
+        expect(state.score).toBe(DOT_POINTS)
+        movePlayer(state, east)
+        expect(state.score).toBe(2 * DOT_POINTS)
+    })
+
+    it("scores nothing for empty cells or walls", () => {
+        const state = makeState(map, { x: 1, y: 1 })
+        expect(movePlayer(state, vec2(0, 1))).toBe(false) // wall
+        expect(movePlayer(state, north)).toBe(true) // empty
+        expect(movePlayer(state, vec2(0, 1))).toBe(true) // the empty start
+        expect(state.score).toBe(0)
+    })
+
+    it("scores the dots eaten while stepping", () => {
+        const state = makeState(corridor, { x: 0, y: 1 })
+        ready(state)
+        run(state, 2 * (TICK_RATE / PLAYER_SPEED) + 1, east)
+        expect(state.player.pos).toEqual(vec2(3, 1))
+        expect(state.score).toBe(3 * DOT_POINTS)
+    })
+})
+
+describe("step: lives", () => {
+    // The player at (1, 1) walks east while the enemy at (2, 1) walks west:
+    // they swap cells, and the player eats the dot at (2, 1).
+    function swap(lives: number) {
+        const state = makeState(
+            corridor,
+            { x: 1, y: 1 },
+            [makeEnemy(2, 1, AiType.random, { x: 3, y: 1 })],
+            { lives }
+        )
+        ready(state)
+        return state
+    }
+
+    it("costs a life on a swap and respawns everyone, keeping dots and score", () => {
+        const state = swap(3)
+        expect(run(state, 1, east)).toBeNull()
+        expect(state.lives).toBe(2)
+        expect(state.cells[1][2]).toBe(Cell.none)
+        expect(state.score).toBe(DOT_POINTS)
+        // Back at the spawns, as at the start of a game.
+        expect(state.player.pos).toEqual(vec2(1, 1))
+        expect(state.player.lastPos).toEqual(vec2(1, 1))
+        expect(state.player.moveProgress).toBe(1)
+        expect(state.enemies[0].pos).toEqual(vec2(2, 1))
+        expect(state.enemies[0].lastPos).toEqual(vec2(2, 1))
+        expect(state.enemies[0].moveProgress).toBe(0)
+    })
+
+    it("costs a life when an enemy walks into a player who stays put", () => {
+        const state = swap(2)
+        expect(run(state, 1)).toBeNull()
+        expect(state.lives).toBe(1)
+        expect(state.player.pos).toEqual(vec2(1, 1))
+        expect(state.enemies[0].pos).toEqual(vec2(2, 1))
+    })
+
+    it("clears a tap buffered on the tick a life is lost", () => {
+        const state = swap(2)
+        // Mid-move: the tap is buffered, but the player can't move yet.
+        state.player.moveProgress = 0
+        expect(tap(state, west)).toBeNull()
+        expect(state.lives).toBe(1)
+        expect(state.bufferedStep).toEqual(none)
+        // The respawned player is ready but doesn't take the old tap.
+        run(state, 1)
+        expect(state.player.pos).toEqual(vec2(1, 1))
+    })
+
+    it("respawns at the level's spawns", () => {
+        const level = parseLevel({
+            name: "spawns",
+            map: ["#######", "#P...E#", "#######"],
+            enemies: [{ ai: "random", speed: PLAYER_SPEED }],
+        })
+        const state = createGameState(level)
+        state.enemies[0].moveProgress = 1
+        // The two close in on each other and meet.
+        let outcome: Outcome | null = null
+        for (let i = 0; i < TICK_RATE && state.lives === START_LIVES; i++) {
+            outcome = run(state, 1, east)
+        }
+        expect(outcome).toBeNull()
+        expect(state.lives).toBe(START_LIVES - 1)
+        expect(state.player.pos).toEqual(vec2(1, 1))
+        expect(state.enemies[0].pos).toEqual(vec2(5, 1))
+        // The player ate (2, 1) and (3, 1) on the way; they stay eaten.
+        expect(state.score).toBe(2 * DOT_POINTS)
+        expect(state.cells[1]).toEqual([1, 0, 0, 0, 2, 2, 1])
+    })
+
+    it("plays on after a respawn", () => {
+        const state = swap(2)
+        run(state, 1, east)
+        expect(state.lives).toBe(1)
+        // The player is ready at once; the enemy waits out its grace period.
+        expect(run(state, 1, west)).toBeNull()
+        expect(state.player.pos).toEqual(vec2(0, 1))
+        expect(state.enemies[0].pos).toEqual(vec2(2, 1))
+    })
+
+    it("ends the game on a collision on the last life", () => {
+        const state = swap(1)
+        expect(run(state, 1, east)).toBe("dead")
+        expect(state.lives).toBe(0)
+        // No respawn: the final positions stay as they were.
+        expect(state.player.pos).toEqual(vec2(2, 1))
+        expect(state.enemies[0].pos).toEqual(vec2(1, 1))
+    })
+
+    it("ends the game after START_LIVES collisions", () => {
+        const state = swap(START_LIVES)
+        for (let i = 1; i < START_LIVES; i++) {
+            expect(run(state, 1, east)).toBeNull()
+            expect(state.lives).toBe(START_LIVES - i)
+            ready(state)
+        }
+        expect(run(state, 1, east)).toBe("dead")
+        expect(state.lives).toBe(0)
+    })
+})
+
+// The rule when the player eats the last dot on the same tick they are
+// caught: see checkEnd.
+describe("step: caught on the tick the last dot is eaten", () => {
+    // Only one dot, at (2, 1). The player at (1, 1) eats it walking east
+    // while the enemy at (2, 1) walks west into them: a swap collision.
+    const lastDot = [
+        [1, 1, 1, 1, 1, 1, 1],
+        [0, 0, 2, 0, 0, 0, 0],
+        [1, 1, 1, 1, 1, 1, 1],
+    ] as const
+
+    function caughtOnLastDot(lives: number) {
+        const state = makeState(
+            lastDot,
+            { x: 1, y: 1 },
+            [makeEnemy(2, 1, AiType.random, { x: 3, y: 1 })],
+            { lives }
+        )
+        ready(state)
+        return state
+    }
+
+    it("is a win that costs no life, with lives left", () => {
+        const state = caughtOnLastDot(2)
+        expect(run(state, 1, east)).toBe("won")
+        expect(state.lives).toBe(2)
+        expect(state.score).toBe(DOT_POINTS)
+        expect(state.player.pos).toEqual(vec2(2, 1))
+    })
+
+    it("is a win that costs no life, on the last life too", () => {
+        const state = caughtOnLastDot(1)
+        expect(run(state, 1, east)).toBe("won")
+        expect(state.lives).toBe(1)
+    })
+
+    it("is a lost life when other dots remain", () => {
+        const state = caughtOnLastDot(2)
+        state.cells[1][5] = Cell.dot
+        expect(run(state, 1, east)).toBeNull()
+        expect(state.lives).toBe(1)
+        expect(state.player.pos).toEqual(vec2(1, 1))
     })
 })

@@ -1,8 +1,8 @@
 // @vitest-environment happy-dom
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vite-plus/test"
 import confetti from "canvas-confetti"
-import { TICK_MS } from "./constants"
-import { createGameState, step, type Outcome } from "./game"
+import { DOT_POINTS, START_LIVES, TICK_MS } from "./constants"
+import { createGameState, step, type GameState, type Outcome } from "./game"
 import { levels } from "./levels"
 import { vec2 } from "./vec2"
 
@@ -11,7 +11,12 @@ import { vec2 } from "./vec2"
 vi.mock("canvas-confetti", () => ({ default: vi.fn() }))
 
 // Keep the real renderer, but watch what main asks it to draw.
-const drawn = vi.hoisted(() => ({ draw: 0, clear: 0 }))
+const drawn = vi.hoisted(() => ({
+    draw: 0,
+    clear: 0,
+    // The arguments of the latest draw.
+    last: undefined as unknown[] | undefined,
+}))
 vi.mock("./render", async (importOriginal) => {
     const actual = await importOriginal<typeof import("./render")>()
     return {
@@ -22,6 +27,7 @@ vi.mock("./render", async (importOriginal) => {
                 ...renderer,
                 draw: (...a: Parameters<typeof renderer.draw>) => {
                     drawn.draw++
+                    drawn.last = a
                     renderer.draw(...a)
                 },
                 clear: () => {
@@ -435,4 +441,33 @@ describe("main", () => {
         gameOver("won")
         expect(bursts()).toBe(11)
     })
+
+    it("draws the game's score and lives in the HUD", () => {
+        const game = drawnGame()
+        game.score = 7 * DOT_POINTS
+        game.lives = 2
+        vi.advanceTimersByTime(FRAMES_MS)
+        expect(drawn.last?.[2]).toEqual({ score: 7 * DOT_POINTS, lives: 2 })
+    })
+
+    it.each(["dead", "won"] as const)(
+        "shows the final score on the end screen (%s), and retries from 0",
+        (outcome) => {
+            drawnGame().score = 12 * DOT_POINTS
+            gameOver(outcome)
+            expect(overlayLines()).toEqual([`Score ${12 * DOT_POINTS}`])
+            pressAndTick("Space")
+            expect(screen()).toBe("playing")
+            expect(drawn.last?.[2]).toEqual({ score: 0, lives: START_LIVES })
+        }
+    )
 })
+
+// The game main drew last (this test's game, during play).
+function drawnGame(): GameState {
+    vi.advanceTimersByTime(FRAMES_MS)
+    return drawn.last?.[0] as GameState
+}
+
+const overlayLines = () =>
+    [...document.querySelectorAll("#overlay p")].map((p) => p.textContent)

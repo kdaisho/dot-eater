@@ -42,3 +42,8 @@ export const MAX_FRAME_MS = 250
 // Default movement speeds in cells per second.
 export const PLAYER_SPEED = 4
 export const ENEMY_SPEED = 2
+
+// Points for eating one dot.
+export const DOT_POINTS = 10
+// Lives at the start of a game.
+export const START_LIVES = 3
