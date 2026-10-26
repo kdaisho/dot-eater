@@ -45,6 +45,11 @@ const COLORS = {
 // much, ending fully dark at the radius (or over the whole radius when it is
 // smaller).
 const FOG_SOFT_EDGE = 1.5
+// How far past the radius a cell's or sprite's centre can be while part of
+// it is still in the light: half a cell's diagonal. Things that far out are
+// drawn (the darkness covers what is past the radius) so they fade in as the
+// player nears rather than popping in.
+const FOG_REACH = Math.SQRT1_2
 
 const sprites: Record<CharacterId, string> = {
     [CharacterId.player]: "🪰",
@@ -151,12 +156,12 @@ export function createRenderer(
 }
 
 // The fog for one frame: the light is centred on where the player is drawn
-// (mid-glide), and anything further than `radius` cells from it is hidden.
+// (mid-glide), and anything wholly outside `radius` cells of it is hidden.
 type Fog = {
     player: Vec2
     radius: number
     wrap: FogWrap
-    // Whether something at `p` (cell units) is inside the light.
+    // Whether something centred at `p` (cell units) reaches into the light.
     visible(p: Vec2): boolean
 }
 
@@ -173,7 +178,8 @@ function createFog(
         player,
         radius,
         wrap,
-        visible: (p) => fogDistance(p, player, cols, rows, wrap) <= radius,
+        visible: (p) =>
+            fogDistance(p, player, cols, rows, wrap) <= radius + FOG_REACH,
     }
 }
 

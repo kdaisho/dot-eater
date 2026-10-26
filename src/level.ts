@@ -293,6 +293,9 @@ export function parseLevel(data: LevelData): Level {
 
 const RULE_KEYS: ReadonlySet<string> = new Set(["fog"])
 const FOG_KEYS: ReadonlySet<string> = new Set(["radius"])
+// The smallest fog radius: the renderer's soft edge is 1.5 cells, and a
+// smaller radius would darken the player's own cell.
+export const MIN_FOG_RADIUS = 1.5
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
     return typeof value === "object" && value !== null && !Array.isArray(value)
@@ -326,10 +329,17 @@ function rulesProblems(rules: LevelRules | undefined): string[] {
     }
     const { radius } = fog
     if (
-        !(typeof radius === "number" && Number.isFinite(radius) && radius > 0)
+        !(
+            typeof radius === "number" &&
+            Number.isFinite(radius) &&
+            radius >= MIN_FOG_RADIUS
+        )
     ) {
+        // String, not JSON, for numbers: JSON shows NaN and Infinity as null.
+        const got =
+            typeof radius === "number" ? String(radius) : JSON.stringify(radius)
         problems.push(
-            `rules.fog.radius must be a positive number, got ${JSON.stringify(radius)}`
+            `rules.fog.radius must be a number of at least ${MIN_FOG_RADIUS}, got ${got}`
         )
     }
     return problems

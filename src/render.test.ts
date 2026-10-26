@@ -260,6 +260,23 @@ describe("createRenderer", () => {
             expect(walls.has("12,1")).toBe(false)
         })
 
+        // Regression: only things whose centre was inside the radius were
+        // drawn, so walls and enemies popped in at the soft edge.
+        it("draws what reaches into the light, so it fades in", () => {
+            const { calls, canvas, renderer, texts } = setup()
+            const state = makeState(corridor(), { x: 2, y: 1 }, [
+                makeEnemy(5, 1, AiType.random, undefined, CharacterId.enemy1),
+            ])
+            renderer.draw(state, 0, {}, { fog: { radius: 2.5 } })
+            // The enemy's centre is 3 cells away, the wall at (4, 0) 2.24 and
+            // the one at (5, 0) 3.16: past 2.5, but their near edges aren't.
+            expect(texts()).toEqual(["🪰", "👹"])
+            const { walls } = drawnCells(calls, canvas, 13)
+            expect(walls.has("4,0")).toBe(true)
+            expect(walls.has("5,0")).toBe(true)
+            expect(walls.has("6,0")).toBe(false)
+        })
+
         it("draws everything without fog", () => {
             const { calls, canvas, renderer, texts } = setup()
             const state = makeState(corridor(), { x: 2, y: 1 }, enemies())

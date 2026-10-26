@@ -532,14 +532,20 @@ describe("parseLevel rules", () => {
         })
     })
 
-    it.each([0, -1, Number.NaN, Infinity, "3", null, undefined])(
-        "rejects a fog radius of %s",
-        (radius) => {
-            expect(problemsOf(withRules({ fog: { radius } }))).toEqual([
-                `rules.fog.radius must be a positive number, got ${JSON.stringify(radius)}`,
-            ])
-        }
-    )
+    it.each([
+        [0, "0"],
+        [-1, "-1"],
+        [1.4, "1.4"],
+        [Number.NaN, "NaN"],
+        [Infinity, "Infinity"],
+        ["3", '"3"'],
+        [null, "null"],
+        [undefined, "undefined"],
+    ])("rejects a fog radius of %s", (radius, shown) => {
+        expect(problemsOf(withRules({ fog: { radius } }))).toEqual([
+            `rules.fog.radius must be a number of at least 1.5, got ${shown}`,
+        ])
+    })
 
     it("rejects unknown rules and fog settings", () => {
         expect(problemsOf(withRules({ fogg: { radius: 3 } }))).toEqual([
