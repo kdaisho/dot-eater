@@ -83,6 +83,9 @@ describe("showStageSelect", () => {
         showStageSelect(slots, 1)
         expectSingle()
         expect(overlay()?.dataset.screen).toBe("stage-select")
+        expect(lines()).toEqual([
+            "↑ ↓ to choose, Space to pick a character, Esc to go back",
+        ])
         expect(items()).toEqual([
             "Level 1",
             "Level 2",

@@ -22,9 +22,9 @@ export const celebrate = genConfetti()
 
 // Screen overlays. Every screen other than plain play is one overlay: a
 // backdrop plus a panel with a title, optional detail lines and an optional
-// menu (on character select, a row of cards instead). At most one overlay exists at a time; each show* replaces whatever is
-// showing, and hideOverlay removes it. Input is handled by the state machine
-// (flow.ts), not here.
+// menu (on character select, a row of cards instead). At most one overlay
+// exists at a time; each show* replaces whatever is showing, and hideOverlay
+// removes it. Input is handled by the state machine (flow.ts), not here.
 
 // A locked item is shown greyed out and marked aria-disabled.
 export type MenuItem = { label: string; selected: boolean; locked?: boolean }
@@ -67,7 +67,7 @@ export function showStageSelect(slots: readonly StageSlot[], selected: number) {
     show({
         id: "stage-select",
         title: "Select a stage",
-        lines: ["↑ ↓ to choose, Space to play"],
+        lines: ["↑ ↓ to choose, Space to pick a character, Esc to go back"],
         items: slots.map((slot, i) => ({
             label: slotLabel(slot),
             selected: i === selected,
