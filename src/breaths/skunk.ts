@@ -1,6 +1,5 @@
 import type { BreathDef, TileEffect } from "../breath"
 import { AnimalId } from "../roster"
-import { samePos } from "../vec2"
 
 // Skunk 🦨, smelly breath (KDA-219): a stink cloud on the area around it for
 // 5 s; enemies won't go in and turn back inside it. Stat: a bigger meter.
@@ -31,9 +30,15 @@ const stink: TileEffect = {
 
 // The cloud's centre also gets a 💨 (drawn over the cell, so only there: the
 // player has just eaten any dot on its own cell, so the emoji hides none).
+// It is its own effect on top of the stink, not a variant of it: a cloud
+// breathed over another then still gets its 💨 where its centre is already
+// stink (the same name on a cell only refreshes), and the haze isn't drawn
+// twice there. It blocks enemies too, though the stink under it already
+// does.
 const stinkCentre: TileEffect = {
-    ...stink,
-    look: { color: HAZE, emoji: "💨" },
+    name: "skunk.stink.centre",
+    blocksEnemies: true,
+    look: { emoji: "💨" },
 }
 
 export const skunk: BreathDef = {
@@ -46,9 +51,7 @@ export const skunk: BreathDef = {
     speedScale: 1,
     // Always fires: the cloud is worth having with no enemy near yet.
     fire(hit) {
-        for (const cell of hit.cells) {
-            const centre = samePos(cell, hit.origin)
-            hit.addTile(cell, centre ? stinkCentre : stink, DURATION)
-        }
+        for (const cell of hit.cells) hit.addTile(cell, stink, DURATION)
+        hit.addTile(hit.origin, stinkCentre, DURATION)
     },
 }

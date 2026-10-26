@@ -66,6 +66,13 @@ const cloud = (state: GameState) =>
         .map((t) => `${t.pos.x},${t.pos.y}`)
         .sort()
 
+// The cells showing a 💨.
+const puffs = (state: GameState) =>
+    state.tiles
+        .filter((t) => t.effect.look?.emoji === "💨")
+        .map((t) => `${t.pos.x},${t.pos.y}`)
+        .sort()
+
 const inCloud = (state: GameState, who: Character) =>
     cloud(state).includes(`${who.pos.x},${who.pos.y}`)
 
@@ -102,15 +109,31 @@ describe("the Skunk's smelly breath", () => {
     it("shows a green haze, with a 💨 on the player's cell", () => {
         const state = skunkState(room, centre)
         tick(state, true)
-        const centreTile = state.tiles.find(
-            (t) => t.pos.x === 3 && t.pos.y === 3
-        )
-        expect(centreTile?.effect.look?.emoji).toBe("💨")
-        const others = state.tiles.filter((t) => t !== centreTile)
-        for (const t of others) {
-            expect(t.effect.look?.color).toBeTruthy()
+        for (const t of state.tiles.filter((t) => t.effect.look?.color)) {
             expect(t.effect.look?.emoji).toBeUndefined()
         }
+        expect(state.tiles.filter((t) => t.effect.look?.color)).toHaveLength(9)
+        expect(puffs(state)).toEqual(["3,3"])
+    })
+
+    // Regression: the second cloud's centre was already stink from the
+    // first, so it was refreshed without its 💨.
+    it("shows a 💨 on the centre of a cloud breathed over another", () => {
+        const state = skunkState(corridor, { x: 3, y: 1 })
+        state.player.moveProgress = 1
+        tick(state, true)
+        tick(state, false, vec2(1, 0))
+        expect(state.player.pos).toEqual(vec2(4, 1))
+        while (state.breather.cooldown > 0) tick(state)
+        tick(state, true)
+        expect(puffs(state)).toContain("4,1")
+        // Still one haze and one block per cell, the overlap refreshed.
+        expect(cloud(state)).toEqual(["2,1", "3,1", "4,1", "5,1"])
+        const at3 = state.tiles.find(
+            (t) => t.effect.name === "skunk.stink" && t.pos.x === 3
+        )
+        expect(at3?.left).toBeCloseTo(skunk.duration)
+        expect(state.tiles.every((t) => t.effect.blocksEnemies)).toBe(true)
     })
 
     it("keeps a chaser out, circling the cloud's edge", () => {
