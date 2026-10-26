@@ -487,6 +487,62 @@ describe("main", () => {
         ).toBe(true)
     })
 
+    it("doesn't carry an arrow held on character select into play", () => {
+        gameOver()
+        pressAndTick("ArrowDown")
+        pressAndTick("Space")
+        pressAndTick("Space")
+        expect(screen()).toBe("character-select")
+        // Right moves the cursor, then stays held through the confirm.
+        keydown("ArrowRight")
+        vi.advanceTimersByTime(FRAMES_MS)
+        pressAndTick("Space")
+        expect(screen()).toBe("playing")
+        const before = steps()
+        vi.advanceTimersByTime(FRAMES_MS)
+        const calls = moves(before)
+        expect(calls.length).toBeGreaterThan(0)
+        expect(
+            calls.every((m) => m.held.length === 0 && isZero(m.pressed))
+        ).toBe(true)
+        // A fresh press moves again.
+        keyup("ArrowRight")
+        keydown("ArrowRight")
+        vi.advanceTimersByTime(FRAMES_MS)
+        expect(lastHeld()).toEqual([vec2(1, 0)])
+        keyup("ArrowRight")
+        // Back to the Dragon, which the other tests expect.
+        gameOver()
+        pressAndTick("ArrowDown")
+        pressAndTick("Space")
+        pressAndTick("Space")
+        for (const _ of ANIMAL_IDS) pressAndTick("ArrowLeft")
+        pressAndTick("Space")
+        expect(localStorage.getItem(LAST_PICK_KEY)).toBe(DEFAULT_ANIMAL)
+    })
+
+    it("doesn't carry an arrow held on the game-over screen into the retry", () => {
+        gameOver()
+        keydown("ArrowUp")
+        vi.advanceTimersByTime(FRAMES_MS)
+        pressAndTick("Space")
+        expect(screen()).toBe("playing")
+        const before = steps()
+        vi.advanceTimersByTime(FRAMES_MS)
+        expect(moves(before).every((m) => m.held.length === 0)).toBe(true)
+        keyup("ArrowUp")
+    })
+
+    it("keeps an arrow held through a pause moving after the resume", () => {
+        keydown("ArrowLeft")
+        pressAndTick("KeyP")
+        expect(screen()).toBe("pause")
+        pressAndTick("KeyP")
+        expect(screen()).toBe("playing")
+        expect(lastHeld()).toEqual([vec2(-1, 0)])
+        keyup("ArrowLeft")
+    })
+
     it("stops stepping once the game has ended, even with an arrow held", () => {
         gameOver()
         const before = steps()

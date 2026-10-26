@@ -126,6 +126,30 @@ describe("PlayerInput", () => {
         expect(p.pressedStep()).toEqual(vec2(0, 0))
     })
 
+    it("ignores directions held through ignoreHeld until pressed again", () => {
+        const p = input.player(0)
+        p.press("right", "a")
+        p.press("up", "b")
+        p.press("up", "c")
+        input.endTick()
+        input.ignoreHeld()
+        expect(p.isDown("right")).toBe(true)
+        expect(p.heldSteps()).toEqual([])
+        expect(p.step()).toEqual(vec2(0, 0))
+        // Up stays ignored while any of its controls is still down.
+        p.release("up", "b")
+        p.press("up", "b")
+        expect(p.heldSteps()).toEqual([])
+        // A release and a fresh press count again.
+        p.release("right", "a")
+        p.press("right", "a")
+        expect(p.heldSteps()).toEqual([vec2(1, 0)])
+        expect(p.step()).toEqual(vec2(1, 0))
+        // Pressed after ignoreHeld, so not ignored.
+        p.press("left", "d")
+        expect(p.heldSteps()).toEqual([vec2(-1, 0), vec2(1, 0)])
+    })
+
     it("keeps players separate", () => {
         input.player(1).press("up", "a")
         expect(input.player(0).isDown("up")).toBe(false)

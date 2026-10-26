@@ -95,6 +95,10 @@ function tick(dt: number) {
 
 function enter(prev: Screen, next: Screen) {
     screen = next
+    // Play started from a menu (character select or Retry): a direction
+    // still held from the menu waits for a fresh press. Resuming from pause
+    // keeps held directions, so holding through a pause carries on moving.
+    if (next.kind === "playing" && prev.kind !== "paused") input.ignoreHeld()
     if (next.kind === "playing" && prev.kind === "characterSelect") {
         lastAnimal = next.animal
         saveLastPick(storage, lastAnimal)
