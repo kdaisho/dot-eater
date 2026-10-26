@@ -9,6 +9,7 @@ import {
     makePatroller,
     makeState,
     textMap,
+    ticksUntilCaught,
 } from "./test/helpers"
 import { samePos, vec2, type Vec2 } from "./vec2"
 
@@ -59,17 +60,6 @@ function trail(
         if (!samePos(before, who.pos)) cells.push(who.pos)
     }
     return cells
-}
-
-// Step with no input until the player is caught (always on their last
-// life here, so "dead") and return how many ticks that took.
-function ticksUntilCaught(state: GameState, max = TICK_RATE * 2): number {
-    for (let i = 1; i <= max; i++) {
-        const outcome = stepOnce(state)
-        if (outcome === "dead") return i
-        if (outcome) throw new Error(`Ended without a catch: ${outcome}`)
-    }
-    throw new Error(`Not caught within ${max} ticks`)
 }
 
 function stepOnce(state: GameState, input: Tick = {}): Outcome | null {

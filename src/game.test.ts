@@ -12,7 +12,6 @@ import {
     TICK_RATE,
 } from "./constants"
 import type { Random } from "./ai"
-import type { Character } from "./character"
 import {
     checkEnd,
     createGameState,
@@ -22,16 +21,18 @@ import {
     type GameState,
     type Outcome,
 } from "./game"
-import { glidePos } from "./glide"
 import { parseLevel } from "./level"
 import { levels } from "./levels"
 import {
+    drawn,
     fixedRandom,
     makeEnemy,
     makePatroller,
     makeState,
     OLD_LEVEL,
     OLD_MAP,
+    textMap,
+    ticksUntilCaught,
 } from "./test/helpers"
 import { vec2, type Vec2 } from "./vec2"
 
@@ -90,27 +91,6 @@ function tap(state: GameState, pressed: Vec2, held: Vec2 = none) {
 // A single held direction as MoveInput.held.
 function heldList(held: Vec2): Vec2[] {
     return held.x === 0 && held.y === 0 ? [] : [held]
-}
-
-// Step holding `held` until the player is caught (the game is lost or a life
-// is lost) and return how many ticks that took. Fails after `max` ticks.
-function ticksUntilCaught(
-    state: GameState,
-    held: Vec2 = none,
-    max = TICK_RATE * 2
-): number {
-    const lives = state.lives
-    for (let i = 1; i <= max; i++) {
-        const outcome = run(state, 1, held)
-        if (outcome === "dead" || state.lives < lives) return i
-        if (outcome) throw new Error(`Ended without a catch: ${outcome}`)
-    }
-    throw new Error(`Not caught within ${max} ticks`)
-}
-
-// Where `who` is drawn now, for collisions (glidePos at a tick boundary).
-function drawn(state: GameState, who: Character): Vec2 {
-    return glidePos(who, 0, state.cells[0].length, state.cells.length)
 }
 
 // How far apart two drawn positions are, in cells (no wrapping).
@@ -604,6 +584,56 @@ describe("step: collisions on drawn positions", () => {
         expect(run(state, 1, east)).toBe("dead")
         expect(drawn(state, state.player)).toEqual(vec2(4, 1))
         expect(drawn(state, state.enemies[0])).toEqual(vec2(3, 1))
+    })
+
+    // Regression (also the next test): motion within a tick was taken as a
+    // straight line from where a character was drawn at the start to where
+    // at the end, which cuts the corner when it turns within the tick.
+    it("catches a fast enemy turning through the player's cell within a tick", () => {
+        const { map } = textMap(["#####", "### #", "#.  #", "#####"])
+        // It has stepped east into the player's cell (3, 2) and is drawn
+        // 0.9 of a cell short of it, at (2.1, 2).
+        const enemy = makeEnemy(3, 2, AiType.random, { x: 2, y: 2 })
+        enemy.moveProgress = 0.1
+        // 1.8 cells a tick: it reaches (3, 2) half way through the tick and
+        // turns north, the only way on, ending at (3, 1.1). The straight
+        // line between those passes 0.64 of a cell from the player.
+        enemy.speed = 1.8 * TICK_RATE
+        const state = makeState(map, { x: 3, y: 2 }, [enemy])
+        expect(run(state, 1)).toBe("dead")
+        expect(enemy.pos).toEqual(vec2(3, 1))
+        expect(gap(drawn(state, enemy), state.player.pos)).toBeCloseTo(0.9)
+    })
+
+    it("catches a fast enemy turning back in the player's cell within a tick", () => {
+        const { map } = textMap(["######", "#.   #", "######"])
+        // It has stepped east into the player's cell (4, 1), a dead end,
+        // and is drawn 0.7 of a cell short of it, at (3.3, 1).
+        const enemy = makeEnemy(4, 1, AiType.random, { x: 3, y: 1 })
+        enemy.moveProgress = 0.3
+        // 1.4 cells a tick: it reaches (4, 1) half way through the tick and
+        // turns back west, ending where it started, so a straight line
+        // between the two has it standing still.
+        enemy.speed = 1.4 * TICK_RATE
+        const state = makeState(map, { x: 4, y: 1 }, [enemy])
+        expect(run(state, 1)).toBe("dead")
+        expect(enemy.pos).toEqual(vec2(3, 1))
+        expect(drawn(state, enemy).x).toBeCloseTo(3.3)
+    })
+
+    // Regression: the chaser aimed at the player's cell, which is its own,
+    // so every way out scored the same and it took the first, north.
+    it("sends a chaser on the player's cell towards the player's sprite gliding in", () => {
+        const { map } = textMap(["#######", "###.###", "#.....#", "#######"])
+        // The player is 0.3 of the way through a step east from (2, 2) to
+        // (3, 2); the chaser came west into (3, 2) and is ready to move on.
+        const chaser = makeEnemy(3, 2, AiType.chase, { x: 4, y: 2 })
+        chaser.moveProgress = 1
+        const state = makeState(map, { x: 3, y: 2 }, [chaser])
+        state.player.lastPos = vec2(2, 2)
+        state.player.moveProgress = 0.3
+        expect(run(state, 1)).toBeNull()
+        expect(chaser.pos).toEqual(vec2(2, 2))
     })
 })
 

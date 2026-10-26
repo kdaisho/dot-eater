@@ -215,7 +215,7 @@ export function step(
     const { cells, player, enemies } = state
     state.ticks++
     const from = positions(state)
-    const drawnFrom = drawnPositions(state)
+    const start = tickStarts(state, dt)
     // Where the player came from on its latest move before this tick, for
     // the heading an ambusher aims along.
     const playerLast = vec2(player.lastPos.x, player.lastPos.y)
@@ -250,7 +250,7 @@ export function step(
         else spend(enemy)
     })
 
-    return checkEnd(state, drawnFrom)
+    return checkEnd(state, start)
 }
 
 // Finish the glides in progress after the game has ended, for the short
@@ -298,7 +298,7 @@ function positions(state: GameState): Vec2[] {
     return [state.player, ...state.enemies].map((c) => vec2(c.pos.x, c.pos.y))
 }
 
-// Where every character is drawn (see drawnPos), in the same order as
+// Where every character is drawn now (see drawnPos), in the same order as
 // positions.
 function drawnPositions(state: GameState): Vec2[] {
     const cols = state.cells[0].length
@@ -312,47 +312,164 @@ function drawnPositions(state: GameState): Vec2[] {
 // alpha, so collisions happen where the player sees the sprites touch, not
 // up to a cell earlier when a move starts. Near a tunnel it may be up to a
 // cell off the map; compare positions with wrapDelta.
-function drawnPos(character: Character, cols: number, rows: number): Vec2 {
+export function drawnPos(
+    character: Character,
+    cols: number,
+    rows: number
+): Vec2 {
     return glidePos(character, 0, cols, rows)
 }
 
-// Two characters collide when their drawn positions come within
-// CATCH_DISTANCE of each other at any moment of the tick. `a0`/`b0` are where
-// they were drawn at the start of the tick and `a1`/`b1` at the end; motion
-// within a tick is taken as a straight line between the two, and the closest
-// approach along it counts, so fast characters can't pass through each other
-// between ticks (a head-on swap is caught where the sprites meet). Distances
-// and motion are wrap-aware, so a catch works across a tunnel.
+// What a character was like at the start of a tick: enough to trace where
+// it is drawn through the tick (see drawnPath).
+export type TickStart = {
+    // Where it was drawn (drawnPos).
+    drawn: Vec2
+    // Its cell (pos), where the glide it is in ends.
+    cell: Vec2
+    // When in the tick, from 0 (its start) to 1 (its end), its glide reaches
+    // `cell`, or Infinity if it doesn't get there this tick.
+    arrive: number
+}
+
+// Every character's TickStart for a tick of `dt` seconds, in the same order
+// as positions. Taken before anyone moves.
+function tickStarts(state: GameState, dt: number): TickStart[] {
+    const cols = state.cells[0].length
+    const rows = state.cells.length
+    return [state.player, ...state.enemies].map((c) => ({
+        drawn: drawnPos(c, cols, rows),
+        cell: vec2(c.pos.x, c.pos.y),
+        arrive: arriveTime(c, dt),
+    }))
+}
+
+// When in a tick of `dt` seconds a character's glide reaches its cell: the
+// moment its moveProgress reaches 1, which is also when it may move on (see
+// advance). Progress grows steadily by speed * dt over the tick, so from p
+// that is (1 - p) / (speed * dt). A character already at 1 (waiting to move)
+// is there from the start: 0. Reaching 1 within EPSILON of the end of the
+// tick counts as the end, as advance counts it as reached.
+function arriveTime(character: Character, dt: number): number {
+    const { moveProgress, speed } = character
+    if (moveProgress >= 1 - EPSILON) return 0
+    const gain = speed * dt
+    if (moveProgress + gain < 1 - EPSILON) return Infinity
+    return Math.min(1, (1 - moveProgress) / gain)
+}
+
+// A point on a drawn path: `t` is when in the tick (0 to 1), `x`/`y` the
+// offset in cells from where the character was drawn at the start of it.
+type Waypoint = { t: number; x: number; y: number }
+
+// Where a character is drawn through a tick, as waypoints joined by straight
+// lines, from `start` to `end` (where it is drawn at the end of the tick).
 //
-// Drawn positions are continuous across a move: a character that moves this
-// tick goes from just short of (or at) its old cell, gliding in, to just past
-// it, gliding out by the progress left over (see spend), so it travels at
-// most a cell within a tick, even when the move crosses a tunnel.
+// A character that doesn't reach its cell this tick glides straight on. One
+// that does (at start.arrive) glides in to the cell's centre, then either
+// stays there or, if it moved, glides straight out towards its new cell by
+// the progress left over (see spend). So the path bends at the centre: an L
+// on a turn, folding back on itself on a reversal. Each part is about a cell
+// long at most, so its offset is taken the short way round with wrapDelta
+// and comes out right across a tunnel.
+function drawnPath(
+    start: TickStart,
+    end: Vec2,
+    cols: number,
+    rows: number
+): Waypoint[] {
+    const origin = { t: 0, x: 0, y: 0 }
+    const { drawn, cell, arrive } = start
+    if (arrive >= 1) {
+        return [
+            origin,
+            {
+                t: 1,
+                x: wrapDelta(end.x - drawn.x, cols),
+                y: wrapDelta(end.y - drawn.y, rows),
+            },
+        ]
+    }
+    const centre = {
+        t: arrive,
+        x: wrapDelta(cell.x - drawn.x, cols),
+        y: wrapDelta(cell.y - drawn.y, rows),
+    }
+    return [
+        origin,
+        centre,
+        {
+            t: 1,
+            x: centre.x + wrapDelta(end.x - cell.x, cols),
+            y: centre.y + wrapDelta(end.y - cell.y, rows),
+        },
+    ]
+}
+
+// The offset along `path` at time `t` (0 to 1).
+function offsetAt(path: readonly Waypoint[], t: number): Vec2 {
+    let i = 1
+    while (i < path.length - 1 && t > path[i].t) i++
+    const a = path[i - 1]
+    const b = path[i]
+    const f = b.t > a.t ? (t - a.t) / (b.t - a.t) : 1
+    return vec2(a.x + (b.x - a.x) * f, a.y + (b.y - a.y) * f)
+}
+
+// How close the segment from `p` to `q` comes to the origin.
+function segmentDistance(p: Vec2, q: Vec2): number {
+    const dx = q.x - p.x
+    const dy = q.y - p.y
+    const d2 = dx * dx + dy * dy
+    const t =
+        d2 === 0 ? 0 : Math.min(1, Math.max(0, -(p.x * dx + p.y * dy) / d2))
+    return Math.hypot(p.x + dx * t, p.y + dy * t)
+}
+
+// Two characters collide when their drawn positions come within
+// CATCH_DISTANCE of each other at any moment of the tick. `a`/`b` are their
+// TickStarts and `aEnd`/`bEnd` where they are drawn at the end of the tick.
+// Each moves along its drawnPath, so the position of one relative to the
+// other moves in straight lines between the moments either path bends (at
+// most two), and the closest approach on each of those pieces is checked.
+// That is exact for the drawn motion: fast characters can't pass through
+// each other between ticks (a head-on swap is caught where the sprites
+// meet), and one that turns or turns back within a tick is caught at the
+// cell centre it goes through. It is all wrap-aware, so a catch works across
+// a tunnel.
 //
 // This replaces checking for a shared cell or a swap of cells, which fired
 // as soon as a move started, with the sprites still up to a cell apart.
 function collides(
-    a0: Vec2,
-    a1: Vec2,
-    b0: Vec2,
-    b1: Vec2,
+    a: TickStart,
+    aEnd: Vec2,
+    b: TickStart,
+    bEnd: Vec2,
     cols: number,
     rows: number
 ): boolean {
-    // b relative to a at the start of the tick, and its change over the tick.
-    const rx = wrapDelta(b0.x - a0.x, cols)
-    const ry = wrapDelta(b0.y - a0.y, rows)
-    const vx = wrapDelta(b1.x - b0.x, cols) - wrapDelta(a1.x - a0.x, cols)
-    const vy = wrapDelta(b1.y - b0.y, rows) - wrapDelta(a1.y - a0.y, rows)
-    const v2 = vx * vx + vy * vy
-    // The moment of closest approach, as a fraction of the tick.
-    const t = v2 === 0 ? 0 : Math.min(1, Math.max(0, -(rx * vx + ry * vy) / v2))
-    return Math.hypot(rx + vx * t, ry + vy * t) <= CATCH_DISTANCE + EPSILON
+    const pathA = drawnPath(a, aEnd, cols, rows)
+    const pathB = drawnPath(b, bEnd, cols, rows)
+    // b relative to a at the start of the tick.
+    const rx = wrapDelta(b.drawn.x - a.drawn.x, cols)
+    const ry = wrapDelta(b.drawn.y - a.drawn.y, rows)
+    const relativeAt = (t: number) => {
+        const oa = offsetAt(pathA, t)
+        const ob = offsetAt(pathB, t)
+        return vec2(rx + ob.x - oa.x, ry + ob.y - oa.y)
+    }
+    const times = [...pathA, ...pathB].map((w) => w.t).sort((x, y) => x - y)
+    for (let i = 1; i < times.length; i++) {
+        const p = relativeAt(times[i - 1])
+        const q = relativeAt(times[i])
+        if (segmentDistance(p, q) <= CATCH_DISTANCE + EPSILON) return true
+    }
+    return false
 }
 
-// Settle the end of a tick: collisions, lives and winning. `drawnFrom` holds
-// where everyone was drawn at the start of the tick (see drawnPositions);
-// without it only where they are drawn now counts.
+// Settle the end of a tick: collisions, lives and winning. `start` holds
+// everyone's TickStart, taken at the start of the tick (see tickStarts). The
+// default is a tick of no time, so only where they are drawn now counts.
 //
 // - Caught on the last life: lives drop to 0 and the game is lost ("dead").
 // - Caught with lives left: one life is lost and everyone respawns at once
@@ -362,10 +479,10 @@ function collides(
 //   even if the player is caught on that same tick, and costs no life.
 export function checkEnd(
     state: GameState,
-    drawnFrom: readonly Vec2[] = drawnPositions(state)
+    start: readonly TickStart[] = tickStarts(state, 0)
 ): Outcome | null {
     if (!hasDots(state.cells)) return "won"
-    if (!caught(state, drawnFrom)) return null
+    if (!caught(state, start)) return null
     if (state.lives <= 1) {
         state.lives = 0
         return "dead"
@@ -376,13 +493,13 @@ export function checkEnd(
 }
 
 // Whether any enemy collides with the player this tick (see collides).
-// `drawnFrom` is where everyone was drawn at the start of the tick.
-function caught(state: GameState, drawnFrom: readonly Vec2[]): boolean {
+// `start` is everyone's TickStart for the tick.
+function caught(state: GameState, start: readonly TickStart[]): boolean {
     const cols = state.cells[0].length
     const rows = state.cells.length
     const [player, ...enemies] = drawnPositions(state)
     return enemies.some((enemy, i) =>
-        collides(drawnFrom[0], player, drawnFrom[i + 1], enemy, cols, rows)
+        collides(start[0], player, start[i + 1], enemy, cols, rows)
     )
 }
 
