@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vite-plus/test"
 import {
+    type BreathDef,
     addStatus,
     defeatEnemy,
     enemyVisible,
@@ -22,13 +23,14 @@ import { createGameState, step, type GameState } from "./game"
 import { parseLevel } from "./level"
 import { createSplitter, isSplitterHalf, isWholeSplitter } from "./splitter"
 import {
+    drawn,
     fixedRandom,
     makeEnemy,
     makeState,
     testBreath,
     textMap,
 } from "./test/helpers"
-import { vec2 } from "./vec2"
+import { vec2, type Vec2 } from "./vec2"
 
 // The Splitter end to end through step() where it matters, with a test
 // breath that defeats the first enemy it reaches (the characters' own
@@ -49,11 +51,13 @@ function run(state: GameState, n: number) {
     for (let i = 0; i < n; i++) tick(state)
 }
 
+const defeatFirst: BreathDef["fire"] = (hit) => {
+    if (hit.enemies[0]) hit.defeat(hit.enemies[0])
+}
+
 const defeating = testBreath({
     shape: { kind: "line", range: 8 },
-    fire(hit) {
-        if (hit.enemies[0]) hit.defeat(hit.enemies[0])
-    },
+    fire: defeatFirst,
 })
 
 // A closed corridor (x 1 to 9) with a side cell above x 6 and a dot shut
@@ -283,5 +287,84 @@ describe("a Splitter's halves", () => {
         tick(state)
         expect(spare.pos).toEqual(vec2(3, 2))
         expect(main.pos).not.toEqual(vec2(5, 2))
+    })
+})
+
+// The player's own breath defeating a Splitter close by saves the player: a
+// split never catches it, on the split tick or in the moments after.
+describe("a split next to the player", () => {
+    // Step one tick holding `held` and breathing.
+    function breatheTo(state: GameState, held: { x: number; y: number }) {
+        const dir = vec2(held.x, held.y)
+        return step(
+            state,
+            TICK,
+            { held: [dir], pressed: dir, breath: true },
+            fixedRandom(0)
+        )
+    }
+
+    // A whole Splitter at `at`, its sprite still gliding in from `from`, and
+    // the player at `player`, ready to move, with three lives.
+    function near(
+        at: Vec2,
+        from: Vec2,
+        player: Vec2,
+        breath: BreathDef = defeating
+    ) {
+        const [main, spare] = createSplitter(
+            [CharacterId.enemy1, CharacterId.enemy2],
+            at
+        )
+        main.lastPos = vec2(from.x, from.y)
+        main.moveProgress = 0.2
+        const state = makeState(corridor, player, [main, spare], {
+            breath,
+            lives: 3,
+        })
+        state.spawns.enemies = [vec2(8, 2), vec2(8, 2)]
+        state.breather.energy = 100
+        state.player.moveProgress = 1
+        return { state, main, spare }
+    }
+
+    it("doesn't put a half on the cell the player is gliding out of", () => {
+        // The player moves into the Splitter's cell, (2, 2), and the breath
+        // splits it there.
+        const { state, main } = near(vec2(2, 2), vec2(3, 2), vec2(1, 2))
+        expect(breatheTo(state, vec2(1, 0))).toBeNull()
+        expect(state.lives).toBe(3)
+        expect(state.score).toBe(DEFEAT_POINTS)
+        expect(isSplitterHalf(main)).toBe(true)
+        expect(main.pos).toEqual(vec2(3, 2))
+        // At rest on it, not gliding out from under the player's sprite.
+        expect(drawn(state, main)).toEqual(vec2(3, 2))
+    })
+
+    it("starts the halves at rest when the Splitter is on the cell the player left", () => {
+        // An area breath: the player steps left off (3, 2), where the
+        // Splitter's sprite is gliding in, and the breath reaches it there.
+        const area = (fire: BreathDef["fire"]) =>
+            testBreath({ shape: { kind: "area", radius: 1 }, fire })
+        const control = near(
+            vec2(3, 2),
+            vec2(4, 2),
+            vec2(3, 2),
+            area(() => {})
+        )
+        expect(breatheTo(control.state, vec2(-1, 0))).toBeNull()
+        expect(control.state.lives).toBe(3)
+
+        const { state, main } = near(
+            vec2(3, 2),
+            vec2(4, 2),
+            vec2(3, 2),
+            area(defeatFirst)
+        )
+        expect(breatheTo(state, vec2(-1, 0))).toBeNull()
+        expect(state.lives).toBe(3)
+        expect(state.score).toBe(DEFEAT_POINTS)
+        expect(main.pos).toEqual(vec2(4, 2))
+        expect(drawn(state, main)).toEqual(vec2(4, 2))
     })
 })

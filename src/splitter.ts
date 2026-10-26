@@ -109,25 +109,34 @@ export function splitSplitter(state: GameState, i: number) {
 // Send the two halves, both on the Splitter's cell, to two different open
 // neighbouring cells, so they don't start as one stacked sprite: the two
 // farthest from the player by path (direction order on ties), never the
-// player's own cell. So the player who just breathed gets a moment's room
-// where the maze allows it (in a corridor one half still comes its way).
-// Each half glides out from the Splitter's cell as if it had just moved
-// there, so the no-reverse rule keeps them going apart. A half left without
-// a cell (a dead end) stays as the Splitter was. If the Splitter stood on
-// the player's cell (its sprite still gliding in), the halves start on their
-// new cells instead: gliding out from there would start on top of the
-// player and catch at once.
+// player's cell or the one it is gliding out of (lastPos). So the player who
+// just breathed gets a moment's room where the maze allows it (in a corridor
+// one half still comes its way). Each half glides out from the Splitter's
+// cell as if it had just moved there, so the no-reverse rule keeps them
+// going apart. A half left without a cell (a dead end) stays as the
+// Splitter was.
+//
+// A split never catches the player on the split tick. The player's drawn
+// path this tick runs along its latest move, lastPos to pos (plus under a
+// tick's glide before lastPos), so any other cell's centre is about 0.8 or
+// more from it, beyond CATCH_DISTANCE: halves resting on their cells, or
+// gliding out from a Splitter's cell that is neither, keep clear. If the
+// Splitter stood on either of the player's cells (its sprite still gliding
+// in), gliding out from there would start on top of the player and catch at
+// once, so the halves start at rest on their new cells instead.
 function spread(state: GameState, halves: readonly Character[]) {
     const { cells, player } = state
     const at = vec2(halves[0].pos.x, halves[0].pos.y)
     const fromPlayer = distanceMap(cells, player.pos)
+    const playerCell = (to: Vec2) =>
+        samePos(to, player.pos) || samePos(to, player.lastPos)
     const targets = openNeighbours(cells, at)
-        .filter((to) => !samePos(to, player.pos))
+        .filter((to) => !playerCell(to))
         .sort((a, b) => fromPlayer[b.y][b.x] - fromPlayer[a.y][a.x] || 0)
-    const onPlayer = samePos(at, player.pos)
+    const rest = playerCell(at)
     targets.slice(0, 2).forEach((to, k) => {
         const half = halves[k]
-        const from = onPlayer ? to : at
+        const from = rest ? to : at
         half.lastPos = vec2(from.x, from.y)
         half.pos = vec2(to.x, to.y)
         half.moveProgress = 0
