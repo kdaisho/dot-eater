@@ -7,9 +7,15 @@ Last updated: 2026-10-26. Read `CLAUDE.md` first for project conventions.
 - **Milestone 1 "Organize code & tooling"** is done and live (PRs #2–#12).
 - **Milestone 2 "Engine foundations"** is done and live (PRs #14–#20, all KDA-193 to KDA-199 Done in Linear), plus the fix #21 (the last move finishes before the end screen).
 - The game now has: a 60 Hz fixed-tick loop, an input action layer, ASCII level files, BFS chase AI, a canvas renderer with gliding movement and a HUD, a screen state machine (title → stage select → playing ⇄ paused → ending → stage clear / game over), score and lives, star ratings with best stars and times, fog, and ice with sliding. Four stages are live, unlocked in order: 1 "Classic", 2 "Wrap maze", 3 "Ice rink", 4 "Fog" (`src/levels/stage1.ts`–`stage4.ts`, all 17x15).
-- **Milestone "Stages": stages 1–4 are done and live.** Batch 1: PRs #23–#25 (KDA-203 Stage 1, KDA-200 stage select with unlocks, KDA-202 new enemy types). Batch 2: #29 (KDA-201 stars and bests), #27 (KDA-204 Stage 2), #28 (KDA-206 fog, Stage 4), #30 (KDA-205 ice, Stage 3, and Stage 4 registered). Follow-ups: #32 (KDA-230 ice-aware enemy pathing), #33 (KDA-231 collisions on drawn positions), #34 (KDA-232 a sprite per enemy type). `main` is at the #34 merge; 562 tests.
-- **What's left in Stages** waits on the breath system (KDA-208, milestone "Characters & breaths"): KDA-207 Boss lair and KDA-229 Splitter.
-- **Next: milestone "Characters & breaths"** (KDA-208 breath system first, alone; then KDA-209 character select and KDA-216–220 the five characters in parallel). The KDA-208 and KDA-209 issues have no checklists yet: settle the product questions with the user first (energy per dot and per breath, what a breath hit does to an enemy, whether the fly is one of the characters, each character's stat, how the Penguin's ice breath relates to ice tiles).
+- **Milestone "Stages": stages 1–4 are done and live.** Batch 1: PRs #23–#25 (KDA-203 Stage 1, KDA-200 stage select with unlocks, KDA-202 new enemy types). Batch 2: #29 (KDA-201 stars and bests), #27 (KDA-204 Stage 2), #28 (KDA-206 fog, Stage 4), #30 (KDA-205 ice, Stage 3, and Stage 4 registered). Follow-ups: #32 (KDA-230 ice-aware enemy pathing), #33 (KDA-231 collisions on drawn positions), #34 (KDA-232 a sprite per enemy type), then #35 (handover). Code is unchanged since #34: 562 tests, no open code PRs.
+- **What's left in Stages** waits on the breath system (KDA-208): KDA-207 Boss lair and KDA-229 Splitter.
+- **Next: milestone "Characters & breaths"**, starting now. See "Current milestone" below. Nothing in it has started: no branches, no code, every issue in Backlog.
+
+### Start here (new session)
+
+1. Read this file and `CLAUDE.md`. Then read KDA-208, KDA-209 and KDA-216–220 in Linear: the per-character breath specs are there.
+2. Settle the open product questions below with the user (ask, with a recommendation). Write the answers into the Linear issues and into "Decisions already made" here.
+3. Run KDA-208 alone. Once it's merged, run KDA-209 and KDA-216–220 in parallel, plus KDA-229 and then KDA-207 for Stages.
 
 ## Code map
 
@@ -29,9 +35,48 @@ Last updated: 2026-10-26. Read `CLAUDE.md` first for project conventions.
 | `ui.ts`                                | DOM overlays, one per screen (`showTitle`, `showStageSelect`, `showPause`, `showStageClear`, `showGameOver`), confetti                                                              |
 | `constants.ts`, `character.ts`, `vec2` | Cells, AI types, character ids (`player`, `enemy1`–`enemy4`), tick rate, speeds, points, lives                                                                                      |
 
-## Current milestone: Stages
+## Current milestone: Characters & breaths
 
-"5 stages, each built around one idea, unlocked one after another. Includes star ratings, best scores, and new enemy types." All issues are in Linear with checklists and "blocked by" links.
+Five playable animals, each with a signature breath and one stat. Breaths spend energy from a meter that eating dots refills. A character select screen sits between stage select and play.
+
+| Issue   | Title                                    | Blocked by | Linear spec (summary)                                                                                                             | Main files (expected)                                              |
+| ------- | ---------------------------------------- | ---------- | --------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------ |
+| KDA-208 | Add a breath system with an energy meter | —          | Checklist: facing, `breath` action, energy meter in HUD, breath definition, timed tile/enemy effects, respawn of defeated enemies | `game.ts`, new `breath.ts`, `character.ts`, `render.ts`, `main.ts` |
+| KDA-209 | Add a character select screen            | KDA-208    | Checklist: after stage select; cards show emoji, breath, stat; remembers last pick; 2-player picking later                        | `flow.ts`, `ui.ts`, `progress.ts` or own storage key               |
+| KDA-216 | Dragon 🐉, fire breath                   | KDA-208    | Line; defeats the first enemy hit; passed cells burn 2 s and block enemies. Stat: balanced (default)                              | breath definition + tile effect                                    |
+| KDA-217 | Penguin 🐧, ice breath                   | KDA-208    | Cone; freezes enemies 3 s; frozen floor becomes slippery (reuses ice). Stat: slides farther/faster on ice                         | breath + `ice.ts`                                                  |
+| KDA-218 | Owl 🦉, wind breath                      | KDA-208    | Pushes every enemy in a line back 3 cells, through tunnels; doesn't defeat. Stat: low cost, short cooldown                        | breath + enemy displacement                                        |
+| KDA-219 | Skunk 🦨, smelly breath                  | KDA-208    | Stink cloud on the surrounding area 5 s; enemies won't enter and turn around inside. Stat: bigger meter                           | breath + tile effect + `ai.ts`                                     |
+| KDA-220 | Boar 🐗, wall-break breath               | KDA-208    | Breaks the wall in front; regrows after 10 s, pushing out anything inside; outer walls unbreakable. Stat: high cost, slower       | breath + `cells` changes                                           |
+
+**Still open with the user (not decided):** these are the PM's suggested defaults, written up for the user but not yet asked. Don't treat them as decisions.
+
+- **Energy economy.** Suggested: a meter of 100, +5 per dot, Dragon costs 50 (about 10 dots), Owl 25, Boar 75, Skunk's meter 150. The meter starts empty each stage and is kept when a life is lost. Alternatives: +10 per dot, or starting full.
+- **The fly 🪰** (today's player sprite). Suggested: retire it, with the Dragon as the default character (KDA-216 already says "default"). Alternatives: keep it as a breathless "classic" pick, or make it a sixth character.
+- **Defeated enemies.** Suggested: they come back at their spawn after 5 s, with a short blink before they reappear. Alternatives: 10 s, or gone for the stage.
+- **Penguin's ice.** Suggested: temporary ice that melts after 5 s, using Stage 3's slide rules. Alternatives: permanent ice, or freeze enemies only.
+- **Also undecided:**
+    - whether a breath has a cooldown on top of its cost, and how long;
+    - whether breath kills score points;
+    - whether stars or par change with the character (par times were set without breaths);
+    - whether the player can breathe while sliding;
+    - the default facing before the first move.
+
+**Engineering notes for KDA-208** (checked against the code at the #35 merge):
+
+- **No facing yet.** The player's heading is only implied by `pos - lastPos`, which is zero before the first move and must be unwrapped across tunnels (see `wrapDelta` in `glide.ts`). KDA-208 needs an explicit facing that survives waiting against a wall.
+- **The breath key does nothing yet.** `breath` is mapped in `input.ts` (ShiftRight for P1, ShiftLeft for P2) but nothing reads it: `step(state, dt, move, random)` takes only a `MoveInput`. Pass the breath press in alongside, keeping game logic DOM-free.
+- **The HUD has a free slot.** The middle of the strip is reserved for the energy meter (`render.ts`, the HUD comment).
+- **Grids change during a game for the first time.** `GameState.ice` is documented as "never changes during a game", and `hasIce` caches per ice-grid object in a `WeakMap` (`ice.ts`). The Penguin's temporary ice and the Boar's broken walls change grids mid-game. Either replace the grid object when it changes or drop the cache, and update that comment. AI distance maps are computed every tick from `cells`, so wall changes are picked up.
+- **Run-time strand risk.** `parseLevel` checks reachability and slide stranding only at load. Temporary ice and regrowing walls can create states those checks never saw. The Boar's regrow "pushes out" is the spec's answer for walls; decide the same for ice under a character.
+- **Respawn.** Defeated enemies respawn alone after a delay, unlike `respawn()` in `game.ts`, which resets everyone after the player is caught. A patroller restarts its route on respawn.
+- **Collisions.** These use drawn positions (see Decisions). A defeated or frozen enemy needs a clear rule: it should probably not catch the player, and a frozen one probably still blocks.
+- **A contract for parallel work.** Have KDA-208 define a character/breath registry (one definition object per character: emoji, stat, breath shape, range, cost, cooldown, effect hooks) and land one breath end to end, at least as a test fixture. Then KDA-216–220 can each add one file plus tests with few rebase conflicts, and KDA-209 can read the registry for its cards.
+- **Previews.** Breaths are all feel: offer the user a playable preview (see How we work) before asking to merge any of these.
+
+## Previous milestone: Stages
+
+"5 stages, each built around one idea, unlocked one after another. Includes star ratings, best scores, and new enemy types." Stages 1–4 are done. KDA-207 and KDA-229 remain and wait on KDA-208.
 
 | Issue   | Title                                     | Status / blocked by | Main files                                                       |
 | ------- | ----------------------------------------- | ------------------- | ---------------------------------------------------------------- |
@@ -52,7 +97,7 @@ Still open with the user: after a win, "Stage select" puts the cursor on the sta
 
 Follow-ups already noted on issues: a runtime shape check for untrusted level JSON (KDA-225); maybe a short "ready" pause or a lost-life signal after a respawn (KDA-198 comment); the phantom ignores wrap tunnels (Stage 4 has none); a fog test case for levels with tunnels (`fogWrap` treats a whole axis as wrapping).
 
-Later milestones (Characters & breaths, Controllers & local 2-player, Polish) and an idea backlog (KDA-223 to KDA-227) are in Linear.
+Later milestones (Controllers & local 2-player: KDA-210, 211, 221, 222; Polish: KDA-212 to 215) and an idea backlog (KDA-223 to KDA-227) are in Linear. 2-player will give each player their own character, facing and energy, so keep breath state per character, not global.
 
 ## Decisions already made
 
@@ -91,6 +136,6 @@ Later milestones (Characters & breaths, Controllers & local 2-player, Polish) an
 - Disk space is tight: remove agent worktrees and temporary build copies when done.
 - The shell safety check blocks `rm -rf $VAR/...` on unguarded variables: write `rm -rf "${VAR:?}/..."`.
 - In Linear, a bare "PR #N" auto-links to a PR in another repo; write the full GitHub URL.
-- **Previews for the user:** a detached worktree (`.claude/worktrees/preview-*`) on the PR branch, local-only edits there (e.g. a stage moved first in `levels`), `pnpm dev --port 5199 --strictPort` in the background, `open` the URL. Never commit preview edits; remove the worktree and stop the server afterwards. Tell review agents to judge only the committed PR, since they may notice preview worktrees.
+- **Previews for the user:** offer one for every gameplay or visual PR before asking to merge. The user judges feel by playing, and that's how KDA-231 and KDA-232 were found. Use a detached worktree (`.claude/worktrees/preview-*`) on the PR branch, local-only edits there (e.g. a stage moved first in `levels`), `pnpm dev --port 5199 --strictPort` in the background, `open` the URL. Never commit preview edits; remove the worktree and stop the server afterwards. Tell review agents to judge only the committed PR, since they may notice preview worktrees.
 - An agent can't check out a branch another worktree holds: remove your own rebase/fix worktrees before briefing an agent to work on that branch.
 - The user may merge docs PRs themselves: check `merged` before adding to an open docs PR.
