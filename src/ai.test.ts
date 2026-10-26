@@ -27,6 +27,59 @@ const wrapDeadEnd = [
     [1, 1, 1],
 ] as const
 
+// From (2, 1), (3, 4) looks closer going right, but the right arm is a dead
+// end: the only way there is down the left side.
+const uTurn = [
+    [1, 1, 1, 1, 1, 1],
+    [1, 0, 0, 0, 0, 1],
+    [1, 0, 1, 1, 0, 1],
+    [1, 0, 1, 1, 0, 1],
+    [1, 0, 0, 0, 1, 1],
+    [1, 1, 1, 1, 1, 1],
+] as const
+
+// A single row that wraps around from east to west.
+const corridor = [
+    [1, 1, 1, 1, 1, 1, 1],
+    [0, 0, 0, 0, 0, 0, 0],
+    [1, 1, 1, 1, 1, 1, 1],
+] as const
+
+// A loop around a single wall block at (2, 2).
+const ring = [
+    [1, 1, 1, 1, 1],
+    [1, 0, 0, 0, 1],
+    [1, 0, 1, 0, 1],
+    [1, 0, 0, 0, 1],
+    [1, 1, 1, 1, 1],
+] as const
+
+// (2, 3) is sealed off from the corridor on row 1.
+const sealed = [
+    [1, 1, 1, 1, 1],
+    [1, 0, 0, 0, 1],
+    [1, 1, 1, 1, 1],
+    [1, 1, 0, 1, 1],
+    [1, 1, 1, 1, 1],
+] as const
+
+// An enemy at the junction (4, 7) that came from (3, 7), with the player at
+// (2, 7). Up is a 6-cell dead end; right loops back round to the player in
+// 10 moves (down is a wall).
+const junction = [
+    [1, 1, 1, 1, 1, 1, 1, 1],
+    [1, 1, 1, 1, 0, 1, 1, 1],
+    [1, 1, 1, 1, 0, 1, 1, 1],
+    [1, 1, 1, 1, 0, 1, 1, 1],
+    [1, 1, 1, 1, 0, 1, 1, 1],
+    [1, 1, 1, 1, 0, 1, 1, 1],
+    [1, 1, 1, 1, 0, 1, 1, 1],
+    [1, 1, 0, 0, 0, 0, 0, 1],
+    [1, 1, 0, 1, 1, 1, 0, 1],
+    [1, 1, 0, 0, 0, 0, 0, 1],
+    [1, 1, 1, 1, 1, 1, 1, 1],
+] as const
+
 // (1, 1) is walled in on every side.
 const boxed = [
     [1, 1, 1],
@@ -127,9 +180,61 @@ describe("enemyMove (chase)", () => {
         const cells = cellsFrom(cross)
         const enemy = makeEnemy(2, 2, AiType.chase, { x: 1, y: 2 })
         enemyMove(cells, enemy, vec2(0, 2), fixedRandom(0))
-        // Reversing to (1, 2) is excluded. Up (2, 1) and down (2, 3) tie at
-        // sqrt(5), closer than right (3, 2); the first in direction order wins.
-        expect(enemy.pos).toEqual(vec2(2, 1))
+        // Reversing to (1, 2) is excluded. Right (3, 2) reaches (0, 2) in 2
+        // steps across the east edge; up and down need 3 via the centre.
+        expect(enemy.pos).toEqual(vec2(3, 2))
+    })
+
+    it("scores candidates by paths that don't double back through the enemy", () => {
+        const cells = cellsFrom(junction)
+        const enemy = makeEnemy(4, 7, AiType.chase, { x: 3, y: 7 })
+        // Through the enemy's own cell, up and right would both be 3 steps
+        // from the player and up would win the tie, costing 14 moves.
+        enemyMove(cells, enemy, vec2(2, 7), fixedRandom(0))
+        expect(enemy.pos).toEqual(vec2(5, 7))
+
+        // Following the chase all the way reaches the player in 10 moves.
+        let moves = 1
+        while (!(enemy.pos.x === 2 && enemy.pos.y === 7) && moves < 30) {
+            enemyMove(cells, enemy, vec2(2, 7), fixedRandom(0))
+            moves++
+        }
+        expect(moves).toBe(10)
+    })
+
+    it("breaks ties by direction order", () => {
+        const cells = cellsFrom(ring)
+        const enemy = makeEnemy(2, 1, AiType.chase)
+        // Left (1, 1) and right (3, 1) are both 3 steps from (2, 3); left
+        // comes first in direction order.
+        enemyMove(cells, enemy, vec2(2, 3), fixedRandom(0))
+        expect(enemy.pos).toEqual(vec2(1, 1))
+    })
+
+    it("goes around a wall instead of towards the target in a straight line", () => {
+        const cells = cellsFrom(uTurn)
+        const enemy = makeEnemy(2, 1, AiType.chase)
+        // Right (3, 1) is closer in a straight line but leads into a dead end.
+        enemyMove(cells, enemy, vec2(3, 4), fixedRandom(0))
+        expect(enemy.pos).toEqual(vec2(1, 1))
+    })
+
+    it("takes the short way across the map edge", () => {
+        const cells = cellsFrom(corridor)
+        const enemy = makeEnemy(1, 1, AiType.chase)
+        // (6, 1) is 1 step west across the edge, 5 steps east.
+        enemyMove(cells, enemy, vec2(6, 1), fixedRandom(0))
+        expect(enemy.pos).toEqual(vec2(0, 1))
+    })
+
+    it("moves to the first candidate when the target is unreachable", () => {
+        const cells = cellsFrom(sealed)
+        const enemy = makeEnemy(2, 1, AiType.chase)
+        expect(() =>
+            enemyMove(cells, enemy, vec2(2, 3), fixedRandom(0))
+        ).not.toThrow()
+        // Candidates in direction order: left (1, 1), right (3, 1).
+        expect(enemy.pos).toEqual(vec2(1, 1))
     })
 })
 
