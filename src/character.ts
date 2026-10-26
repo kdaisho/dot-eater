@@ -5,6 +5,7 @@ import {
     PHANTOM_SPEED,
     PLAYER_SPEED,
 } from "./constants"
+import type { ActiveStatus } from "./breath"
 import { vec2, type Vec2 } from "./vec2"
 
 export type Character = {
@@ -25,6 +26,13 @@ export type Character = {
     // one it is heading for. Other characters have no route.
     route?: readonly Vec2[]
     routeIndex: number
+    // Timed statuses a breath has put on it (frozen and so on; see breath.ts).
+    // Empty for none. Cleared when it is defeated or respawns.
+    statuses: ActiveStatus[]
+    // Seconds until a defeated enemy is back at its spawn; 0 while it is in
+    // play. While above 0 the enemy is out of the game: it doesn't move or
+    // catch, and is only drawn (blinking) near the end (see enemyVisible).
+    respawnIn: number
 }
 
 export function createCharacter(
@@ -48,6 +56,8 @@ export function createCharacter(
             ? {}
             : { route: route.map((p) => vec2(p.x, p.y)) }),
         routeIndex: 0,
+        statuses: [],
+        respawnIn: 0,
     }
 }
 

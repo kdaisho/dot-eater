@@ -16,7 +16,7 @@ import type { Action } from "./input"
 import { parseLevel } from "./level"
 import { emptyProgress, markCleared, STAGE_COUNT } from "./progress"
 import { rateClear } from "./stars"
-import { fixedRandom } from "./test/helpers"
+import { cloneState, fixedRandom } from "./test/helpers"
 import { vec2 } from "./vec2"
 
 const none = vec2(0, 0)
@@ -558,7 +558,7 @@ describe("after the game ends", () => {
         }
         expect(screen.kind).toBe("ending")
         const game = gameOf(screen)!
-        const before = structuredClone(game)
+        const before = cloneState(game)
         // Mid-glide, so the outro has something to settle.
         game.player.moveProgress = before.player.moveProgress = 0
         for (let i = 0; i < 20; i++) {
@@ -582,7 +582,7 @@ describe("after the game ends", () => {
         expect(game.cells[1][3]).toBe(Cell.dot)
 
         // On the end screen, nothing changes at all.
-        const ended = structuredClone(game)
+        const ended = cloneState(game)
         for (let i = 0; i < 20; i++) {
             screen = update(screen, tickInput(["down"], east), d)
             screen = update(screen, tickInput(["up"], east), d)

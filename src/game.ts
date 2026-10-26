@@ -5,23 +5,46 @@ import {
     CharacterId,
     DOT_POINTS,
     ENEMY_IDS,
+    PLAYER_SPEED,
     START_LIVES,
 } from "./constants"
-import { enemyMove, type Random } from "./ai"
+import { blockedView, enemyMove, type Random } from "./ai"
+import {
+    breathe,
+    createBreather,
+    enemyBlocks,
+    gainEnergy,
+    hasStatus,
+    inPlay,
+    START_FACING,
+    tickEffects,
+    type ActiveTile,
+    type Breather,
+} from "./breath"
+import { BREATHS } from "./breaths"
 import { createCharacter, type Character } from "./character"
 import { glidePos, wrapDelta } from "./glide"
 import { slideStep, type IceMap } from "./ice"
 import { hasDots, loopPos, type Cells, type Level } from "./level"
 import { levels } from "./levels"
+import { DEFAULT_ANIMAL, type AnimalId } from "./roster"
 import { samePos, vec2, type Vec2 } from "./vec2"
 
 export type Outcome = "dead" | "won"
 
 export type GameState = {
     cells: Cells
-    // Where the floor is ice (see ice.ts). Never changes during a game.
+    // Where the floor is ice (see ice.ts): the level's ice plus any ice tile
+    // effects. Treat it as read-only: when ice comes or goes, breath.ts
+    // replaces the whole grid (so hasIce's per-grid cache stays right).
     ice: IceMap
+    // The level's own ice, which never changes during a game.
+    floorIce: IceMap
+    // Timed effects on cells from breaths (see TileEffect in breath.ts).
+    tiles: ActiveTile[]
     player: Character
+    // The playing character's breath, facing and energy (see breath.ts).
+    breather: Breather
     enemies: Character[]
     // The direction most recently newly pressed (not just held); zero for
     // none. It is tried first at the player's next move opportunity and then
@@ -63,21 +86,33 @@ export type MoveInput = {
     // The direction newly pressed this tick (zero for none), even if it was
     // already released again.
     pressed: Vec2
+    // Whether the breath key was newly pressed this tick. A press that can't
+    // breathe (too little energy, cooling down) is dropped, not kept.
+    breath?: boolean
 }
 
 // Tolerance for moveProgress reaching 1, so floating-point sums of speed * dt
 // still land on the intended tick.
 const EPSILON = 1e-9
 
-export function createGameState(level: Level = levels[0]): GameState {
+// A new game of `level`, played as `animal`, whose breath and stats come
+// from BREATHS (src/breaths/).
+export function createGameState(
+    level: Level = levels[0],
+    animal: AnimalId = DEFAULT_ANIMAL
+): GameState {
     // Copy everything out of the level, which is shared between games.
-    // Speeds the level leaves out fall back to createCharacter's defaults.
+    // Speeds the level leaves out fall back to createCharacter's defaults;
+    // the character's speedScale scales the player's.
+    const breath = BREATHS[animal]
     const spawn = level.playerSpawns[0]
     const player = createCharacter(
         CharacterId.player,
         vec2(spawn.x, spawn.y),
         undefined,
-        level.playerSpeed
+        breath.speedScale === 1
+            ? level.playerSpeed
+            : (level.playerSpeed ?? PLAYER_SPEED) * breath.speedScale
     )
     // The player can move on the first tick; enemies start from 0, which
     // gives the player a short grace period before they move.
@@ -92,10 +127,14 @@ export function createGameState(level: Level = levels[0]): GameState {
             enemy.route
         )
     )
+    const ice = level.ice.map((row) => [...row])
     return {
         cells,
-        ice: level.ice.map((row) => [...row]),
+        ice,
+        floorIce: ice,
+        tiles: [],
         player,
+        breather: createBreather(breath),
         enemies,
         bufferedStep: vec2(0, 0),
         score: 0,
@@ -111,7 +150,9 @@ export function createGameState(level: Level = levels[0]): GameState {
 
 // Put everyone back where they started, as at the start of a game: the
 // player ready to move, the enemies waiting out the grace period again, no
-// tap buffered. Dots and score are left alone.
+// tap buffered, the player facing right again. Every enemy is back in play
+// with no statuses, including one that was defeated and waiting to respawn.
+// Dots, score, energy, the breath cooldown and tile effects are left alone.
 function respawn(state: GameState) {
     const { player, enemies, spawns } = state
     player.pos = vec2(spawns.player.x, spawns.player.y)
@@ -124,15 +165,20 @@ function respawn(state: GameState) {
         enemy.moveProgress = 0
         // A patroller starts its route again from the first waypoint.
         enemy.routeIndex = 0
+        enemy.statuses = []
+        enemy.respawnIn = 0
     })
+    state.breather.facing = vec2(START_FACING.x, START_FACING.y)
     state.bufferedStep = vec2(0, 0)
     state.eatenAt = null
 }
 
 // Try to move the player one step, eating (and scoring) any dot there and
-// recording it in eatenAt (cleared when the step eats nothing). Returns true
-// if the player moved; false if a wall blocked the step or the step was zero.
-// It doesn't know about sliding: that is up to the caller (movePlayerTick).
+// recording it in eatenAt (cleared when the step eats nothing), and filling
+// the energy meter. The player then faces that way. Returns true if the
+// player moved; false if a wall or a solid enemy (see EnemyStatus) blocked
+// the step or the step was zero. It doesn't know about sliding: that is up
+// to the caller (movePlayerTick).
 export function movePlayer(state: GameState, step: Vec2): boolean {
     if (isZero(step)) return false
     const { cells, player } = state
@@ -149,9 +195,6 @@ export function movePlayer(state: GameState, step: Vec2): boolean {
         case Cell.wall:
             return false
         case Cell.dot:
-            cells[target.y][target.x] = Cell.none
-            state.score += DOT_POINTS
-            ate = true
             break
         default: {
             // Compile-time check that every Cell is handled above.
@@ -159,8 +202,19 @@ export function movePlayer(state: GameState, step: Vec2): boolean {
             throw new Error(`Unknown cell: ${String(unhandled)}`)
         }
     }
+    const solid = state.enemies.some(
+        (e) => inPlay(e) && hasStatus(e, "solid") && samePos(e.pos, target)
+    )
+    if (solid) return false
+    if (value === Cell.dot) {
+        cells[target.y][target.x] = Cell.none
+        state.score += DOT_POINTS
+        gainEnergy(state.breather)
+        ate = true
+    }
     player.lastPos = vec2(player.pos.x, player.pos.y)
     player.pos = target
+    state.breather.facing = vec2(step.x, step.y)
     state.eatenAt = ate ? vec2(target.x, target.y) : null
     return true
 }
@@ -204,6 +258,14 @@ function wait(character: Character) {
 // at its normal move opportunity: input and AI are ignored until the slide
 // ends. Phantoms float over ice and never slide.
 //
+// Breaths (see breath.ts): their timers count down first, so anything that
+// runs out (a status, a tile effect, a defeated enemy's wait) is over before
+// anyone moves. A breath press fires after the player's move, from the cell
+// it is moving into and along its new facing, and before the enemies move,
+// so it hits them where they stood at the start of the tick. Enemies out of
+// play don't move or catch; held ones (e.g. frozen) don't move; harmless
+// ones don't catch; and enemies keep out of cells a tile effect blocks.
+//
 // `move` is the player's input this tick (see MoveInput and movePlayerTick),
 // and `random` drives the enemy AI, so a tick is deterministic.
 export function step(
@@ -214,6 +276,7 @@ export function step(
 ): Outcome | null {
     const { cells, player, enemies } = state
     state.ticks++
+    tickEffects(state, dt)
     const from = positions(state)
     const start = tickStarts(state, dt)
     // Where the player came from on its latest move before this tick, for
@@ -225,12 +288,17 @@ export function step(
         if (movePlayerTick(state, move.held)) spend(player)
         else wait(player)
     }
+    if (move.breath) breathe(state)
+    const blocked = enemyBlocks(state)
+    // Cells as enemies see them, so blocked cells also end slides.
+    const enemyCells = blocked ? blockedView(cells, blocked) : cells
     enemies.forEach((enemy, i) => {
+        if (!inPlay(enemy) || hasStatus(enemy, "holds")) return
         if (!advance(enemy, dt)) return
         const slide =
             enemy.ai === AiType.phantom
                 ? null
-                : slideStep(cells, state.ice, enemy.pos, enemy.lastPos)
+                : slideStep(enemyCells, state.ice, enemy.pos, enemy.lastPos)
         if (slide) {
             // A patroller has reached its waypoint when it stands on it as
             // the slide carries it off (patrolStep, which would notice, is
@@ -244,7 +312,15 @@ export function step(
             )
             reachWaypoint(enemy)
         } else {
-            enemyMove(cells, enemy, from[0], random, playerLast, state.ice)
+            enemyMove(
+                cells,
+                enemy,
+                from[0],
+                random,
+                playerLast,
+                state.ice,
+                blocked
+            )
         }
         if (samePos(enemy.pos, from[i + 1])) wait(enemy)
         else spend(enemy)
@@ -273,6 +349,11 @@ export function settle(state: GameState, dt: number): boolean {
 // either way, so it never outlives one opportunity. Returns true if the
 // player moved.
 //
+// The player faces the way it moved. If it tried and every way was blocked,
+// it turns to face the first way it tried (the buffered tap, else the newest
+// held direction), so it can face a wall it is pushing against, and keeps
+// facing it while it waits there.
+//
 // While sliding, the move is the slide step whatever the input. A slide step
 // isn't the player's opportunity, so the buffer is left alone: a tap made
 // during a slide is used at the first opportunity after it ends (a newer tap
@@ -283,10 +364,14 @@ function movePlayerTick(state: GameState, held: readonly Vec2[]): boolean {
     if (slide) return movePlayer(state, slide)
     const buffered = state.bufferedStep
     state.bufferedStep = vec2(0, 0)
-    return (
+    const moved =
         movePlayer(state, buffered) ||
         held.some((direction) => movePlayer(state, direction))
-    )
+    const tried = isZero(buffered) ? held[0] : buffered
+    if (!moved && tried && !isZero(tried)) {
+        state.breather.facing = vec2(tried.x, tried.y)
+    }
+    return moved
 }
 
 function isZero(v: Vec2): boolean {
@@ -340,7 +425,12 @@ function tickStarts(state: GameState, dt: number): TickStart[] {
     return [state.player, ...state.enemies].map((c) => ({
         drawn: drawnPos(c, cols, rows),
         cell: vec2(c.pos.x, c.pos.y),
-        arrive: arriveTime(c, dt),
+        // A held enemy's progress doesn't move on this tick, so it stays
+        // where it is drawn.
+        arrive:
+            c !== state.player && hasStatus(c, "holds")
+                ? Infinity
+                : arriveTime(c, dt),
     }))
 }
 
@@ -493,14 +583,17 @@ export function checkEnd(
 }
 
 // Whether any enemy collides with the player this tick (see collides).
-// `start` is everyone's TickStart for the tick.
+// `start` is everyone's TickStart for the tick. Enemies out of play and
+// harmless ones (see EnemyStatus) don't catch.
 function caught(state: GameState, start: readonly TickStart[]): boolean {
     const cols = state.cells[0].length
     const rows = state.cells.length
     const [player, ...enemies] = drawnPositions(state)
-    return enemies.some((enemy, i) =>
-        collides(start[0], player, start[i + 1], enemy, cols, rows)
-    )
+    return enemies.some((enemy, i) => {
+        const e = state.enemies[i]
+        if (!inPlay(e) || hasStatus(e, "harmless")) return false
+        return collides(start[0], player, start[i + 1], enemy, cols, rows)
+    })
 }
 
 // Move a patroller on to its next waypoint if it stands on the current one.

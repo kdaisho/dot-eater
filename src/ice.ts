@@ -28,9 +28,11 @@ export type IceMap = readonly (readonly boolean[])[]
 
 type Grid = readonly (readonly Cell[])[]
 
-// Whether any cell of `ice` is ice. Ice maps never change once made, so the
-// answer is worked out once per map object and remembered, which keeps this
-// cheap enough to ask on every enemy move.
+// Whether any cell of `ice` is ice. The answer is worked out once per map
+// object and remembered, which keeps this cheap enough to ask on every enemy
+// move. So an ice map must never be changed once made: code that changes the
+// ice during a game (temporary ice from a breath) makes a new map instead
+// (see rebuildIce in breath.ts).
 const iceSeen = new WeakMap<IceMap, boolean>()
 export function hasIce(ice: IceMap): boolean {
     let result = iceSeen.get(ice)

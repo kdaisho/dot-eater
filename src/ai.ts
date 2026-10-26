@@ -1,3 +1,4 @@
+import type { BlockMap } from "./breath"
 import { AiType, AMBUSH_AHEAD, Cell } from "./constants"
 import type { Character } from "./character"
 import { moveStep } from "./glide"
@@ -30,15 +31,35 @@ export function candidateMoves(cells: Cells, enemy: Character): Vec2[] {
 // where the floor is ice (none if left out): chase, ambusher and patroller
 // paths allow for the slides it forces (see slideDistances in ice.ts). The
 // enemy is free to move (game.ts takes slide steps itself).
+//
+// `blocked` marks cells enemies keep out of (tile effects such as a stink
+// cloud; see enemyBlocks in breath.ts), or null for none. Every AI treats
+// them as walls, phantoms included, and an enemy standing on one heads out
+// by the shortest way instead of following its AI (see escapeStep).
 export function enemyMove(
     cells: Cells,
     enemy: Character,
     target: Vec2,
     random: Random,
     targetLast: Vec2 = target,
-    ice: IceMap = noIce(cells)
+    ice: IceMap = noIce(cells),
+    blocked: BlockMap | null = null
 ) {
-    const next = nextPos(cells, ice, enemy, target, targetLast, random)
+    const next =
+        blocked === null
+            ? nextPos(cells, ice, enemy, target, targetLast, random)
+            : blocked[enemy.pos.y][enemy.pos.x]
+              ? escapeStep(cells, enemy, blocked)
+              : enemy.ai === AiType.phantom
+                ? phantomStep(cells, enemy, target, blocked)
+                : nextPos(
+                      blockedView(cells, blocked),
+                      ice,
+                      enemy,
+                      target,
+                      targetLast,
+                      random
+                  )
 
     // Nowhere to go (e.g. boxed in on every side): stay put, still
     // remembering where it came from.
@@ -161,6 +182,57 @@ function arrival(
     return null
 }
 
+// `cells` as enemies see them: blocked cells are walls.
+export function blockedView(cells: Cells, blocked: BlockMap): Cells {
+    return cells.map((row, y) =>
+        row.map((value, x) => (blocked[y][x] ? Cell.wall : value))
+    )
+}
+
+// The first step of the shortest way from a blocked cell to one that isn't,
+// through blocked cells (and, for a phantom, through walls, staying on the
+// map like phantomStep). Ties go to direction order. Null when every
+// reachable cell is blocked, so the enemy stays put.
+function escapeStep(
+    cells: Cells,
+    enemy: Character,
+    blocked: BlockMap
+): Vec2 | null {
+    const phantom = enemy.ai === AiType.phantom
+    const neighbours = (p: Vec2) =>
+        phantom ? mapNeighbours(cells, p) : openNeighbours(cells, p)
+    const seen = new Set([`${enemy.pos.x},${enemy.pos.y}`])
+    const queue: { pos: Vec2; first: Vec2 }[] = []
+    for (const v of neighbours(enemy.pos)) {
+        seen.add(`${v.x},${v.y}`)
+        queue.push({ pos: v, first: v })
+    }
+    for (let head = 0; head < queue.length; head++) {
+        const { pos, first } = queue[head]
+        if (!blocked[pos.y][pos.x]) return first
+        for (const v of neighbours(pos)) {
+            const k = `${v.x},${v.y}`
+            if (seen.has(k)) continue
+            seen.add(k)
+            queue.push({ pos: v, first })
+        }
+    }
+    return null
+}
+
+// The cells next to `pos` on the map, walls or not, without wrapping, in
+// direction order.
+function mapNeighbours(cells: Cells, pos: Vec2): Vec2[] {
+    const result: Vec2[] = []
+    for (const d of allDirections) {
+        const v = vec2(pos.x + directions[d].x, pos.y + directions[d].y)
+        if (v.x < 0 || v.y < 0 || v.x >= cells[0].length) continue
+        if (v.y >= cells.length) continue
+        result.push(v)
+    }
+    return result
+}
+
 // No ice anywhere on the map.
 function noIce(cells: Cells): IceMap {
     return cells.map((row) => row.map(() => false))
@@ -225,23 +297,19 @@ function patrolStep(cells: Cells, ice: IceMap, enemy: Character): Vec2 | null {
 // closest to the player in a straight (Manhattan) line, ties going to
 // direction order. It stays inside the map and doesn't use wrap-around
 // tunnels, so it can never end up off the board. It may turn back, as the
-// player can double back past it. It stays put on the player's cell.
+// player can double back past it. It stays put on the player's cell. It
+// never steps into a `blocked` cell (see enemyMove).
 function phantomStep(
     cells: Cells,
     enemy: Character,
-    target: Vec2
+    target: Vec2,
+    blocked: BlockMap | null = null
 ): Vec2 | null {
-    const height = cells.length
-    const width = cells[0].length
     const away = (v: Vec2) =>
         Math.abs(v.x - target.x) + Math.abs(v.y - target.y)
     let best: Vec2 | null = null
-    for (const d of allDirections) {
-        const v = vec2(
-            enemy.pos.x + directions[d].x,
-            enemy.pos.y + directions[d].y
-        )
-        if (v.x < 0 || v.y < 0 || v.x >= width || v.y >= height) continue
+    for (const v of mapNeighbours(cells, enemy.pos)) {
+        if (blocked?.[v.y][v.x]) continue
         if (best === null || away(v) < away(best)) best = v
     }
     return best !== null && away(best) < away(enemy.pos) ? best : null

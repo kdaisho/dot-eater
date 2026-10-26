@@ -24,6 +24,7 @@ import {
 import { parseLevel } from "./level"
 import { levels } from "./levels"
 import {
+    cloneState,
     drawn,
     fixedRandom,
     makeEnemy,
@@ -1208,7 +1209,7 @@ describe("settle", () => {
 
     it("moves nobody and changes nothing else", () => {
         const state = ended()
-        const before = structuredClone(state)
+        const before = cloneState(state)
         for (let i = 0; i < TICK_RATE; i++) settle(state, TICK)
         expect(state).toEqual({
             ...before,

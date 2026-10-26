@@ -686,3 +686,57 @@ describe("enemyMove without ice", () => {
         expect(slideDistances).toHaveBeenCalledTimes(3)
     })
 })
+
+describe("blocked cells", () => {
+    // Blocked cells from a list of [x, y], on a map of `cells`' size.
+    function blocks(
+        cells: Cells,
+        list: readonly (readonly [number, number])[]
+    ): boolean[][] {
+        const map = cells.map((row) => row.map(() => false))
+        for (const [x, y] of list) map[y][x] = true
+        return map
+    }
+
+    function move(enemy: Character, target: Vec2, blocked: boolean[][]) {
+        const cells = cellsFrom(cross)
+        enemyMove(
+            cells,
+            enemy,
+            target,
+            fixedRandom(0),
+            target,
+            undefined,
+            blocked
+        )
+    }
+
+    it("are walls to a chaser: it paths round them", () => {
+        const enemy = makeEnemy(2, 2, AiType.chase)
+        // The player is up, and the way up is blocked: it goes down, round
+        // through the tunnel at the bottom.
+        move(enemy, vec2(2, 0), blocks(cellsFrom(cross), [[2, 1]]))
+        expect(enemy.pos).toEqual(vec2(2, 3))
+    })
+
+    it("are kept out of by a phantom", () => {
+        const enemy = makeEnemy(2, 2, AiType.phantom)
+        move(enemy, vec2(2, 0), blocks(cellsFrom(cross), [[2, 1]]))
+        expect(enemy.pos).toEqual(vec2(2, 2))
+    })
+
+    it("are left by the shortest way by an enemy inside them", () => {
+        // Inside a blocked patch: the only cell out within one step is east,
+        // where it came from, though the player is west.
+        const enemy = makeEnemy(2, 2, AiType.chase, { x: 3, y: 2 })
+        const blocked = blocks(cellsFrom(cross), [
+            [0, 2],
+            [1, 2],
+            [2, 2],
+            [2, 1],
+            [2, 3],
+        ])
+        move(enemy, vec2(0, 2), blocked)
+        expect(enemy.pos).toEqual(vec2(3, 2))
+    })
+})

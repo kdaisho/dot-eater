@@ -73,3 +73,17 @@ export const CATCH_DISTANCE = 0.6
 export const DOT_POINTS = 10
 // Lives at the start of a game.
 export const START_LIVES = 3
+
+// ---- Breaths (see breath.ts) ----
+
+// Energy a dot adds to the player's meter (up to the character's maxEnergy).
+export const DOT_ENERGY = 5
+// Points for each enemy a breath defeats.
+export const DEFEAT_POINTS = 50
+// Seconds a defeated enemy stays gone before it is back at its spawn.
+export const RESPAWN_DELAY = 5
+// For the last this-many seconds of RESPAWN_DELAY, the enemy is drawn
+// blinking at its spawn as a warning. It still can't move or catch.
+export const RESPAWN_BLINK = 1
+// Blinks per second during RESPAWN_BLINK (each one shown, then hidden).
+export const BLINK_RATE = 4
