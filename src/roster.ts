@@ -59,7 +59,7 @@ export const ANIMALS: Readonly<Record<AnimalId, AnimalInfo>> = {
         breathName: "Ice breath",
         breathText:
             "A cone that freezes enemies for 3 s and turns the floor to ice for 5 s.",
-        statText: "Slides farther and faster on ice",
+        statText: "Slides faster on ice",
     },
     owl: {
         id: AnimalId.owl,
