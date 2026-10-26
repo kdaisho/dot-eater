@@ -260,7 +260,8 @@ function wait(character: Character) {
 //
 // On ice (see ice.ts), a sliding character's move is its slide step, taken
 // at its normal move opportunity: input and AI are ignored until the slide
-// ends. Phantoms float over ice and never slide.
+// ends. Phantoms float over ice and never slide. The player's breath may
+// speed its slides up (slideSpeedScale; see playerRate).
 //
 // Breaths (see breath.ts): their timers count down first, so anything that
 // runs out (a status, a tile effect, a defeated enemy's wait) is over before
@@ -282,13 +283,16 @@ export function step(
     state.ticks++
     tickEffects(state, dt)
     const from = positions(state)
-    let start = tickStarts(state, dt)
+    // Taken once, before anyone moves, so the player's progress and its
+    // drawn path for collisions use the same rate all tick.
+    const rate = playerRate(state)
+    let start = tickStarts(state, dt, rate)
     // Where the player came from on its latest move before this tick, for
     // the heading an ambusher aims along.
     const playerLast = vec2(player.lastPos.x, player.lastPos.y)
 
     if (!isZero(move.pressed)) state.bufferedStep = move.pressed
-    if (advance(player, dt)) {
+    if (advance(player, dt * rate)) {
         if (movePlayerTick(state, move.held)) spend(player)
         else wait(player)
     }
@@ -296,7 +300,7 @@ export function step(
         // The breath comes before the enemies move, but it may have moved
         // some (pushed or defeated) or held them: trace each enemy from
         // where it is after the breath, not along a sweep across the jump.
-        start = [start[0], ...tickStarts(state, dt).slice(1)]
+        start = [start[0], ...tickStarts(state, dt, rate).slice(1)]
     }
     const blocked = enemyBlocks(state)
     // Cells as enemies see them, so blocked cells also end slides.
@@ -346,9 +350,11 @@ export function step(
 // positions). Returns true once the player's glide is complete, i.e. the
 // player is drawn on its cell.
 export function settle(state: GameState, dt: number): boolean {
+    const rate = playerRate(state)
     for (const character of [state.player, ...state.enemies]) {
         if (character.moveProgress >= 1) continue
-        const progress = character.moveProgress + character.speed * dt
+        const scale = character === state.player ? rate : 1
+        const progress = character.moveProgress + character.speed * dt * scale
         character.moveProgress = progress >= 1 - EPSILON ? 1 : progress
     }
     return state.player.moveProgress >= 1 - EPSILON
@@ -434,8 +440,9 @@ export type TickStart = {
 }
 
 // Every character's TickStart for a tick of `dt` seconds, in the same order
-// as positions. Taken before anyone moves.
-function tickStarts(state: GameState, dt: number): TickStart[] {
+// as positions. Taken before anyone moves. `rate` scales the player's speed
+// (see playerRate); the default leaves it alone.
+function tickStarts(state: GameState, dt: number, rate = 1): TickStart[] {
     const cols = state.cells[0].length
     const rows = state.cells.length
     return [state.player, ...state.enemies].map((c) => ({
@@ -446,8 +453,27 @@ function tickStarts(state: GameState, dt: number): TickStart[] {
         arrive:
             c !== state.player && hasStatus(c, "holds")
                 ? Infinity
-                : arriveTime(c, dt),
+                : arriveTime(c, c === state.player ? dt * rate : dt),
     }))
+}
+
+// The factor on the player's speed (its progress per tick) right now: its
+// breath's slideSpeedScale while it is sliding (see slideStep in ice.ts:
+// its latest move carries it on over ice), else 1. The player's `speed`
+// stays its normal speed, so frames between ticks are drawn at that speed
+// (see glideT), up to a few hundredths of a cell behind, caught up each
+// tick.
+function playerRate(state: GameState): number {
+    const { player, breather } = state
+    const scale = breather.breath.slideSpeedScale ?? 1
+    if (scale === 1) return 1
+    const sliding = slideStep(
+        state.cells,
+        state.ice,
+        player.pos,
+        player.lastPos
+    )
+    return sliding ? scale : 1
 }
 
 // When in a tick of `dt` seconds a character's glide reaches its cell: the
