@@ -324,7 +324,8 @@ export function step(
                 random,
                 playerLast,
                 state.ice,
-                blocked
+                blocked,
+                enemyCells
             )
         }
         if (samePos(enemy.pos, from[i + 1])) wait(enemy)

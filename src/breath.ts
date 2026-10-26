@@ -51,7 +51,8 @@ export type TileEffect = {
     // Enemies treat the cell as a wall: they don't path through it or step
     // or slide into it, and one already on it heads for the nearest cell
     // outside (see enemyMove in ai.ts). Phantoms, which ignore walls, still
-    // keep out. The player isn't affected.
+    // keep out. The player isn't affected, and a player inside still draws
+    // enemies to the patch's edge nearest it.
     blocksEnemies?: boolean
     // The floor is ice while the effect lasts (slides work as on level ice).
     // It is never placed under a character: a cell someone stands on when

@@ -739,4 +739,86 @@ describe("blocked cells", () => {
         move(enemy, vec2(0, 2), blocked)
         expect(enemy.pos).toEqual(vec2(3, 2))
     })
+
+    // A ring round a block of wall. The player stands at (5, 1) in a cloud
+    // over (4, 1), (5, 1) and (5, 2): east from (1, 1) reaches the cloud in
+    // 3 steps, south round the ring in 6.
+    const ring = textMap([
+        "#######",
+        "#     #",
+        "# ### #",
+        "#     #",
+        "#######",
+    ])
+    const cloud = blocks(cellsFrom(ring.map), [
+        [4, 1],
+        [5, 1],
+        [5, 2],
+    ])
+
+    // Regression: distances were measured on the cells with the cloud as
+    // walls, so a player inside it was unreachable and every way scored the
+    // same: the chaser went south, first in direction order.
+    it("still lead a chaser to the edge of a cloud the player is in", () => {
+        const enemy = makeEnemy(1, 1, AiType.chase)
+        enemyMove(
+            cellsFrom(ring.map),
+            enemy,
+            vec2(5, 1),
+            fixedRandom(0),
+            vec2(5, 1),
+            undefined,
+            cloud
+        )
+        expect(enemy.pos).toEqual(vec2(2, 1))
+    })
+
+    it("still lead a chaser to the edge of the cloud on ice", () => {
+        // Ice far away, so pathing is slide-aware.
+        const ice = ring.ice.map((row) => [...row])
+        ice[3][3] = true
+        const enemy = makeEnemy(1, 1, AiType.chase)
+        enemyMove(
+            cellsFrom(ring.map),
+            enemy,
+            vec2(5, 1),
+            fixedRandom(0),
+            vec2(5, 1),
+            ice,
+            cloud
+        )
+        expect(enemy.pos).toEqual(vec2(2, 1))
+    })
+
+    it("never let a chaser into the cloud, even next to it", () => {
+        const enemy = makeEnemy(3, 1, AiType.chase, { x: 2, y: 1 })
+        enemyMove(
+            cellsFrom(ring.map),
+            enemy,
+            vec2(5, 1),
+            fixedRandom(0),
+            vec2(5, 1),
+            undefined,
+            cloud
+        )
+        // Its only way on is back west (a dead end with the cloud ahead).
+        expect(enemy.pos).toEqual(vec2(2, 1))
+    })
+
+    it("still lead a patroller to a waypoint inside a cloud", () => {
+        const enemy = makePatroller(1, 1, [
+            [5, 1],
+            [1, 3],
+        ])
+        enemyMove(
+            cellsFrom(ring.map),
+            enemy,
+            vec2(1, 3),
+            fixedRandom(0),
+            vec2(1, 3),
+            undefined,
+            cloud
+        )
+        expect(enemy.pos).toEqual(vec2(2, 1))
+    })
 })
