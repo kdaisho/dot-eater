@@ -34,6 +34,11 @@ export const ANIMAL_IDS: readonly AnimalId[] = [
     AnimalId.boar,
 ]
 
+// Whether a value (e.g. one read back from storage) is a known id.
+export function isAnimalId(value: unknown): value is AnimalId {
+    return ANIMAL_IDS.includes(value as AnimalId)
+}
+
 // Picked when nothing has been chosen yet.
 export const DEFAULT_ANIMAL: AnimalId = AnimalId.dragon
 

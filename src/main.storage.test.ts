@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 import { describe, expect, it, vi } from "vite-plus/test"
 import type { Outcome } from "./game"
+import { pick } from "./test/helpers"
 
 // main with localStorage blocked: even reading window.localStorage throws,
 // as it does when site data is disabled. The game must still run, win and
@@ -47,6 +48,10 @@ describe("main with storage blocked", () => {
         pressAndTick("Space")
         expect(screen()).toBe("stage-select")
         pressAndTick("Space")
+        expect(screen()).toBe("character-select")
+        expect(pick()).toBe("dragon")
+        pressAndTick("ArrowRight")
+        pressAndTick("Space")
         expect(screen()).toBe("playing")
 
         nextOutcome = "won"
@@ -56,6 +61,10 @@ describe("main with storage blocked", () => {
         pressAndTick("ArrowDown")
         pressAndTick("Space")
         expect(screen()).toBe("stage-select")
+        pressAndTick("Space")
+        // The pick couldn't be saved, but holds for the session.
+        expect(screen()).toBe("character-select")
+        expect(pick()).toBe("penguin")
         pressAndTick("Space")
         expect(screen()).toBe("playing")
     })

@@ -10,16 +10,21 @@ import {
 import type { Action } from "./input"
 import type { Level } from "./level"
 import { isPlayable, STAGE_COUNT, type Progress } from "./progress"
+import { ANIMAL_IDS, DEFAULT_ANIMAL, type AnimalId } from "./roster"
 import { rateClear, type ClearRating } from "./stars"
 
 // The game's screens and the transitions between them:
 //
-//   title -> stageSelect -> playing <-> paused
-//                 ^            |
-//                 |            +-> ending -> stageClear / gameOver
-//                 |                              |
-//                 +------------------------------+-> retry or stageSelect
+//   title <-> stageSelect <-> characterSelect -> playing <-> paused
+//                 ^                                 |
+//                 |                                 +-> ending
+//                 |                                       |
+//                 |                         stageClear / gameOver
+//                 |                                       |
+//                 +---------------------------------------+-> retry
 //
+// Back (the pause action, P or Escape) goes one menu up: character select
+// to stage select, stage select to the title.
 // There is no DOM access here: main feeds in one tick of input at a time,
 // renders whatever screen comes back and shows the matching overlay.
 //
@@ -36,6 +41,13 @@ import { rateClear, type ClearRating } from "./stars"
 // only starts a stage that is unlocked and has a level. Saved progress comes
 // in through FlowDeps; main records a clear when stageClear is entered.
 //
+// Confirming an open stage goes to character select, with the cursor on the
+// character picked last (FlowDeps.lastAnimal, which main loads from storage
+// and saves on every pick). Confirming a character starts the game. Every
+// game screen carries its `animal`, so Retry plays the same character again.
+// Character select keeps one cursor per player (`picks`, player 1 first);
+// only player 1 picks for now.
+//
 // The clear time is the game's tick count (GameState.ticks), which only the
 // game step adds to, so pauses and the outro don't count. stageClear carries
 // the clear's star rating, worked out once on entry.
@@ -48,17 +60,37 @@ export type EndChoice = (typeof END_CHOICES)[number]
 export type Screen =
     | { kind: "title" }
     | { kind: "stageSelect"; selected: number }
-    | { kind: "playing"; level: number; game: GameState }
-    | { kind: "paused"; level: number; game: GameState }
-    | { kind: "ending"; level: number; game: GameState; outcome: Outcome }
+    | {
+          kind: "characterSelect"
+          // The stage that starts once a character is picked.
+          level: number
+          // Where each player's cursor is, player 1 first.
+          picks: readonly [AnimalId, ...AnimalId[]]
+      }
+    | { kind: "playing"; level: number; animal: AnimalId; game: GameState }
+    | { kind: "paused"; level: number; animal: AnimalId; game: GameState }
+    | {
+          kind: "ending"
+          level: number
+          animal: AnimalId
+          game: GameState
+          outcome: Outcome
+      }
     | {
           kind: "stageClear"
           level: number
+          animal: AnimalId
           game: GameState
           choice: EndChoice
           rating: ClearRating
       }
-    | { kind: "gameOver"; level: number; game: GameState; choice: EndChoice }
+    | {
+          kind: "gameOver"
+          level: number
+          animal: AnimalId
+          game: GameState
+          choice: EndChoice
+      }
 
 export type ScreenKind = Screen["kind"]
 
@@ -77,6 +109,8 @@ export type FlowDeps = {
     // Tick length in seconds.
     dt: number
     random: Random
+    // Where character select's cursor starts; DEFAULT_ANIMAL when left out.
+    lastAnimal?: AnimalId
     // Injected so tests can watch it; defaults to the real game step.
     step?: typeof step
 }
@@ -85,8 +119,17 @@ export function initialScreen(): Screen {
     return { kind: "title" }
 }
 
-export function startLevel(levels: readonly Level[], level: number): Screen {
-    return { kind: "playing", level, game: createGameState(levels[level]) }
+export function startLevel(
+    levels: readonly Level[],
+    level: number,
+    animal: AnimalId = DEFAULT_ANIMAL
+): Screen {
+    return {
+        kind: "playing",
+        level,
+        animal,
+        game: createGameState(levels[level], animal),
+    }
 }
 
 // Advance the machine by one tick. Returns the same screen object when
@@ -108,6 +151,8 @@ export function update(
                 : screen
         case "stageSelect":
             return updateStageSelect(screen, input, deps)
+        case "characterSelect":
+            return updateCharacterSelect(screen, input, deps)
         case "playing":
             return updatePlaying(screen, input, deps)
         case "paused":
@@ -144,12 +189,38 @@ function updateStageSelect(
     if (input.wasPressed("confirm")) {
         // A locked stage, or a slot with no level yet, can't be started.
         return isPlayable(deps.progress, deps.levels.length, screen.selected)
-            ? startLevel(deps.levels, screen.selected)
+            ? {
+                  kind: "characterSelect",
+                  level: screen.selected,
+                  picks: [deps.lastAnimal ?? DEFAULT_ANIMAL],
+              }
             : screen
     }
     if (input.wasPressed("pause")) return { kind: "title" }
     const selected = moveCursor(screen.selected, STAGE_COUNT, input)
     return selected === screen.selected ? screen : { ...screen, selected }
+}
+
+// Left/right move player 1's cursor over ANIMAL_IDS, stopping at either end;
+// confirm plays the stage with that character, and back returns to stage
+// select on the same stage.
+function updateCharacterSelect(
+    screen: Extract<Screen, { kind: "characterSelect" }>,
+    input: TickInput,
+    deps: FlowDeps
+): Screen {
+    const [pick, ...others] = screen.picks
+    if (input.wasPressed("confirm")) {
+        return startLevel(deps.levels, screen.level, pick)
+    }
+    if (input.wasPressed("pause")) {
+        return { kind: "stageSelect", selected: screen.level }
+    }
+    const index = ANIMAL_IDS.indexOf(pick)
+    const next = moveAcross(index, ANIMAL_IDS.length, input)
+    return next === index
+        ? screen
+        : { ...screen, picks: [ANIMAL_IDS[next], ...others] }
 }
 
 function updatePlaying(
@@ -161,21 +232,21 @@ function updatePlaying(
     const stepGame = deps.step ?? step
     const outcome = stepGame(screen.game, deps.dt, input.move(), deps.random)
     if (!outcome) return screen
-    const { level, game } = screen
-    return { kind: "ending", level, game, outcome }
+    const { level, animal, game } = screen
+    return { kind: "ending", level, animal, game, outcome }
 }
 
 function endScreen(
     screen: Extract<Screen, { kind: "ending" }>,
     levels: readonly Level[]
 ): Screen {
-    const { level, game } = screen
+    const { level, animal, game } = screen
     const choice = END_CHOICES[0]
     if (screen.outcome !== "won") {
-        return { kind: "gameOver", level, game, choice }
+        return { kind: "gameOver", level, animal, game, choice }
     }
     const rating = rateClear(game, levels[level].parTime)
-    return { kind: "stageClear", level, game, choice, rating }
+    return { kind: "stageClear", level, animal, game, choice, rating }
 }
 
 function updateEnd(
@@ -185,7 +256,7 @@ function updateEnd(
 ): Screen {
     if (input.wasPressed("confirm")) {
         return screen.choice === "retry"
-            ? startLevel(deps.levels, screen.level)
+            ? startLevel(deps.levels, screen.level, screen.animal)
             : { kind: "stageSelect", selected: screen.level }
     }
     const index = END_CHOICES.indexOf(screen.choice)
@@ -195,9 +266,24 @@ function updateEnd(
 
 // Up/down through a menu of `count` items, stopping at either end.
 function moveCursor(index: number, count: number, input: TickInput): number {
+    return stepCursor(index, count, input, "up", "down")
+}
+
+// Left/right along a row of `count` items, stopping at either end.
+function moveAcross(index: number, count: number, input: TickInput): number {
+    return stepCursor(index, count, input, "left", "right")
+}
+
+function stepCursor(
+    index: number,
+    count: number,
+    input: TickInput,
+    back: Action,
+    forward: Action
+): number {
     let next = index
-    if (input.wasPressed("up")) next--
-    if (input.wasPressed("down")) next++
+    if (input.wasPressed(back)) next--
+    if (input.wasPressed(forward)) next++
     return Math.min(Math.max(next, 0), count - 1)
 }
 

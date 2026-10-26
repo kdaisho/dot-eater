@@ -34,6 +34,9 @@ body * {
 .overlay {
     color: #fff;
     left: 50%;
+    /* Scroll rather than run off a short window (the body doesn't scroll). */
+    max-height: calc(100vh - 120px);
+    overflow-y: auto;
     position: fixed;
     top: 100px;
     transform: translateX(-50%);
@@ -73,4 +76,72 @@ body * {
 
 .overlay-menu li.locked.selected {
     opacity: 0.5;
+}
+
+/* Character select: a row of cards that wraps on narrow screens. */
+.overlay-cards {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 16px;
+    justify-content: center;
+    list-style: none;
+}
+
+.overlay-cards .card {
+    border: 2px solid transparent;
+    border-radius: 8px;
+    box-sizing: border-box;
+    opacity: 0.6;
+    padding: 12px 8px;
+    width: 170px;
+}
+
+.overlay-cards .card.selected {
+    border-color: #fff;
+    opacity: 1;
+}
+
+.overlay-cards .card-emoji {
+    font-size: 48px;
+    line-height: 56px;
+}
+
+.overlay-cards .card-name {
+    margin-bottom: 10px;
+}
+
+.overlay-cards .card-breath,
+.overlay-cards .card-text,
+.overlay-cards .card-stat {
+    font-size: 14px;
+    line-height: 18px;
+}
+
+.overlay-cards .card-breath {
+    font-weight: bold;
+}
+
+.overlay-cards .card-text {
+    margin-bottom: 10px;
+}
+
+.overlay-cards .card-stat {
+    font-style: italic;
+}
+
+/* Smaller cards on narrow or short windows, so more fit on screen. */
+@media (max-width: 600px), (max-height: 600px) {
+    .overlay-cards {
+        gap: 8px;
+    }
+
+    .overlay-cards .card {
+        padding: 8px 4px;
+        width: 130px;
+    }
+
+    .overlay-cards .card-emoji {
+        font-size: 36px;
+        line-height: 42px;
+    }
 }

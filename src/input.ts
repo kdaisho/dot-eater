@@ -57,6 +57,9 @@ export class PlayerInput {
     // Press order, so the most recently pressed direction wins.
     private readonly pressedAt = new Map<Action, number>()
     private seq = 0
+    // Directions held through ignoreHeld: they don't move the player until
+    // they're released and pressed again.
+    private readonly stale = new Set<Action>()
 
     constructor(
         private readonly onPress: (action: Action) => void = () => {}
@@ -80,7 +83,17 @@ export class PlayerInput {
     }
 
     release(action: Action, control: string): void {
-        this.holders.get(action)?.delete(control)
+        const holders = this.holders.get(action)
+        holders?.delete(control)
+        if (!holders?.size) this.stale.delete(action)
+    }
+
+    // Ignore the directions held right now until they're released, so a
+    // direction held while confirming a menu doesn't carry into play.
+    ignoreHeld(): void {
+        for (const action of DIRECTION_ACTIONS) {
+            if (this.isDown(action)) this.stale.add(action)
+        }
     }
 
     // Held right now, by any control.
@@ -99,15 +112,19 @@ export class PlayerInput {
     // than a tick still counts). Zero when there is none.
     step(): Vec2 {
         return this.newestStep(
-            (action) => this.isDown(action) || this.wasPressed(action)
+            (action) =>
+                !this.stale.has(action) &&
+                (this.isDown(action) || this.wasPressed(action))
         )
     }
 
     // Every held direction's step, most recently pressed first. Taps that
-    // are no longer held don't count (pressedStep covers those). Empty when
-    // nothing is held.
+    // are no longer held don't count (pressedStep covers those), nor do
+    // directions held through ignoreHeld. Empty when nothing is held.
     heldSteps(): Vec2[] {
-        return DIRECTION_ACTIONS.filter((action) => this.isDown(action))
+        return DIRECTION_ACTIONS.filter(
+            (action) => this.isDown(action) && !this.stale.has(action)
+        )
             .sort(
                 (a, b) =>
                     (this.pressedAt.get(b) ?? 0) - (this.pressedAt.get(a) ?? 0)
@@ -170,6 +187,12 @@ export class InputState {
     onPress(listener: PressListener): () => void {
         this.listeners.add(listener)
         return () => this.listeners.delete(listener)
+    }
+
+    // Every player ignores the directions held right now until they're
+    // released (see PlayerInput.ignoreHeld).
+    ignoreHeld(): void {
+        for (const player of this.players) player.ignoreHeld()
     }
 
     // Clear the wasPressed edges of every player. Call once per tick, after

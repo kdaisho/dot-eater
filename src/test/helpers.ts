@@ -197,3 +197,7 @@ export function ticksUntilCaught(
 export function drawn(state: GameState, who: Character): Vec2 {
     return drawnPos(who, state.cells[0].length, state.cells.length)
 }
+
+// The character under the cursor on character select, for DOM tests of main.
+export const pick = () =>
+    document.querySelector<HTMLElement>("#overlay li.selected")?.dataset.animal

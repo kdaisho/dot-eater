@@ -11,6 +11,7 @@ import {
 } from "./flow"
 import type { GameState } from "./game"
 import { InputState, KeyboardSource } from "./input"
+import { loadLastPick, saveLastPick } from "./lastPick"
 import { levels } from "./levels"
 import { createLoop } from "./loop"
 import {
@@ -20,9 +21,11 @@ import {
     type Progress,
 } from "./progress"
 import { createRenderer } from "./render"
+import { ANIMAL_IDS, ANIMALS, type AnimalId } from "./roster"
 import {
     celebrate,
     hideOverlay,
+    showCharacterSelect,
     showGameOver,
     showPause,
     showStageClear,
@@ -44,6 +47,8 @@ function browserStorage(): Storage | undefined {
 }
 const storage = browserStorage()
 let progress: Progress = loadProgress(storage)
+// Kept here too, so the last pick holds for the session if saving fails.
+let lastAnimal: AnimalId = loadLastPick(storage)
 
 const canvas = document.getElementById("game")
 if (!(canvas instanceof HTMLCanvasElement)) throw new Error("No #game canvas")
@@ -80,6 +85,7 @@ function tick(dt: number) {
     const next = update(screen, tickInput, {
         levels,
         progress,
+        lastAnimal,
         dt,
         random: Math.random,
     })
@@ -89,6 +95,14 @@ function tick(dt: number) {
 
 function enter(prev: Screen, next: Screen) {
     screen = next
+    // Play started from a menu (character select or Retry): a direction
+    // still held from the menu waits for a fresh press. Resuming from pause
+    // keeps held directions, so holding through a pause carries on moving.
+    if (next.kind === "playing" && prev.kind !== "paused") input.ignoreHeld()
+    if (next.kind === "playing" && prev.kind === "characterSelect") {
+        lastAnimal = next.animal
+        saveLastPick(storage, lastAnimal)
+    }
     if (next.kind === "stageClear" && prev.kind === "ending") {
         const { stars, ticks } = next.rating
         progress = recordClear(progress, storage, next.level, { stars, ticks })
@@ -129,6 +143,11 @@ function showOverlay(s: Screen) {
                     levels.map((level) => level.name)
                 ),
                 s.selected
+            )
+        case "characterSelect":
+            return showCharacterSelect(
+                ANIMAL_IDS.map((id) => ANIMALS[id]),
+                s.picks[0]
             )
         case "playing":
         case "ending":
