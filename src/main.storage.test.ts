@@ -1,0 +1,62 @@
+// @vitest-environment happy-dom
+import { describe, expect, it, vi } from "vite-plus/test"
+import type { Outcome } from "./game"
+
+// main with localStorage blocked: even reading window.localStorage throws,
+// as it does when site data is disabled. The game must still run, win and
+// come back to stage select. (A separate file, since main is imported once
+// per module graph and reads storage on import.)
+
+vi.mock("canvas-confetti", () => ({ default: vi.fn() }))
+
+let nextOutcome: Outcome | null = null
+vi.mock("./game", async (importOriginal) => {
+    const actual = await importOriginal<typeof import("./game")>()
+    return {
+        ...actual,
+        step: vi.fn(() => {
+            const outcome = nextOutcome
+            nextOutcome = null
+            return outcome
+        }),
+    }
+})
+
+function pressAndTick(code: string) {
+    dispatchEvent(new KeyboardEvent("keydown", { code }))
+    dispatchEvent(new KeyboardEvent("keyup", { code }))
+    vi.advanceTimersByTime(100)
+}
+
+const screen = () =>
+    document.querySelector<HTMLElement>("#overlay")?.dataset.screen ?? "playing"
+
+describe("main with storage blocked", () => {
+    it("plays, wins and returns to stage select without throwing", async () => {
+        vi.useFakeTimers()
+        Object.defineProperty(window, "localStorage", {
+            configurable: true,
+            get() {
+                throw new Error("SecurityError")
+            },
+        })
+        document.body.innerHTML = '<canvas id="game"></canvas>'
+        await import("./main")
+
+        expect(screen()).toBe("title")
+        pressAndTick("Space")
+        expect(screen()).toBe("stage-select")
+        pressAndTick("Space")
+        expect(screen()).toBe("playing")
+
+        nextOutcome = "won"
+        vi.advanceTimersByTime(1000)
+        expect(screen()).toBe("stage-clear")
+
+        pressAndTick("ArrowDown")
+        pressAndTick("Space")
+        expect(screen()).toBe("stage-select")
+        pressAndTick("Space")
+        expect(screen()).toBe("playing")
+    })
+})

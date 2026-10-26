@@ -4,6 +4,12 @@ import confetti from "canvas-confetti"
 import { DOT_POINTS, START_LIVES, TICK_MS } from "./constants"
 import { createGameState, step, type GameState, type Outcome } from "./game"
 import { levels } from "./levels"
+import {
+    isUnlocked,
+    parseProgress,
+    PROGRESS_KEY,
+    STAGE_COUNT,
+} from "./progress"
 import { vec2 } from "./vec2"
 
 // canvas-confetti touches a 2D canvas context on import, which happy-dom
@@ -497,6 +503,40 @@ describe("main", () => {
 
         gameOver("won")
         expect(bursts()).toBe(11)
+    })
+
+    // Order-independent: an earlier win may already have saved it.
+    it("saves stage 1 as cleared on a win, unlocking stage 2", () => {
+        gameOver("won")
+        const saved = parseProgress(localStorage.getItem(PROGRESS_KEY))
+        expect(saved.stages[0].cleared).toBe(true)
+        expect(isUnlocked(saved, 1)).toBe(true)
+    })
+
+    it("doesn't write progress on a loss", () => {
+        const setItem = vi.spyOn(localStorage, "setItem")
+        try {
+            gameOver("dead")
+            expect(setItem).not.toHaveBeenCalled()
+        } finally {
+            setItem.mockRestore()
+        }
+    })
+
+    it("shows STAGE_COUNT slots on stage select, stage 1 open", () => {
+        gameOver("dead")
+        pressAndTick("ArrowDown")
+        pressAndTick("Space")
+        expect(screen()).toBe("stage-select")
+        const slots = document.querySelectorAll("#overlay li")
+        expect(slots).toHaveLength(STAGE_COUNT)
+        expect(slots[0].classList.contains("locked")).toBe(false)
+        const placeholders = [...slots].filter(
+            (li) => li.textContent === "Coming soon"
+        )
+        expect(placeholders).toHaveLength(
+            Math.max(STAGE_COUNT - levels.length, 0)
+        )
     })
 
     it("draws the game's score and lives in the HUD", () => {

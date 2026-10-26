@@ -1,4 +1,5 @@
 import confetti from "canvas-confetti"
+import type { StageSlot } from "./progress"
 
 function genConfetti(interval: number = 20) {
     return (count: number = 10) => {
@@ -23,7 +24,8 @@ export const celebrate = genConfetti()
 // showing, and hideOverlay removes it. Input is handled by the state machine
 // (flow.ts), not here.
 
-export type MenuItem = { label: string; selected: boolean }
+// A locked item is shown greyed out and marked aria-disabled.
+export type MenuItem = { label: string; selected: boolean; locked?: boolean }
 
 // What the end screens show.
 export type EndScreenView = {
@@ -49,13 +51,30 @@ export function showTitle() {
     })
 }
 
-export function showStageSelect(names: readonly string[], selected: number) {
+// Stage select: one item per slot. Locked stages keep their name behind a
+// lock; slots with no level yet read "Coming soon". Both are greyed out.
+export function showStageSelect(slots: readonly StageSlot[], selected: number) {
     show({
         id: "stage-select",
         title: "Select a stage",
         lines: ["↑ ↓ to choose, Space to play"],
-        items: names.map((label, i) => ({ label, selected: i === selected })),
+        items: slots.map((slot, i) => ({
+            label: slotLabel(slot),
+            selected: i === selected,
+            locked: slot.kind !== "open",
+        })),
     })
+}
+
+function slotLabel(slot: StageSlot): string {
+    switch (slot.kind) {
+        case "open":
+            return slot.name
+        case "locked":
+            return `🔒 ${slot.name}`
+        case "comingSoon":
+            return "Coming soon"
+    }
 }
 
 export function showPause() {
@@ -115,8 +134,12 @@ function show({ id, title, lines = [], items = [] }: Overlay) {
             const li = document.createElement("li")
             li.textContent = item.label
             if (item.selected) {
-                li.className = "selected"
+                li.classList.add("selected")
                 li.setAttribute("aria-current", "true")
+            }
+            if (item.locked) {
+                li.classList.add("locked")
+                li.setAttribute("aria-disabled", "true")
             }
             menu.appendChild(li)
         }

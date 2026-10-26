@@ -14,6 +14,7 @@ import {
 import { step, type MoveInput } from "./game"
 import type { Action } from "./input"
 import { parseLevel } from "./level"
+import { emptyProgress, markCleared, STAGE_COUNT } from "./progress"
 import { fixedRandom } from "./test/helpers"
 import { vec2 } from "./vec2"
 
@@ -54,8 +55,17 @@ function tickInput(pressed: Action[] = [], held = none): TickInput {
     }
 }
 
+// Stage 1 cleared, so both fixture levels are open; slots 2+ have no level.
+const bothOpen = markCleared(emptyProgress(), 0)
+
 function deps(overrides: Partial<FlowDeps> = {}): FlowDeps {
-    return { levels, dt: 1 / 60, random: fixedRandom(0), ...overrides }
+    return {
+        levels,
+        progress: bothOpen,
+        dt: 1 / 60,
+        random: fixedRandom(0),
+        ...overrides,
+    }
 }
 
 // A stepper that ends the game with `outcome` on its first call.
@@ -125,8 +135,53 @@ describe("stageSelect", () => {
         expect(update(select(1), tickInput(["up"]), deps())).toEqual(select(0))
         const top = select(0)
         expect(update(top, tickInput(["up"]), deps())).toBe(top)
-        const bottom = select(1)
+        const bottom = select(STAGE_COUNT - 1)
         expect(update(bottom, tickInput(["down"]), deps())).toBe(bottom)
+    })
+
+    it("always has STAGE_COUNT slots, whatever the number of levels", () => {
+        let screen = select(0)
+        for (let i = 0; i < STAGE_COUNT + 2; i++) {
+            screen = update(screen, tickInput(["down"]), deps())
+        }
+        expect(screen).toEqual(select(STAGE_COUNT - 1))
+        const one = deps({ levels: [corridor], progress: emptyProgress() })
+        expect(update(select(0), tickInput(["down"]), one)).toEqual(select(1))
+    })
+
+    it("lands on locked stages and placeholders without skipping them", () => {
+        // Nothing cleared: only stage 1 is open, yet the cursor reaches 2 and 3.
+        const fresh = deps({ progress: emptyProgress() })
+        expect(update(select(0), tickInput(["down"]), fresh)).toEqual(select(1))
+        expect(update(select(1), tickInput(["down"]), fresh)).toEqual(select(2))
+    })
+
+    it("does nothing on confirm on a locked stage", () => {
+        const fresh = deps({ progress: emptyProgress() })
+        const locked = select(1)
+        expect(update(locked, tickInput(["confirm"]), fresh)).toBe(locked)
+    })
+
+    it("does nothing on confirm on a slot with no level, even if unlocked", () => {
+        // Clear every stage, so slot 2 is unlocked but has no level.
+        let all = emptyProgress()
+        for (let i = 0; i < STAGE_COUNT; i++) all = markCleared(all, i)
+        for (let i = levels.length; i < STAGE_COUNT; i++) {
+            const placeholder = select(i)
+            expect(
+                update(
+                    placeholder,
+                    tickInput(["confirm"]),
+                    deps({ progress: all })
+                )
+            ).toBe(placeholder)
+        }
+    })
+
+    it("starts stage 1 with nothing cleared", () => {
+        const fresh = deps({ progress: emptyProgress() })
+        const next = update(select(0), tickInput(["confirm"]), fresh)
+        expect(next.kind).toBe("playing")
     })
 
     it("starts the selected stage on confirm", () => {

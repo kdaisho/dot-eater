@@ -12,6 +12,13 @@ import type { GameState } from "./game"
 import { InputState, KeyboardSource } from "./input"
 import { levels } from "./levels"
 import { createLoop } from "./loop"
+import {
+    loadProgress,
+    markCleared,
+    saveProgress,
+    stageSlots,
+    type Progress,
+} from "./progress"
 import { createRenderer } from "./render"
 import {
     celebrate,
@@ -25,6 +32,18 @@ import {
 } from "./ui"
 
 let screen: Screen = initialScreen()
+
+// Even reading window.localStorage can throw (e.g. when site data is
+// blocked); the game then runs with progress kept for this session only.
+function browserStorage(): Storage | undefined {
+    try {
+        return window.localStorage
+    } catch {
+        return undefined
+    }
+}
+const storage = browserStorage()
+let progress: Progress = loadProgress(storage)
 
 const canvas = document.getElementById("game")
 if (!(canvas instanceof HTMLCanvasElement)) throw new Error("No #game canvas")
@@ -59,6 +78,7 @@ const loop = createLoop({
 function tick(dt: number) {
     const next = update(screen, tickInput, {
         levels,
+        progress,
         dt,
         random: Math.random,
     })
@@ -68,8 +88,19 @@ function tick(dt: number) {
 
 function enter(prev: Screen, next: Screen) {
     screen = next
-    if (next.kind === "stageClear" && prev.kind === "ending") celebrate(10)
+    if (next.kind === "stageClear" && prev.kind === "ending") {
+        recordClear(next.level)
+        celebrate(10)
+    }
     showOverlay(next)
+}
+
+// A win clears the stage, which unlocks the next; save only on a change.
+function recordClear(level: number) {
+    const cleared = markCleared(progress, level)
+    if (cleared === progress) return
+    progress = cleared
+    saveProgress(storage, progress)
 }
 
 // Interpolation only moves on during play and the ending outro (where the
@@ -92,7 +123,10 @@ function showOverlay(s: Screen) {
             return showTitle()
         case "stageSelect":
             return showStageSelect(
-                levels.map((level) => level.name),
+                stageSlots(
+                    progress,
+                    levels.map((level) => level.name)
+                ),
                 s.selected
             )
         case "playing":
