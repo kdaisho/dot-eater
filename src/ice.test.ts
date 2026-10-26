@@ -1,9 +1,20 @@
 import { describe, expect, it } from "vite-plus/test"
-import { Direction } from "./constants"
-import { canStopAt, FREE, nextStates, slideReach, slideStep } from "./ice"
+import { Cell, Direction } from "./constants"
+import {
+    canStopAt,
+    FREE,
+    nextStates,
+    slideDistances,
+    slideReach,
+    slideStep,
+} from "./ice"
+import type { Level } from "./level"
+import { levels } from "./levels"
 import { distanceMap } from "./path"
 import { cellsFrom, OLD_LEVEL, textMap } from "./test/helpers"
-import { allDirections, vec2 } from "./vec2"
+import { allDirections, vec2, type Vec2 } from "./vec2"
+
+const hasIce = (level: Level) => level.ice.some((row) => row.includes(true))
 
 const heading = (d: Direction) => allDirections.indexOf(d)
 
@@ -111,5 +122,62 @@ describe("slideReach", () => {
         // Standing on (2, 2) after coming down isn't stuck: up is open.
         expect(canStopAt(reach.stuck, vec2(2, 2))).toBe(false)
         expect(canStopAt(reach.states, vec2(2, 2))).toBe(true)
+    })
+})
+
+describe("slideDistances", () => {
+    // Without ice it must be distanceMap exactly, blocked cell included.
+    it("without ice equals distanceMap, with or without a blocked cell", () => {
+        for (const level of [OLD_LEVEL, ...levels.filter((l) => !hasIce(l))]) {
+            const cells = level.cells.map((row) => [...row])
+            const noIce = cells.map((row) => row.map(() => false))
+            const open: Vec2[] = []
+            cells.forEach((row, y) =>
+                row.forEach((c, x) => {
+                    if (c !== Cell.wall) open.push(vec2(x, y))
+                })
+            )
+            for (const target of open) {
+                for (const blocked of [undefined, open[0], open[7]]) {
+                    const want = distanceMap(cells, target, blocked)
+                    const got = slideDistances(cells, noIce, target, blocked)
+                    for (const p of open) {
+                        expect(got({ pos: p, heading: FREE })).toBe(
+                            want[p.y][p.x]
+                        )
+                    }
+                }
+            }
+        }
+    })
+
+    // (1, 1) floor, ice (2, 1) to (4, 1), floor (5, 1); (3, 1) can only be
+    // slid over, and (3, 2) below it hangs off the lane.
+    const { map, ice } = textMap(["#######", "# ~~~ #", "###.###", "#######"])
+    const cells = cellsFrom(map)
+    const free = (x: number, y: number) => ({ pos: vec2(x, y), heading: FREE })
+
+    it("counts a cell first slid over as reached", () => {
+        const dist = slideDistances(cells, ice, vec2(3, 1))
+        expect(dist(free(1, 1))).toBe(2)
+        expect(dist(free(5, 1))).toBe(2)
+        expect(
+            dist({ pos: vec2(2, 1), heading: heading(Direction.right) })
+        ).toBe(1)
+    })
+
+    it("counts the slide steps, and is Infinity where a slide always carries past", () => {
+        const toEnd = slideDistances(cells, ice, vec2(5, 1))
+        expect(toEnd(free(1, 1))).toBe(4)
+        // Plain BFS says 3 from (1, 1) via (3, 1), but nothing stops there.
+        const offLane = slideDistances(cells, ice, vec2(3, 2))
+        expect(offLane(free(1, 1))).toBe(Infinity)
+        expect(offLane(free(5, 1))).toBe(Infinity)
+        expect(distanceMap(cells, vec2(3, 2))[1][1]).toBe(3)
+    })
+
+    it("skips paths through the blocked cell, even mid-slide", () => {
+        const dist = slideDistances(cells, ice, vec2(5, 1), vec2(3, 1))
+        expect(dist(free(1, 1))).toBe(Infinity)
     })
 })

@@ -6,10 +6,19 @@ import {
     fixedRandom,
     makeEnemy,
     makePatroller,
+    textMap,
 } from "./test/helpers"
 import type { Character } from "./character"
 import type { Cells } from "./level"
 import { vec2, type Vec2 } from "./vec2"
+import { slideDistances } from "./ice"
+
+// slideDistances is spied on (still doing its real work) so tests can tell
+// whether enemy pathing used it or took the no-ice fast path.
+vi.mock("./ice", async (importOriginal) => {
+    const ice = await importOriginal<typeof import("./ice")>()
+    return { ...ice, slideDistances: vi.fn(ice.slideDistances) }
+})
 
 // An open crossroads: from the centre (2, 2) every direction is free.
 const cross = [
@@ -538,5 +547,142 @@ describe("enemyMove (phantom)", () => {
         enemyMove(cells, enemy, vec2(3, 1), fixedRandom(0))
         expect(enemy.pos).toEqual(vec2(3, 1))
         expect(enemy.lastPos).toEqual(vec2(2, 1))
+    })
+})
+
+describe("enemyMove on ice", () => {
+    // (1, 1) beside an ice lane (2, 1) to (6, 1) that ends on floor at
+    // (7, 1), a dead end. The cell under (4, 1) leads down to (4, 3).
+    const rink = textMap([
+        "#########",
+        "#.~~~~~.#",
+        "#.##.####",
+        "#.##.####",
+        "#....####",
+        "#########",
+    ])
+    const cells = cellsFrom(rink.map)
+
+    // Regression: plain BFS treated ice as floor, so the chaser stepped east
+    // onto the lane as the "shortest" way (5 moves) and slid away to (7, 1).
+    it("a chaser doesn't step onto ice that carries it past the way to the player", () => {
+        const enemy = makeEnemy(1, 1, AiType.chase)
+        enemyMove(
+            cells,
+            enemy,
+            vec2(4, 3),
+            fixedRandom(0),
+            vec2(4, 3),
+            rink.ice
+        )
+        expect(enemy.pos).toEqual(vec2(1, 2))
+    })
+
+    it("a chaser still slides at a player on the lane", () => {
+        // Stepping east slides over (4, 1): 3 moves, against 9 round below.
+        const enemy = makeEnemy(1, 1, AiType.chase)
+        enemyMove(
+            cells,
+            enemy,
+            vec2(4, 1),
+            fixedRandom(0),
+            vec2(4, 1),
+            rink.ice
+        )
+        expect(enemy.pos).toEqual(vec2(2, 1))
+    })
+
+    // Regression: the patroller went east for the waypoint, slid to (7, 1)
+    // and back to (1, 1) over and over, never getting there.
+    it("a patroller takes the way that really reaches its waypoint", () => {
+        const enemy = makePatroller(1, 1, [
+            [4, 3],
+            [1, 1],
+        ])
+        enemyMove(
+            cells,
+            enemy,
+            vec2(7, 1),
+            fixedRandom(0),
+            vec2(7, 1),
+            rink.ice
+        )
+        expect(enemy.pos).toEqual(vec2(1, 2))
+    })
+
+    it("a phantom ignores ice", () => {
+        // Onto the lane straight towards the player, and back along it, as
+        // if the ice were floor.
+        const enemy = makeEnemy(1, 1, AiType.phantom)
+        enemyMove(
+            cells,
+            enemy,
+            vec2(3, 1),
+            fixedRandom(0),
+            vec2(3, 1),
+            rink.ice
+        )
+        expect(enemy.pos).toEqual(vec2(2, 1))
+        const onIce = makeEnemy(3, 1, AiType.phantom, { x: 2, y: 1 })
+        enemyMove(
+            cells,
+            onIce,
+            vec2(1, 1),
+            fixedRandom(0),
+            vec2(1, 1),
+            rink.ice
+        )
+        expect(onIce.pos).toEqual(vec2(2, 1))
+    })
+})
+
+describe("enemyMove without ice", () => {
+    const rink = textMap([
+        "#######",
+        "#.~~~.#",
+        "#.###.#",
+        "#.....#",
+        "#######",
+    ])
+    const cells = cellsFrom(rink.map)
+    const bare = cells.map((row) => row.map(() => false))
+    const enemies = (): Character[] => [
+        makeEnemy(1, 1, AiType.chase),
+        makeEnemy(1, 1, AiType.ambusher),
+        makePatroller(1, 1, [
+            [5, 3],
+            [1, 1],
+        ]),
+    ]
+
+    it("skips the slide-aware search when the map has no ice", () => {
+        vi.mocked(slideDistances).mockClear()
+        for (const enemy of enemies()) {
+            enemyMove(cells, enemy, vec2(5, 3), fixedRandom(0), vec2(5, 2))
+            enemyMove(
+                cells,
+                enemy,
+                vec2(5, 3),
+                fixedRandom(0),
+                vec2(5, 2),
+                bare
+            )
+        }
+        expect(slideDistances).not.toHaveBeenCalled()
+    })
+
+    it("still uses it when there is ice", () => {
+        vi.mocked(slideDistances).mockClear()
+        for (const enemy of enemies()) {
+            enemyMove(
+                cells,
+                enemy,
+                vec2(5, 3),
+                fixedRandom(0),
+                vec2(5, 2),
+                rink.ice
+            )
+        }
+        expect(slideDistances).toHaveBeenCalledTimes(3)
     })
 })

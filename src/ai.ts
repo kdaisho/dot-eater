@@ -2,6 +2,14 @@ import { AiType, AMBUSH_AHEAD, Cell } from "./constants"
 import type { Character } from "./character"
 import { moveStep } from "./glide"
 import type { Cells } from "./level"
+import {
+    hasIce,
+    patrolMove,
+    slideDistances,
+    stepFrom,
+    type IceMap,
+    type MoveState,
+} from "./ice"
 import { distanceMap, openNeighbours } from "./path"
 import { allDirections, directions, samePos, vec2, type Vec2 } from "./vec2"
 
@@ -18,15 +26,19 @@ export function candidateMoves(cells: Cells, enemy: Character): Vec2[] {
 
 // Move one enemy according to its AI. `target` is the player's position and
 // `targetLast` the cell the player came from on its latest move (the same as
-// `target` if it hasn't moved), which gives the player's heading.
+// `target` if it hasn't moved), which gives the player's heading. `ice` is
+// where the floor is ice (none if left out): chase, ambusher and patroller
+// paths allow for the slides it forces (see slideDistances in ice.ts). The
+// enemy is free to move (game.ts takes slide steps itself).
 export function enemyMove(
     cells: Cells,
     enemy: Character,
     target: Vec2,
     random: Random,
-    targetLast: Vec2 = target
+    targetLast: Vec2 = target,
+    ice: IceMap = noIce(cells)
 ) {
-    const next = nextPos(cells, enemy, target, targetLast, random)
+    const next = nextPos(cells, ice, enemy, target, targetLast, random)
 
     // Nowhere to go (e.g. boxed in on every side): stay put, still
     // remembering where it came from.
@@ -39,6 +51,7 @@ export function enemyMove(
 // The cell the enemy moves to this time, or null to stay put.
 function nextPos(
     cells: Cells,
+    ice: IceMap,
     enemy: Character,
     target: Vec2,
     targetLast: Vec2,
@@ -51,19 +64,20 @@ function nextPos(
             return pos[Math.floor(random() * pos.length)]
         }
         case AiType.chase:
-            return chaseStep(cells, enemy, target)
+            return chaseStep(cells, ice, enemy, target)
         case AiType.ambusher: {
             // Already standing where it aims: every way out scores the same,
             // so it would just take direction order. Go for the player.
             const aim = ambushTarget(cells, target, targetLast)
             return chaseStep(
                 cells,
+                ice,
                 enemy,
                 samePos(aim, enemy.pos) ? target : aim
             )
         }
         case AiType.patroller:
-            return patrolStep(cells, enemy)
+            return patrolStep(cells, ice, enemy)
         case AiType.phantom:
             return phantomStep(cells, enemy, target)
         default: {
@@ -81,11 +95,36 @@ function nextPos(
 // came" and tie. Ties go to the first candidate in direction order. If the
 // target is unreachable every candidate is Infinity, so this falls back to
 // the first candidate and keeps the enemy moving.
-function chaseStep(cells: Cells, enemy: Character, target: Vec2): Vec2 | null {
+//
+// Path lengths are slide-aware (slideDistances): a candidate on ice is
+// scored from the slide it starts, and the target counts as reached the
+// first time the path passes over it, stopped or mid-slide. So an ambusher
+// aiming at a cell it can only slide past still homes in on it, and a chaser
+// that would slide through the player catches it on the way. On a map with
+// no ice, plain cell distances (distanceMap) give the same answer for less.
+function chaseStep(
+    cells: Cells,
+    ice: IceMap,
+    enemy: Character,
+    target: Vec2
+): Vec2 | null {
     const pos = candidateMoves(cells, enemy)
     if (pos.length === 0) return null
-    const dist = distanceMap(cells, target, enemy.pos)
-    return nearest(pos, dist)
+    if (!hasIce(ice)) {
+        return nearest(pos, distanceMap(cells, target, enemy.pos))
+    }
+    const dist = slideDistances(cells, ice, target, enemy.pos)
+    let best = pos[0]
+    let bestDist = Infinity
+    for (const v of pos) {
+        const state = arrival(cells, ice, enemy.pos, v)
+        const d = state === null ? Infinity : dist(state)
+        if (d < bestDist) {
+            best = v
+            bestDist = d
+        }
+    }
+    return best
 }
 
 // The first of `pos` with the smallest distance in `dist`.
@@ -95,6 +134,26 @@ function nearest(pos: readonly Vec2[], dist: number[][]): Vec2 {
         if (dist[pos[i].y][pos[i].x] < dist[best.y][best.x]) best = pos[i]
     }
     return best
+}
+
+// The state an enemy free at `from` gets into by stepping to the
+// neighbouring cell `to`, or null if no step from `from` lands there.
+function arrival(
+    cells: Cells,
+    ice: IceMap,
+    from: Vec2,
+    to: Vec2
+): MoveState | null {
+    for (let heading = 0; heading < allDirections.length; heading++) {
+        const next = stepFrom(cells, ice, from, heading)
+        if (next !== null && samePos(next.pos, to)) return next
+    }
+    return null
+}
+
+// No ice anywhere on the map.
+function noIce(cells: Cells): IceMap {
+    return cells.map((row) => row.map(() => false))
 }
 
 // Where an ambusher aims: AMBUSH_AHEAD cells ahead of the player along its
@@ -129,8 +188,9 @@ export function ambushTarget(
 // the last. Unlike chase it may turn back, since a route can double back on
 // itself (e.g. a back-and-forth beat along a corridor). Ties go to direction
 // order. It stays put if the waypoint is unreachable, which parseLevel rules
-// out.
-function patrolStep(cells: Cells, enemy: Character): Vec2 | null {
+// out. Paths are slide-aware, as for chase: passing over the waypoint
+// mid-slide reaches it (game.ts moves the route on when that happens).
+function patrolStep(cells: Cells, ice: IceMap, enemy: Character): Vec2 | null {
     const route = enemy.route
     if (!route || route.length === 0) {
         throw new Error("A patroller needs a route")
@@ -139,11 +199,16 @@ function patrolStep(cells: Cells, enemy: Character): Vec2 | null {
         enemy.routeIndex = (enemy.routeIndex + 1) % route.length
     }
     const waypoint = route[enemy.routeIndex]
-    const pos = openNeighbours(cells, enemy.pos)
-    if (pos.length === 0) return null
-    const dist = distanceMap(cells, waypoint)
-    const best = nearest(pos, dist)
-    return dist[best.y][best.x] === Infinity ? null : best
+    if (!hasIce(ice)) {
+        // No ice: plain cell distances give the same path for less.
+        const pos = openNeighbours(cells, enemy.pos)
+        if (pos.length === 0) return null
+        const dist = distanceMap(cells, waypoint)
+        const best = nearest(pos, dist)
+        return dist[best.y][best.x] === Infinity ? null : best
+    }
+    const dist = slideDistances(cells, ice, waypoint)
+    return patrolMove(cells, ice, enemy.pos, dist)?.pos ?? null
 }
 
 // A phantom ignores walls: it steps to whichever neighbouring cell is

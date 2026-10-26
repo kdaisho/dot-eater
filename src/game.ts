@@ -240,7 +240,7 @@ export function step(
             )
             reachWaypoint(enemy)
         } else {
-            enemyMove(cells, enemy, from[0], random, playerLast)
+            enemyMove(cells, enemy, from[0], random, playerLast, state.ice)
         }
         if (samePos(enemy.pos, from[i + 1])) wait(enemy)
         else spend(enemy)
