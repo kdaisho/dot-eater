@@ -195,7 +195,7 @@ function createFog(
     rows: number,
     radius: number
 ): Fog {
-    const player = glidePos(state.player, alpha, cols, rows)
+    const player = glidePos(state.player, alpha, cols, rows, state.playerRate)
     const wrap = fogWrap(state.cells)
     return {
         player,
@@ -256,7 +256,7 @@ function drawCells(
     const wall = cell * WALL_SCALE
     const dot = Math.max(1, cell * DOT_SCALE)
     const eaten =
-        state.eatenAt && eatenDotVisible(state.player, alpha)
+        state.eatenAt && eatenDotVisible(state.player, alpha, state.playerRate)
             ? state.eatenAt
             : null
     // Whole pixels, so neighbouring filled cells meet without a seam.
@@ -343,13 +343,15 @@ function drawCharacters(
     // sprite, the emoji as a small badge at its top right. A held enemy
     // (e.g. frozen mid-glide) gets no frame alpha: its progress doesn't move
     // on, so it stays exactly where it is drawn instead of creeping forward
-    // between ticks.
+    // between ticks. The player glides at its current rate (playerRate), as
+    // the ticks move it.
     const size = cell * SPRITE_SCALE
     for (const character of [state.player, ...state.enemies]) {
         const isPlayer = character === state.player
         if (!isPlayer && !enemyVisible(character)) continue
         const held = !isPlayer && hasStatus(character, "holds")
-        const pos = glidePos(character, held ? 0 : alpha, cols, rows)
+        const rate = isPlayer ? state.playerRate : 1
+        const pos = glidePos(character, held ? 0 : alpha, cols, rows, rate)
         if (fog && !isPlayer && !fog.visible(pos)) continue
         const sprite = isPlayer
             ? playerSprite(state)

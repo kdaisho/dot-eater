@@ -47,6 +47,12 @@ describe("glideT", () => {
         expect(t).toBeCloseTo(0.5 + 0.5 * (4 / 60))
     })
 
+    it("adds alpha's part at the glide's rate", () => {
+        // A 1.5x glide covers 1.5 times as much of the tick.
+        const t = glideT(mover([1, 1], [2, 1], 0.5), 0.5, 1.5)
+        expect(t).toBeCloseTo(0.5 + 0.5 * 1.5 * (4 / 60))
+    })
+
     it("never passes the target cell", () => {
         expect(glideT(mover([1, 1], [2, 1], 0.99), 0.99)).toBe(1)
     })
