@@ -1,4 +1,4 @@
-import { Cell, CharacterId, SPRITE_SCALE } from "./constants"
+import { AiType, Cell, SPRITE_SCALE } from "./constants"
 import {
     fogDistance,
     fogWrap,
@@ -53,12 +53,17 @@ const FOG_SOFT_EDGE = 1.5
 // player nears rather than popping in.
 const FOG_REACH = Math.SQRT1_2
 
-const sprites: Record<CharacterId, string> = {
-    [CharacterId.player]: "🪰",
-    [CharacterId.enemy1]: "👹",
-    [CharacterId.enemy2]: "👺",
-    [CharacterId.enemy3]: "👾",
-    [CharacterId.enemy4]: "👻",
+const PLAYER_SPRITE = "🪰"
+
+// Enemies look like what they do: every enemy of one AI type shares a
+// sprite. A Record over AiType, so a new AI type without a sprite is a type
+// error.
+const ENEMY_SPRITES: Record<AiType, string> = {
+    [AiType.random]: "👺",
+    [AiType.chase]: "👹",
+    [AiType.ambusher]: "🦊",
+    [AiType.patroller]: "🤖",
+    [AiType.phantom]: "👻",
 }
 
 // Wall blocks and dots keep the proportions of the old span grid: 30px blocks
@@ -285,7 +290,9 @@ function drawCharacters(
         if (fog && character !== state.player && !fog.visible(pos)) continue
         for (const p of wrapCopies(pos, cols, rows)) {
             ctx.fillText(
-                sprites[character.id],
+                character === state.player
+                    ? PLAYER_SPRITE
+                    : ENEMY_SPRITES[character.ai],
                 (p.x + 0.5) * cell,
                 (p.y + 0.5) * cell
             )
@@ -312,7 +319,7 @@ function drawHud(
     if (hud.lives !== undefined) {
         ctx.textAlign = "right"
         ctx.fillText(
-            "🪰".repeat(Math.max(0, hud.lives)),
+            PLAYER_SPRITE.repeat(Math.max(0, hud.lives)),
             width - pad,
             height / 2
         )
