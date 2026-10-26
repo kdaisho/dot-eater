@@ -65,7 +65,7 @@ export type Screen =
           // The stage that starts once a character is picked.
           level: number
           // Where each player's cursor is, player 1 first.
-          picks: readonly AnimalId[]
+          picks: readonly [AnimalId, ...AnimalId[]]
       }
     | { kind: "playing"; level: number; animal: AnimalId; game: GameState }
     | { kind: "paused"; level: number; animal: AnimalId; game: GameState }
