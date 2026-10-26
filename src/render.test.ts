@@ -587,6 +587,31 @@ describe("createRenderer", () => {
             expect(texts()).toEqual(["🐉", "👺", "❄️"])
         })
 
+        // Regression: the frame alpha moved a held enemy on between ticks,
+        // then the next tick drew it back where it was held.
+        it("draws a held enemy where it is held, whatever the frame alpha", () => {
+            const enemy = makeEnemy(3, 1, AiType.random, { x: 2, y: 1 })
+            enemy.moveProgress = 0.5
+            const state = makeState(
+                [
+                    [1, 1, 1, 1, 1],
+                    [1, 0, 0, 0, 1],
+                    [1, 1, 1, 1, 1],
+                ],
+                { x: 1, y: 1 },
+                [enemy]
+            )
+            addStatus(enemy, { name: "test.frozen", holds: true }, 1)
+            const spriteX = (alpha: number) => {
+                const { renderer, calls } = setup()
+                renderer.draw(state, alpha)
+                return calls.find(
+                    (c) => c.name === "fillText" && c.args[0] === "👺"
+                )!.args[1]
+            }
+            expect(spriteX(0.9)).toBe(spriteX(0))
+        })
+
         it("hides a defeated enemy until it blinks back", () => {
             const enemy = makeEnemy(3, 1)
             const state = makeState(

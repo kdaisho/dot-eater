@@ -1,4 +1,4 @@
-import { enemyVisible, type EnergyHud, type Look } from "./breath"
+import { enemyVisible, hasStatus, type EnergyHud, type Look } from "./breath"
 import { AiType, Cell, SPRITE_SCALE } from "./constants"
 import {
     fogDistance,
@@ -337,12 +337,16 @@ function drawCharacters(
     // outside the light are hidden; the player is always in it. A defeated
     // enemy is hidden until it blinks before coming back (enemyVisible).
     // Statuses are drawn by their Look: the colour as a disc behind the
-    // sprite, the emoji as a small badge at its top right.
+    // sprite, the emoji as a small badge at its top right. A held enemy
+    // (e.g. frozen mid-glide) gets no frame alpha: its progress doesn't move
+    // on, so it stays exactly where it is drawn instead of creeping forward
+    // between ticks.
     const size = cell * SPRITE_SCALE
     for (const character of [state.player, ...state.enemies]) {
         const isPlayer = character === state.player
         if (!isPlayer && !enemyVisible(character)) continue
-        const pos = glidePos(character, alpha, cols, rows)
+        const held = !isPlayer && hasStatus(character, "holds")
+        const pos = glidePos(character, held ? 0 : alpha, cols, rows)
         if (fog && !isPlayer && !fog.visible(pos)) continue
         const sprite = isPlayer
             ? playerSprite(state)
