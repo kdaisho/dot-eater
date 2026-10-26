@@ -7,9 +7,7 @@ import {
     parseLevel,
     type LevelData,
 } from "./level"
-import { levels } from "./levels"
-import { level1 } from "./levels/level1"
-import { cellsFrom, OLD_MAP } from "./test/helpers"
+import { cellsFrom, OLD_LEVEL, OLD_MAP } from "./test/helpers"
 import { vec2 } from "./vec2"
 
 const map = [
@@ -322,14 +320,10 @@ describe("parseLevel", () => {
     })
 })
 
-describe("level 1", () => {
-    it("is the first level", () => {
-        expect(levels[0]).toEqual(parseLevel(level1))
-    })
-
+describe("the old level fixture", () => {
     it("has the old hard-coded map's walls", () => {
         expect(
-            levels[0].cells.map((row) =>
+            OLD_LEVEL.cells.map((row) =>
                 row.map((c) => (c === Cell.wall ? 1 : 0))
             )
         ).toEqual(OLD_MAP)

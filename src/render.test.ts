@@ -4,7 +4,7 @@ import { Cell, CharacterId } from "./constants"
 import { createCharacter } from "./character"
 import { createGameState, movePlayer } from "./game"
 import { createRenderer } from "./render"
-import { makeState } from "./test/helpers"
+import { makeState, OLD_LEVEL } from "./test/helpers"
 import { vec2 } from "./vec2"
 
 // canvas-confetti crashes under happy-dom; keep it out in case anything
@@ -49,14 +49,16 @@ describe("createRenderer", () => {
 
     it("draws the maze and every character without throwing", () => {
         const { calls, renderer, texts } = setup()
-        expect(() => renderer.draw(createGameState(), 0.5)).not.toThrow()
+        expect(() =>
+            renderer.draw(createGameState(OLD_LEVEL), 0.5)
+        ).not.toThrow()
         expect(calls.some((c) => c.name === "fillRect")).toBe(true)
         expect(texts()).toEqual(["🪰", "👹", "👺"])
     })
 
     it("sizes the canvas for the window and devicePixelRatio", () => {
         const { canvas, renderer } = setup()
-        renderer.draw(createGameState(), 0)
+        renderer.draw(createGameState(OLD_LEVEL), 0)
         // The 9x9 level plus the HUD row into 400 px high: 36 px cells.
         expect(canvas.style.width).toBe("324px")
         expect(canvas.style.height).toBe("360px")
@@ -66,7 +68,7 @@ describe("createRenderer", () => {
 
     it("refits and redraws the last frame on resize", () => {
         const { canvas, calls, renderer, view } = setup()
-        renderer.draw(createGameState(), 0)
+        renderer.draw(createGameState(OLD_LEVEL), 0)
         view.innerHeight = 200
         view.devicePixelRatio = 1
         const before = calls.length
@@ -79,7 +81,7 @@ describe("createRenderer", () => {
 
     it("clears to the background without drawing the game", () => {
         const { calls, canvas, renderer, texts } = setup()
-        renderer.draw(createGameState(), 0)
+        renderer.draw(createGameState(OLD_LEVEL), 0)
         const size = [canvas.width, canvas.height]
         calls.length = 0
         renderer.clear()
@@ -91,7 +93,7 @@ describe("createRenderer", () => {
 
     it("stays cleared on resize instead of redrawing the old game", () => {
         const { calls, canvas, renderer, texts, view } = setup()
-        renderer.draw(createGameState(), 0)
+        renderer.draw(createGameState(OLD_LEVEL), 0)
         renderer.clear()
         view.innerHeight = 200
         view.devicePixelRatio = 1
@@ -104,7 +106,7 @@ describe("createRenderer", () => {
 
     it("draws a character in a tunnel on both edges", () => {
         const { renderer, texts } = setup()
-        const state = createGameState()
+        const state = createGameState(OLD_LEVEL)
         const player = createCharacter(CharacterId.player, vec2(0, 4))
         player.lastPos = vec2(8, 4)
         player.moveProgress = 0.5
@@ -115,7 +117,7 @@ describe("createRenderer", () => {
     })
 
     it("draws only the HUD fields given", () => {
-        const state = createGameState()
+        const state = createGameState(OLD_LEVEL)
         state.enemies = []
 
         const empty = setup()
@@ -185,6 +187,6 @@ describe("createRenderer", () => {
         const canvas = document.createElement("canvas")
         vi.spyOn(canvas, "getContext").mockReturnValue(null)
         const renderer = createRenderer(canvas)
-        expect(() => renderer.draw(createGameState(), 0)).not.toThrow()
+        expect(() => renderer.draw(createGameState(OLD_LEVEL), 0)).not.toThrow()
     })
 })

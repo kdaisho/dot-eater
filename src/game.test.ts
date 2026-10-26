@@ -20,7 +20,14 @@ import {
     type Outcome,
 } from "./game"
 import { parseLevel } from "./level"
-import { fixedRandom, makeEnemy, makeState, OLD_MAP } from "./test/helpers"
+import { levels } from "./levels"
+import {
+    fixedRandom,
+    makeEnemy,
+    makeState,
+    OLD_LEVEL,
+    OLD_MAP,
+} from "./test/helpers"
 import { vec2, type Vec2 } from "./vec2"
 
 const TICK = 1 / TICK_RATE
@@ -497,8 +504,12 @@ describe("step: enemies", () => {
 const OLD_PLAYER_START = vec2(4, 1)
 
 describe("createGameState", () => {
-    it("starts from the first level like the old hard-coded map", () => {
-        const state = createGameState()
+    it("starts from the first level by default", () => {
+        expect(createGameState()).toEqual(createGameState(levels[0]))
+    })
+
+    it("builds the old hard-coded map's state from its level", () => {
+        const state = createGameState(OLD_LEVEL)
         expect(state.player.id).toBe(CharacterId.player)
         expect(state.player.pos).toEqual(OLD_PLAYER_START)
         expect(state.player.speed).toBe(PLAYER_SPEED)
@@ -521,7 +532,7 @@ describe("createGameState", () => {
     })
 
     it("puts dots everywhere except walls and the player start", () => {
-        const { cells } = createGameState()
+        const { cells } = createGameState(OLD_LEVEL)
         for (let y = 0; y < OLD_MAP.length; y++) {
             for (let x = 0; x < OLD_MAP[y].length; x++) {
                 if (OLD_MAP[y][x] === Cell.wall) {
@@ -558,18 +569,18 @@ describe("createGameState", () => {
     })
 
     it("starts with no score and full lives", () => {
-        const state = createGameState()
+        const state = createGameState(OLD_LEVEL)
         expect(state.score).toBe(0)
         expect(state.lives).toBe(START_LIVES)
     })
 
     it("has the player ready to move at once and the enemies wait", () => {
-        const state = createGameState()
+        const state = createGameState(OLD_LEVEL)
         expect(state.player.moveProgress).toBe(1)
         expect(state.enemies.map((e) => e.moveProgress)).toEqual([0, 0])
         const start = state.player.pos
         const enemies = state.enemies.map((e) => e.pos)
-        // Level 1's player starts with open cells to the west and east.
+        // The old level's player starts with open cells to the west and east.
         step(state, TICK, { held: [east], pressed: east }, fixedRandom(0))
         expect(state.player.pos).toEqual(vec2(start.x + 1, start.y))
         expect(state.enemies.map((e) => e.pos)).toEqual(enemies)
@@ -599,12 +610,12 @@ describe("createGameState", () => {
     })
 
     it("returns a fresh state each time", () => {
-        const a = createGameState()
+        const a = createGameState(OLD_LEVEL)
         a.cells[0][0] = Cell.none
         a.cells[1][1] = Cell.none
         a.player.pos.x = 99
         a.enemies[0].pos.x = 99
-        const b = createGameState()
+        const b = createGameState(OLD_LEVEL)
         expect(b.cells[0][0]).toBe(Cell.wall)
         expect(b.cells[1][1]).toBe(Cell.dot)
         // Literals, so a shared (aliased) level spawn would be caught.
@@ -789,7 +800,7 @@ describe("step: caught on the tick the last dot is eaten", () => {
 
 describe("eatenAt", () => {
     it("starts as null", () => {
-        expect(createGameState().eatenAt).toBeNull()
+        expect(createGameState(OLD_LEVEL).eatenAt).toBeNull()
     })
 
     it("records the dot eaten on the player's latest move", () => {
