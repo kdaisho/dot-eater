@@ -10,6 +10,7 @@ import type { LevelData } from "../level"
 // (half the player's) speed.
 export const stage2: LevelData = {
     name: "Wrap maze",
+    parTime: 70,
     map: [
         "##.#.#######.#.##",
         "#...............#",
