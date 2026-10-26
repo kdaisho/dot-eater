@@ -119,16 +119,11 @@ describe("stage 2", () => {
     })
 
     // The stage is built around tunnels, so both directions of wrapping
-    // matter: several rows wrap left-right and several columns top-bottom.
-    it("has several wrap tunnels on every edge", () => {
-        const { width, height } = level
-        const rows = level.cells.filter(
-            (row) => row[0] !== Cell.wall && row[width - 1] !== Cell.wall
-        )
-        const columns = level.cells[0].filter(
-            (cell, x) =>
-                cell !== Cell.wall && level.cells[height - 1][x] !== Cell.wall
-        )
+    // matter. parseLevel already checks that each tunnel's far end is open,
+    // so an open cell on one edge is enough to count a tunnel.
+    it("has several left-right and top-bottom tunnels", () => {
+        const rows = level.cells.filter((row) => row[0] !== Cell.wall)
+        const columns = level.cells[0].filter((cell) => cell !== Cell.wall)
         expect(rows.length).toBeGreaterThanOrEqual(3)
         expect(columns.length).toBeGreaterThanOrEqual(3)
     })
@@ -148,11 +143,12 @@ describe("stage 2", () => {
         expect(deadEnds).toEqual([])
     })
 
-    // Distances include the tunnels, so no enemy starts a short wrap away.
+    // Distances include the tunnels (which save about 7 steps here), so no
+    // map edit can open a short wrap to an enemy unnoticed.
     it("starts the enemies well away from the player", () => {
         const dist = distanceMap(cells, level.playerSpawns[0])
         for (const { pos } of level.enemies) {
-            expect(dist[pos.y][pos.x]).toBeGreaterThanOrEqual(12)
+            expect(dist[pos.y][pos.x]).toBeGreaterThanOrEqual(15)
         }
     })
 })
