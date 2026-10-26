@@ -84,6 +84,28 @@ describe("owl wind breath", () => {
         expect(far.pos).toEqual(vec2(7, 1))
     })
 
+    it("doesn't catch the player with a 1-cell push off its cell", () => {
+        // The enemy is on the player's cell (2, 1), its sprite still
+        // gliding in from (1, 1); a wall at (4, 1) lets it go 1 cell. Gliding
+        // in from (2, 1) would draw it on the player.
+        const { map } = textMap(["#####", "#   #", "#####", "#.###"])
+        const glidingIn = () => {
+            const enemy = makeEnemy(2, 1, AiType.random, { x: 1, y: 1 })
+            enemy.moveProgress = 0.1
+            return enemy
+        }
+        const without = makeState(map, { x: 2, y: 1 }, [glidingIn()], {
+            breath: owl,
+        })
+        expect(tick(without)).toBeNull()
+        const enemy = glidingIn()
+        const state = makeState(map, { x: 2, y: 1 }, [enemy], { breath: owl })
+        state.breather.energy = 100
+        expect(tick(state, true)).toBeNull()
+        expect(enemy.pos).toEqual(vec2(3, 1))
+        expect(state.lives).toBe(1)
+    })
+
     it("leaves enemies out of the line alone", () => {
         // Below the line, and in the corridor behind the player.
         const below = makeEnemy(4, 2)
