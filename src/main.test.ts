@@ -2,7 +2,14 @@
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vite-plus/test"
 import confetti from "canvas-confetti"
 import { TICK_MS } from "./constants"
-import { createGameState, tick, type GameState, type Outcome } from "./game"
+import {
+    createGameState,
+    movePlayer,
+    tick,
+    type GameState,
+    type Outcome,
+} from "./game"
+import { vec2 } from "./vec2"
 
 // canvas-confetti touches a 2D canvas context on import, which happy-dom
 // doesn't provide.
@@ -16,6 +23,7 @@ vi.mock("./game", async (importOriginal) => {
     return {
         ...actual,
         createGameState: vi.fn(actual.createGameState),
+        movePlayer: vi.fn(actual.movePlayer),
         tick: vi.fn((state: GameState) => {
             const outcome = nextOutcome
             if (!outcome) return null
@@ -26,8 +34,17 @@ vi.mock("./game", async (importOriginal) => {
     }
 })
 
-function press(key: string, repeat = false) {
-    dispatchEvent(new KeyboardEvent("keydown", { key, repeat }))
+function keydown(code: string, repeat = false) {
+    dispatchEvent(new KeyboardEvent("keydown", { code, repeat }))
+}
+
+function keyup(code: string) {
+    dispatchEvent(new KeyboardEvent("keyup", { code }))
+}
+
+function press(code: string) {
+    keydown(code)
+    keyup(code)
 }
 
 function gameOver(outcome: Outcome = "dead") {
@@ -40,7 +57,7 @@ const starts = () => vi.mocked(createGameState).mock.calls.length
 
 // Every keydown listener added to the window, to catch listeners piling up.
 // (vi.spyOn doesn't see main's import-time call, so wrap it by hand.)
-const keydown = new Set<unknown>()
+const keydownListeners = new Set<unknown>()
 
 describe("main key handler", () => {
     beforeAll(async () => {
@@ -52,7 +69,7 @@ describe("main key handler", () => {
             listener: unknown,
             options?: unknown
         ) => {
-            if (type === "keydown") keydown.add(listener)
+            if (type === "keydown") keydownListeners.add(listener)
             return realAdd(type as never, listener as never, options as never)
         }) as typeof addEventListener
         await import("./main")
@@ -62,7 +79,7 @@ describe("main key handler", () => {
     // main is imported once, so its state carries over between tests. Start
     // each test during play so they don't depend on the order they run in.
     beforeEach(() => {
-        if (document.querySelector("#msg")) press(" ")
+        if (document.querySelector("#msg")) press("Space")
         expect(document.querySelector("#msg")).toBeNull()
     })
 
@@ -70,30 +87,55 @@ describe("main key handler", () => {
         for (let i = 0; i < 3; i++) {
             gameOver()
             const before = starts()
-            press(" ")
+            press("Space")
             expect(starts()).toBe(before + 1)
             expect(document.querySelector("#msg")).toBeNull()
             expect(document.querySelector("#backdrop")).toBeNull()
         }
-        expect(keydown.size).toBe(1)
+        expect(keydownListeners.size).toBe(1)
     })
 
     it("does nothing on Space during play", () => {
         const before = starts()
-        press(" ")
+        press("Space")
         expect(starts()).toBe(before)
         expect(document.querySelector("#msg")).toBeNull()
     })
 
-    it("ignores other keys and auto-repeated Space after the game ends", () => {
+    it("ignores other keys after the game ends", () => {
         gameOver()
         const before = starts()
         press("ArrowUp")
-        press(" ", true)
+        press("Enter")
         expect(starts()).toBe(before)
         expect(document.querySelector("#msg")).not.toBeNull()
-        press(" ")
+        press("Space")
         expect(starts()).toBe(before + 1)
+    })
+
+    it("ignores a Space held through the game-over until it is pressed again", () => {
+        keydown("Space")
+        gameOver()
+        const before = starts()
+        keydown("Space", true)
+        keydown("Space", true)
+        expect(starts()).toBe(before)
+        keyup("Space")
+        press("Space")
+        expect(starts()).toBe(before + 1)
+    })
+
+    it("moves the player one cell per arrow press, ignoring auto-repeat", () => {
+        vi.mocked(movePlayer).mockClear()
+        keydown("ArrowRight")
+        keydown("ArrowRight", true)
+        keydown("ArrowRight", true)
+        keyup("ArrowRight")
+        press("ArrowUp")
+        press("KeyW")
+        expect(
+            vi.mocked(movePlayer).mock.calls.map(([, step]) => step)
+        ).toEqual([vec2(1, 0), vec2(0, -1)])
     })
 
     it("stops ticking once the game has ended", () => {
@@ -115,11 +157,11 @@ describe("main key handler", () => {
 
         gameOver("won")
         expect(bursts()).toBe(11)
-        press(" ")
+        press("Space")
 
         gameOver("dead")
         expect(bursts()).toBe(0)
-        press(" ")
+        press("Space")
 
         gameOver("won")
         expect(bursts()).toBe(11)
