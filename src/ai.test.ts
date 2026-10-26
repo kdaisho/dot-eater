@@ -686,3 +686,139 @@ describe("enemyMove without ice", () => {
         expect(slideDistances).toHaveBeenCalledTimes(3)
     })
 })
+
+describe("blocked cells", () => {
+    // Blocked cells from a list of [x, y], on a map of `cells`' size.
+    function blocks(
+        cells: Cells,
+        list: readonly (readonly [number, number])[]
+    ): boolean[][] {
+        const map = cells.map((row) => row.map(() => false))
+        for (const [x, y] of list) map[y][x] = true
+        return map
+    }
+
+    function move(enemy: Character, target: Vec2, blocked: boolean[][]) {
+        const cells = cellsFrom(cross)
+        enemyMove(
+            cells,
+            enemy,
+            target,
+            fixedRandom(0),
+            target,
+            undefined,
+            blocked
+        )
+    }
+
+    it("are walls to a chaser: it paths round them", () => {
+        const enemy = makeEnemy(2, 2, AiType.chase)
+        // The player is up, and the way up is blocked: it goes down, round
+        // through the tunnel at the bottom.
+        move(enemy, vec2(2, 0), blocks(cellsFrom(cross), [[2, 1]]))
+        expect(enemy.pos).toEqual(vec2(2, 3))
+    })
+
+    it("are kept out of by a phantom", () => {
+        const enemy = makeEnemy(2, 2, AiType.phantom)
+        move(enemy, vec2(2, 0), blocks(cellsFrom(cross), [[2, 1]]))
+        expect(enemy.pos).toEqual(vec2(2, 2))
+    })
+
+    it("are left by the shortest way by an enemy inside them", () => {
+        // Inside a blocked patch: the only cell out within one step is east,
+        // where it came from, though the player is west.
+        const enemy = makeEnemy(2, 2, AiType.chase, { x: 3, y: 2 })
+        const blocked = blocks(cellsFrom(cross), [
+            [0, 2],
+            [1, 2],
+            [2, 2],
+            [2, 1],
+            [2, 3],
+        ])
+        move(enemy, vec2(0, 2), blocked)
+        expect(enemy.pos).toEqual(vec2(3, 2))
+    })
+
+    // A ring round a block of wall. The player stands at (5, 1) in a cloud
+    // over (4, 1), (5, 1) and (5, 2): east from (1, 1) reaches the cloud in
+    // 3 steps, south round the ring in 6.
+    const ring = textMap([
+        "#######",
+        "#     #",
+        "# ### #",
+        "#     #",
+        "#######",
+    ])
+    const cloud = blocks(cellsFrom(ring.map), [
+        [4, 1],
+        [5, 1],
+        [5, 2],
+    ])
+
+    // Regression: distances were measured on the cells with the cloud as
+    // walls, so a player inside it was unreachable and every way scored the
+    // same: the chaser went south, first in direction order.
+    it("still lead a chaser to the edge of a cloud the player is in", () => {
+        const enemy = makeEnemy(1, 1, AiType.chase)
+        enemyMove(
+            cellsFrom(ring.map),
+            enemy,
+            vec2(5, 1),
+            fixedRandom(0),
+            vec2(5, 1),
+            undefined,
+            cloud
+        )
+        expect(enemy.pos).toEqual(vec2(2, 1))
+    })
+
+    it("still lead a chaser to the edge of the cloud on ice", () => {
+        // Ice far away, so pathing is slide-aware.
+        const ice = ring.ice.map((row) => [...row])
+        ice[3][3] = true
+        const enemy = makeEnemy(1, 1, AiType.chase)
+        enemyMove(
+            cellsFrom(ring.map),
+            enemy,
+            vec2(5, 1),
+            fixedRandom(0),
+            vec2(5, 1),
+            ice,
+            cloud
+        )
+        expect(enemy.pos).toEqual(vec2(2, 1))
+    })
+
+    it("never let a chaser into the cloud, even next to it", () => {
+        const enemy = makeEnemy(3, 1, AiType.chase, { x: 2, y: 1 })
+        enemyMove(
+            cellsFrom(ring.map),
+            enemy,
+            vec2(5, 1),
+            fixedRandom(0),
+            vec2(5, 1),
+            undefined,
+            cloud
+        )
+        // Its only way on is back west (a dead end with the cloud ahead).
+        expect(enemy.pos).toEqual(vec2(2, 1))
+    })
+
+    it("still lead a patroller to a waypoint inside a cloud", () => {
+        const enemy = makePatroller(1, 1, [
+            [5, 1],
+            [1, 3],
+        ])
+        enemyMove(
+            cellsFrom(ring.map),
+            enemy,
+            vec2(1, 3),
+            fixedRandom(0),
+            vec2(1, 3),
+            undefined,
+            cloud
+        )
+        expect(enemy.pos).toEqual(vec2(2, 1))
+    })
+})

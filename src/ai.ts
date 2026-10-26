@@ -1,3 +1,4 @@
+import type { BlockMap } from "./breath"
 import { AiType, AMBUSH_AHEAD, Cell } from "./constants"
 import type { Character } from "./character"
 import { moveStep } from "./glide"
@@ -30,15 +31,40 @@ export function candidateMoves(cells: Cells, enemy: Character): Vec2[] {
 // where the floor is ice (none if left out): chase, ambusher and patroller
 // paths allow for the slides it forces (see slideDistances in ice.ts). The
 // enemy is free to move (game.ts takes slide steps itself).
+//
+// `blocked` marks cells enemies keep out of (tile effects such as a stink
+// cloud; see enemyBlocks in breath.ts), or null for none. Every AI treats
+// them as walls, phantoms included, and an enemy standing on one heads out
+// by the shortest way instead of following its AI (see escapeStep). A
+// target inside a blocked patch still draws enemies to the patch's edge
+// nearest it (see goalView). `view` is `cells` as enemies see them
+// (blockedView); a caller moving several enemies can build it once.
 export function enemyMove(
     cells: Cells,
     enemy: Character,
     target: Vec2,
     random: Random,
     targetLast: Vec2 = target,
-    ice: IceMap = noIce(cells)
+    ice: IceMap = noIce(cells),
+    blocked: BlockMap | null = null,
+    view: Cells = blocked === null ? cells : blockedView(cells, blocked)
 ) {
-    const next = nextPos(cells, ice, enemy, target, targetLast, random)
+    const next =
+        blocked === null
+            ? nextPos(cells, ice, enemy, target, targetLast, random)
+            : blocked[enemy.pos.y][enemy.pos.x]
+              ? escapeStep(cells, enemy, blocked)
+              : enemy.ai === AiType.phantom
+                ? phantomStep(cells, enemy, target, blocked)
+                : nextPos(
+                      view,
+                      ice,
+                      enemy,
+                      target,
+                      targetLast,
+                      random,
+                      (goal) => goalView(cells, view, blocked, goal)
+                  )
 
     // Nowhere to go (e.g. boxed in on every side): stay put, still
     // remembering where it came from.
@@ -48,14 +74,17 @@ export function enemyMove(
     enemy.pos = next
 }
 
-// The cell the enemy moves to this time, or null to stay put.
+// The cell the enemy moves to this time, or null to stay put. `cells` are
+// the cells it may move through; `paths(goal)` the ones distances to `goal`
+// are measured over (see goalView), the same unless cells are blocked.
 function nextPos(
     cells: Cells,
     ice: IceMap,
     enemy: Character,
     target: Vec2,
     targetLast: Vec2,
-    random: Random
+    random: Random,
+    paths: (goal: Vec2) => Cells = () => cells
 ): Vec2 | null {
     switch (enemy.ai) {
         case AiType.random: {
@@ -73,7 +102,7 @@ function nextPos(
                 samePos(target, enemy.pos) && !samePos(targetLast, enemy.pos)
                     ? targetLast
                     : target
-            return chaseStep(cells, ice, enemy, aim)
+            return chaseStep(cells, ice, enemy, aim, paths)
         }
         case AiType.ambusher: {
             // Already standing where it aims: every way out scores the same,
@@ -83,11 +112,12 @@ function nextPos(
                 cells,
                 ice,
                 enemy,
-                samePos(aim, enemy.pos) ? target : aim
+                samePos(aim, enemy.pos) ? target : aim,
+                paths
             )
         }
         case AiType.patroller:
-            return patrolStep(cells, ice, enemy)
+            return patrolStep(cells, ice, enemy, paths)
         case AiType.phantom:
             return phantomStep(cells, enemy, target)
         default: {
@@ -112,18 +142,20 @@ function nextPos(
 // aiming at a cell it can only slide past still homes in on it, and a chaser
 // that would slide through the player catches it on the way. On a map with
 // no ice, plain cell distances (distanceMap) give the same answer for less.
+// Distances are measured over `paths(target)` (see nextPos).
 function chaseStep(
     cells: Cells,
     ice: IceMap,
     enemy: Character,
-    target: Vec2
+    target: Vec2,
+    paths: (goal: Vec2) => Cells
 ): Vec2 | null {
     const pos = candidateMoves(cells, enemy)
     if (pos.length === 0) return null
     if (!hasIce(ice)) {
-        return nearest(pos, distanceMap(cells, target, enemy.pos))
+        return nearest(pos, distanceMap(paths(target), target, enemy.pos))
     }
-    const dist = slideDistances(cells, ice, target, enemy.pos)
+    const dist = slideDistances(paths(target), ice, target, enemy.pos)
     let best = pos[0]
     let bestDist = Infinity
     for (const v of pos) {
@@ -159,6 +191,85 @@ function arrival(
         if (next !== null && samePos(next.pos, to)) return next
     }
     return null
+}
+
+// `cells` as enemies see them: blocked cells are walls.
+export function blockedView(cells: Cells, blocked: BlockMap): Cells {
+    return cells.map((row, y) =>
+        row.map((value, x) => (blocked[y][x] ? Cell.wall : value))
+    )
+}
+
+// The cells to measure distances to `goal` over: `view` (cells as enemies
+// see them), but when `goal` is in a blocked patch, that patch (the blocked
+// cells joined to it through blocked cells) is open again. A path may then
+// end inside the patch round the goal but never cross another one, so an
+// enemy, which can't step into the patch (its moves are on `view`), still
+// heads for the edge nearest the goal. Without that a player standing in
+// its own stink cloud would be unreachable, and every way would score the
+// same.
+function goalView(
+    cells: Cells,
+    view: Cells,
+    blocked: BlockMap,
+    goal: Vec2
+): Cells {
+    if (!blocked[goal.y][goal.x]) return view
+    const open = view.map((row) => [...row])
+    open[goal.y][goal.x] = cells[goal.y][goal.x]
+    const queue = [goal]
+    for (let head = 0; head < queue.length; head++) {
+        for (const v of openNeighbours(cells, queue[head])) {
+            if (!blocked[v.y][v.x] || open[v.y][v.x] !== Cell.wall) continue
+            open[v.y][v.x] = cells[v.y][v.x]
+            queue.push(v)
+        }
+    }
+    return open
+}
+
+// The first step of the shortest way from a blocked cell to one that isn't,
+// through blocked cells (and, for a phantom, through walls, staying on the
+// map like phantomStep). Ties go to direction order. Null when every
+// reachable cell is blocked, so the enemy stays put.
+function escapeStep(
+    cells: Cells,
+    enemy: Character,
+    blocked: BlockMap
+): Vec2 | null {
+    const phantom = enemy.ai === AiType.phantom
+    const neighbours = (p: Vec2) =>
+        phantom ? mapNeighbours(cells, p) : openNeighbours(cells, p)
+    const seen = new Set([`${enemy.pos.x},${enemy.pos.y}`])
+    const queue: { pos: Vec2; first: Vec2 }[] = []
+    for (const v of neighbours(enemy.pos)) {
+        seen.add(`${v.x},${v.y}`)
+        queue.push({ pos: v, first: v })
+    }
+    for (let head = 0; head < queue.length; head++) {
+        const { pos, first } = queue[head]
+        if (!blocked[pos.y][pos.x]) return first
+        for (const v of neighbours(pos)) {
+            const k = `${v.x},${v.y}`
+            if (seen.has(k)) continue
+            seen.add(k)
+            queue.push({ pos: v, first })
+        }
+    }
+    return null
+}
+
+// The cells next to `pos` on the map, walls or not, without wrapping, in
+// direction order.
+function mapNeighbours(cells: Cells, pos: Vec2): Vec2[] {
+    const result: Vec2[] = []
+    for (const d of allDirections) {
+        const v = vec2(pos.x + directions[d].x, pos.y + directions[d].y)
+        if (v.x < 0 || v.y < 0 || v.x >= cells[0].length) continue
+        if (v.y >= cells.length) continue
+        result.push(v)
+    }
+    return result
 }
 
 // No ice anywhere on the map.
@@ -200,7 +311,14 @@ export function ambushTarget(
 // order. It stays put if the waypoint is unreachable, which parseLevel rules
 // out. Paths are slide-aware, as for chase: passing over the waypoint
 // mid-slide reaches it (game.ts moves the route on when that happens).
-function patrolStep(cells: Cells, ice: IceMap, enemy: Character): Vec2 | null {
+// Distances are measured over `paths(waypoint)` (see nextPos), so a
+// waypoint in a blocked patch draws it to the patch's edge.
+function patrolStep(
+    cells: Cells,
+    ice: IceMap,
+    enemy: Character,
+    paths: (goal: Vec2) => Cells
+): Vec2 | null {
     const route = enemy.route
     if (!route || route.length === 0) {
         throw new Error("A patroller needs a route")
@@ -213,11 +331,11 @@ function patrolStep(cells: Cells, ice: IceMap, enemy: Character): Vec2 | null {
         // No ice: plain cell distances give the same path for less.
         const pos = openNeighbours(cells, enemy.pos)
         if (pos.length === 0) return null
-        const dist = distanceMap(cells, waypoint)
+        const dist = distanceMap(paths(waypoint), waypoint)
         const best = nearest(pos, dist)
         return dist[best.y][best.x] === Infinity ? null : best
     }
-    const dist = slideDistances(cells, ice, waypoint)
+    const dist = slideDistances(paths(waypoint), ice, waypoint)
     return patrolMove(cells, ice, enemy.pos, dist)?.pos ?? null
 }
 
@@ -225,23 +343,19 @@ function patrolStep(cells: Cells, ice: IceMap, enemy: Character): Vec2 | null {
 // closest to the player in a straight (Manhattan) line, ties going to
 // direction order. It stays inside the map and doesn't use wrap-around
 // tunnels, so it can never end up off the board. It may turn back, as the
-// player can double back past it. It stays put on the player's cell.
+// player can double back past it. It stays put on the player's cell. It
+// never steps into a `blocked` cell (see enemyMove).
 function phantomStep(
     cells: Cells,
     enemy: Character,
-    target: Vec2
+    target: Vec2,
+    blocked: BlockMap | null = null
 ): Vec2 | null {
-    const height = cells.length
-    const width = cells[0].length
     const away = (v: Vec2) =>
         Math.abs(v.x - target.x) + Math.abs(v.y - target.y)
     let best: Vec2 | null = null
-    for (const d of allDirections) {
-        const v = vec2(
-            enemy.pos.x + directions[d].x,
-            enemy.pos.y + directions[d].y
-        )
-        if (v.x < 0 || v.y < 0 || v.x >= width || v.y >= height) continue
+    for (const v of mapNeighbours(cells, enemy.pos)) {
+        if (blocked?.[v.y][v.x]) continue
         if (best === null || away(v) < away(best)) best = v
     }
     return best !== null && away(best) < away(enemy.pos) ? best : null

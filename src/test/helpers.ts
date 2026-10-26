@@ -1,4 +1,7 @@
+import { createBreather, type BreathDef } from "../breath"
+import { BREATHS } from "../breaths"
 import { AiType, Cell, CharacterId, TICK_RATE } from "../constants"
+import { DEFAULT_ANIMAL } from "../roster"
 import { createCharacter, type Character } from "../character"
 import { drawnPos, step, type GameState } from "../game"
 import type { IceMap } from "../ice"
@@ -80,21 +83,30 @@ export function makePatroller(
 // Like createGameState, the player's start cell never holds a dot, and the
 // spawns are where the characters start. The player is on their last life
 // unless `lives` says otherwise, so any collision ends the game. There is no
-// ice unless `ice` says where (see textMap).
+// ice unless `ice` says where (see textMap). The player has the default
+// character's breath unless `breath` says otherwise, with an empty meter.
 export function makeState(
     map: MapLiteral,
     player: { x: number; y: number },
     enemies: Character[] = [],
-    { lives = 1, ice }: { lives?: number; ice?: IceMap } = {}
+    {
+        lives = 1,
+        ice,
+        breath = BREATHS[DEFAULT_ANIMAL],
+    }: { lives?: number; ice?: IceMap; breath?: BreathDef } = {}
 ): GameState {
     const cells = cellsFrom(map)
     if (cells[player.y][player.x] === Cell.dot) {
         cells[player.y][player.x] = Cell.none
     }
+    const floorIce = ice ?? cells.map((row) => row.map(() => false))
     return {
         cells,
-        ice: ice ?? cells.map((row) => row.map(() => false)),
+        ice: floorIce,
+        floorIce,
+        tiles: [],
         player: createCharacter(CharacterId.player, vec2(player.x, player.y)),
+        breather: createBreather(breath),
         enemies,
         bufferedStep: vec2(0, 0),
         score: 0,
@@ -128,6 +140,32 @@ export function textMap(rows: readonly string[]): {
         ),
         ice: chars.map((row) => row.map((ch) => ch === "~" || ch === ":")),
     }
+}
+
+// A breath for testing the breath machinery (see breath.ts), not one of the
+// characters' (those are in src/breaths/): a 3-cell line costing 10 with a
+// 1 s cooldown that does nothing unless `overrides` gives it a `fire` hook.
+export function testBreath(overrides: Partial<BreathDef> = {}): BreathDef {
+    return {
+        animal: DEFAULT_ANIMAL,
+        shape: { kind: "line", range: 3 },
+        cost: 10,
+        cooldown: 1,
+        duration: 1,
+        maxEnergy: 100,
+        speedScale: 1,
+        fire() {},
+        ...overrides,
+    }
+}
+
+// A deep copy of `state`, for comparing before and after. The breath
+// definition holds functions, which structuredClone can't copy; it is fixed
+// data, so the copy shares it.
+export function cloneState(state: GameState): GameState {
+    const { breath, ...breather } = state.breather
+    const copy = structuredClone({ ...state, breather })
+    return { ...copy, breather: { ...copy.breather, breath } }
 }
 
 // A random source that always returns the same value.

@@ -1,3 +1,4 @@
+import { energyHud } from "./breath"
 import { MAX_FRAME_MS, TICK_MS } from "./constants"
 import {
     END_CHOICES,
@@ -56,6 +57,7 @@ const tickInput = {
     move: () => ({
         held: player1.heldSteps(),
         pressed: player1.pressedStep(),
+        breath: player1.wasPressed("breath"),
     }),
 }
 
@@ -111,7 +113,7 @@ function render(alpha: number) {
     renderer.draw(
         game,
         lastAlpha,
-        { score: game.score, lives: game.lives },
+        { score: game.score, lives: game.lives, energy: energyHud(game) },
         rules
     )
 }
