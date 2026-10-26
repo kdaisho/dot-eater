@@ -5,8 +5,10 @@ import {
     isUnlocked,
     loadProgress,
     markCleared,
+    mergeProgress,
     parseProgress,
     PROGRESS_KEY,
+    recordClear,
     saveProgress,
     serializeProgress,
     STAGE_COUNT,
@@ -116,6 +118,58 @@ describe("parseProgress", () => {
             extra: "ignored",
         })
         expect(clearedFlags(parseProgress(raw))[0]).toBe(true)
+    })
+
+    it("keeps a stage's extra fields through a clear and a save", () => {
+        const raw = JSON.stringify({
+            version: 1,
+            stages: [{ cleared: true, best: 340, stars: 2 }],
+        })
+        const next = markCleared(parseProgress(raw), 1)
+        const saved = JSON.parse(serializeProgress(next))
+        expect(saved.stages[0]).toEqual({ cleared: true, best: 340, stars: 2 })
+        expect(saved.stages[1]).toEqual({ cleared: true })
+    })
+})
+
+describe("mergeProgress", () => {
+    it("keeps a stage cleared in either copy", () => {
+        expect(clearedFlags(mergeProgress(cleared(0), cleared(2)))).toEqual([
+            true,
+            false,
+            true,
+            false,
+            false,
+        ])
+    })
+})
+
+describe("recordClear", () => {
+    it("saves the clear, unlocking the next stage", () => {
+        const storage = memoryStorage()
+        const next = recordClear(emptyProgress(), storage, 0)
+        expect(isUnlocked(next, 1)).toBe(true)
+        expect(loadProgress(storage)).toEqual(next)
+    })
+
+    // Regression: a tab with stale progress used to save it over clears made
+    // in another tab since, locking those stages again.
+    it("keeps clears another tab saved since this one loaded", () => {
+        const storage = memoryStorage()
+        saveProgress(storage, cleared(0, 1))
+        const next = recordClear(emptyProgress(), storage, 0)
+        expect(clearedFlags(loadProgress(storage)).slice(0, 2)).toEqual([
+            true,
+            true,
+        ])
+        expect(isUnlocked(next, 2)).toBe(true)
+    })
+
+    it("still records the clear in memory when storage is unusable", () => {
+        expect(isUnlocked(recordClear(emptyProgress(), throwing, 0), 1)).toBe(
+            true
+        )
+        expect(isUnlocked(recordClear(cleared(0), undefined, 1), 2)).toBe(true)
     })
 })
 

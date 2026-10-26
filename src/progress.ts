@@ -37,7 +37,8 @@ export function emptyProgress(): Progress {
 // Read a saved string. Anything that isn't a valid version-1 save (null,
 // bad JSON, another version, a wrong shape) gives empty progress. A save
 // with fewer stages than STAGE_COUNT is padded with uncleared ones, and one
-// with more is cut short.
+// with more is cut short. Fields a stage has besides `cleared` are kept, so
+// a save written by a later build loses nothing when this one saves it back.
 export function parseProgress(raw: string | null): Progress {
     if (raw === null) return emptyProgress()
     let data: unknown
@@ -58,7 +59,22 @@ export function parseProgress(raw: string | null): Progress {
     return {
         version: PROGRESS_VERSION,
         stages: Array.from({ length: STAGE_COUNT }, (_, i) => ({
+            ...saved[i],
             cleared: saved[i]?.cleared ?? false,
+        })),
+    }
+}
+
+// Combine two copies of progress, e.g. this tab's and what another tab has
+// saved since: a stage cleared in either stays cleared. Other per-stage
+// fields come from `saved` where it has them.
+export function mergeProgress(mine: Progress, saved: Progress): Progress {
+    return {
+        version: PROGRESS_VERSION,
+        stages: mine.stages.map((s, i) => ({
+            ...s,
+            ...saved.stages[i],
+            cleared: s.cleared || saved.stages[i].cleared,
         })),
     }
 }
@@ -113,6 +129,20 @@ export function markCleared(progress: Progress, index: number): Progress {
             i === index ? { ...s, cleared: true } : s
         ),
     }
+}
+
+// A win: mark stage `index` cleared, which unlocks the next, and save if
+// that changed anything. Storage is read again first, so a clear another tab
+// saved since this one loaded isn't overwritten. Returns the new progress.
+export function recordClear(
+    progress: Progress,
+    storage: ProgressStorage | undefined,
+    index: number
+): Progress {
+    const latest = mergeProgress(progress, loadProgress(storage))
+    const next = markCleared(latest, index)
+    if (next !== latest) saveProgress(storage, next)
+    return next
 }
 
 // What one stage select slot shows.

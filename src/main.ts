@@ -14,8 +14,7 @@ import { levels } from "./levels"
 import { createLoop } from "./loop"
 import {
     loadProgress,
-    markCleared,
-    saveProgress,
+    recordClear,
     stageSlots,
     type Progress,
 } from "./progress"
@@ -89,18 +88,10 @@ function tick(dt: number) {
 function enter(prev: Screen, next: Screen) {
     screen = next
     if (next.kind === "stageClear" && prev.kind === "ending") {
-        recordClear(next.level)
+        progress = recordClear(progress, storage, next.level)
         celebrate(10)
     }
     showOverlay(next)
-}
-
-// A win clears the stage, which unlocks the next; save only on a change.
-function recordClear(level: number) {
-    const cleared = markCleared(progress, level)
-    if (cleared === progress) return
-    progress = cleared
-    saveProgress(storage, progress)
 }
 
 // Interpolation only moves on during play and the ending outro (where the
