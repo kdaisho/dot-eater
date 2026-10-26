@@ -49,7 +49,9 @@ describe("createRenderer", () => {
 
     it("draws the maze and every character without throwing", () => {
         const { calls, renderer, texts } = setup()
-        expect(() => renderer.draw(createGameState(), 0.5)).not.toThrow()
+        expect(() =>
+            renderer.draw(createGameState(OLD_LEVEL), 0.5)
+        ).not.toThrow()
         expect(calls.some((c) => c.name === "fillRect")).toBe(true)
         expect(texts()).toEqual(["🪰", "👹", "👺"])
     })
@@ -79,7 +81,7 @@ describe("createRenderer", () => {
 
     it("clears to the background without drawing the game", () => {
         const { calls, canvas, renderer, texts } = setup()
-        renderer.draw(createGameState(), 0)
+        renderer.draw(createGameState(OLD_LEVEL), 0)
         const size = [canvas.width, canvas.height]
         calls.length = 0
         renderer.clear()
@@ -115,7 +117,7 @@ describe("createRenderer", () => {
     })
 
     it("draws only the HUD fields given", () => {
-        const state = createGameState()
+        const state = createGameState(OLD_LEVEL)
         state.enemies = []
 
         const empty = setup()
@@ -185,6 +187,6 @@ describe("createRenderer", () => {
         const canvas = document.createElement("canvas")
         vi.spyOn(canvas, "getContext").mockReturnValue(null)
         const renderer = createRenderer(canvas)
-        expect(() => renderer.draw(createGameState(), 0)).not.toThrow()
+        expect(() => renderer.draw(createGameState(OLD_LEVEL), 0)).not.toThrow()
     })
 })

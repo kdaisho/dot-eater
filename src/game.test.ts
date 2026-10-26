@@ -569,7 +569,7 @@ describe("createGameState", () => {
     })
 
     it("starts with no score and full lives", () => {
-        const state = createGameState()
+        const state = createGameState(OLD_LEVEL)
         expect(state.score).toBe(0)
         expect(state.lives).toBe(START_LIVES)
     })
@@ -800,7 +800,7 @@ describe("step: caught on the tick the last dot is eaten", () => {
 
 describe("eatenAt", () => {
     it("starts as null", () => {
-        expect(createGameState().eatenAt).toBeNull()
+        expect(createGameState(OLD_LEVEL).eatenAt).toBeNull()
     })
 
     it("records the dot eaten on the player's latest move", () => {
