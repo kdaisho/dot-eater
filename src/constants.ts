@@ -58,6 +58,17 @@ export const PHANTOM_SPEED = 1.5
 // How many cells ahead of the player's heading an ambusher aims.
 export const AMBUSH_AHEAD = 4
 
+// How wide characters are drawn, as a fraction of a cell (the emoji's font
+// size; see render.ts).
+export const SPRITE_SCALE = 0.8
+
+// How close (in cells, centre to centre) an enemy's drawn position must come
+// to the player's for a catch. Two sprites start to touch at SPRITE_SCALE
+// apart; at 0.6 they visibly overlap by SPRITE_SCALE - 0.6 (a fifth of a
+// cell), so the player sees the touch and sprites that only graze don't
+// count. Keep it below SPRITE_SCALE if that changes.
+export const CATCH_DISTANCE = 0.6
+
 // Points for eating one dot.
 export const DOT_POINTS = 10
 // Lives at the start of a game.

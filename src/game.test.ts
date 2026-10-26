@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vite-plus/test"
 import {
     AiType,
+    CATCH_DISTANCE,
     Cell,
     CharacterId,
     DOT_POINTS,
@@ -23,12 +24,15 @@ import {
 import { parseLevel } from "./level"
 import { levels } from "./levels"
 import {
+    drawn,
     fixedRandom,
     makeEnemy,
     makePatroller,
     makeState,
     OLD_LEVEL,
     OLD_MAP,
+    textMap,
+    ticksUntilCaught,
 } from "./test/helpers"
 import { vec2, type Vec2 } from "./vec2"
 
@@ -89,6 +93,20 @@ function heldList(held: Vec2): Vec2[] {
     return held.x === 0 && held.y === 0 ? [] : [held]
 }
 
+// How far apart two drawn positions are, in cells (no wrapping).
+function gap(a: Vec2, b: Vec2): number {
+    return Math.hypot(a.x - b.x, a.y - b.y)
+}
+
+// Ticks for a head-on swap in the corridor to be caught at the default
+// speeds: the move tick leaves the sprites a cell apart, and then they close
+// (PLAYER_SPEED + ENEMY_SPEED) / TICK_RATE = 0.1 cells a tick until they are
+// CATCH_DISTANCE (0.6) apart, 4 ticks later.
+const SWAP_TICKS = 5
+// Ticks for an enemy stepping into a still player's cell to be caught: the
+// move tick, then 0.4 cells at ENEMY_SPEED / TICK_RATE (1/30) a tick.
+const STEP_IN_TICKS = 13
+
 describe("movePlayer", () => {
     it("is blocked by walls", () => {
         const state = makeState(map, { x: 1, y: 1 })
@@ -147,6 +165,26 @@ describe("checkEnd", () => {
     it("loses when an enemy shares the player's cell", () => {
         const state = makeState(map, { x: 1, y: 1 }, [makeEnemy(1, 1)])
         expect(checkEnd(state)).toBe("dead")
+    })
+
+    it("loses when an enemy is drawn within CATCH_DISTANCE of the player", () => {
+        // Half way through its move from (2, 1) to (1, 1): drawn at 1.5.
+        const enemy = makeEnemy(1, 1, AiType.random, { x: 2, y: 1 })
+        enemy.moveProgress = 0.5
+        const state = makeState(map, { x: 1, y: 1 }, [enemy])
+        expect(checkEnd(state)).toBe("dead")
+    })
+
+    it("goes on while an enemy in the player's cell is drawn further away", () => {
+        // It has just moved into the player's cell and is still drawn on
+        // (2, 1), 0.7 of a cell away.
+        const enemy = makeEnemy(1, 1, AiType.random, { x: 2, y: 1 })
+        enemy.moveProgress = 0.3
+        const state = makeState(map, { x: 1, y: 1 }, [enemy])
+        expect(gap(drawn(state, enemy), state.player.pos)).toBeGreaterThan(
+            CATCH_DISTANCE
+        )
+        expect(checkEnd(state)).toBeNull()
     })
 })
 
@@ -372,21 +410,33 @@ describe("step: player movement", () => {
     })
 })
 
+// Collisions are on drawn positions (see collides in game.ts): a catch is
+// when the sprites come within CATCH_DISTANCE, not when a move into the same
+// cell starts.
 describe("step: simultaneous moves", () => {
     // Each enemy's lastPos is set so it can only move one way: from (2, 1)
     // with lastPos (3, 1) it goes west; from (1, 1) with lastPos (0, 1) east.
 
-    it("is a collision when the player and an enemy swap cells", () => {
+    it("catches a player and an enemy swapping cells where they meet", () => {
         const state = makeState(corridor, { x: 1, y: 1 }, [
             makeEnemy(2, 1, AiType.random, { x: 3, y: 1 }),
         ])
         ready(state)
-        expect(run(state, 1, east)).toBe("dead")
+        // The swap happens at once, but the sprites are still a cell apart.
+        expect(run(state, 1, east)).toBeNull()
         expect(state.player.pos).toEqual(vec2(2, 1))
         expect(state.enemies[0].pos).toEqual(vec2(1, 1))
+        expect(run(state, SWAP_TICKS - 2, east)).toBeNull()
+        expect(run(state, 1, east)).toBe("dead")
+        // Caught mid-way, with both sprites between the two cells.
+        const player = drawn(state, state.player)
+        const enemy = drawn(state, state.enemies[0])
+        expect(player.x).toBeGreaterThan(1)
+        expect(enemy.x).toBeLessThan(2)
+        expect(gap(player, enemy)).toBeCloseTo(CATCH_DISTANCE)
     })
 
-    it("is a collision when the swapping enemy is not the first one", () => {
+    it("catches a swap with an enemy that is not the first one", () => {
         const state = makeState(corridor, { x: 1, y: 1 }, [
             // Moves west to (4, 1), away from the player.
             makeEnemy(5, 1, AiType.random, { x: 6, y: 1 }),
@@ -394,18 +444,19 @@ describe("step: simultaneous moves", () => {
             makeEnemy(2, 1, AiType.random, { x: 3, y: 1 }, CharacterId.enemy2),
         ])
         ready(state)
-        expect(run(state, 1, east)).toBe("dead")
+        expect(ticksUntilCaught(state, east)).toBe(SWAP_TICKS)
         expect(state.enemies[0].pos).toEqual(vec2(4, 1))
         expect(state.enemies[1].pos).toEqual(vec2(1, 1))
         expect(state.player.pos).toEqual(vec2(2, 1))
     })
 
-    it("is a collision when both step into the same cell", () => {
+    it("catches both stepping into the same cell once the sprites meet", () => {
         const state = makeState(corridor, { x: 1, y: 1 }, [
             makeEnemy(3, 1, AiType.random, { x: 4, y: 1 }),
         ])
         ready(state)
-        expect(run(state, 1, east)).toBe("dead")
+        // Two cells apart after the move tick, closing 0.1 cells a tick.
+        expect(ticksUntilCaught(state, east)).toBe(15)
         expect(state.player.pos).toEqual(vec2(2, 1))
         expect(state.enemies[0].pos).toEqual(vec2(2, 1))
     })
@@ -418,9 +469,11 @@ describe("step: simultaneous moves", () => {
         expect(run(state, 1, east)).toBeNull()
         expect(state.player.pos).toEqual(vec2(3, 1))
         expect(state.enemies[0].pos).toEqual(vec2(2, 1))
+        // The faster player keeps its lead.
+        expect(run(state, TICK_RATE / 2, east)).toBeNull()
     })
 
-    it("is not a collision when the player steps into the cell an enemy leaves", () => {
+    it("catches a player stepping into the cell an enemy leaves only on catching up", () => {
         const state = makeState(corridor, { x: 1, y: 1 }, [
             makeEnemy(2, 1, AiType.random, { x: 1, y: 1 }),
         ])
@@ -428,23 +481,159 @@ describe("step: simultaneous moves", () => {
         expect(run(state, 1, east)).toBeNull()
         expect(state.player.pos).toEqual(vec2(2, 1))
         expect(state.enemies[0].pos).toEqual(vec2(3, 1))
+        // The player gains (PLAYER_SPEED - ENEMY_SPEED) / TICK_RATE = 1/30 of
+        // a cell a tick on the enemy ahead and runs into it 0.4 cells later.
+        expect(ticksUntilCaught(state, east)).toBe(12)
+        expect(state.player.pos).toEqual(vec2(2, 1))
     })
 
-    it("is a collision when an enemy walks into a player who stays put", () => {
+    // Regression: collisions were on logical cells, so this was caught on the
+    // first tick with the enemy still drawn a cell away.
+    it("catches an enemy walking into a player who stays put once the sprites touch", () => {
         const state = makeState(corridor, { x: 1, y: 1 }, [
             makeEnemy(2, 1, AiType.random, { x: 3, y: 1 }),
         ])
         ready(state)
+        expect(run(state, 1)).toBeNull()
+        expect(state.enemies[0].pos).toEqual(vec2(1, 1))
+        expect(drawn(state, state.enemies[0])).toEqual(vec2(2, 1))
+        expect(run(state, STEP_IN_TICKS - 2)).toBeNull()
         expect(run(state, 1)).toBe("dead")
+        expect(
+            gap(drawn(state, state.enemies[0]), state.player.pos)
+        ).toBeCloseTo(CATCH_DISTANCE)
     })
 
-    it("is a collision when the player walks into an enemy that stays put", () => {
-        const state = makeState(corridor, { x: 1, y: 1 }, [
-            makeEnemy(2, 1, AiType.random, { x: 3, y: 1 }),
+    it("catches the player walking into an enemy that stays put once the sprites touch", () => {
+        const state = makeState(corridor, { x: 1, y: 1 }, [makeEnemy(2, 1)])
+        state.player.moveProgress = 1
+        // The enemy waits out its grace period (moveProgress 0) on (2, 1).
+        expect(run(state, 1, east)).toBeNull()
+        expect(state.player.pos).toEqual(vec2(2, 1))
+        // 0.4 cells at PLAYER_SPEED / TICK_RATE (1/15) a tick.
+        expect(ticksUntilCaught(state, east)).toBe(6)
+        expect(state.enemies[0].pos).toEqual(vec2(2, 1))
+    })
+})
+
+describe("step: collisions on drawn positions", () => {
+    it("lets a player escape an enemy that had started into their cell", () => {
+        // The enemy steps from (4, 1) into the player's cell; the player
+        // only starts away 4 ticks later, before the sprites touch.
+        const state = makeState(corridor, { x: 3, y: 1 }, [
+            makeEnemy(4, 1, AiType.random, { x: 5, y: 1 }),
         ])
         ready(state)
-        state.enemies[0].moveProgress = 0
+        expect(run(state, 4)).toBeNull()
+        expect(state.enemies[0].pos).toEqual(vec2(3, 1))
+        expect(run(state, TICK_RATE / 2, west)).toBeNull()
+        expect(state.lives).toBe(1)
+    })
+
+    it("is a near miss when an enemy turns back before it gets close", () => {
+        // A patroller walks east to (3, 1), right next to the player on
+        // (4, 1), then turns back for (1, 1): never within CATCH_DISTANCE.
+        const patroller = makePatroller(1, 1, [
+            [3, 1],
+            [1, 1],
+        ])
+        const state = makeState(corridor, { x: 4, y: 1 }, [patroller])
+        expect(run(state, 100)).toBeNull()
+        expect(patroller.routeIndex).toBe(1)
+        expect(patroller.pos.x).toBeLessThan(3)
+    })
+
+    it("catches across a wrap tunnel", () => {
+        // The corridor's ends are open: the enemy on (8, 1) steps east
+        // through the tunnel into the player's cell (0, 1).
+        const state = makeState(corridor, { x: 0, y: 1 }, [
+            makeEnemy(8, 1, AiType.random, { x: 7, y: 1 }),
+        ])
+        ready(state)
+        expect(run(state, 1)).toBeNull()
+        expect(state.enemies[0].pos).toEqual(vec2(0, 1))
+        // Drawn a cell off the left edge, i.e. on (8, 1) again.
+        expect(drawn(state, state.enemies[0])).toEqual(vec2(-1, 1))
+        expect(run(state, STEP_IN_TICKS - 2)).toBeNull()
+        expect(run(state, 1)).toBe("dead")
+        // Still drawn over the edge from the player when caught.
+        expect(drawn(state, state.enemies[0]).x).toBeCloseTo(-CATCH_DISTANCE)
+    })
+
+    it("catches across a wrap tunnel when the player is the one crossing", () => {
+        const state = makeState(corridor, { x: 0, y: 1 }, [makeEnemy(8, 1)])
+        state.player.moveProgress = 1
+        // The player steps west through the tunnel into the enemy's cell.
+        expect(ticksUntilCaught(state, west)).toBe(7)
+        expect(state.player.pos).toEqual(vec2(8, 1))
+    })
+
+    it("catches fast characters that pass through each other between ticks", () => {
+        // Both move a cell every tick, head-on. At every tick boundary their
+        // sprites are a whole cell apart (2 and 5, 3 and 4, then 4 and 3):
+        // they cross within the third tick.
+        const state = makeState(corridor, { x: 2, y: 1 }, [
+            makeEnemy(5, 1, AiType.random, { x: 6, y: 1 }),
+        ])
+        state.player.speed = TICK_RATE
+        state.enemies[0].speed = TICK_RATE
+        ready(state)
+        expect(run(state, 2, east)).toBeNull()
+        expect(drawn(state, state.player)).toEqual(vec2(3, 1))
+        expect(drawn(state, state.enemies[0])).toEqual(vec2(4, 1))
         expect(run(state, 1, east)).toBe("dead")
+        expect(drawn(state, state.player)).toEqual(vec2(4, 1))
+        expect(drawn(state, state.enemies[0])).toEqual(vec2(3, 1))
+    })
+
+    // Regression (also the next test): motion within a tick was taken as a
+    // straight line from where a character was drawn at the start to where
+    // at the end, which cuts the corner when it turns within the tick.
+    it("catches a fast enemy turning through the player's cell within a tick", () => {
+        const { map } = textMap(["#####", "### #", "#.  #", "#####"])
+        // It has stepped east into the player's cell (3, 2) and is drawn
+        // 0.9 of a cell short of it, at (2.1, 2).
+        const enemy = makeEnemy(3, 2, AiType.random, { x: 2, y: 2 })
+        enemy.moveProgress = 0.1
+        // 1.8 cells a tick: it reaches (3, 2) half way through the tick and
+        // turns north, the only way on, ending at (3, 1.1). The straight
+        // line between those passes 0.64 of a cell from the player.
+        enemy.speed = 1.8 * TICK_RATE
+        const state = makeState(map, { x: 3, y: 2 }, [enemy])
+        expect(run(state, 1)).toBe("dead")
+        expect(enemy.pos).toEqual(vec2(3, 1))
+        expect(gap(drawn(state, enemy), state.player.pos)).toBeCloseTo(0.9)
+    })
+
+    it("catches a fast enemy turning back in the player's cell within a tick", () => {
+        const { map } = textMap(["######", "#.   #", "######"])
+        // It has stepped east into the player's cell (4, 1), a dead end,
+        // and is drawn 0.7 of a cell short of it, at (3.3, 1).
+        const enemy = makeEnemy(4, 1, AiType.random, { x: 3, y: 1 })
+        enemy.moveProgress = 0.3
+        // 1.4 cells a tick: it reaches (4, 1) half way through the tick and
+        // turns back west, ending where it started, so a straight line
+        // between the two has it standing still.
+        enemy.speed = 1.4 * TICK_RATE
+        const state = makeState(map, { x: 4, y: 1 }, [enemy])
+        expect(run(state, 1)).toBe("dead")
+        expect(enemy.pos).toEqual(vec2(3, 1))
+        expect(drawn(state, enemy).x).toBeCloseTo(3.3)
+    })
+
+    // Regression: the chaser aimed at the player's cell, which is its own,
+    // so every way out scored the same and it took the first, north.
+    it("sends a chaser on the player's cell towards the player's sprite gliding in", () => {
+        const { map } = textMap(["#######", "###.###", "#.....#", "#######"])
+        // The player is 0.3 of the way through a step east from (2, 2) to
+        // (3, 2); the chaser came west into (3, 2) and is ready to move on.
+        const chaser = makeEnemy(3, 2, AiType.chase, { x: 4, y: 2 })
+        chaser.moveProgress = 1
+        const state = makeState(map, { x: 3, y: 2 }, [chaser])
+        state.player.lastPos = vec2(2, 2)
+        state.player.moveProgress = 0.3
+        expect(run(state, 1)).toBeNull()
+        expect(chaser.pos).toEqual(vec2(2, 2))
     })
 })
 
@@ -453,13 +642,15 @@ describe("step: simultaneous moves", () => {
 describe("step: the tick that ends the game", () => {
     it("moves every character in that tick", () => {
         const state = makeState(corridor, { x: 2, y: 1 }, [
-            // Walks into the player.
-            makeEnemy(1, 1, AiType.random, { x: 0, y: 1 }),
+            // Half way from (1, 1) into the player's cell: already touching.
+            makeEnemy(2, 1, AiType.random, { x: 1, y: 1 }),
             makeEnemy(6, 1, AiType.random, { x: 7, y: 1 }, CharacterId.enemy2),
         ])
-        ready(state)
-        expect(run(state, 1)).toBe("dead")
-        expect(state.player.pos).toEqual(vec2(2, 1))
+        state.player.moveProgress = 1
+        state.enemies[0].moveProgress = 0.5
+        state.enemies[1].moveProgress = 1
+        expect(run(state, 1, east)).toBe("dead")
+        expect(state.player.pos).toEqual(vec2(3, 1))
         expect(state.enemies[0].pos).toEqual(vec2(2, 1))
         expect(state.enemies[1].pos).toEqual(vec2(5, 1))
     })
@@ -538,13 +729,13 @@ describe("step: new enemy types", () => {
             lives: 2,
         })
         ready(state)
-        run(state, 1)
+        expect(ticksUntilCaught(state)).toBe(STEP_IN_TICKS)
         expect(state.lives).toBe(1)
         expect(patroller.pos).toEqual(vec2(2, 1))
         expect(patroller.routeIndex).toBe(0)
     })
 
-    it("a phantom catches the player from inside a wall", () => {
+    it("a phantom catches the player as it comes out of a wall", () => {
         const state = makeState(
             [
                 [1, 1, 1, 1, 1],
@@ -555,8 +746,12 @@ describe("step: new enemy types", () => {
             [makeEnemy(2, 1, AiType.phantom)]
         )
         ready(state)
-        expect(run(state, 1)).toBe("dead")
+        expect(run(state, 1)).toBeNull()
         expect(state.enemies[0].pos).toEqual(vec2(1, 1))
+        // 0.4 cells at PHANTOM_SPEED / TICK_RATE (1/40) a tick.
+        expect(ticksUntilCaught(state)).toBe(16)
+        // Caught with most of its sprite still in the wall at (2, 1).
+        expect(drawn(state, state.enemies[0]).x).toBeGreaterThan(1.5)
     })
 })
 
@@ -771,6 +966,8 @@ describe("step: lives", () => {
 
     it("costs a life on a swap and respawns everyone, keeping dots and score", () => {
         const state = swap(3)
+        expect(run(state, SWAP_TICKS - 1, east)).toBeNull()
+        expect(state.lives).toBe(3)
         expect(run(state, 1, east)).toBeNull()
         expect(state.lives).toBe(2)
         expect(state.cells[1][2]).toBe(Cell.none)
@@ -786,7 +983,7 @@ describe("step: lives", () => {
 
     it("costs a life when an enemy walks into a player who stays put", () => {
         const state = swap(2)
-        expect(run(state, 1)).toBeNull()
+        expect(ticksUntilCaught(state)).toBe(STEP_IN_TICKS)
         expect(state.lives).toBe(1)
         expect(state.player.pos).toEqual(vec2(1, 1))
         expect(state.enemies[0].pos).toEqual(vec2(2, 1))
@@ -794,8 +991,11 @@ describe("step: lives", () => {
 
     it("clears a tap buffered on the tick a life is lost", () => {
         const state = swap(2)
-        // Mid-move: the tap is buffered, but the player can't move yet.
+        // Mid-move: the tap is buffered, but the player can't move yet
+        // (13/15 of the way to its next move on the catch tick).
         state.player.moveProgress = 0
+        run(state, STEP_IN_TICKS - 1)
+        expect(state.lives).toBe(2)
         expect(tap(state, west)).toBeNull()
         expect(state.lives).toBe(1)
         expect(state.bufferedStep).toEqual(none)
@@ -829,7 +1029,7 @@ describe("step: lives", () => {
 
     it("plays on after a respawn", () => {
         const state = swap(2)
-        run(state, 1, east)
+        run(state, SWAP_TICKS, east)
         expect(state.lives).toBe(1)
         // The player is ready at once; the enemy waits out its grace period.
         expect(run(state, 1, west)).toBeNull()
@@ -839,6 +1039,7 @@ describe("step: lives", () => {
 
     it("ends the game on a collision on the last life", () => {
         const state = swap(1)
+        expect(run(state, SWAP_TICKS - 1, east)).toBeNull()
         expect(run(state, 1, east)).toBe("dead")
         expect(state.lives).toBe(0)
         // No respawn: the final positions stay as they were.
@@ -849,11 +1050,11 @@ describe("step: lives", () => {
     it("ends the game after START_LIVES collisions", () => {
         const state = swap(START_LIVES)
         for (let i = 1; i < START_LIVES; i++) {
-            expect(run(state, 1, east)).toBeNull()
+            expect(run(state, SWAP_TICKS, east)).toBeNull()
             expect(state.lives).toBe(START_LIVES - i)
             ready(state)
         }
-        expect(run(state, 1, east)).toBe("dead")
+        expect(run(state, SWAP_TICKS, east)).toBe("dead")
         expect(state.lives).toBe(0)
     })
 })
@@ -862,7 +1063,8 @@ describe("step: lives", () => {
 // caught: see checkEnd.
 describe("step: caught on the tick the last dot is eaten", () => {
     // Only one dot, at (2, 1). The player at (1, 1) eats it walking east
-    // while the enemy at (2, 1) walks west into them: a swap collision.
+    // while the enemy, half way from (2, 1) into the player's cell, is
+    // already touching them: a catch on that tick.
     const lastDot = [
         [1, 1, 1, 1, 1, 1, 1],
         [0, 0, 2, 0, 0, 0, 0],
@@ -873,10 +1075,13 @@ describe("step: caught on the tick the last dot is eaten", () => {
         const state = makeState(
             lastDot,
             { x: 1, y: 1 },
-            [makeEnemy(2, 1, AiType.random, { x: 3, y: 1 })],
+            [makeEnemy(1, 1, AiType.random, { x: 2, y: 1 })],
             { lives }
         )
-        ready(state)
+        state.player.moveProgress = 1
+        state.enemies[0].moveProgress = 0.5
+        // It respawns away from the player.
+        state.spawns.enemies = [vec2(5, 1)]
         return state
     }
 
@@ -900,6 +1105,7 @@ describe("step: caught on the tick the last dot is eaten", () => {
         expect(run(state, 1, east)).toBeNull()
         expect(state.lives).toBe(1)
         expect(state.player.pos).toEqual(vec2(1, 1))
+        expect(state.enemies[0].pos).toEqual(vec2(5, 1))
     })
 })
 
@@ -949,6 +1155,8 @@ describe("eatenAt", () => {
         )
         ready(state)
         expect(run(state, 1, east)).toBeNull()
+        expect(state.eatenAt).toEqual(vec2(2, 1))
+        expect(run(state, SWAP_TICKS - 1, east)).toBeNull()
         expect(state.lives).toBe(1)
         expect(state.score).toBe(DOT_POINTS)
         expect(state.eatenAt).toBeNull()

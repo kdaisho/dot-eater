@@ -63,8 +63,18 @@ function nextPos(
             if (pos.length === 0) return null
             return pos[Math.floor(random() * pos.length)]
         }
-        case AiType.chase:
-            return chaseStep(cells, ice, enemy, target)
+        case AiType.chase: {
+            // Collisions are on drawn positions (see collides in game.ts),
+            // so a chaser can stand on the player's cell while the player's
+            // sprite is still gliding in from targetLast. Every way out
+            // would score the same, so it could walk away: head for
+            // targetLast instead, where the sprite is coming from.
+            const aim =
+                samePos(target, enemy.pos) && !samePos(targetLast, enemy.pos)
+                    ? targetLast
+                    : target
+            return chaseStep(cells, ice, enemy, aim)
+        }
         case AiType.ambusher: {
             // Already standing where it aims: every way out scores the same,
             // so it would just take direction order. Go for the player.

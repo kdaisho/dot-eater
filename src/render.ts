@@ -1,4 +1,4 @@
-import { Cell, CharacterId } from "./constants"
+import { Cell, CharacterId, SPRITE_SCALE } from "./constants"
 import {
     fogDistance,
     fogWrap,
@@ -65,7 +65,6 @@ const sprites: Record<CharacterId, string> = {
 // on a 35px pitch and 5px dots.
 const WALL_SCALE = 30 / 35
 const DOT_SCALE = 5 / 35
-const SPRITE_SCALE = 0.8
 
 export type RendererOptions = {
     // The window to fit; defaults to the global one.

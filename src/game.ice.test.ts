@@ -9,6 +9,7 @@ import {
     makePatroller,
     makeState,
     textMap,
+    ticksUntilCaught,
 } from "./test/helpers"
 import { samePos, vec2, type Vec2 } from "./vec2"
 
@@ -245,9 +246,8 @@ describe("step: enemies on ice", () => {
         const state = rink(lane, vec2(7, 1), [enemy])
         // Slides onto the floor at (7, 2), then turns north at the player.
         expect(trail(state, 1, {}, enemy)).toEqual([vec2(7, 2)])
-        expect(stepOnce(state)).toBeNull()
-        trail(state, ENEMY_TICKS - 2, {}, enemy)
-        expect(stepOnce(state)).toBe("dead")
+        expect(trail(state, ENEMY_TICKS, {}, enemy)).toEqual([vec2(7, 1)])
+        expect(ticksUntilCaught(state)).toBeLessThan(ENEMY_TICKS)
         expect(enemy.pos).toEqual(vec2(7, 1))
     })
 
@@ -294,27 +294,50 @@ describe("step: enemies on ice", () => {
     })
 })
 
+// Collisions are on drawn positions (see collides in game.ts); slides are
+// ordinary moves, drawn gliding like any other.
 describe("step: collisions while sliding", () => {
     const lane = ["#########", "# ~~~~~ #", "#######.#"]
 
-    it("is a collision when a sliding player and an enemy swap cells", () => {
+    it("catches a sliding player and an enemy swapping cells where they meet", () => {
         const state = rink(lane, vec2(3, 1), [
             makeEnemy(4, 1, AiType.random, { x: 5, y: 1 }),
         ])
         state.player.lastPos = vec2(2, 1)
-        expect(stepOnce(state, { held: [west] })).toBe("dead")
+        expect(stepOnce(state, { held: [west] })).toBeNull()
         expect(state.player.pos).toEqual(vec2(4, 1))
         expect(state.enemies[0].pos).toEqual(vec2(3, 1))
+        // A cell apart, closing 0.1 cells a tick to CATCH_DISTANCE.
+        expect(ticksUntilCaught(state)).toBe(4)
     })
 
-    it("is a collision when both slide into the same cell", () => {
+    it("catches both sliding into the same cell once the sprites meet", () => {
         const state = rink(lane, vec2(2, 1), [
             makeEnemy(4, 1, AiType.random, { x: 5, y: 1 }),
         ])
         state.player.lastPos = vec2(1, 1)
-        expect(stepOnce(state)).toBe("dead")
+        expect(stepOnce(state)).toBeNull()
         expect(state.player.pos).toEqual(vec2(3, 1))
         expect(state.enemies[0].pos).toEqual(vec2(3, 1))
+        expect(ticksUntilCaught(state)).toBe(14)
+    })
+
+    it("catches an enemy sliding into a player who stays put once the sprites touch", () => {
+        // The enemy slides east from (3, 1); the player stands on the ice
+        // at (5, 1) without sliding (it hasn't moved).
+        const enemy = makeEnemy(3, 1, AiType.random, { x: 2, y: 1 })
+        const state = rink(lane, vec2(5, 1), [enemy])
+        // Two slide steps at ENEMY_SPEED (2): on the first tick and the
+        // TICK_RATE / 2 ticks after it. The second goes into the player's
+        // cell with the sprites still a cell apart.
+        expect(trail(state, TICK_RATE / 2 + 1, {}, enemy)).toEqual([
+            vec2(4, 1),
+            vec2(5, 1),
+        ])
+        expect(state.lives).toBe(1)
+        // 0.4 cells at 1/30 of a cell a tick.
+        expect(ticksUntilCaught(state)).toBe(12)
+        expect(enemy.pos).toEqual(vec2(5, 1))
     })
 
     it("is not a collision when an enemy slides into the cell the player leaves", () => {
