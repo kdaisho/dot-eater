@@ -418,8 +418,8 @@ describe("clear time", () => {
     it("rates the clear against the level's par time", () => {
         const fast = clear(0)
         expect(fast.rating).toMatchObject({ stars: 3, underPar: true })
-        // A par of 15 ticks is one short of the 16 played.
-        const tight = parseLevel({ ...corridorData, parTime: 15 / TICK_RATE })
+        // A par of 0.2 s (12 ticks) is short of the 16 played.
+        const tight = parseLevel({ ...corridorData, parTime: 0.2 })
         const slow = clear(0, deps({ levels: [tight, second] }))
         expect(slow.rating).toMatchObject({
             ticks: 16,

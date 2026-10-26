@@ -130,13 +130,13 @@ describe("showStageSelect", () => {
             0
         )
         expect(items()).toEqual([
-            "Classic  ★★☆  0:42.3",
-            "Wrap  ★★★",
+            "Classic · ★★☆ · 0:42.3",
+            "Wrap · ★★★",
             "Ice",
             "🔒 Fog",
             "Coming soon",
         ])
-        expect(selected()).toEqual(["Classic  ★★☆  0:42.3"])
+        expect(selected()).toEqual(["Classic · ★★☆ · 0:42.3"])
     })
 
     it("moves the mark when shown again", () => {

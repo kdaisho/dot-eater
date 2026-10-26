@@ -537,7 +537,7 @@ describe("main", () => {
         expect(screen()).toBe("stage-select")
         const { stars = 0, bestTime = 0 } = saved.stages[0]
         expect(selectedItem()).toBe(
-            `${levels[0].name}  ${starText(stars)}  ${formatTicks(bestTime)}`
+            `${levels[0].name} · ${starText(stars)} · ${formatTicks(bestTime)}`
         )
     })
 

@@ -123,9 +123,9 @@ export function parseLevel(data: LevelData): Level {
     if (name.trim() === "") {
         problems.push("name must not be empty")
     }
-    if (!(Number.isFinite(data.parTime) && data.parTime > 0)) {
+    if (!isParTime(data.parTime)) {
         problems.push(
-            `parTime must be a positive number of seconds, got ${data.parTime}`
+            `parTime must be a positive number of seconds in whole tenths, got ${String(data.parTime)}`
         )
     }
     checkSpeed(problems, "playerSpeed", data.playerSpeed)
@@ -391,4 +391,15 @@ export function hasDots(cells: Cells): boolean {
         }
     }
     return false
+}
+
+// Par times are shown to the tenth of a second, so they must be whole tenths:
+// otherwise a clear could earn the par star while showing a time above the
+// shown par (or the other way round).
+function isParTime(value: unknown): value is number {
+    if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) {
+        return false
+    }
+    const tenths = value * 10
+    return Math.abs(tenths - Math.round(tenths)) < 1e-9
 }

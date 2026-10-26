@@ -78,7 +78,7 @@ function slotLabel(slot: StageSlot): string {
                 slot.stars === undefined ? "" : starText(slot.stars),
                 slot.bestTime === undefined ? "" : formatTicks(slot.bestTime),
             ].filter(Boolean)
-            return [slot.name, ...bests].join("  ")
+            return [slot.name, ...bests].join(" · ")
         }
         case "locked":
             return `🔒 ${slot.name}`

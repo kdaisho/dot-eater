@@ -48,6 +48,14 @@ describe("rateClear", () => {
         expect(at(1)).toMatchObject({ underPar: true, stars: 2 })
     })
 
+    // Regression: 16.4 * 60 is 983.9999999999999, so a clear exactly at par
+    // (984 ticks, shown as 0:16.4) missed the star.
+    it("counts a clear exactly at a tenths par as under par", () => {
+        expect(rateClear({ ticks: 984, lives: 1 }, 16.4).underPar).toBe(true)
+        expect(rateClear({ ticks: 985, lives: 1 }, 16.4).underPar).toBe(false)
+        expect(rateClear({ ticks: 246, lives: 1 }, 4.1).underPar).toBe(true)
+    })
+
     it("works with a par time that isn't whole seconds", () => {
         // 0.5 s is 30 ticks.
         expect(rateClear({ ticks: 30, lives: 1 }, 0.5).underPar).toBe(true)

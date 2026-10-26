@@ -23,13 +23,14 @@ export type ClearRating = {
 
 // Rate a won game. `game` is the finished game's clear time and lives left,
 // `parTime` the level's, in seconds. Reaching the par time exactly still
-// counts as under par.
+// counts as under par. Par is rounded to whole ticks, since e.g. 16.4 * 60
+// is 983.9999999999999 in floating point, which would miss a 984-tick clear.
 export function rateClear(
     game: { ticks: number; lives: number },
     parTime: number
 ): ClearRating {
     const noLivesLost = game.lives >= START_LIVES
-    const underPar = game.ticks <= parTime * TICK_RATE
+    const underPar = game.ticks <= Math.round(parTime * TICK_RATE)
     const stars = (1 + Number(noLivesLost) + Number(underPar)) as Stars
     return { ticks: game.ticks, parTime, noLivesLost, underPar, stars }
 }

@@ -203,6 +203,7 @@ describe("parseLevel", () => {
     it("carries the par time into the level", () => {
         expect(parseLevel(valid).parTime).toBe(60)
         expect(parseLevel({ ...valid, parTime: 0.5 }).parTime).toBe(0.5)
+        expect(parseLevel({ ...valid, parTime: 16.4 }).parTime).toBe(16.4)
     })
 
     it("returns cells that are not shared with other parses", () => {
@@ -219,20 +220,20 @@ describe("parseLevel", () => {
             ])
         })
 
-        it.each([0, -5, NaN, Infinity])("a parTime of %s", (parTime) => {
+        it.each([0, -5, NaN, Infinity, 45.54])("a parTime of %s", (parTime) => {
             expect(problemsOf({ ...valid, parTime })).toEqual([
-                `parTime must be a positive number of seconds, got ${parTime}`,
+                `parTime must be a positive number of seconds in whole tenths, got ${parTime}`,
             ])
         })
 
         it("a missing or non-number parTime", () => {
             const { parTime: _, ...missing } = valid
             expect(problemsOf(missing as LevelData)).toEqual([
-                "parTime must be a positive number of seconds, got undefined",
+                "parTime must be a positive number of seconds in whole tenths, got undefined",
             ])
             const text = { ...valid, parTime: "60" } as unknown as LevelData
             expect(problemsOf(text)).toEqual([
-                "parTime must be a positive number of seconds, got 60",
+                "parTime must be a positive number of seconds in whole tenths, got 60",
             ])
         })
 
@@ -488,7 +489,7 @@ describe("parseLevel", () => {
             ).toThrow(
                 'Invalid level "":\n' +
                     "- name must not be empty\n" +
-                    "- parTime must be a positive number of seconds, got 0\n" +
+                    "- parTime must be a positive number of seconds in whole tenths, got 0\n" +
                     '- unknown map character "x" at (1, 0)\n' +
                     "- map row 1 is 1 wide, expected 2 (the width of row 0)"
             )
