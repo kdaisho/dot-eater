@@ -1,0 +1,161 @@
+import {
+    AiType,
+    RESPAWN_DELAY,
+    SPLITTER_HALF_SPEED,
+    type CharacterId,
+} from "./constants"
+import { createCharacter, type Character } from "./character"
+import type { GameState } from "./game"
+import { distanceMap, openNeighbours } from "./path"
+import { samePos, vec2, type Vec2 } from "./vec2"
+
+// The Splitter (AiType.splitter): an enemy that a defeating breath splits in
+// two instead of defeating. Pure, no DOM.
+//
+// A Splitter owns two enemy slots, next to each other in GameState.enemies,
+// so a split never needs more enemies than there are ENEMY_IDS (parseLevel
+// counts a Splitter as two). The first slot ("main") is the Splitter itself;
+// the second ("spare") is out of play, with no timer (GONE), until a split.
+//
+// - Whole: the main slot is in play at the Splitter's own speed and chases;
+//   the spare is GONE.
+// - Split: a breath's defeat (defeatEnemy in breath.ts) on the whole
+//   Splitter scores DEFEAT_POINTS and turns both slots into halves, in play
+//   at SPLITTER_HALF_SPEED, spreading out from the Splitter's cell (see
+//   spread). Halves chase too, are drawn smaller, and don't split again.
+// - A half defeated: DEFEAT_POINTS, and it is GONE (at its spawn), with no
+//   respawn of its own. Once both halves are gone, the main slot is whole
+//   again and waits out RESPAWN_DELAY at the spawn like any defeated enemy,
+//   blinking before it is back.
+// - A lost life: whatever it was, it is back whole at its spawn and the
+//   spare is GONE (see resetSplitter).
+//
+// Everything else (statuses, pushes, tile effects, collisions) treats each
+// slot in play like any other enemy.
+
+export type SplitterPart = {
+    slot: "main" | "spare"
+    // Whether this slot is a half now. The spare is a half whenever it is in
+    // play.
+    half: boolean
+    // The whole Splitter's speed (the level's, or the default), for when it
+    // is whole again.
+    wholeSpeed: number
+}
+
+// Character.respawnIn for a slot that is out of play with no timer: it
+// never counts down to 0 (see tickEffects in breath.ts).
+export const GONE = Infinity
+
+// A whole Splitter at `pos` and its spare slot, with the enemy ids for the
+// two slots.
+export function createSplitter(
+    ids: readonly [CharacterId, CharacterId],
+    pos: Vec2,
+    speed?: number
+): [Character, Character] {
+    const main = createCharacter(
+        ids[0],
+        vec2(pos.x, pos.y),
+        AiType.splitter,
+        speed
+    )
+    const spare = createCharacter(
+        ids[1],
+        vec2(pos.x, pos.y),
+        AiType.splitter,
+        SPLITTER_HALF_SPEED
+    )
+    main.part = { slot: "main", half: false, wholeSpeed: main.speed }
+    spare.part = { slot: "spare", half: true, wholeSpeed: main.speed }
+    spare.respawnIn = GONE
+    return [main, spare]
+}
+
+export function isWholeSplitter(enemy: Character): boolean {
+    return enemy.part?.half === false
+}
+
+export function isSplitterHalf(enemy: Character): boolean {
+    return enemy.part?.half === true
+}
+
+// The main and spare slots of the Splitter whose slot is at `i` in
+// state.enemies.
+function slots(state: GameState, i: number): [Character, Character] {
+    const enemy = state.enemies[i]
+    return enemy.part?.slot === "spare"
+        ? [state.enemies[i - 1], enemy]
+        : [enemy, state.enemies[i + 1]]
+}
+
+// Split the whole Splitter at `i` (its main slot) into two halves. Called by
+// defeatEnemy, which scores it. The halves start where the Splitter was,
+// with no statuses, and spread out (see spread).
+export function splitSplitter(state: GameState, i: number) {
+    const [main, spare] = slots(state, i)
+    spare.pos = vec2(main.pos.x, main.pos.y)
+    spare.lastPos = vec2(main.lastPos.x, main.lastPos.y)
+    spare.moveProgress = main.moveProgress
+    for (const half of [main, spare]) {
+        half.part!.half = true
+        half.speed = SPLITTER_HALF_SPEED
+        half.statuses = []
+        half.respawnIn = 0
+    }
+    spread(state, [main, spare])
+}
+
+// Send the two halves, both on the Splitter's cell, to two different open
+// neighbouring cells, so they don't start as one stacked sprite: the two
+// farthest from the player by path (direction order on ties), never the
+// player's own cell. So the player who just breathed gets a moment's room
+// where the maze allows it (in a corridor one half still comes its way).
+// Each half glides out from the Splitter's cell as if it had just moved
+// there, so the no-reverse rule keeps them going apart. A half left without
+// a cell (a dead end) stays as the Splitter was. If the Splitter stood on
+// the player's cell (its sprite still gliding in), the halves start on their
+// new cells instead: gliding out from there would start on top of the
+// player and catch at once.
+function spread(state: GameState, halves: readonly Character[]) {
+    const { cells, player } = state
+    const at = vec2(halves[0].pos.x, halves[0].pos.y)
+    const fromPlayer = distanceMap(cells, player.pos)
+    const targets = openNeighbours(cells, at)
+        .filter((to) => !samePos(to, player.pos))
+        .sort((a, b) => fromPlayer[b.y][b.x] - fromPlayer[a.y][a.x] || 0)
+    const onPlayer = samePos(at, player.pos)
+    targets.slice(0, 2).forEach((to, k) => {
+        const half = halves[k]
+        const from = onPlayer ? to : at
+        half.lastPos = vec2(from.x, from.y)
+        half.pos = vec2(to.x, to.y)
+        half.moveProgress = 0
+    })
+}
+
+// The half at `i` was defeated (defeatEnemy has scored it and sent it to
+// its spawn): it is GONE. Once both halves are, the Splitter is whole again
+// in its main slot and back after RESPAWN_DELAY.
+export function halfDefeated(state: GameState, i: number) {
+    state.enemies[i].respawnIn = GONE
+    const [main, spare] = slots(state, i)
+    if (main.respawnIn > 0 && spare.respawnIn > 0) {
+        makeWhole(main)
+        main.respawnIn = RESPAWN_DELAY
+    }
+}
+
+// After a lost life, which puts every enemy back in play at its spawn (see
+// respawn in game.ts): a Splitter's main slot is whole again and its spare
+// out of play. Does nothing to other enemies.
+export function resetSplitter(enemy: Character) {
+    if (!enemy.part) return
+    if (enemy.part.slot === "main") makeWhole(enemy)
+    else enemy.respawnIn = GONE
+}
+
+function makeWhole(main: Character) {
+    main.part!.half = false
+    main.speed = main.part!.wholeSpeed
+}

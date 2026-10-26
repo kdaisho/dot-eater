@@ -28,6 +28,7 @@ import { slideStep, type IceMap } from "./ice"
 import { hasDots, loopPos, type Cells, type Level } from "./level"
 import { levels } from "./levels"
 import { DEFAULT_ANIMAL, type AnimalId } from "./roster"
+import { createSplitter, resetSplitter } from "./splitter"
 import { samePos, vec2, type Vec2 } from "./vec2"
 
 export type Outcome = "dead" | "won"
@@ -117,15 +118,29 @@ export function createGameState(
     // gives the player a short grace period before they move.
     player.moveProgress = 1
     const cells = level.cells.map((row) => [...row])
-    const enemies = level.enemies.map((enemy, i) =>
-        createCharacter(
-            ENEMY_IDS[i],
-            vec2(enemy.pos.x, enemy.pos.y),
-            enemy.ai,
-            enemy.speed,
-            enemy.route
-        )
-    )
+    // One enemy slot each, two for a Splitter (see splitter.ts), all with
+    // the spawn of the level's enemy they come from.
+    const enemies: Character[] = []
+    const enemySpawns: Vec2[] = []
+    for (const enemy of level.enemies) {
+        const [id, spareId] = ENEMY_IDS.slice(enemies.length)
+        const slots =
+            enemy.ai === AiType.splitter
+                ? createSplitter([id, spareId], enemy.pos, enemy.speed)
+                : [
+                      createCharacter(
+                          id,
+                          vec2(enemy.pos.x, enemy.pos.y),
+                          enemy.ai,
+                          enemy.speed,
+                          enemy.route
+                      ),
+                  ]
+        for (const slot of slots) {
+            enemies.push(slot)
+            enemySpawns.push(vec2(enemy.pos.x, enemy.pos.y))
+        }
+    }
     const ice = level.ice.map((row) => [...row])
     return {
         cells,
@@ -142,7 +157,7 @@ export function createGameState(
         eatenAt: null,
         spawns: {
             player: vec2(spawn.x, spawn.y),
-            enemies: level.enemies.map((e) => vec2(e.pos.x, e.pos.y)),
+            enemies: enemySpawns,
         },
     }
 }
@@ -150,8 +165,9 @@ export function createGameState(
 // Put everyone back where they started, as at the start of a game: the
 // player ready to move, the enemies waiting out the grace period again, no
 // tap buffered, the player facing right again. Every enemy is back in play
-// with no statuses, including one that was defeated and waiting to respawn.
-// Dots, score, energy, the breath cooldown and tile effects are left alone.
+// with no statuses, including one that was defeated and waiting to respawn,
+// and a Splitter is whole again (see resetSplitter). Dots, score, energy,
+// the breath cooldown and tile effects are left alone.
 function respawn(state: GameState) {
     const { player, enemies, spawns } = state
     player.pos = vec2(spawns.player.x, spawns.player.y)
@@ -166,6 +182,7 @@ function respawn(state: GameState) {
         enemy.routeIndex = 0
         enemy.statuses = []
         enemy.respawnIn = 0
+        resetSplitter(enemy)
     })
     state.breather.facing = vec2(START_FACING.x, START_FACING.y)
     state.bufferedStep = vec2(0, 0)

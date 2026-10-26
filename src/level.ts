@@ -18,7 +18,13 @@ export type Cells = Cell[][]
 
 // AI names as written in level data. Strings, not AiType numbers, so level
 // files (and, later, shared level URLs) stay readable.
-export type AiName = "random" | "chase" | "ambusher" | "patroller" | "phantom"
+export type AiName =
+    | "random"
+    | "chase"
+    | "ambusher"
+    | "patroller"
+    | "phantom"
+    | "splitter"
 
 // A cell as written in level data: [x, y], counted from the top-left corner
 // of the map (0, 0).
@@ -26,7 +32,9 @@ export type CellRef = readonly [x: number, y: number]
 
 export type EnemyData = {
     ai: AiName
-    // Cells per second. Omitted means the game's default speed.
+    // Cells per second. Omitted means the game's default speed. For a
+    // splitter, the whole one's speed (its halves always move at
+    // SPLITTER_HALF_SPEED).
     speed?: number
     // Patrollers only, and required for them: the waypoints walked in order,
     // looping back to the first after the last. At least two, each an open
@@ -103,6 +111,7 @@ const AI_TYPES: Record<AiName, AiType> = {
     ambusher: AiType.ambusher,
     patroller: AiType.patroller,
     phantom: AiType.phantom,
+    splitter: AiType.splitter,
 }
 
 // ---- Parsed level: what the game builds its state from ----
@@ -243,9 +252,15 @@ export function parseLevel(data: LevelData): Level {
             `map has ${enemyPositions.length} "${ENEMY}" spawns but enemies lists ${data.enemies.length}`
         )
     }
-    if (data.enemies.length > ENEMY_IDS.length) {
+    // A Splitter takes two enemy slots: its halves after a split need both
+    // (see splitter.ts).
+    const slots = data.enemies.reduce(
+        (n, e) => n + (e.ai === "splitter" ? 2 : 1),
+        0
+    )
+    if (slots > ENEMY_IDS.length) {
         problems.push(
-            `at most ${ENEMY_IDS.length} enemies are supported, got ${data.enemies.length}`
+            `at most ${ENEMY_IDS.length} enemies are supported (a splitter counts as 2), got ${slots}`
         )
     }
     // A level without dots would be won on the first tick.

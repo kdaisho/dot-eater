@@ -92,7 +92,9 @@ function nextPos(
             if (pos.length === 0) return null
             return pos[Math.floor(random() * pos.length)]
         }
-        case AiType.chase: {
+        // A Splitter, whole or a half, chases.
+        case AiType.chase:
+        case AiType.splitter: {
             // Collisions are on drawn positions (see collides in game.ts),
             // so a chaser can stand on the player's cell while the player's
             // sprite is still gliding in from targetLast. Every way out
