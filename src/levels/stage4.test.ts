@@ -3,12 +3,16 @@ import { AiType, Cell } from "../constants"
 import { parseLevel, type Cells } from "../level"
 import { distanceMap, openNeighbours } from "../path"
 import { vec2 } from "../vec2"
+import { levels } from "./index"
 import { stage4 } from "./stage4"
 
-// Not in `levels` yet (stage 3 comes first), so it is tested directly.
 describe("stage 4", () => {
     const level = parseLevel(stage4)
     const cells: Cells = level.cells.map((row) => [...row])
+
+    it("is the fourth level", () => {
+        expect(levels[3]).toEqual(level)
+    })
 
     it("parses, is named Fog and has fog", () => {
         expect(level.name).toBe("Fog")

@@ -1,6 +1,7 @@
 import { AiType, Cell, CharacterId } from "../constants"
 import { createCharacter, type Character } from "../character"
 import type { GameState } from "../game"
+import type { IceMap } from "../ice"
 import { parseLevel, type Cells, type Level, type LevelData } from "../level"
 import { vec2 } from "../vec2"
 
@@ -78,12 +79,13 @@ export function makePatroller(
 
 // Like createGameState, the player's start cell never holds a dot, and the
 // spawns are where the characters start. The player is on their last life
-// unless `lives` says otherwise, so any collision ends the game.
+// unless `lives` says otherwise, so any collision ends the game. There is no
+// ice unless `ice` says where (see textMap).
 export function makeState(
     map: MapLiteral,
     player: { x: number; y: number },
     enemies: Character[] = [],
-    { lives = 1 }: { lives?: number } = {}
+    { lives = 1, ice }: { lives?: number; ice?: IceMap } = {}
 ): GameState {
     const cells = cellsFrom(map)
     if (cells[player.y][player.x] === Cell.dot) {
@@ -91,6 +93,7 @@ export function makeState(
     }
     return {
         cells,
+        ice: ice ?? cells.map((row) => row.map(() => false)),
         player: createCharacter(CharacterId.player, vec2(player.x, player.y)),
         enemies,
         bufferedStep: vec2(0, 0),
@@ -102,6 +105,29 @@ export function makeState(
             player: vec2(player.x, player.y),
             enemies: enemies.map((e) => vec2(e.pos.x, e.pos.y)),
         },
+    }
+}
+
+// An ice map from one string per row: true where the row has "~".
+// A map and its ice from rows of level map characters ("#" wall, "." dot,
+// space empty, "~" ice, ":" ice with a dot), for makeState. Unlike
+// parseLevel nothing is checked, so a test can build any situation.
+export function textMap(rows: readonly string[]): {
+    map: MapLiteral
+    ice: IceMap
+} {
+    const chars = rows.map((row) => Array.from(row))
+    return {
+        map: chars.map((row) =>
+            row.map((ch) =>
+                ch === "#"
+                    ? Cell.wall
+                    : ch === "." || ch === ":"
+                      ? Cell.dot
+                      : Cell.none
+            )
+        ),
+        ice: chars.map((row) => row.map((ch) => ch === "~" || ch === ":")),
     }
 }
 
