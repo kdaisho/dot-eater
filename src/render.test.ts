@@ -59,30 +59,83 @@ describe("createRenderer", () => {
             renderer.draw(createGameState(OLD_LEVEL), 0.5)
         ).not.toThrow()
         expect(calls.some((c) => c.name === "fillRect")).toBe(true)
-        expect(texts()).toEqual(["🪰", "👹", "👺"])
+        expect(texts()).toEqual(["🪰", "👺", "👹"])
     })
 
-    it("draws a distinct sprite for each of four enemies", () => {
+    // A one-row corridor with the player at (1, 2) and `enemies` along row 1.
+    function drawEnemies(enemies: ReturnType<typeof makeEnemy>[]) {
         const { renderer, texts } = setup()
-        const enemies = [
-            CharacterId.enemy1,
-            CharacterId.enemy2,
-            CharacterId.enemy3,
-            CharacterId.enemy4,
-        ].map((id, i) => makeEnemy(i + 1, 1, AiType.random, undefined, id))
         renderer.draw(
             makeState(
                 [
-                    [1, 1, 1, 1, 1, 1],
-                    [1, 2, 2, 2, 2, 1],
-                    [1, 0, 1, 1, 1, 1],
+                    [1, 1, 1, 1, 1, 1, 1],
+                    [1, 2, 2, 2, 2, 2, 1],
+                    [1, 0, 1, 1, 1, 1, 1],
                 ],
                 { x: 1, y: 2 },
                 enemies
             ),
             0
         )
-        expect(texts()).toEqual(["🪰", "👹", "👺", "👾", "👻"])
+        return texts()
+    }
+
+    it("draws each enemy by its AI type, not its slot", () => {
+        const ids = [
+            CharacterId.enemy1,
+            CharacterId.enemy2,
+            CharacterId.enemy3,
+            CharacterId.enemy4,
+        ]
+        const types = [
+            AiType.phantom,
+            AiType.patroller,
+            AiType.ambusher,
+            AiType.chase,
+        ]
+        const enemies = ids.map((id, i) =>
+            makeEnemy(i + 1, 1, types[i], undefined, id)
+        )
+        expect(drawEnemies(enemies)).toEqual(["🪰", "👻", "🤖", "🦊", "👹"])
+        enemies.push(
+            makeEnemy(5, 1, AiType.random, undefined, CharacterId.enemy1)
+        )
+        expect(drawEnemies(enemies).at(-1)).toBe("👺")
+    })
+
+    it("draws enemies of one AI type with the same sprite", () => {
+        const enemies = [
+            makeEnemy(1, 1, AiType.chase, undefined, CharacterId.enemy1),
+            makeEnemy(2, 1, AiType.chase, undefined, CharacterId.enemy3),
+        ]
+        expect(drawEnemies(enemies)).toEqual(["🪰", "👹", "👹"])
+    })
+
+    it("gives every AI type its own sprite", () => {
+        const types = Object.values(AiType)
+        const sprites = drawEnemies(
+            types.map((ai, i) => makeEnemy(i + 1, 1, ai))
+        ).slice(1)
+        expect(sprites).toHaveLength(types.length)
+        expect(sprites).not.toContain("🪰")
+        expect(new Set(sprites).size).toBe(types.length)
+    })
+
+    it("draws the player as a fly whatever its AI type", () => {
+        for (const ai of Object.values(AiType)) {
+            const { renderer, texts } = setup()
+            const state = makeState(
+                [
+                    [1, 1, 1],
+                    [1, 0, 1],
+                    [1, 1, 1],
+                ],
+                { x: 1, y: 1 }
+            )
+            state.player.ai = ai
+            renderer.draw(state, 0)
+            expect(texts()).toEqual(["🪰"])
+        }
     })
 
     it("sizes the canvas for the window and devicePixelRatio", () => {
@@ -246,15 +299,15 @@ describe("createRenderer", () => {
 
         const enemies = () => [
             makeEnemy(4, 1, AiType.random, undefined, CharacterId.enemy1),
-            makeEnemy(9, 1, AiType.random, undefined, CharacterId.enemy2),
+            makeEnemy(9, 1, AiType.chase, undefined, CharacterId.enemy2),
         ]
 
         it("hides dots, walls and enemies outside the radius", () => {
             const { calls, canvas, renderer, texts } = setup()
             const state = makeState(corridor(), { x: 2, y: 1 }, enemies())
             renderer.draw(state, 0, {}, { fog: { radius: 3 } })
-            // enemy1 is 2 cells away, enemy2 7.
-            expect(texts()).toEqual(["🪰", "👹"])
+            // enemy1 (random) is 2 cells away, enemy2 (chase) 7.
+            expect(texts()).toEqual(["🪰", "👺"])
             const { dots, walls } = drawnCells(calls, canvas, 13)
             expect([...dots].sort()).toEqual(["1,1", "3,1", "4,1", "5,1"])
             expect(walls.has("0,1")).toBe(true)
@@ -273,7 +326,7 @@ describe("createRenderer", () => {
             renderer.draw(state, 0, {}, { fog: { radius: 2.5 } })
             // The enemy's centre is 3 cells away, the wall at (4, 0) 2.24 and
             // the one at (5, 0) 3.16: past 2.5, but their near edges aren't.
-            expect(texts()).toEqual(["🪰", "👹"])
+            expect(texts()).toEqual(["🪰", "👺"])
             const { walls } = drawnCells(calls, canvas, 13)
             expect(walls.has("4,0")).toBe(true)
             expect(walls.has("5,0")).toBe(true)
@@ -284,7 +337,7 @@ describe("createRenderer", () => {
             const { calls, canvas, renderer, texts } = setup()
             const state = makeState(corridor(), { x: 2, y: 1 }, enemies())
             renderer.draw(state, 0, {}, {})
-            expect(texts()).toEqual(["🪰", "👹", "👺"])
+            expect(texts()).toEqual(["🪰", "👺", "👹"])
             expect(drawnCells(calls, canvas, 13).dots.size).toBe(10)
             expect(calls.some((c) => c.name === "createRadialGradient")).toBe(
                 false
@@ -316,10 +369,10 @@ describe("createRenderer", () => {
             const { calls, canvas, renderer, texts } = setup()
             const state = makeState(corridor(true), { x: 1, y: 1 }, [
                 makeEnemy(11, 1, AiType.random, undefined, CharacterId.enemy1),
-                makeEnemy(8, 1, AiType.random, undefined, CharacterId.enemy2),
+                makeEnemy(8, 1, AiType.chase, undefined, CharacterId.enemy2),
             ])
             renderer.draw(state, 0, {}, { fog: { radius: 3 } })
-            expect(texts()).toEqual(["🪰", "👹"])
+            expect(texts()).toEqual(["🪰", "👺"])
             const { dots } = drawnCells(calls, canvas, 13)
             expect(dots.has("11,1")).toBe(true)
             expect(dots.has("12,1")).toBe(true)
