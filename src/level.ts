@@ -1,4 +1,4 @@
-import { AiType, Cell, ENEMY_IDS } from "./constants"
+import { AiType, Cell, ENEMY_IDS, TICK_RATE } from "./constants"
 import { distanceMap } from "./path"
 import { vec2, type Vec2 } from "./vec2"
 
@@ -230,8 +230,14 @@ function checkSpeed(
     field: string,
     speed: number | undefined
 ) {
-    if (speed !== undefined && !(Number.isFinite(speed) && speed > 0)) {
+    if (speed === undefined) return
+    if (!(Number.isFinite(speed) && speed > 0)) {
         problems.push(`${field} must be a positive number, got ${speed}`)
+    } else if (speed > TICK_RATE) {
+        // A character moves at most one cell per tick.
+        problems.push(
+            `${field} must be at most ${TICK_RATE} (one cell per tick), got ${speed}`
+        )
     }
 }
 

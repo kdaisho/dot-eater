@@ -2,20 +2,14 @@
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vite-plus/test"
 import confetti from "canvas-confetti"
 import { TICK_MS } from "./constants"
-import {
-    createGameState,
-    movePlayer,
-    tick,
-    type GameState,
-    type Outcome,
-} from "./game"
+import { createGameState, step, type GameState, type Outcome } from "./game"
 import { vec2 } from "./vec2"
 
 // canvas-confetti touches a 2D canvas context on import, which happy-dom
 // doesn't provide.
 vi.mock("canvas-confetti", () => ({ default: vi.fn() }))
 
-// Keep the real game, but let the test decide when the next tick ends it, and
+// Keep the real game, but let the test decide when the next step ends it, and
 // how.
 let nextOutcome: Outcome | null = null
 vi.mock("./game", async (importOriginal) => {
@@ -23,8 +17,7 @@ vi.mock("./game", async (importOriginal) => {
     return {
         ...actual,
         createGameState: vi.fn(actual.createGameState),
-        movePlayer: vi.fn(actual.movePlayer),
-        tick: vi.fn((state: GameState) => {
+        step: vi.fn((state: GameState) => {
             const outcome = nextOutcome
             if (!outcome) return null
             nextOutcome = null
@@ -47,19 +40,32 @@ function press(code: string) {
     keyup(code)
 }
 
+// Long enough for several frames and logic steps.
+const FRAMES_MS = 100
+
 function gameOver(outcome: Outcome = "dead") {
     nextOutcome = outcome
-    vi.advanceTimersByTime(TICK_MS)
+    vi.advanceTimersByTime(FRAMES_MS)
     expect(document.querySelectorAll("#msg")).toHaveLength(1)
 }
 
 const starts = () => vi.mocked(createGameState).mock.calls.length
+const steps = () => vi.mocked(step).mock.calls.length
+// The player input passed to each game step since call `from`.
+const moves = (from = 0) =>
+    vi
+        .mocked(step)
+        .mock.calls.slice(from)
+        .map((c) => c[2])
+// The held directions passed to the latest game step, newest first.
+const lastHeld = () => vi.mocked(step).mock.lastCall?.[2].held
+const isZero = (v: { x: number; y: number }) => v.x === 0 && v.y === 0
 
 // Every keydown listener added to the window, to catch listeners piling up.
 // (vi.spyOn doesn't see main's import-time call, so wrap it by hand.)
 const keydownListeners = new Set<unknown>()
 
-describe("main key handler", () => {
+describe("main", () => {
     beforeAll(async () => {
         vi.useFakeTimers()
         document.body.innerHTML = '<div id="root"></div>'
@@ -77,10 +83,102 @@ describe("main key handler", () => {
     })
 
     // main is imported once, so its state carries over between tests. Start
-    // each test during play so they don't depend on the order they run in.
+    // each test during play, unpaused and with no keys held, so they don't
+    // depend on the order they run in.
     beforeEach(() => {
         if (document.querySelector("#msg")) press("Space")
         expect(document.querySelector("#msg")).toBeNull()
+        for (const key of ["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"])
+            keyup(key)
+        const before = steps()
+        vi.advanceTimersByTime(FRAMES_MS)
+        if (steps() === before) press("KeyP")
+        vi.advanceTimersByTime(FRAMES_MS)
+        expect(steps()).toBeGreaterThan(before)
+    })
+
+    it("steps the game at the fixed tick rate", () => {
+        const before = steps()
+        vi.advanceTimersByTime(1000)
+        // Frames arrive every ~16 ms, so allow for a step of slack.
+        expect(Math.abs(steps() - before - 1000 / TICK_MS)).toBeLessThanOrEqual(
+            1
+        )
+        expect(vi.mocked(step).mock.lastCall?.[1]).toBeCloseTo(TICK_MS / 1000)
+    })
+
+    it("passes the held arrows to the game, newest first", () => {
+        vi.advanceTimersByTime(FRAMES_MS)
+        expect(lastHeld()).toEqual([])
+        keydown("ArrowRight")
+        vi.advanceTimersByTime(FRAMES_MS)
+        expect(lastHeld()).toEqual([vec2(1, 0)])
+        keydown("ArrowUp")
+        // Auto-repeat doesn't change which arrow is held or newest.
+        keydown("ArrowRight", true)
+        vi.advanceTimersByTime(FRAMES_MS)
+        expect(lastHeld()).toEqual([vec2(0, -1), vec2(1, 0)])
+        keyup("ArrowUp")
+        vi.advanceTimersByTime(FRAMES_MS)
+        expect(lastHeld()).toEqual([vec2(1, 0)])
+        keyup("ArrowRight")
+        vi.advanceTimersByTime(FRAMES_MS)
+        expect(lastHeld()).toEqual([])
+    })
+
+    it("counts an arrow tapped between two steps once", () => {
+        press("ArrowLeft")
+        const before = steps()
+        vi.advanceTimersByTime(FRAMES_MS)
+        const pressed = moves(before).map((m) => m.pressed)
+        expect(pressed).toContainEqual(vec2(-1, 0))
+        expect(pressed.filter((v) => !isZero(v))).toHaveLength(1)
+    })
+
+    it("passes a held arrow as pressed only on the tick it went down", () => {
+        keydown("ArrowDown")
+        const before = steps()
+        vi.advanceTimersByTime(FRAMES_MS)
+        const pressed = moves(before).map((m) => m.pressed)
+        expect(pressed[0]).toEqual(vec2(0, 1))
+        expect(pressed.slice(1).every(isZero)).toBe(true)
+        expect(lastHeld()).toEqual([vec2(0, 1)])
+        keyup("ArrowDown")
+    })
+
+    it("pauses and resumes on P", () => {
+        press("KeyP")
+        const paused = steps()
+        vi.advanceTimersByTime(1000)
+        expect(steps()).toBe(paused)
+        press("KeyP")
+        vi.advanceTimersByTime(FRAMES_MS)
+        expect(steps()).toBeGreaterThan(paused)
+        // Time spent paused is not caught up on.
+        expect(steps() - paused).toBeLessThan(FRAMES_MS / TICK_MS + 2)
+    })
+
+    it("pauses and resumes on Escape", () => {
+        press("Escape")
+        const paused = steps()
+        vi.advanceTimersByTime(1000)
+        expect(steps()).toBe(paused)
+        press("Escape")
+        vi.advanceTimersByTime(FRAMES_MS)
+        expect(steps()).toBeGreaterThan(paused)
+    })
+
+    it("drops arrow taps made while paused", () => {
+        press("KeyP")
+        press("ArrowLeft")
+        press("KeyP")
+        const before = steps()
+        vi.advanceTimersByTime(FRAMES_MS)
+        const calls = moves(before)
+        expect(calls.length).toBeGreaterThan(0)
+        expect(
+            calls.every((m) => m.held.length === 0 && isZero(m.pressed))
+        ).toBe(true)
     })
 
     it("restarts exactly once per Space after several game-overs", () => {
@@ -125,30 +223,27 @@ describe("main key handler", () => {
         expect(starts()).toBe(before + 1)
     })
 
-    it("moves the player one cell per arrow press, ignoring auto-repeat", () => {
-        vi.mocked(movePlayer).mockClear()
+    it("stops stepping once the game has ended, even with an arrow held", () => {
+        gameOver()
+        const before = steps()
         keydown("ArrowRight")
-        keydown("ArrowRight", true)
-        keydown("ArrowRight", true)
+        vi.advanceTimersByTime(1000)
+        expect(steps()).toBe(before)
         keyup("ArrowRight")
-        press("ArrowUp")
-        press("KeyW")
-        expect(
-            vi.mocked(movePlayer).mock.calls.map(([, step]) => step)
-        ).toEqual([vec2(1, 0), vec2(0, -1)])
     })
 
-    it("stops ticking once the game has ended", () => {
+    it("steps again after a restart", () => {
         gameOver()
-        const ticks = vi.mocked(tick).mock.calls.length
-        vi.advanceTimersByTime(TICK_MS * 5)
-        expect(vi.mocked(tick).mock.calls.length).toBe(ticks)
+        press("Space")
+        const before = steps()
+        vi.advanceTimersByTime(FRAMES_MS)
+        expect(steps()).toBeGreaterThan(before)
     })
 
     it("fires the full confetti on every win and none on a loss", () => {
         const bursts = () => {
             // Let any running celebration finish first.
-            vi.advanceTimersByTime(TICK_MS)
+            vi.advanceTimersByTime(1000)
             const n = vi.mocked(confetti).mock.calls.length
             vi.mocked(confetti).mockClear()
             return n

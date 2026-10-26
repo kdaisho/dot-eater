@@ -13,7 +13,11 @@ const characterAA: Record<CharacterId, string> = {
     [CharacterId.enemy2]: '<span class="character"><span>👺</span></span>',
 }
 
-export function draw(state: GameState) {
+// `alpha` in [0, 1) is how far the loop is between the last logic tick and
+// the next. Unused while characters jump from cell to cell; the animated
+// renderer (KDA-199) uses it with each character's lastPos, pos and
+// moveProgress to place it between cells.
+export function draw(state: GameState, _alpha = 0) {
     const root = document.getElementById("root")
     // Later characters are drawn on top of earlier ones.
     const characters = [state.player, ...state.enemies]

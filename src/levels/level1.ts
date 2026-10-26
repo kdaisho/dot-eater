@@ -14,8 +14,5 @@ export const level1: LevelData = {
         "#.......#",
         "####.####",
     ],
-    enemies: [
-        { ai: "random", speed: 1 },
-        { ai: "chase", speed: 1 },
-    ],
+    enemies: [{ ai: "random" }, { ai: "chase" }],
 }

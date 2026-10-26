@@ -1,68 +1,74 @@
-import { TICK_MS } from "./constants"
-import {
-    checkEnd,
-    createGameState,
-    movePlayer,
-    tick,
-    type GameState,
-    type Outcome,
-} from "./game"
-import {
-    directionStep,
-    InputState,
-    isDirection,
-    KeyboardSource,
-    type Action,
-} from "./input"
+import { MAX_FRAME_MS, TICK_MS } from "./constants"
+import { createGameState, step, type GameState, type Outcome } from "./game"
+import { InputState, KeyboardSource, type Action } from "./input"
+import { createLoop } from "./loop"
 import { draw } from "./render"
 import { celebrate, displayMessage, hideMessage } from "./ui"
 
-let state: GameState | undefined
+let state: GameState = createGameState()
 
-function init() {
-    if (state?.intervalId) {
-        clearInterval(state.intervalId)
-    }
-    state = createGameState()
-    state.intervalId = setInterval(onInterval, TICK_MS)
-    draw(state)
+const input = new InputState()
+const player1 = input.player(0)
+
+const loop = createLoop({
+    update,
+    render,
+    stepMs: TICK_MS,
+    maxFrameMs: MAX_FRAME_MS,
+    now: () => performance.now(),
+    requestFrame: (callback) => requestAnimationFrame(callback),
+    cancelFrame: (id) => cancelAnimationFrame(id),
+})
+
+// One logic tick: read player 1's movement, advance the game, then clear this
+// tick's press edges.
+function update(dt: number) {
+    const move = { held: player1.heldSteps(), pressed: player1.pressedStep() }
+    endGame(step(state, dt, move, Math.random))
+    input.endTick()
 }
 
-// Player 1's presses: move one cell per press during play, and restart on
-// confirm (Space) once the game has ended.
-function onPress(player: number, action: Action) {
-    if (!state || player !== 0) return
-    if (state.locked) {
-        if (action === "confirm") {
-            hideMessage()
-            init()
-        }
-        return
-    }
-    if (!isDirection(action)) return
-    if (!movePlayer(state, directionStep(action))) return
-    endGame(state, checkEnd(state))
-    draw(state)
+function render(alpha: number) {
+    draw(state, alpha)
 }
 
-function onInterval() {
-    if (!state) return
-    endGame(state, tick(state, Math.random))
-    draw(state)
+function start() {
+    // Presses made while the loop wasn't ticking don't carry into play.
+    input.endTick()
+    loop.start()
+    draw(state, 0)
 }
 
-function endGame(state: GameState, outcome: Outcome | null) {
+function endGame(outcome: Outcome | null) {
     if (!outcome) return
+    loop.stop()
     if (outcome === "won") celebrate(10)
-    clearInterval(state.intervalId)
     displayMessage(outcome === "dead")
 }
 
-// Event-driven until the tick loop polls the input instead.
-const input = new InputState()
-input.onPress((player, action) => {
-    onPress(player, action)
-    input.endTick()
-})
+// The loop stops after game over and doesn't tick while paused, so pause and
+// restart react to presses as they happen instead of being polled.
+function onPress(player: number, action: Action) {
+    if (player !== 0) return
+    if (state.locked) {
+        if (action === "confirm") {
+            hideMessage()
+            state = createGameState()
+            start()
+        }
+        return
+    }
+    if (action === "pause") {
+        if (loop.paused) {
+            // Presses made while paused don't carry into play.
+            input.endTick()
+            loop.resume()
+        } else {
+            loop.pause()
+        }
+    }
+}
+
+input.onPress(onPress)
 new KeyboardSource().attach(input)
-init()
+start()
