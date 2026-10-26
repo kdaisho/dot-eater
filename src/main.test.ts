@@ -18,6 +18,7 @@ import {
 import { ANIMAL_IDS, AnimalId, DEFAULT_ANIMAL } from "./roster"
 import { formatTicks, starText } from "./stars"
 import { vec2 } from "./vec2"
+import { pick } from "./test/helpers"
 
 // canvas-confetti touches a 2D canvas context on import, which happy-dom
 // doesn't provide.
@@ -104,10 +105,6 @@ function screen(): string {
 // The selected menu item on the overlay.
 const selectedItem = () =>
     document.querySelector("#overlay li.selected")?.textContent
-
-// The character under the cursor on character select.
-const pick = () =>
-    document.querySelector<HTMLElement>("#overlay li.selected")?.dataset.animal
 
 function gameOver(outcome: Outcome = "dead") {
     nextOutcome = outcome

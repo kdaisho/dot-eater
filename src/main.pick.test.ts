@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 import { describe, expect, it, vi } from "vite-plus/test"
 import { LAST_PICK_KEY } from "./lastPick"
+import { pick } from "./test/helpers"
 
 // main with a pick saved by an earlier visit: character select opens on it.
 // (A separate file, since main is imported once per module graph and reads
@@ -16,9 +17,6 @@ function pressAndTick(code: string) {
 
 const screen = () =>
     document.querySelector<HTMLElement>("#overlay")?.dataset.screen ?? "playing"
-
-const pick = () =>
-    document.querySelector<HTMLElement>("#overlay li.selected")?.dataset.animal
 
 describe("main with a saved pick", () => {
     it("opens character select on the saved character", async () => {

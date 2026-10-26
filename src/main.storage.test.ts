@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 import { describe, expect, it, vi } from "vite-plus/test"
 import type { Outcome } from "./game"
+import { pick } from "./test/helpers"
 
 // main with localStorage blocked: even reading window.localStorage throws,
 // as it does when site data is disabled. The game must still run, win and
@@ -30,10 +31,6 @@ function pressAndTick(code: string) {
 
 const screen = () =>
     document.querySelector<HTMLElement>("#overlay")?.dataset.screen ?? "playing"
-
-// The character under the cursor on character select.
-const pick = () =>
-    document.querySelector<HTMLElement>("#overlay li.selected")?.dataset.animal
 
 describe("main with storage blocked", () => {
     it("plays, wins and returns to stage select without throwing", async () => {
