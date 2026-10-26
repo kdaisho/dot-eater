@@ -116,21 +116,12 @@ describe("movePlayer", () => {
         movePlayer(vertical, vec2(0, -1))
         expect(vertical.player.pos).toEqual(vec2(1, 2))
     })
-
-    it("ignores moves while locked", () => {
-        const state = makeState(map, { x: 1, y: 1 })
-        state.locked = true
-        expect(movePlayer(state, vec2(1, 0))).toBe(false)
-        expect(state.player.pos).toEqual(vec2(1, 1))
-        expect(state.cells[1][2]).toBe(Cell.dot)
-    })
 })
 
 describe("checkEnd", () => {
     it("returns null while dots remain and no enemy touches the player", () => {
         const state = makeState(map, { x: 1, y: 0 }, [makeEnemy(0, 1)])
         expect(checkEnd(state)).toBeNull()
-        expect(state.locked).toBe(false)
     })
 
     it("wins when all dots are eaten", () => {
@@ -139,19 +130,11 @@ describe("checkEnd", () => {
         expect(checkEnd(state)).toBeNull()
         movePlayer(state, vec2(1, 0)) // eats the last dot at (2, 1)
         expect(checkEnd(state)).toBe("won")
-        expect(state.locked).toBe(true)
     })
 
     it("loses when an enemy shares the player's cell", () => {
         const state = makeState(map, { x: 1, y: 1 }, [makeEnemy(1, 1)])
         expect(checkEnd(state)).toBe("dead")
-        expect(state.locked).toBe(true)
-    })
-
-    it("returns null once locked", () => {
-        const state = makeState(map, { x: 1, y: 1 }, [makeEnemy(1, 1)])
-        state.locked = true
-        expect(checkEnd(state)).toBeNull()
     })
 })
 
@@ -453,8 +436,10 @@ describe("step: simultaneous moves", () => {
     })
 })
 
-describe("step: once the game has ended", () => {
-    it("moves every character in the tick that ends the game, then nothing", () => {
+// Stepping stops once a step returns an outcome; flow.test.ts checks that
+// nothing changes after that.
+describe("step: the tick that ends the game", () => {
+    it("moves every character in that tick", () => {
         const state = makeState(corridor, { x: 2, y: 1 }, [
             // Walks into the player.
             makeEnemy(1, 1, AiType.random, { x: 0, y: 1 }),
@@ -462,27 +447,9 @@ describe("step: once the game has ended", () => {
         ])
         ready(state)
         expect(run(state, 1)).toBe("dead")
-        expect(state.enemies[1].pos).toEqual(vec2(5, 1))
-        const cells = state.cells.map((row) => [...row])
-
-        expect(run(state, TICK_RATE * 5, east)).toBeNull()
         expect(state.player.pos).toEqual(vec2(2, 1))
         expect(state.enemies[0].pos).toEqual(vec2(2, 1))
         expect(state.enemies[1].pos).toEqual(vec2(5, 1))
-        expect(state.cells).toEqual(cells)
-    })
-
-    it("changes nothing while locked", () => {
-        const state = makeState(corridor, { x: 0, y: 1 }, [
-            makeEnemy(4, 1, AiType.random, { x: 5, y: 1 }),
-        ])
-        state.locked = true
-        expect(run(state, TICK_RATE * 5, east)).toBeNull()
-        expect(state.player.pos).toEqual(vec2(0, 1))
-        expect(state.player.moveProgress).toBe(0)
-        expect(state.enemies[0].pos).toEqual(vec2(4, 1))
-        expect(state.enemies[0].moveProgress).toBe(0)
-        expect(state.cells[1][1]).toBe(Cell.dot)
     })
 })
 
@@ -548,7 +515,6 @@ describe("createGameState", () => {
             expect(enemy.lastPos).toEqual(enemy.pos)
             expect(enemy.speed).toBe(ENEMY_SPEED)
         }
-        expect(state.locked).toBe(false)
     })
 
     it("puts dots everywhere except walls and the player start", () => {
@@ -629,13 +595,11 @@ describe("createGameState", () => {
         a.cells[1][1] = Cell.none
         a.player.pos.x = 99
         a.enemies[0].pos.x = 99
-        a.locked = true
         const b = createGameState()
         expect(b.cells[0][0]).toBe(Cell.wall)
         expect(b.cells[1][1]).toBe(Cell.dot)
         // Literals, so a shared (aliased) level spawn would be caught.
         expect(b.player.pos).toEqual(vec2(4, 1))
         expect(b.enemies[0].pos).toEqual(vec2(1, 4))
-        expect(b.locked).toBe(false)
     })
 })

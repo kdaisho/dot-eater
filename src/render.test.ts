@@ -76,6 +76,31 @@ describe("createRenderer", () => {
         expect(calls.length).toBeGreaterThan(before)
     })
 
+    it("clears to the background without drawing the game", () => {
+        const { calls, canvas, renderer, texts } = setup()
+        renderer.draw(createGameState(), 0)
+        const size = [canvas.width, canvas.height]
+        calls.length = 0
+        renderer.clear()
+        expect(calls.map((c) => c.name)).toEqual(["setTransform", "fillRect"])
+        expect(calls[1].args).toEqual([0, 0, ...size])
+        expect([canvas.width, canvas.height]).toEqual(size)
+        expect(texts()).toEqual([])
+    })
+
+    it("stays cleared on resize instead of redrawing the old game", () => {
+        const { calls, canvas, renderer, texts, view } = setup()
+        renderer.draw(createGameState(), 0)
+        renderer.clear()
+        view.innerHeight = 200
+        view.devicePixelRatio = 1
+        calls.length = 0
+        renderer.resize()
+        expect(canvas.width).toBe(16 * 9)
+        expect(texts()).toEqual([])
+        expect(calls.filter((c) => c.name === "fillRect")).toHaveLength(1)
+    })
+
     it("draws a character in a tunnel on both edges", () => {
         const { renderer, texts } = setup()
         const state = createGameState()

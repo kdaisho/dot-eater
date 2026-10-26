@@ -30,6 +30,8 @@ Later milestones (Stages, Characters & breaths, Controllers & local 2-player, Po
 - **Start of a game:** the player is ready to move on the first tick (`moveProgress` starts at 1); enemies start at 0, which gives the player a short grace period.
 - **Move progress** keeps the leftover past 1 when a character moves, so speeds that don't divide the 60 Hz tick rate average out right. A character that is ready but can't move waits at exactly 1 and banks nothing.
 - **Level 1 speeds:** player 4 cells/s, enemies 2 cells/s (the defaults, applied only in `createCharacter`; level 1 sets no speeds). Levels may override `playerSpeed` and per-enemy `speed`, up to `TICK_RATE` (one cell per tick).
+- **Screens** (`src/flow.ts`, a DOM-free state machine driven by `main.ts`): the game opens on the title screen, then stage select, then play (product decision, kept). Retry is pre-selected on both end screens (stage clear and game over), so Space retries straight away (kept). `GameState.locked` is gone: the game is only stepped in `playing`, and the machine leaves `playing` on the tick the game ends, so nothing in a finished game changes afterwards. Screens without a game (title, stage select) show an empty canvas.
+- **Auto-pause:** during play, a window `blur` or the tab becoming hidden (`visibilitychange` with `document.hidden`) switches to the paused screen (`pauseIfPlaying` in `flow.ts`, wired in `main.ts`).
 - **Tooling:** CI uses `setup-vp` with `run-install: false` and runs on PRs only; pnpm 10 pinned.
 
 ## How we work

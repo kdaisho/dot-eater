@@ -17,28 +17,105 @@ function genConfetti(interval: number = 20) {
 
 export const celebrate = genConfetti()
 
-// Show the end-of-game message. Any message already on screen is replaced, so
-// at most one exists at a time. Restarting is handled by main's key handler.
-export function displayMessage(dead: boolean) {
-    hideMessage()
+// Screen overlays. Every screen other than plain play is one overlay: a
+// backdrop plus a panel with a title, optional detail lines and an optional
+// menu. At most one overlay exists at a time; each show* replaces whatever is
+// showing, and hideOverlay removes it. Input is handled by the state machine
+// (flow.ts), not here.
 
-    const backdrop = document.createElement("div")
-    backdrop.setAttribute("id", "backdrop")
-    backdrop.setAttribute("class", "backdrop")
-    document.body.appendChild(backdrop)
+export type MenuItem = { label: string; selected: boolean }
 
-    const msg = document.createElement("div")
-    const txt = dead
-        ? document.createTextNode("💀 Press Space to restart.")
-        : document.createTextNode("Congrats! Press Space to restart.")
-
-    msg.appendChild(txt)
-    msg.setAttribute("id", "msg")
-    msg.setAttribute("class", "msg")
-    document.body.appendChild(msg)
+// What the end screens show. KDA-198 adds the final score here.
+export type EndScreenView = {
+    // The menu, in order; exactly one item is selected.
+    items: readonly MenuItem[]
 }
 
-export function hideMessage() {
+type Overlay = {
+    id: string
+    title: string
+    // Short lines under the title (hints, and later the final score).
+    lines?: readonly string[]
+    items?: readonly MenuItem[]
+}
+
+export function showTitle() {
+    show({
+        id: "title",
+        title: "Dot Eater",
+        lines: ["Press Space to start"],
+    })
+}
+
+export function showStageSelect(names: readonly string[], selected: number) {
+    show({
+        id: "stage-select",
+        title: "Select a stage",
+        lines: ["↑ ↓ to choose, Space to play"],
+        items: names.map((label, i) => ({ label, selected: i === selected })),
+    })
+}
+
+export function showPause() {
+    show({
+        id: "pause",
+        title: "Paused",
+        lines: ["Press P, Esc or Space to resume"],
+    })
+}
+
+export function showStageClear(view: EndScreenView) {
+    show({ id: "stage-clear", title: "Stage clear!", items: view.items })
+}
+
+export function showGameOver(view: EndScreenView) {
+    show({ id: "game-over", title: "💀 Game over", items: view.items })
+}
+
+export function hideOverlay() {
     document.getElementById("backdrop")?.remove()
-    document.getElementById("msg")?.remove()
+    document.getElementById("overlay")?.remove()
+}
+
+function show({ id, title, lines = [], items = [] }: Overlay) {
+    hideOverlay()
+
+    const backdrop = document.createElement("div")
+    backdrop.id = "backdrop"
+    backdrop.className = "backdrop"
+    document.body.appendChild(backdrop)
+
+    const panel = document.createElement("div")
+    panel.id = "overlay"
+    panel.className = "overlay"
+    panel.dataset.screen = id
+
+    const heading = document.createElement("h1")
+    heading.className = "overlay-title"
+    heading.textContent = title
+    panel.appendChild(heading)
+
+    for (const line of lines) {
+        const p = document.createElement("p")
+        p.className = "overlay-line"
+        p.textContent = line
+        panel.appendChild(p)
+    }
+
+    if (items.length > 0) {
+        const menu = document.createElement("ul")
+        menu.className = "overlay-menu"
+        for (const item of items) {
+            const li = document.createElement("li")
+            li.textContent = item.label
+            if (item.selected) {
+                li.className = "selected"
+                li.setAttribute("aria-current", "true")
+            }
+            menu.appendChild(li)
+        }
+        panel.appendChild(menu)
+    }
+
+    document.body.appendChild(panel)
 }

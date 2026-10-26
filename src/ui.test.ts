@@ -1,54 +1,132 @@
 // @vitest-environment happy-dom
 import confetti from "canvas-confetti"
 import { afterEach, describe, expect, it, vi } from "vite-plus/test"
-import { celebrate, displayMessage, hideMessage } from "./ui"
+import {
+    celebrate,
+    hideOverlay,
+    showGameOver,
+    showPause,
+    showStageClear,
+    showStageSelect,
+    showTitle,
+} from "./ui"
 
 // canvas-confetti touches a 2D canvas context on import, which happy-dom
 // doesn't provide.
 vi.mock("canvas-confetti", () => ({ default: vi.fn() }))
 
-describe("displayMessage", () => {
-    afterEach(() => {
-        document.body.innerHTML = ""
-    })
+afterEach(() => {
+    document.body.innerHTML = ""
+})
 
-    it("shows the game-over message with a backdrop", () => {
-        displayMessage(true)
-        expect(document.querySelector("#msg")?.textContent).toBe(
-            "💀 Press Space to restart."
-        )
-        expect(document.querySelector("#backdrop")).not.toBeNull()
-    })
+const overlay = () => document.querySelector<HTMLElement>("#overlay")
+const title = () => overlay()?.querySelector("h1")?.textContent
+const lines = () =>
+    [...(overlay()?.querySelectorAll("p") ?? [])].map((p) => p.textContent)
+const items = () =>
+    [...(overlay()?.querySelectorAll("li") ?? [])].map((li) => li.textContent)
+const selected = () =>
+    [...(overlay()?.querySelectorAll("li.selected") ?? [])].map(
+        (li) => li.textContent
+    )
+// Exactly one overlay and one backdrop are on screen.
+const expectSingle = () => {
+    expect(document.querySelectorAll("#overlay")).toHaveLength(1)
+    expect(document.querySelectorAll("#backdrop")).toHaveLength(1)
+}
 
-    it("shows the win message", () => {
-        displayMessage(false)
-        expect(document.querySelector("#msg")?.textContent).toBe(
-            "Congrats! Press Space to restart."
-        )
-    })
+const endView = (choice: 0 | 1) => ({
+    items: ["Retry", "Stage select"].map((label, i) => ({
+        label,
+        selected: i === choice,
+    })),
+})
 
-    it("replaces a message that is still showing", () => {
-        displayMessage(true)
-        displayMessage(false)
-        displayMessage(true)
-        expect(document.querySelectorAll("#msg")).toHaveLength(1)
-        expect(document.querySelectorAll("#backdrop")).toHaveLength(1)
-        expect(document.querySelector("#msg")?.textContent).toBe(
-            "💀 Press Space to restart."
-        )
+describe("showTitle", () => {
+    it("shows the title with a backdrop and how to start", () => {
+        showTitle()
+        expectSingle()
+        expect(overlay()?.dataset.screen).toBe("title")
+        expect(title()).toBe("Dot Eater")
+        expect(lines()).toEqual(["Press Space to start"])
+        expect(items()).toEqual([])
     })
 })
 
-describe("hideMessage", () => {
-    it("removes the message and backdrop", () => {
-        displayMessage(true)
-        hideMessage()
-        expect(document.querySelector("#msg")).toBeNull()
+describe("showStageSelect", () => {
+    it("lists the stages with the selected one marked", () => {
+        showStageSelect(["Level 1", "Level 2", "Level 3"], 1)
+        expectSingle()
+        expect(overlay()?.dataset.screen).toBe("stage-select")
+        expect(items()).toEqual(["Level 1", "Level 2", "Level 3"])
+        expect(selected()).toEqual(["Level 2"])
+        expect(
+            overlay()
+                ?.querySelector("li.selected")
+                ?.getAttribute("aria-current")
+        ).toBe("true")
+    })
+
+    it("moves the mark when shown again", () => {
+        showStageSelect(["Level 1", "Level 2"], 0)
+        showStageSelect(["Level 1", "Level 2"], 1)
+        expectSingle()
+        expect(selected()).toEqual(["Level 2"])
+    })
+})
+
+describe("showPause", () => {
+    it("shows the pause screen", () => {
+        showPause()
+        expectSingle()
+        expect(overlay()?.dataset.screen).toBe("pause")
+        expect(title()).toBe("Paused")
+    })
+})
+
+describe("showStageClear", () => {
+    it("shows the clear screen with its menu", () => {
+        showStageClear(endView(0))
+        expectSingle()
+        expect(overlay()?.dataset.screen).toBe("stage-clear")
+        expect(title()).toBe("Stage clear!")
+        expect(items()).toEqual(["Retry", "Stage select"])
+        expect(selected()).toEqual(["Retry"])
+    })
+})
+
+describe("showGameOver", () => {
+    it("shows the game-over screen with its menu", () => {
+        showGameOver(endView(1))
+        expectSingle()
+        expect(overlay()?.dataset.screen).toBe("game-over")
+        expect(title()).toBe("💀 Game over")
+        expect(selected()).toEqual(["Stage select"])
+    })
+})
+
+describe("overlays", () => {
+    it("replace whatever overlay is showing", () => {
+        showTitle()
+        showStageSelect(["Level 1"], 0)
+        showPause()
+        showGameOver(endView(0))
+        showStageClear(endView(0))
+        expectSingle()
+        expect(overlay()?.dataset.screen).toBe("stage-clear")
+    })
+})
+
+describe("hideOverlay", () => {
+    it("removes the overlay and backdrop", () => {
+        showGameOver(endView(0))
+        hideOverlay()
+        expect(overlay()).toBeNull()
         expect(document.querySelector("#backdrop")).toBeNull()
     })
 
-    it("does nothing when no message is showing", () => {
-        expect(() => hideMessage()).not.toThrow()
+    it("does nothing when no overlay is showing", () => {
+        expect(() => hideOverlay()).not.toThrow()
     })
 })
 
