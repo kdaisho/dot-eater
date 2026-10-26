@@ -283,7 +283,7 @@ export function step(
     state.ticks++
     tickEffects(state, dt)
     const from = positions(state)
-    const start = tickStarts(state, dt)
+    let start = tickStarts(state, dt)
     // Where the player came from on its latest move before this tick, for
     // the heading an ambusher aims along.
     const playerLast = vec2(player.lastPos.x, player.lastPos.y)
@@ -293,7 +293,12 @@ export function step(
         if (movePlayerTick(state, move.held)) spend(player)
         else wait(player)
     }
-    if (move.breath) breathe(state)
+    if (move.breath && breathe(state)) {
+        // The breath comes before the enemies move, but it may have moved
+        // some (pushed or defeated) or held them: trace each enemy from
+        // where it is after the breath, not along a sweep across the jump.
+        start = [start[0], ...tickStarts(state, dt).slice(1)]
+    }
     const blocked = enemyBlocks(state)
     // Cells as enemies see them, so blocked cells also end slides.
     const enemyCells = blocked ? blockedView(cells, blocked) : cells

@@ -277,6 +277,27 @@ describe("breathing", () => {
     })
 })
 
+describe("pushed enemies", () => {
+    // Regression: collisions traced a pushed enemy from where it was drawn
+    // before the push, so a jump past the player swept through it.
+    it("aren't swept across the jump for collisions", () => {
+        // On the player's cell, its sprite gliding in from the west; pushed
+        // 3 cells east past the player.
+        const enemy = makeEnemy(1, 1, AiType.random, { x: 0, y: 1 })
+        enemy.moveProgress = 0.3
+        const state = makeState(corridor, { x: 1, y: 1 }, [enemy], {
+            breath: testBreath({
+                fire(hit) {
+                    for (const e of hit.enemies) hit.push(e, hit.facing, 3)
+                },
+            }),
+        })
+        state.breather.energy = 100
+        expect(tick(state, { breath: true })).toBeNull()
+        expect(enemy.pos).toEqual(vec2(4, 1))
+    })
+})
+
 describe("defeated enemies", () => {
     function defeatedSetup(lives = 1) {
         const enemy = makeEnemy(3, 1, AiType.chase)
