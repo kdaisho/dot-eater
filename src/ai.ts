@@ -3,14 +3,14 @@ import type { Character } from "./character"
 import { moveStep } from "./glide"
 import type { Cells } from "./level"
 import {
-    FREE,
+    hasIce,
+    patrolMove,
     slideDistances,
     stepFrom,
     type IceMap,
     type MoveState,
-    type SlideDistance,
 } from "./ice"
-import { openNeighbours } from "./path"
+import { distanceMap, openNeighbours } from "./path"
 import { allDirections, directions, samePos, vec2, type Vec2 } from "./vec2"
 
 export type Random = () => number
@@ -100,7 +100,8 @@ function nextPos(
 // scored from the slide it starts, and the target counts as reached the
 // first time the path passes over it, stopped or mid-slide. So an ambusher
 // aiming at a cell it can only slide past still homes in on it, and a chaser
-// that would slide through the player catches it on the way.
+// that would slide through the player catches it on the way. On a map with
+// no ice, plain cell distances (distanceMap) give the same answer for less.
 function chaseStep(
     cells: Cells,
     ice: IceMap,
@@ -109,11 +110,15 @@ function chaseStep(
 ): Vec2 | null {
     const pos = candidateMoves(cells, enemy)
     if (pos.length === 0) return null
+    if (!hasIce(ice)) {
+        return nearest(pos, distanceMap(cells, target, enemy.pos))
+    }
     const dist = slideDistances(cells, ice, target, enemy.pos)
     let best = pos[0]
     let bestDist = Infinity
     for (const v of pos) {
-        const d = dist(arrival(cells, ice, enemy.pos, v))
+        const state = arrival(cells, ice, enemy.pos, v)
+        const d = state === null ? Infinity : dist(state)
         if (d < bestDist) {
             best = v
             bestDist = d
@@ -122,12 +127,28 @@ function chaseStep(
     return best
 }
 
+// The first of `pos` with the smallest distance in `dist`.
+function nearest(pos: readonly Vec2[], dist: number[][]): Vec2 {
+    let best = pos[0]
+    for (let i = 1; i < pos.length; i++) {
+        if (dist[pos[i].y][pos[i].x] < dist[best.y][best.x]) best = pos[i]
+    }
+    return best
+}
+
 // The state an enemy free at `from` gets into by stepping to the
-// neighbouring open cell `to`.
-function arrival(cells: Cells, ice: IceMap, from: Vec2, to: Vec2): MoveState {
-    const step = moveStep(from, to, cells[0].length, cells.length)
-    const heading = allDirections.findIndex((d) => samePos(directions[d], step))
-    return stepFrom(cells, ice, from, heading) ?? { pos: to, heading: FREE }
+// neighbouring cell `to`, or null if no step from `from` lands there.
+function arrival(
+    cells: Cells,
+    ice: IceMap,
+    from: Vec2,
+    to: Vec2
+): MoveState | null {
+    for (let heading = 0; heading < allDirections.length; heading++) {
+        const next = stepFrom(cells, ice, from, heading)
+        if (next !== null && samePos(next.pos, to)) return next
+    }
+    return null
 }
 
 // No ice anywhere on the map.
@@ -178,33 +199,16 @@ function patrolStep(cells: Cells, ice: IceMap, enemy: Character): Vec2 | null {
         enemy.routeIndex = (enemy.routeIndex + 1) % route.length
     }
     const waypoint = route[enemy.routeIndex]
+    if (!hasIce(ice)) {
+        // No ice: plain cell distances give the same path for less.
+        const pos = openNeighbours(cells, enemy.pos)
+        if (pos.length === 0) return null
+        const dist = distanceMap(cells, waypoint)
+        const best = nearest(pos, dist)
+        return dist[best.y][best.x] === Infinity ? null : best
+    }
     const dist = slideDistances(cells, ice, waypoint)
     return patrolMove(cells, ice, enemy.pos, dist)?.pos ?? null
-}
-
-// The state a patroller free at `pos` moves into, heading for the target of
-// `dist` (see slideDistances): the step whose path there is shortest, ties
-// going to direction order. Null when every way is a wall or the target
-// can't be reached. Shared with parseLevel's route check, so the check
-// walks exactly the path the patroller will.
-export function patrolMove(
-    cells: Cells,
-    ice: IceMap,
-    pos: Vec2,
-    dist: SlideDistance
-): MoveState | null {
-    let best: MoveState | null = null
-    let bestDist = Infinity
-    for (let heading = 0; heading < allDirections.length; heading++) {
-        const next = stepFrom(cells, ice, pos, heading)
-        if (next === null) continue
-        const d = dist(next)
-        if (d < bestDist) {
-            best = next
-            bestDist = d
-        }
-    }
-    return best
 }
 
 // A phantom ignores walls: it steps to whichever neighbouring cell is

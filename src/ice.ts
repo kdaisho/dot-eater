@@ -28,6 +28,19 @@ export type IceMap = readonly (readonly boolean[])[]
 
 type Grid = readonly (readonly Cell[])[]
 
+// Whether any cell of `ice` is ice. Ice maps never change once made, so the
+// answer is worked out once per map object and remembered, which keeps this
+// cheap enough to ask on every enemy move.
+const iceSeen = new WeakMap<IceMap, boolean>()
+export function hasIce(ice: IceMap): boolean {
+    let result = iceSeen.get(ice)
+    if (result === undefined) {
+        result = ice.some((row) => row.includes(true))
+        iceSeen.set(ice, result)
+    }
+    return result
+}
+
 // The step a character at `pos` that came from `lastPos` is forced to take
 // because it is sliding, or null when it is free to move. Null off ice, when
 // it hasn't moved, and when the next cell in its direction is a wall.
@@ -242,4 +255,29 @@ export function slideDistances(
     }
 
     return (state) => dist[index(state.pos.x, state.pos.y, state.heading)]
+}
+
+// The state a patroller free at `pos` moves into, heading for the target of
+// `dist` (see slideDistances): the step whose path there is shortest, ties
+// going to direction order. Null when every way is a wall or the target
+// can't be reached. Used by the patroller AI (ai.ts) and parseLevel's route
+// check, so the check walks exactly the path the patroller will.
+export function patrolMove(
+    cells: Grid,
+    ice: IceMap,
+    pos: Vec2,
+    dist: SlideDistance
+): MoveState | null {
+    let best: MoveState | null = null
+    let bestDist = Infinity
+    for (let heading = 0; heading < allDirections.length; heading++) {
+        const next = stepFrom(cells, ice, pos, heading)
+        if (next === null) continue
+        const d = dist(next)
+        if (d < bestDist) {
+            best = next
+            bestDist = d
+        }
+    }
+    return best
 }

@@ -11,6 +11,14 @@ import {
 import type { Character } from "./character"
 import type { Cells } from "./level"
 import { vec2, type Vec2 } from "./vec2"
+import { slideDistances } from "./ice"
+
+// slideDistances is spied on (still doing its real work) so tests can tell
+// whether enemy pathing used it or took the no-ice fast path.
+vi.mock("./ice", async (importOriginal) => {
+    const ice = await importOriginal<typeof import("./ice")>()
+    return { ...ice, slideDistances: vi.fn(ice.slideDistances) }
+})
 
 // An open crossroads: from the centre (2, 2) every direction is free.
 const cross = [
@@ -625,5 +633,56 @@ describe("enemyMove on ice", () => {
             rink.ice
         )
         expect(onIce.pos).toEqual(vec2(2, 1))
+    })
+})
+
+describe("enemyMove without ice", () => {
+    const rink = textMap([
+        "#######",
+        "#.~~~.#",
+        "#.###.#",
+        "#.....#",
+        "#######",
+    ])
+    const cells = cellsFrom(rink.map)
+    const bare = cells.map((row) => row.map(() => false))
+    const enemies = (): Character[] => [
+        makeEnemy(1, 1, AiType.chase),
+        makeEnemy(1, 1, AiType.ambusher),
+        makePatroller(1, 1, [
+            [5, 3],
+            [1, 1],
+        ]),
+    ]
+
+    it("skips the slide-aware search when the map has no ice", () => {
+        vi.mocked(slideDistances).mockClear()
+        for (const enemy of enemies()) {
+            enemyMove(cells, enemy, vec2(5, 3), fixedRandom(0), vec2(5, 2))
+            enemyMove(
+                cells,
+                enemy,
+                vec2(5, 3),
+                fixedRandom(0),
+                vec2(5, 2),
+                bare
+            )
+        }
+        expect(slideDistances).not.toHaveBeenCalled()
+    })
+
+    it("still uses it when there is ice", () => {
+        vi.mocked(slideDistances).mockClear()
+        for (const enemy of enemies()) {
+            enemyMove(
+                cells,
+                enemy,
+                vec2(5, 3),
+                fixedRandom(0),
+                vec2(5, 2),
+                rink.ice
+            )
+        }
+        expect(slideDistances).toHaveBeenCalledTimes(3)
     })
 })

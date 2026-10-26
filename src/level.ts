@@ -1,15 +1,16 @@
 import { AiType, Cell, ENEMY_IDS, TICK_RATE } from "./constants"
 import {
     FREE,
+    hasIce,
     nextStates,
+    patrolMove,
     slideDistances,
     slideReach,
     type IceMap,
     type MoveState,
     type SlideDistance,
 } from "./ice"
-import { patrolMove } from "./ai"
-import { vec2, type Vec2 } from "./vec2"
+import { samePos, vec2, type Vec2 } from "./vec2"
 
 export type Cells = Cell[][]
 
@@ -431,7 +432,7 @@ function routeProblems(
             problems.push(`${field(j)} can't be reached from the enemy's spawn`)
         }
     })
-    if (problems.length > 0 || !ice.some((row) => row.includes(true))) {
+    if (problems.length > 0 || !hasIce(ice)) {
         return problems
     }
 
@@ -446,8 +447,7 @@ function routeProblems(
     let legs = 0
     const seen = new Set<string>()
     for (;;) {
-        const [x, y] = route[j]
-        if (state.pos.x === x && state.pos.y === y) {
+        if (samePos(state.pos, vec2(...route[j]))) {
             j = (j + 1) % route.length
             legs++
         }
