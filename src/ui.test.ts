@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vite-plus/test"
 import {
     celebrate,
     hideOverlay,
+    showCharacterSelect,
     showGameOver,
     showPause,
     showStageClear,
@@ -11,6 +12,7 @@ import {
     showTitle,
 } from "./ui"
 import type { StageSlot } from "./progress"
+import { ANIMAL_IDS, AnimalId, ANIMALS } from "./roster"
 import { rateClear } from "./stars"
 import { START_LIVES, TICK_RATE } from "./constants"
 
@@ -147,6 +149,69 @@ describe("showStageSelect", () => {
     })
 })
 
+describe("showCharacterSelect", () => {
+    const animals = ANIMAL_IDS.map((id) => ANIMALS[id])
+    const cards = () => [
+        ...(overlay()?.querySelectorAll<HTMLElement>(".overlay-cards li") ??
+            []),
+    ]
+    const part = (card: HTMLElement, name: string) =>
+        card.querySelector(`.card-${name}`)?.textContent
+
+    it("shows one card per character in roster order", () => {
+        showCharacterSelect(animals, AnimalId.dragon)
+        expectSingle()
+        expect(overlay()?.dataset.screen).toBe("character-select")
+        expect(title()).toBe("Pick a character")
+        expect(lines()).toEqual([
+            "← → to choose, Space to play, Esc to go back",
+        ])
+        expect(cards().map((card) => card.dataset.animal)).toEqual(ANIMAL_IDS)
+    })
+
+    it("shows each character's emoji, name, breath and stat", () => {
+        showCharacterSelect(animals, AnimalId.dragon)
+        cards().forEach((card, i) => {
+            const animal = animals[i]
+            expect(part(card, "emoji")).toBe(animal.emoji)
+            expect(part(card, "name")).toBe(animal.name)
+            expect(part(card, "breath")).toBe(animal.breathName)
+            expect(part(card, "text")).toBe(animal.breathText)
+            expect(part(card, "stat")).toBe(animal.statText)
+        })
+        const owl = cards()[ANIMAL_IDS.indexOf(AnimalId.owl)]
+        expect(part(owl, "emoji")).toBe("🦉")
+        expect(part(owl, "name")).toBe("Owl")
+        expect(part(owl, "breath")).toBe("Wind breath")
+    })
+
+    it("marks only the selected card", () => {
+        showCharacterSelect(animals, AnimalId.skunk)
+        const marked = cards().filter((card) =>
+            card.classList.contains("selected")
+        )
+        expect(marked.map((card) => card.dataset.animal)).toEqual(["skunk"])
+        expect(marked[0].getAttribute("aria-current")).toBe("true")
+        expect(overlay()?.querySelectorAll("[aria-current=true]")).toHaveLength(
+            1
+        )
+    })
+
+    it("moves the mark when shown again", () => {
+        showCharacterSelect(animals, AnimalId.skunk)
+        showCharacterSelect(animals, AnimalId.boar)
+        expectSingle()
+        const marked = overlay()?.querySelector<HTMLElement>("li.selected")
+        expect(marked?.dataset.animal).toBe("boar")
+    })
+
+    it("adds no menu or text lines inside the cards", () => {
+        showCharacterSelect(animals, AnimalId.dragon)
+        expect(overlay()?.querySelector(".overlay-menu")).toBeNull()
+        expect(lines()).toHaveLength(1)
+    })
+})
+
 describe("showPause", () => {
     it("shows the pause screen", () => {
         showPause()
@@ -216,6 +281,7 @@ describe("overlays", () => {
     it("replace whatever overlay is showing", () => {
         showTitle()
         showStageSelect([{ kind: "open", name: "Level 1" }], 0)
+        showCharacterSelect([ANIMALS.dragon], AnimalId.dragon)
         showPause()
         showGameOver(endView(0))
         showStageClear(clearView(0))

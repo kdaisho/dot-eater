@@ -31,6 +31,10 @@ function pressAndTick(code: string) {
 const screen = () =>
     document.querySelector<HTMLElement>("#overlay")?.dataset.screen ?? "playing"
 
+// The character under the cursor on character select.
+const pick = () =>
+    document.querySelector<HTMLElement>("#overlay li.selected")?.dataset.animal
+
 describe("main with storage blocked", () => {
     it("plays, wins and returns to stage select without throwing", async () => {
         vi.useFakeTimers()
@@ -47,6 +51,10 @@ describe("main with storage blocked", () => {
         pressAndTick("Space")
         expect(screen()).toBe("stage-select")
         pressAndTick("Space")
+        expect(screen()).toBe("character-select")
+        expect(pick()).toBe("dragon")
+        pressAndTick("ArrowRight")
+        pressAndTick("Space")
         expect(screen()).toBe("playing")
 
         nextOutcome = "won"
@@ -56,6 +64,10 @@ describe("main with storage blocked", () => {
         pressAndTick("ArrowDown")
         pressAndTick("Space")
         expect(screen()).toBe("stage-select")
+        pressAndTick("Space")
+        // The pick couldn't be saved, but holds for the session.
+        expect(screen()).toBe("character-select")
+        expect(pick()).toBe("penguin")
         pressAndTick("Space")
         expect(screen()).toBe("playing")
     })

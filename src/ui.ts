@@ -1,5 +1,6 @@
 import confetti from "canvas-confetti"
 import type { StageSlot } from "./progress"
+import type { AnimalId, AnimalInfo } from "./roster"
 import { formatTicks, starList, starText, type ClearRating } from "./stars"
 
 function genConfetti(interval: number = 20) {
@@ -21,7 +22,7 @@ export const celebrate = genConfetti()
 
 // Screen overlays. Every screen other than plain play is one overlay: a
 // backdrop plus a panel with a title, optional detail lines and an optional
-// menu. At most one overlay exists at a time; each show* replaces whatever is
+// menu (on character select, a row of cards instead). At most one overlay exists at a time; each show* replaces whatever is
 // showing, and hideOverlay removes it. Input is handled by the state machine
 // (flow.ts), not here.
 
@@ -45,7 +46,11 @@ type Overlay = {
     // Short lines under the title (hints, the final score).
     lines?: readonly string[]
     items?: readonly MenuItem[]
+    cards?: readonly Card[]
 }
+
+// A character select card: emoji and name, the breath, the stat.
+type Card = { animal: AnimalInfo; selected: boolean }
 
 export function showTitle() {
     show({
@@ -85,6 +90,23 @@ function slotLabel(slot: StageSlot): string {
         case "comingSoon":
             return "Coming soon"
     }
+}
+
+// Character select: one card per character, in the order given, with the
+// cursor's card marked.
+export function showCharacterSelect(
+    animals: readonly AnimalInfo[],
+    selected: AnimalId
+) {
+    show({
+        id: "character-select",
+        title: "Pick a character",
+        lines: ["← → to choose, Space to play, Esc to go back"],
+        cards: animals.map((animal) => ({
+            animal,
+            selected: animal.id === selected,
+        })),
+    })
 }
 
 export function showPause() {
@@ -127,7 +149,7 @@ export function hideOverlay() {
     document.getElementById("overlay")?.remove()
 }
 
-function show({ id, title, lines = [], items = [] }: Overlay) {
+function show({ id, title, lines = [], items = [], cards = [] }: Overlay) {
     hideOverlay()
 
     const backdrop = document.createElement("div")
@@ -171,5 +193,36 @@ function show({ id, title, lines = [], items = [] }: Overlay) {
         panel.appendChild(menu)
     }
 
+    if (cards.length > 0) panel.appendChild(cardRow(cards))
+
     document.body.appendChild(panel)
+}
+
+function cardRow(cards: readonly Card[]): HTMLElement {
+    const row = document.createElement("ul")
+    row.className = "overlay-cards"
+    for (const { animal, selected } of cards) {
+        const li = document.createElement("li")
+        li.className = "card"
+        li.dataset.animal = animal.id
+        if (selected) {
+            li.classList.add("selected")
+            li.setAttribute("aria-current", "true")
+        }
+        const parts = [
+            ["card-emoji", animal.emoji],
+            ["card-name", animal.name],
+            ["card-breath", animal.breathName],
+            ["card-text", animal.breathText],
+            ["card-stat", animal.statText],
+        ] as const
+        for (const [className, text] of parts) {
+            const div = document.createElement("div")
+            div.className = className
+            div.textContent = text
+            li.appendChild(div)
+        }
+        row.appendChild(li)
+    }
+    return row
 }

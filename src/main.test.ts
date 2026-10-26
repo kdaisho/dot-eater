@@ -4,6 +4,7 @@ import confetti from "canvas-confetti"
 import { energyHud } from "./breath"
 import { DOT_POINTS, START_LIVES, TICK_MS, TICK_RATE } from "./constants"
 import { createGameState, step, type GameState, type Outcome } from "./game"
+import { LAST_PICK_KEY } from "./lastPick"
 import { levels } from "./levels"
 import {
     emptyProgress,
@@ -14,6 +15,7 @@ import {
     serializeProgress,
     STAGE_COUNT,
 } from "./progress"
+import { ANIMAL_IDS, AnimalId, DEFAULT_ANIMAL } from "./roster"
 import { formatTicks, starText } from "./stars"
 import { vec2 } from "./vec2"
 
@@ -103,6 +105,10 @@ function screen(): string {
 const selectedItem = () =>
     document.querySelector("#overlay li.selected")?.textContent
 
+// The character under the cursor on character select.
+const pick = () =>
+    document.querySelector<HTMLElement>("#overlay li.selected")?.dataset.animal
+
 function gameOver(outcome: Outcome = "dead") {
     nextOutcome = outcome
     vi.advanceTimersByTime(FRAMES_MS)
@@ -156,7 +162,13 @@ describe("main", () => {
         expect(selectedItem()).toBe(levels[0].name)
         expect(steps()).toBe(0)
 
-        // Space: play the selected stage.
+        // Space: character select, on the Dragon with nothing saved.
+        pressAndTick("Space")
+        expect(screen()).toBe("character-select")
+        expect(pick()).toBe(DEFAULT_ANIMAL)
+        expect(starts()).toBe(0)
+
+        // Space: play the selected stage with the Dragon.
         pressAndTick("Space")
         expect(screen()).toBe("playing")
         expect(starts()).toBe(1)
@@ -366,8 +378,74 @@ describe("main", () => {
         expect(selectedItem()).toBe(levels[0].name)
         const before = starts()
         pressAndTick("Space")
+        expect(screen()).toBe("character-select")
+        pressAndTick("Space")
         expect(screen()).toBe("playing")
         expect(starts()).toBe(before + 1)
+    })
+
+    it("goes back from character select to stage select on Escape", () => {
+        gameOver()
+        pressAndTick("ArrowDown")
+        pressAndTick("Space")
+        pressAndTick("Space")
+        expect(screen()).toBe("character-select")
+        const before = starts()
+        pressAndTick("Escape")
+        expect(screen()).toBe("stage-select")
+        expect(selectedItem()).toBe(levels[0].name)
+        expect(starts()).toBe(before)
+    })
+
+    it("shows a card per character and clears the canvas on character select", () => {
+        gameOver()
+        pressAndTick("ArrowDown")
+        pressAndTick("Space")
+        pressAndTick("Space")
+        expect(screen()).toBe("character-select")
+        const cards = [
+            ...document.querySelectorAll<HTMLElement>("#overlay li"),
+        ].map((li) => li.dataset.animal)
+        expect(cards).toEqual(ANIMAL_IDS)
+        drawn.draw = 0
+        drawn.clear = 0
+        vi.advanceTimersByTime(FRAMES_MS)
+        expect(drawn.draw).toBe(0)
+        expect(drawn.clear).toBeGreaterThan(0)
+    })
+
+    it("saves the pick, keeps it on retry and opens character select on it next time", () => {
+        gameOver()
+        pressAndTick("ArrowDown")
+        pressAndTick("Space")
+        pressAndTick("Space")
+        expect(screen()).toBe("character-select")
+        // Onto the Owl, wherever the cursor starts.
+        for (const _ of ANIMAL_IDS) pressAndTick("ArrowLeft")
+        const owl = ANIMAL_IDS.indexOf(AnimalId.owl)
+        for (let i = 0; i < owl; i++) pressAndTick("ArrowRight")
+        expect(pick()).toBe(AnimalId.owl)
+        expect(localStorage.getItem(LAST_PICK_KEY)).not.toBe(AnimalId.owl)
+        pressAndTick("Space")
+        expect(screen()).toBe("playing")
+        expect(localStorage.getItem(LAST_PICK_KEY)).toBe(AnimalId.owl)
+
+        // Retry skips character select.
+        gameOver()
+        pressAndTick("Space")
+        expect(screen()).toBe("playing")
+
+        gameOver()
+        pressAndTick("ArrowDown")
+        pressAndTick("Space")
+        pressAndTick("Space")
+        expect(screen()).toBe("character-select")
+        expect(pick()).toBe(AnimalId.owl)
+        // Back to the Dragon, which the other tests expect.
+        for (const _ of ANIMAL_IDS) pressAndTick("ArrowLeft")
+        expect(pick()).toBe(DEFAULT_ANIMAL)
+        pressAndTick("Space")
+        expect(localStorage.getItem(LAST_PICK_KEY)).toBe(DEFAULT_ANIMAL)
     })
 
     it("ignores other keys after the game ends", () => {
@@ -622,6 +700,7 @@ describe("main", () => {
         for (let i = 0; i < fog; i++) pressAndTick("ArrowDown")
         expect(selectedItem()).toBe(levels[fog].name)
         pressAndTick("Space")
+        pressAndTick("Space")
         try {
             expect(screen()).toBe("playing")
             expect(lastStartedLevel()).toBe(levels[fog])
@@ -636,6 +715,7 @@ describe("main", () => {
             pressAndTick("ArrowDown")
             pressAndTick("Space")
             for (let i = 0; i < fog; i++) pressAndTick("ArrowUp")
+            pressAndTick("Space")
             pressAndTick("Space")
         }
         expect(lastStartedLevel()).toBe(levels[0])
