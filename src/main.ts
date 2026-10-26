@@ -106,7 +106,14 @@ function render(alpha: number) {
     if (screen.kind === "playing" || screen.kind === "ending") {
         lastAlpha = alpha
     }
-    renderer.draw(game, lastAlpha, { score: game.score, lives: game.lives })
+    // Every screen with a game also says which level it is.
+    const rules = "level" in screen ? levels[screen.level]?.rules : undefined
+    renderer.draw(
+        game,
+        lastAlpha,
+        { score: game.score, lives: game.lives },
+        rules
+    )
 }
 
 function showOverlay(s: Screen) {

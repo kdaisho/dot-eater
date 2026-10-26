@@ -506,3 +506,59 @@ describe("the old level fixture", () => {
         ).toEqual(OLD_MAP)
     })
 })
+
+describe("parseLevel rules", () => {
+    // Rules come from JSON-like data, so tests pass shapes the type forbids.
+    const withRules = (rules: unknown): LevelData =>
+        ({ ...valid, rules }) as LevelData
+
+    it("gives a level without rules empty rules", () => {
+        expect(parseLevel(valid).rules).toEqual({})
+        expect(parseLevel(withRules({})).rules).toEqual({})
+    })
+
+    it("carries a fog rule through, copied", () => {
+        const data = withRules({ fog: { radius: 3.5 } })
+        const level = parseLevel(data)
+        expect(level.rules).toEqual({ fog: { radius: 3.5 } })
+        expect(level.rules.fog).not.toBe(data.rules?.fog)
+    })
+
+    it("keeps the rules JSON-serializable", () => {
+        const data = withRules({ fog: { radius: 4 } })
+        expect(JSON.parse(JSON.stringify(data))).toEqual(data)
+        expect(parseLevel(JSON.parse(JSON.stringify(data))).rules).toEqual({
+            fog: { radius: 4 },
+        })
+    })
+
+    it.each([0, -1, Number.NaN, Infinity, "3", null, undefined])(
+        "rejects a fog radius of %s",
+        (radius) => {
+            expect(problemsOf(withRules({ fog: { radius } }))).toEqual([
+                `rules.fog.radius must be a positive number, got ${JSON.stringify(radius)}`,
+            ])
+        }
+    )
+
+    it("rejects unknown rules and fog settings", () => {
+        expect(problemsOf(withRules({ fogg: { radius: 3 } }))).toEqual([
+            'unknown rule "fogg" (known rules: fog)',
+        ])
+        expect(problemsOf(withRules({ fog: { radius: 3, soft: 1 } }))).toEqual([
+            'unknown rules.fog setting "soft"',
+        ])
+    })
+
+    it("rejects rules or fog that aren't objects", () => {
+        expect(problemsOf(withRules([]))).toEqual([
+            "rules must be an object, got []",
+        ])
+        expect(problemsOf(withRules(null))).toEqual([
+            "rules must be an object, got null",
+        ])
+        expect(problemsOf(withRules({ fog: 3 }))).toEqual([
+            "rules.fog must be an object, got 3",
+        ])
+    })
+})

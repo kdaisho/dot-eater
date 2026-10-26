@@ -1,7 +1,16 @@
 import { Cell, CharacterId } from "./constants"
+import {
+    fogDistance,
+    fogWrap,
+    lightBand,
+    lightCentres,
+    type FogWrap,
+} from "./fog"
 import type { GameState } from "./game"
 import { eatenDotVisible, glidePos, wrapCopies } from "./glide"
 import { computeLayout, type Layout } from "./layout"
+import type { LevelRules } from "./level"
+import { vec2, type Vec2 } from "./vec2"
 
 // What the HUD strip above the maze shows. Fields left out aren't drawn.
 export type Hud = {
@@ -12,7 +21,8 @@ export type Hud = {
 export type Renderer = {
     // Draw the game. `alpha` in [0, 1) is how far the loop is between the last
     // logic tick and the next; characters glide between cells with it.
-    draw(state: GameState, alpha: number, hud?: Hud): void
+    // `rules` are the level's special rules that change how it looks (fog).
+    draw(state: GameState, alpha: number, hud?: Hud, rules?: LevelRules): void
     // Paint the background only, for screens without a game, so the canvas
     // doesn't keep showing an old board. The canvas keeps its size.
     clear(): void
@@ -27,7 +37,14 @@ const COLORS = {
     wall: "#000",
     dot: "#000",
     text: "#000",
+    // The fog's darkness, as RGB so the soft edge can fade it in.
+    fog: "17, 17, 17",
 }
+
+// The width of the fog's soft edge in cells: the darkness fades in over this
+// much, ending fully dark at the radius (or over the whole radius when it is
+// smaller).
+const FOG_SOFT_EDGE = 1.5
 
 const sprites: Record<CharacterId, string> = {
     [CharacterId.player]: "🪰",
@@ -57,7 +74,9 @@ export function createRenderer(
     let layout: Layout | undefined
     let cols = 0
     let rows = 0
-    let last: { state: GameState; alpha: number; hud: Hud } | undefined
+    let last:
+        | { state: GameState; alpha: number; hud: Hud; rules: LevelRules }
+        | undefined
 
     function fit() {
         layout = computeLayout(
@@ -73,8 +92,13 @@ export function createRenderer(
         canvas.style.height = `${layout.height}px`
     }
 
-    function draw(state: GameState, alpha: number, hud: Hud = {}) {
-        last = { state, alpha, hud }
+    function draw(
+        state: GameState,
+        alpha: number,
+        hud: Hud = {},
+        rules: LevelRules = {}
+    ) {
+        last = { state, alpha, hud, rules }
         const mapRows = state.cells.length
         const mapCols = state.cells[0]?.length ?? 0
         if (!layout || mapCols !== cols || mapRows !== rows) {
@@ -98,8 +122,12 @@ export function createRenderer(
         ctx.beginPath()
         ctx.rect(0, 0, cols * cell, rows * cell)
         ctx.clip()
-        drawCells(ctx, state, alpha, cell)
-        drawCharacters(ctx, state, alpha, cell, cols, rows)
+        const fog = rules.fog
+            ? createFog(state, alpha, cols, rows, rules.fog.radius)
+            : null
+        drawCells(ctx, state, alpha, cell, fog)
+        drawCharacters(ctx, state, alpha, cell, cols, rows, fog)
+        if (fog) drawDarkness(ctx, fog, cell, cols, rows)
         ctx.restore()
     }
 
@@ -116,19 +144,82 @@ export function createRenderer(
         clear,
         resize() {
             if (layout) fit()
-            if (last) draw(last.state, last.alpha, last.hud)
+            if (last) draw(last.state, last.alpha, last.hud, last.rules)
             else clear()
         },
     }
 }
 
+// The fog for one frame: the light is centred on where the player is drawn
+// (mid-glide), and anything further than `radius` cells from it is hidden.
+type Fog = {
+    player: Vec2
+    radius: number
+    wrap: FogWrap
+    // Whether something at `p` (cell units) is inside the light.
+    visible(p: Vec2): boolean
+}
+
+function createFog(
+    state: GameState,
+    alpha: number,
+    cols: number,
+    rows: number,
+    radius: number
+): Fog {
+    const player = glidePos(state.player, alpha, cols, rows)
+    const wrap = fogWrap(state.cells)
+    return {
+        player,
+        radius,
+        wrap,
+        visible: (p) => fogDistance(p, player, cols, rows, wrap) <= radius,
+    }
+}
+
+// Darken the map outside the light: per light centre (the player and its
+// copies across tunnels), a radial gradient over the part of the map nearest
+// that centre, clear in the middle and fading to full darkness at the radius.
+// The gradient's last colour carries on beyond it, so the rest is dark.
+function drawDarkness(
+    ctx: CanvasRenderingContext2D,
+    fog: Fog,
+    cell: number,
+    cols: number,
+    rows: number
+) {
+    const outer = fog.radius * cell
+    const inner = Math.max(0, fog.radius - FOG_SOFT_EDGE) * cell
+    for (const c of lightCentres(fog.player, cols, rows, fog.wrap)) {
+        const band = lightBand(c, cols, rows, fog.wrap)
+        if (!band) continue
+        const x = (c.x + 0.5) * cell
+        const y = (c.y + 0.5) * cell
+        const gradient = ctx.createRadialGradient(x, y, inner, x, y, outer)
+        gradient.addColorStop(0, `rgba(${COLORS.fog}, 0)`)
+        gradient.addColorStop(1, `rgb(${COLORS.fog})`)
+        ctx.fillStyle = gradient
+        // Whole pixels, so neighbouring bands meet without a seam.
+        const left = Math.round(band.left * cell)
+        const top = Math.round(band.top * cell)
+        ctx.fillRect(
+            left,
+            top,
+            Math.round(band.right * cell) - left,
+            Math.round(band.bottom * cell) - top
+        )
+    }
+}
+
 // Walls and dots, plus the dot the player has just eaten while its glide
-// hasn't reached it yet (see eatenDotVisible).
+// hasn't reached it yet (see eatenDotVisible). In fog, only those inside the
+// light are drawn.
 function drawCells(
     ctx: CanvasRenderingContext2D,
     state: GameState,
     alpha: number,
-    cell: number
+    cell: number,
+    fog: Fog | null
 ) {
     const wall = cell * WALL_SCALE
     const dot = Math.max(1, cell * DOT_SCALE)
@@ -138,6 +229,7 @@ function drawCells(
             : null
     state.cells.forEach((row, y) => {
         row.forEach((value, x) => {
+            if (fog && !fog.visible(vec2(x, y))) return
             const cx = (x + 0.5) * cell
             const cy = (y + 0.5) * cell
             if (value === Cell.wall) {
@@ -160,14 +252,17 @@ function drawCharacters(
     alpha: number,
     cell: number,
     cols: number,
-    rows: number
+    rows: number,
+    fog: Fog | null
 ) {
     ctx.font = `${Math.round(cell * SPRITE_SCALE)}px sans-serif`
     ctx.textAlign = "center"
     ctx.textBaseline = "middle"
-    // Later characters are drawn on top of earlier ones.
+    // Later characters are drawn on top of earlier ones. In fog, enemies
+    // outside the light are hidden; the player is always in it.
     for (const character of [state.player, ...state.enemies]) {
         const pos = glidePos(character, alpha, cols, rows)
+        if (fog && character !== state.player && !fog.visible(pos)) continue
         for (const p of wrapCopies(pos, cols, rows)) {
             ctx.fillText(
                 sprites[character.id],
