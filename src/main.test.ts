@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vite-plus/test"
 import confetti from "canvas-confetti"
+import { energyHud } from "./breath"
 import { DOT_POINTS, START_LIVES, TICK_MS, TICK_RATE } from "./constants"
 import { createGameState, step, type GameState, type Outcome } from "./game"
 import { levels } from "./levels"
@@ -239,6 +240,15 @@ describe("main", () => {
         expect(pressed.slice(1).every(isZero)).toBe(true)
         expect(lastHeld()).toEqual([vec2(0, 1)])
         keyup("ArrowDown")
+    })
+
+    it("passes a breath press (right Shift) to the game on one tick", () => {
+        press("ShiftRight")
+        const before = steps()
+        vi.advanceTimersByTime(FRAMES_MS)
+        const breaths = moves(before).map((m) => m.breath)
+        expect(breaths.filter(Boolean)).toHaveLength(1)
+        expect(breaths[0]).toBe(true)
     })
 
     it("pauses and resumes on P", () => {
@@ -575,7 +585,20 @@ describe("main", () => {
         game.score = 7 * DOT_POINTS
         game.lives = 2
         vi.advanceTimersByTime(FRAMES_MS)
-        expect(drawn.last?.[2]).toEqual({ score: 7 * DOT_POINTS, lives: 2 })
+        expect(drawn.last?.[2]).toEqual({
+            score: 7 * DOT_POINTS,
+            lives: 2,
+            energy: energyHud(game),
+        })
+    })
+
+    it("draws the game's energy meter in the HUD", () => {
+        const game = drawnGame()
+        game.breather.energy = 60
+        vi.advanceTimersByTime(FRAMES_MS)
+        expect(drawn.last?.[2]).toMatchObject({
+            energy: { energy: 60, max: 100, cost: 50, ready: true },
+        })
     })
 
     it("draws with the playing level's rules", () => {
@@ -626,7 +649,10 @@ describe("main", () => {
             expect(overlayLines()[0]).toBe(`Score ${12 * DOT_POINTS}`)
             pressAndTick("Space")
             expect(screen()).toBe("playing")
-            expect(drawn.last?.[2]).toEqual({ score: 0, lives: START_LIVES })
+            expect(drawn.last?.[2]).toMatchObject({
+                score: 0,
+                lives: START_LIVES,
+            })
         }
     )
 })
