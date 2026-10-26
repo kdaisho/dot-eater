@@ -1,6 +1,14 @@
 import { AiType, Cell, ENEMY_IDS, TICK_RATE } from "./constants"
-import { slideReach, type IceMap } from "./ice"
-import { distanceMap } from "./path"
+import {
+    FREE,
+    nextStates,
+    slideDistances,
+    slideReach,
+    type IceMap,
+    type MoveState,
+    type SlideDistance,
+} from "./ice"
+import { patrolMove } from "./ai"
 import { vec2, type Vec2 } from "./vec2"
 
 export type Cells = Cell[][]
@@ -282,18 +290,13 @@ export function parseLevel(data: LevelData): Level {
             )
         })
     )
-    // Each patroller must be able to walk its whole route from its spawn.
-    // Moves are symmetric, so that also connects the waypoints to each other.
+    // Each patroller must be able to walk its whole route from its spawn,
+    // sliding included (see routeProblems).
     data.enemies.forEach((enemy, i) => {
         if (!enemy.route) return
-        const fromSpawn = distanceMap(cells, enemyPositions[i])
-        enemy.route.forEach(([x, y], j) => {
-            if (fromSpawn[y][x] === Infinity) {
-                problems.push(
-                    `enemies[${i}].route[${j}] (${x}, ${y}) can't be reached from the enemy's spawn`
-                )
-            }
-        })
+        problems.push(
+            ...routeProblems(cells, ice, enemyPositions[i], enemy.route, i)
+        )
     })
     if (problems.length > 0) throw fail()
 
@@ -396,6 +399,80 @@ function checkSpeed(
         problems.push(
             `${field} must be at most ${TICK_RATE} (one cell per tick), got ${speed}`
         )
+    }
+}
+
+// Whether a patroller starting free at `spawn` walks its whole route:
+// waypoint 0, then each next one in turn, and back round to waypoint 0
+// again. A waypoint is reached by stopping on it or by sliding over it, as
+// in the game (see reachWaypoint in game.ts).
+//
+// First, every waypoint must be somewhere the patroller can get to at all
+// from its spawn. Without ice moves are symmetric, so that also connects
+// the waypoints to each other and nothing more is checked. With ice, where
+// the patroller ends up on reaching a waypoint (which cell, sliding or not)
+// decides where it can go next, so the check then walks the patroller's own
+// path (patrolMove, the same choice the AI makes), lap after lap until it
+// repeats itself, and reports the first leg it can't finish: past that
+// point the patroller never gets any further round its route.
+function routeProblems(
+    cells: Cells,
+    ice: IceMap,
+    spawn: Vec2,
+    route: readonly CellRef[],
+    i: number
+): string[] {
+    const field = (j: number) =>
+        `enemies[${i}].route[${j}] (${route[j][0]}, ${route[j][1]})`
+    const { visited } = slideReach(cells, ice, spawn)
+    const problems: string[] = []
+    route.forEach(([x, y], j) => {
+        if (!visited[y][x]) {
+            problems.push(`${field(j)} can't be reached from the enemy's spawn`)
+        }
+    })
+    if (problems.length > 0 || !ice.some((row) => row.includes(true))) {
+        return problems
+    }
+
+    // One distance map per waypoint; the patroller has no blocked cell.
+    const dists: SlideDistance[] = []
+    const distTo = (j: number) =>
+        (dists[j] ??= slideDistances(cells, ice, vec2(...route[j])))
+    let state: MoveState = { pos: spawn, heading: FREE }
+    let j = 0
+    // How far round the route the patroller has got, so a failed leg can
+    // name where it set off from: the spawn on the very first leg.
+    let legs = 0
+    const seen = new Set<string>()
+    for (;;) {
+        const [x, y] = route[j]
+        if (state.pos.x === x && state.pos.y === y) {
+            j = (j + 1) % route.length
+            legs++
+        }
+        // Each step brings the patroller one move closer to its waypoint,
+        // so a repeat means a whole lap (or more) went by.
+        const key = `${state.pos.x},${state.pos.y},${state.heading},${j}`
+        if (seen.has(key)) return []
+        seen.add(key)
+        const next =
+            distTo(j)(state) === Infinity
+                ? null
+                : state.heading === FREE
+                  ? patrolMove(cells, ice, state.pos, distTo(j))
+                  : nextStates(cells, ice, state)[0]
+        if (next === null) {
+            const prev = (j + route.length - 1) % route.length
+            const from =
+                legs === 0
+                    ? "the enemy's spawn"
+                    : field(prev).slice(`enemies[${i}].`.length)
+            return [
+                `${field(j)} can't be reached from ${from}: sliding carries the patroller away`,
+            ]
+        }
+        state = next
     }
 }
 

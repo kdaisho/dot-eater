@@ -46,9 +46,9 @@ export function slideStep(
     return cells[next.y][next.x] === Cell.wall ? null : step
 }
 
-// ---- Slide-aware movement graph, for level checks ----
+// ---- Slide-aware movement graph, for level checks and enemy pathing ----
 
-// Where the player is and whether it is sliding: `heading` is the index in
+// Where a character is and whether it is sliding: `heading` is the index in
 // allDirections of the slide it is in, or FREE when it may choose any way.
 export type MoveState = { pos: Vec2; heading: number }
 
@@ -147,4 +147,99 @@ export function slideReach(cells: Grid, ice: IceMap, start: Vec2): SlideReach {
 // turn there), as opposed to only sliding over it.
 export function canStopAt(states: readonly MoveState[], pos: Vec2): boolean {
     return states.some((s) => s.heading === FREE && samePos(s.pos, pos))
+}
+
+// ---- Slide-aware distances, for enemy pathing and patrol checks ----
+
+// The state a character free at `pos` gets into by stepping `heading` (an
+// index in allDirections), or null when that way is a wall.
+export function stepFrom(
+    cells: Grid,
+    ice: IceMap,
+    pos: Vec2,
+    heading: number
+): MoveState | null {
+    const d = directions[allDirections[heading]]
+    const to = loopPos(cells, vec2(pos.x + d.x, pos.y + d.y))
+    if (cells[to.y][to.x] === Cell.wall) return null
+    return arrive(cells, ice, to, heading)
+}
+
+// The number of moves from a state until a character first stands on the
+// target cell, whether it stops there or only slides over it; Infinity when
+// it never can.
+export type SlideDistance = (state: MoveState) => number
+
+// States per cell: free, or sliding in one of the four directions.
+const STATES_PER_CELL = allDirections.length + 1
+
+// Slide-aware distances to `target`: like distanceMap in path.ts, but a move
+// onto ice may force a slide, so the distance is the real number of moves
+// counting the slide steps, and a cell only slid over counts as reached.
+// An optional `blocked` cell is treated like a wall (unless it is the
+// target): paths that would stop on it or slide over it don't count.
+//
+// It is one breadth-first search backwards from the target over (cell,
+// free or sliding heading) states, so asking for several states is cheap.
+// Without ice every state is free and this equals distanceMap exactly.
+export function slideDistances(
+    cells: Grid,
+    ice: IceMap,
+    target: Vec2,
+    blocked?: Vec2
+): SlideDistance {
+    const height = cells.length
+    const width = cells[0].length
+    const index = (x: number, y: number, heading: number) =>
+        (y * width + x) * STATES_PER_CELL + heading + 1
+    const dist = new Float64Array(width * height * STATES_PER_CELL).fill(
+        Infinity
+    )
+    const queue = new Int32Array(dist.length)
+    let tail = 0
+    const reach = (x: number, y: number, heading: number, d: number) => {
+        const i = index(x, y, heading)
+        if (dist[i] !== Infinity) return
+        dist[i] = d
+        queue[tail++] = i
+    }
+    // Whether a move onto (x, y) heading `heading` starts or continues a
+    // slide (see slideStep).
+    const slides = (x: number, y: number, heading: number) => {
+        if (!ice[y][x]) return false
+        const d = directions[allDirections[heading]]
+        const next = loopPos(cells, vec2(x + d.x, y + d.y))
+        return cells[next.y][next.x] !== Cell.wall
+    }
+
+    // Standing on the target in any state counts as reaching it.
+    reach(target.x, target.y, FREE, 0)
+    for (let h = 0; h < allDirections.length; h++) {
+        if (slides(target.x, target.y, h)) reach(target.x, target.y, h, 0)
+    }
+
+    for (let head = 0; head < tail; head++) {
+        const i = queue[head]
+        const cell = Math.floor(i / STATES_PER_CELL)
+        const heading = (i % STATES_PER_CELL) - 1
+        const x = cell % width
+        const y = Math.floor(cell / width)
+        const next = dist[i] + 1
+        // The moves into this state: a sliding state is entered by a move
+        // its way that slides; a free one by any move that doesn't.
+        for (let h = 0; h < allDirections.length; h++) {
+            if (heading !== FREE && h !== heading) continue
+            if (slides(x, y, h) !== (heading !== FREE)) continue
+            const d = directions[allDirections[h]]
+            const from = loopPos(cells, vec2(x - d.x, y - d.y))
+            if (cells[from.y][from.x] === Cell.wall) continue
+            if (blocked && samePos(from, blocked)) continue
+            // Either free there and choosing this way, or already sliding
+            // this way (which needs ice there).
+            reach(from.x, from.y, FREE, next)
+            if (ice[from.y][from.x]) reach(from.x, from.y, h, next)
+        }
+    }
+
+    return (state) => dist[index(state.pos.x, state.pos.y, state.heading)]
 }

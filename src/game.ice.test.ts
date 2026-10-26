@@ -349,3 +349,66 @@ describe("createGameState: ice", () => {
         }
     })
 })
+
+describe("step: enemy pathing on ice", () => {
+    // An ice lane from (2, 1) to (6, 1) between floor at (1, 1) and a dead
+    // end at (7, 1). (3, 1) has walls above and below, so it can only be
+    // slid over. The player waits in a sealed pocket at (7, 3).
+    const rows = [
+        "#########",
+        "#.~~~~~ #",
+        "#.##.####",
+        "#.##.##.#",
+        "#....####",
+        "#########",
+    ]
+
+    // Regression: plain BFS sent the patroller east from (1, 1) for (4, 3)
+    // every time, sliding to (7, 1) and back for ever.
+    it("a patroller whose waypoint can only be slid over loops round its route", () => {
+        const patroller = makePatroller(1, 4, [
+            [3, 1],
+            [4, 3],
+        ])
+        const state = rink(rows, vec2(7, 3), [patroller])
+        const moves = trail(state, 60 * 30, {}, patroller)
+        // Up and east, sliding over (3, 1) to (7, 1); back west to (1, 1),
+        // then round below to (4, 3); up to stop on (4, 1), and west over
+        // (3, 1) again.
+        expect(moves.slice(0, 27)).toEqual(
+            [
+                [1, 3],
+                [1, 2],
+                [1, 1],
+                [2, 1],
+                [3, 1],
+                [4, 1],
+                [5, 1],
+                [6, 1],
+                [7, 1],
+                [6, 1],
+                [5, 1],
+                [4, 1],
+                [3, 1],
+                [2, 1],
+                [1, 1],
+                [1, 2],
+                [1, 3],
+                [1, 4],
+                [2, 4],
+                [3, 4],
+                [4, 4],
+                [4, 3],
+                [4, 2],
+                [4, 1],
+                [3, 1],
+                [2, 1],
+                [1, 1],
+            ].map(([x, y]) => vec2(x, y))
+        )
+        const visits = (x: number, y: number) =>
+            moves.filter((p) => samePos(p, vec2(x, y))).length
+        expect(visits(4, 3)).toBeGreaterThanOrEqual(2)
+        expect(visits(3, 1)).toBeGreaterThanOrEqual(4)
+    })
+})

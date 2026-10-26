@@ -225,6 +225,33 @@ describe("parseLevel", () => {
         ])
     })
 
+    // Waypoint 0 at (3, 1) is mid-lane on ice with walls above and below:
+    // the patroller can only slide over it, never stop there.
+    it("accepts a patrol route that only works by sliding over a waypoint", () => {
+        const level = parseLevel({
+            name: "slide-by",
+            parTime: 60,
+            map: [
+                "#########",
+                "#.~~~~~.#",
+                "#.##.####",
+                "#.##.####",
+                "#E..P####",
+                "#########",
+            ],
+            enemies: [
+                {
+                    ai: "patroller",
+                    route: [
+                        [3, 1],
+                        [4, 3],
+                    ],
+                },
+            ],
+        })
+        expect(level.enemies[0].route).toEqual([vec2(3, 1), vec2(4, 3)])
+    })
+
     it("leaves the route out for enemies without one", () => {
         expect(parseLevel(valid).enemies[0]).not.toHaveProperty("route")
     })
@@ -527,6 +554,33 @@ describe("parseLevel", () => {
                 "sliding can strand the player at (3, 2), with no way back to the spawn",
                 "sliding can strand the player at (4, 2), with no way back to the spawn",
             ])
+        })
+
+        // Down from (3, 2) the patroller stops on the ice at (3, 3), then
+        // reaches waypoint 1 sliding west over (2, 3) along a lane that runs
+        // through a tunnel with no wall, so it never stops again and can't
+        // get back to waypoint 0. (The player could be stranded there too.)
+        it("a patrol route leg that sliding makes impossible", () => {
+            const rows = ["#####", "#P.E#", "#.#.#", "~~~~~", "#####"]
+            const problems = problemsOf({
+                ...valid,
+                map: rows,
+                enemies: [
+                    {
+                        ai: "patroller",
+                        route: [
+                            [3, 1],
+                            [2, 3],
+                        ],
+                    },
+                ],
+            })
+            expect(problems).toContain(
+                "enemies[0].route[0] (3, 1) can't be reached from route[1] (2, 3): sliding carries the patroller away"
+            )
+            expect(
+                problems.filter((p) => !p.startsWith("sliding can strand"))
+            ).toHaveLength(1)
         })
 
         // A row of ice with a tunnel at both ends and no wall: a slide along

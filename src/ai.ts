@@ -2,7 +2,15 @@ import { AiType, AMBUSH_AHEAD, Cell } from "./constants"
 import type { Character } from "./character"
 import { moveStep } from "./glide"
 import type { Cells } from "./level"
-import { distanceMap, openNeighbours } from "./path"
+import {
+    FREE,
+    slideDistances,
+    stepFrom,
+    type IceMap,
+    type MoveState,
+    type SlideDistance,
+} from "./ice"
+import { openNeighbours } from "./path"
 import { allDirections, directions, samePos, vec2, type Vec2 } from "./vec2"
 
 export type Random = () => number
@@ -18,15 +26,19 @@ export function candidateMoves(cells: Cells, enemy: Character): Vec2[] {
 
 // Move one enemy according to its AI. `target` is the player's position and
 // `targetLast` the cell the player came from on its latest move (the same as
-// `target` if it hasn't moved), which gives the player's heading.
+// `target` if it hasn't moved), which gives the player's heading. `ice` is
+// where the floor is ice (none if left out): chase, ambusher and patroller
+// paths allow for the slides it forces (see slideDistances in ice.ts). The
+// enemy is free to move (game.ts takes slide steps itself).
 export function enemyMove(
     cells: Cells,
     enemy: Character,
     target: Vec2,
     random: Random,
-    targetLast: Vec2 = target
+    targetLast: Vec2 = target,
+    ice: IceMap = noIce(cells)
 ) {
-    const next = nextPos(cells, enemy, target, targetLast, random)
+    const next = nextPos(cells, ice, enemy, target, targetLast, random)
 
     // Nowhere to go (e.g. boxed in on every side): stay put, still
     // remembering where it came from.
@@ -39,6 +51,7 @@ export function enemyMove(
 // The cell the enemy moves to this time, or null to stay put.
 function nextPos(
     cells: Cells,
+    ice: IceMap,
     enemy: Character,
     target: Vec2,
     targetLast: Vec2,
@@ -51,19 +64,20 @@ function nextPos(
             return pos[Math.floor(random() * pos.length)]
         }
         case AiType.chase:
-            return chaseStep(cells, enemy, target)
+            return chaseStep(cells, ice, enemy, target)
         case AiType.ambusher: {
             // Already standing where it aims: every way out scores the same,
             // so it would just take direction order. Go for the player.
             const aim = ambushTarget(cells, target, targetLast)
             return chaseStep(
                 cells,
+                ice,
                 enemy,
                 samePos(aim, enemy.pos) ? target : aim
             )
         }
         case AiType.patroller:
-            return patrolStep(cells, enemy)
+            return patrolStep(cells, ice, enemy)
         case AiType.phantom:
             return phantomStep(cells, enemy, target)
         default: {
@@ -81,20 +95,44 @@ function nextPos(
 // came" and tie. Ties go to the first candidate in direction order. If the
 // target is unreachable every candidate is Infinity, so this falls back to
 // the first candidate and keeps the enemy moving.
-function chaseStep(cells: Cells, enemy: Character, target: Vec2): Vec2 | null {
+//
+// Path lengths are slide-aware (slideDistances): a candidate on ice is
+// scored from the slide it starts, and the target counts as reached the
+// first time the path passes over it, stopped or mid-slide. So an ambusher
+// aiming at a cell it can only slide past still homes in on it, and a chaser
+// that would slide through the player catches it on the way.
+function chaseStep(
+    cells: Cells,
+    ice: IceMap,
+    enemy: Character,
+    target: Vec2
+): Vec2 | null {
     const pos = candidateMoves(cells, enemy)
     if (pos.length === 0) return null
-    const dist = distanceMap(cells, target, enemy.pos)
-    return nearest(pos, dist)
-}
-
-// The first of `pos` with the smallest distance in `dist`.
-function nearest(pos: readonly Vec2[], dist: number[][]): Vec2 {
+    const dist = slideDistances(cells, ice, target, enemy.pos)
     let best = pos[0]
-    for (let i = 1; i < pos.length; i++) {
-        if (dist[pos[i].y][pos[i].x] < dist[best.y][best.x]) best = pos[i]
+    let bestDist = Infinity
+    for (const v of pos) {
+        const d = dist(arrival(cells, ice, enemy.pos, v))
+        if (d < bestDist) {
+            best = v
+            bestDist = d
+        }
     }
     return best
+}
+
+// The state an enemy free at `from` gets into by stepping to the
+// neighbouring open cell `to`.
+function arrival(cells: Cells, ice: IceMap, from: Vec2, to: Vec2): MoveState {
+    const step = moveStep(from, to, cells[0].length, cells.length)
+    const heading = allDirections.findIndex((d) => samePos(directions[d], step))
+    return stepFrom(cells, ice, from, heading) ?? { pos: to, heading: FREE }
+}
+
+// No ice anywhere on the map.
+function noIce(cells: Cells): IceMap {
+    return cells.map((row) => row.map(() => false))
 }
 
 // Where an ambusher aims: AMBUSH_AHEAD cells ahead of the player along its
@@ -129,8 +167,9 @@ export function ambushTarget(
 // the last. Unlike chase it may turn back, since a route can double back on
 // itself (e.g. a back-and-forth beat along a corridor). Ties go to direction
 // order. It stays put if the waypoint is unreachable, which parseLevel rules
-// out.
-function patrolStep(cells: Cells, enemy: Character): Vec2 | null {
+// out. Paths are slide-aware, as for chase: passing over the waypoint
+// mid-slide reaches it (game.ts moves the route on when that happens).
+function patrolStep(cells: Cells, ice: IceMap, enemy: Character): Vec2 | null {
     const route = enemy.route
     if (!route || route.length === 0) {
         throw new Error("A patroller needs a route")
@@ -139,11 +178,33 @@ function patrolStep(cells: Cells, enemy: Character): Vec2 | null {
         enemy.routeIndex = (enemy.routeIndex + 1) % route.length
     }
     const waypoint = route[enemy.routeIndex]
-    const pos = openNeighbours(cells, enemy.pos)
-    if (pos.length === 0) return null
-    const dist = distanceMap(cells, waypoint)
-    const best = nearest(pos, dist)
-    return dist[best.y][best.x] === Infinity ? null : best
+    const dist = slideDistances(cells, ice, waypoint)
+    return patrolMove(cells, ice, enemy.pos, dist)?.pos ?? null
+}
+
+// The state a patroller free at `pos` moves into, heading for the target of
+// `dist` (see slideDistances): the step whose path there is shortest, ties
+// going to direction order. Null when every way is a wall or the target
+// can't be reached. Shared with parseLevel's route check, so the check
+// walks exactly the path the patroller will.
+export function patrolMove(
+    cells: Cells,
+    ice: IceMap,
+    pos: Vec2,
+    dist: SlideDistance
+): MoveState | null {
+    let best: MoveState | null = null
+    let bestDist = Infinity
+    for (let heading = 0; heading < allDirections.length; heading++) {
+        const next = stepFrom(cells, ice, pos, heading)
+        if (next === null) continue
+        const d = dist(next)
+        if (d < bestDist) {
+            best = next
+            bestDist = d
+        }
+    }
+    return best
 }
 
 // A phantom ignores walls: it steps to whichever neighbouring cell is
