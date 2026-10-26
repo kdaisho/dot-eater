@@ -52,12 +52,16 @@ function nextPos(
         }
         case AiType.chase:
             return chaseStep(cells, enemy, target)
-        case AiType.ambusher:
+        case AiType.ambusher: {
+            // Already standing where it aims: every way out scores the same,
+            // so it would just take direction order. Go for the player.
+            const aim = ambushTarget(cells, target, targetLast)
             return chaseStep(
                 cells,
                 enemy,
-                ambushTarget(cells, target, targetLast)
+                samePos(aim, enemy.pos) ? target : aim
             )
+        }
         case AiType.patroller:
             return patrolStep(cells, enemy)
         case AiType.phantom:

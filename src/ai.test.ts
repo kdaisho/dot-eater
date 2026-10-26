@@ -183,6 +183,17 @@ describe("enemyMove (chase)", () => {
         }
     })
 
+    // Regression: standing on its own aim point, every neighbour scored the
+    // same and it took direction order (up), away from the player.
+    it("goes for the player when it already stands where it aims", () => {
+        const cells = cellsFrom(longRing)
+        // The player at (5, 3) heads east from (4, 3); the cell ahead that is
+        // open is (7, 3), where the ambusher stands.
+        const ambusher = makeEnemy(7, 3, AiType.ambusher)
+        enemyMove(cells, ambusher, vec2(5, 3), fixedRandom(0), vec2(4, 3))
+        expect(ambusher.pos).toEqual(vec2(6, 3))
+    })
+
     it("does not reverse even if that would be closest", () => {
         const cells = cellsFrom(cross)
         const enemy = makeEnemy(2, 2, AiType.chase, { x: 1, y: 2 })
