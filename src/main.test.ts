@@ -68,7 +68,7 @@ const keydownListeners = new Set<unknown>()
 describe("main", () => {
     beforeAll(async () => {
         vi.useFakeTimers()
-        document.body.innerHTML = '<div id="root"></div>'
+        document.body.innerHTML = '<canvas id="game"></canvas>'
         const realAdd = globalThis.addEventListener.bind(globalThis)
         globalThis.addEventListener = ((
             type: string,
