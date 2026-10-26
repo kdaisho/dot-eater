@@ -33,6 +33,8 @@ const sprites: Record<CharacterId, string> = {
     [CharacterId.player]: "🪰",
     [CharacterId.enemy1]: "👹",
     [CharacterId.enemy2]: "👺",
+    [CharacterId.enemy3]: "👾",
+    [CharacterId.enemy4]: "👻",
 }
 
 // Wall blocks and dots keep the proportions of the old span grid: 30px blocks

@@ -1,8 +1,15 @@
 import { describe, expect, it, vi } from "vite-plus/test"
-import { AiType } from "./constants"
-import { candidateMoves, enemyMove } from "./ai"
-import { cellsFrom, fixedRandom, makeEnemy } from "./test/helpers"
-import { vec2 } from "./vec2"
+import { AiType, AMBUSH_AHEAD } from "./constants"
+import { ambushTarget, candidateMoves, enemyMove } from "./ai"
+import {
+    cellsFrom,
+    fixedRandom,
+    makeEnemy,
+    makePatroller,
+} from "./test/helpers"
+import type { Character } from "./character"
+import type { Cells } from "./level"
+import { vec2, type Vec2 } from "./vec2"
 
 // An open crossroads: from the centre (2, 2) every direction is free.
 const cross = [
@@ -176,6 +183,17 @@ describe("enemyMove (chase)", () => {
         }
     })
 
+    // Regression: standing on its own aim point, every neighbour scored the
+    // same and it took direction order (up), away from the player.
+    it("goes for the player when it already stands where it aims", () => {
+        const cells = cellsFrom(longRing)
+        // The player at (5, 3) heads east from (4, 3); the cell ahead that is
+        // open is (7, 3), where the ambusher stands.
+        const ambusher = makeEnemy(7, 3, AiType.ambusher)
+        enemyMove(cells, ambusher, vec2(5, 3), fixedRandom(0), vec2(4, 3))
+        expect(ambusher.pos).toEqual(vec2(6, 3))
+    })
+
     it("does not reverse even if that would be closest", () => {
         const cells = cellsFrom(cross)
         const enemy = makeEnemy(2, 2, AiType.chase, { x: 1, y: 2 })
@@ -239,9 +257,12 @@ describe("enemyMove (chase)", () => {
 })
 
 describe("enemyMove in a dead end", () => {
-    for (const ai of [AiType.random, AiType.chase]) {
-        const name = ai === AiType.random ? "random" : "chase"
-
+    // AIs that keep to the no-reverse rule of candidateMoves.
+    for (const [name, ai] of [
+        ["random", AiType.random],
+        ["chase", AiType.chase],
+        ["ambusher", AiType.ambusher],
+    ] as const) {
         it(`${name}: turns back when there is nowhere else to go`, () => {
             const cells = cellsFrom(deadEnd)
             const enemy = makeEnemy(1, 1, ai, { x: 2, y: 1 })
@@ -275,4 +296,247 @@ describe("enemyMove in a dead end", () => {
             expect(enemy.lastPos).toEqual(vec2(1, 0))
         })
     }
+})
+
+// A ring of corridors around a solid wall block, 9 wide and 5 tall.
+const longRing = [
+    [1, 1, 1, 1, 1, 1, 1, 1, 1],
+    [1, 0, 0, 0, 0, 0, 0, 0, 1],
+    [1, 0, 1, 1, 1, 1, 1, 0, 1],
+    [1, 0, 0, 0, 0, 0, 0, 0, 1],
+    [1, 1, 1, 1, 1, 1, 1, 1, 1],
+] as const
+
+// A straight corridor closed at both ends: (1, 1) to (5, 1).
+const closedCorridor = [
+    [1, 1, 1, 1, 1, 1, 1],
+    [1, 0, 0, 0, 0, 0, 1],
+    [1, 1, 1, 1, 1, 1, 1],
+] as const
+
+describe("ambushTarget", () => {
+    it("is the player itself before the player has moved", () => {
+        const cells = cellsFrom(longRing)
+        expect(ambushTarget(cells, vec2(2, 1), vec2(2, 1))).toEqual(vec2(2, 1))
+    })
+
+    it(`is ${AMBUSH_AHEAD} cells ahead along the player's latest move`, () => {
+        const cells = cellsFrom(longRing)
+        // Heading east from (1, 1) to (2, 1).
+        expect(ambushTarget(cells, vec2(2, 1), vec2(1, 1))).toEqual(vec2(6, 1))
+        // Heading west from (7, 3) to (6, 3).
+        expect(ambushTarget(cells, vec2(6, 3), vec2(7, 3))).toEqual(vec2(2, 3))
+    })
+
+    it("reads a move across a wrap-around tunnel as one step", () => {
+        const cells = cellsFrom(corridor)
+        // The player stepped east off the edge, from (6, 1) to (0, 1).
+        expect(ambushTarget(cells, vec2(0, 1), vec2(6, 1))).toEqual(vec2(4, 1))
+        // And west, from (0, 1) to (6, 1).
+        expect(ambushTarget(cells, vec2(6, 1), vec2(0, 1))).toEqual(vec2(2, 1))
+    })
+
+    it("walks back towards the player when the cell ahead is a wall", () => {
+        const cells = cellsFrom(longRing)
+        // Heading down from (1, 1) to (1, 2): (1, 6) and (1, 5) are off the
+        // map and (1, 4) is a wall, so (1, 3).
+        expect(ambushTarget(cells, vec2(1, 2), vec2(1, 1))).toEqual(vec2(1, 3))
+        // Heading east from (4, 1) to (5, 1): (9, 1) is off the map and
+        // (8, 1) a wall, so (7, 1).
+        expect(ambushTarget(cells, vec2(5, 1), vec2(4, 1))).toEqual(vec2(7, 1))
+    })
+
+    it("is the player when nothing ahead is open", () => {
+        const cells = cellsFrom(closedCorridor)
+        // Heading east into the end wall of the corridor.
+        expect(ambushTarget(cells, vec2(5, 1), vec2(4, 1))).toEqual(vec2(5, 1))
+    })
+})
+
+describe("enemyMove (ambusher)", () => {
+    // The enemy at (4, 3) can go west or east round the ring; the player at
+    // (2, 1) is heading east from (1, 1).
+    it("heads for the cell ahead of the player rather than the player", () => {
+        const cells = cellsFrom(longRing)
+        const chaser = makeEnemy(4, 3, AiType.chase)
+        enemyMove(cells, chaser, vec2(2, 1), fixedRandom(0), vec2(1, 1))
+        // The player is 5 moves away going west, 9 going east.
+        expect(chaser.pos).toEqual(vec2(3, 3))
+
+        const ambusher = makeEnemy(4, 3, AiType.ambusher)
+        enemyMove(cells, ambusher, vec2(2, 1), fixedRandom(0), vec2(1, 1))
+        // (6, 1) is 5 moves away going east, 9 going west.
+        expect(ambusher.pos).toEqual(vec2(5, 3))
+        expect(ambusher.lastPos).toEqual(vec2(4, 3))
+    })
+
+    it("chases the player directly before the player has moved", () => {
+        const cells = cellsFrom(longRing)
+        const ambusher = makeEnemy(4, 3, AiType.ambusher)
+        enemyMove(cells, ambusher, vec2(2, 1), fixedRandom(0))
+        expect(ambusher.pos).toEqual(vec2(3, 3))
+    })
+
+    it("does not reverse even if that would be closest", () => {
+        const cells = cellsFrom(longRing)
+        // Came from (5, 3), the short way to (6, 1); it may not turn back.
+        const ambusher = makeEnemy(4, 3, AiType.ambusher, { x: 5, y: 3 })
+        enemyMove(cells, ambusher, vec2(2, 1), fixedRandom(0), vec2(1, 1))
+        expect(ambusher.pos).toEqual(vec2(3, 3))
+    })
+})
+
+// Make `moves` patroller moves and return the cells it visits.
+function walk(cells: Cells, enemy: Character, moves: number): Vec2[] {
+    const visited: Vec2[] = []
+    for (let i = 0; i < moves; i++) {
+        enemyMove(cells, enemy, vec2(0, 0), fixedRandom(0))
+        visited.push(enemy.pos)
+    }
+    return visited
+}
+
+describe("enemyMove (patroller)", () => {
+    it("walks to its first waypoint, then back and forth along the route", () => {
+        const cells = cellsFrom(closedCorridor)
+        const enemy = makePatroller(3, 1, [
+            [1, 1],
+            [5, 1],
+        ])
+        const xs = walk(cells, enemy, 12).map((p) => p.x)
+        expect(xs).toEqual([2, 1, 2, 3, 4, 5, 4, 3, 2, 1, 2, 3])
+    })
+
+    it("loops round its route, taking the shortest path between waypoints", () => {
+        const cells = cellsFrom(ring)
+        const enemy = makePatroller(1, 1, [
+            [1, 1],
+            [3, 1],
+            [3, 3],
+            [1, 3],
+        ])
+        expect(walk(cells, enemy, 10)).toEqual([
+            vec2(2, 1),
+            vec2(3, 1),
+            vec2(3, 2),
+            vec2(3, 3),
+            vec2(2, 3),
+            vec2(1, 3),
+            vec2(1, 2),
+            vec2(1, 1),
+            vec2(2, 1),
+            vec2(3, 1),
+        ])
+        expect(enemy.routeIndex).toBe(1)
+    })
+
+    it("turns back at a waypoint even where it could go on", () => {
+        const cells = cellsFrom(corridor)
+        // At its waypoint (3, 1), having come from (2, 1). The next
+        // waypoint (1, 1) is 2 steps back the way it came, 5 onwards.
+        const enemy = makePatroller(
+            3,
+            1,
+            [
+                [1, 1],
+                [3, 1],
+            ],
+            { x: 2, y: 1 }
+        )
+        enemy.routeIndex = 1
+        enemyMove(cells, enemy, vec2(0, 0), fixedRandom(0))
+        expect(enemy.pos).toEqual(vec2(2, 1))
+        expect(enemy.routeIndex).toBe(0)
+    })
+
+    it("uses wrap-around tunnels on the way", () => {
+        const cells = cellsFrom(corridor)
+        const enemy = makePatroller(1, 1, [
+            [5, 1],
+            [1, 1],
+        ])
+        // (5, 1) is 3 steps west across the edge, 4 east.
+        expect(walk(cells, enemy, 3)).toEqual([
+            vec2(0, 1),
+            vec2(6, 1),
+            vec2(5, 1),
+        ])
+    })
+
+    it("ignores the player", () => {
+        const cells = cellsFrom(closedCorridor)
+        const enemy = makePatroller(3, 1, [
+            [5, 1],
+            [4, 1],
+        ])
+        enemyMove(cells, enemy, vec2(1, 1), fixedRandom(0))
+        expect(enemy.pos).toEqual(vec2(4, 1))
+    })
+
+    it("throws without a route", () => {
+        const cells = cellsFrom(closedCorridor)
+        const enemy = makeEnemy(3, 1, AiType.patroller)
+        expect(() =>
+            enemyMove(cells, enemy, vec2(1, 1), fixedRandom(0))
+        ).toThrow("A patroller needs a route")
+    })
+})
+
+describe("enemyMove (phantom)", () => {
+    it("passes through walls straight towards the player", () => {
+        const cells = cellsFrom(longRing)
+        // From (4, 1) to the player at (4, 3), through the wall at (4, 2).
+        const enemy = makeEnemy(4, 1, AiType.phantom)
+        enemyMove(cells, enemy, vec2(4, 3), fixedRandom(0))
+        expect(enemy.pos).toEqual(vec2(4, 2))
+        enemyMove(cells, enemy, vec2(4, 3), fixedRandom(0))
+        expect(enemy.pos).toEqual(vec2(4, 3))
+        expect(enemy.lastPos).toEqual(vec2(4, 2))
+    })
+
+    it("moves even when walled in on every side", () => {
+        const cells = cellsFrom(boxed)
+        const enemy = makeEnemy(1, 1, AiType.phantom)
+        enemyMove(cells, enemy, vec2(1, 0), fixedRandom(0))
+        expect(enemy.pos).toEqual(vec2(1, 0))
+    })
+
+    it("stays inside the map instead of using wrap-around tunnels", () => {
+        const cells = cellsFrom(corridor)
+        // The player at (6, 1) is 1 step west across the edge, but the
+        // phantom goes the long way east.
+        const enemy = makeEnemy(0, 1, AiType.phantom)
+        enemyMove(cells, enemy, vec2(6, 1), fixedRandom(0))
+        expect(enemy.pos).toEqual(vec2(1, 1))
+    })
+
+    it("never steps off the map in a corner", () => {
+        const cells = cellsFrom(boxed)
+        const enemy = makeEnemy(0, 0, AiType.phantom)
+        enemyMove(cells, enemy, vec2(0, 2), fixedRandom(0))
+        expect(enemy.pos).toEqual(vec2(0, 1))
+    })
+
+    it("breaks ties by direction order", () => {
+        const cells = cellsFrom(longRing)
+        // Down (1, 2) and right (2, 1) both bring it to 3 from (3, 3).
+        const enemy = makeEnemy(1, 1, AiType.phantom)
+        enemyMove(cells, enemy, vec2(3, 3), fixedRandom(0))
+        expect(enemy.pos).toEqual(vec2(1, 2))
+    })
+
+    it("may turn back towards the player", () => {
+        const cells = cellsFrom(longRing)
+        const enemy = makeEnemy(3, 1, AiType.phantom, { x: 4, y: 1 })
+        enemyMove(cells, enemy, vec2(6, 1), fixedRandom(0))
+        expect(enemy.pos).toEqual(vec2(4, 1))
+    })
+
+    it("stays put on the player's cell", () => {
+        const cells = cellsFrom(longRing)
+        const enemy = makeEnemy(3, 1, AiType.phantom, { x: 2, y: 1 })
+        enemyMove(cells, enemy, vec2(3, 1), fixedRandom(0))
+        expect(enemy.pos).toEqual(vec2(3, 1))
+        expect(enemy.lastPos).toEqual(vec2(2, 1))
+    })
 })

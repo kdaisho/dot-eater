@@ -8,12 +8,23 @@ export type Cells = Cell[][]
 
 // AI names as written in level data. Strings, not AiType numbers, so level
 // files (and, later, shared level URLs) stay readable.
-export type AiName = "random" | "chase"
+export type AiName = "random" | "chase" | "ambusher" | "patroller" | "phantom"
+
+// A cell as written in level data: [x, y], counted from the top-left corner
+// of the map (0, 0).
+export type CellRef = readonly [x: number, y: number]
 
 export type EnemyData = {
     ai: AiName
     // Cells per second. Omitted means the game's default speed.
     speed?: number
+    // Patrollers only, and required for them: the waypoints walked in order,
+    // looping back to the first after the last. At least two, each an open
+    // cell the enemy can reach, and none the same as the one before it
+    // (including the last and the first). The patroller walks from its spawn
+    // to the first waypoint, and starts again from the first one after a
+    // respawn. Between waypoints it takes the shortest path.
+    route?: readonly CellRef[]
 }
 
 // Placeholder for per-level special rules; none exist yet.
@@ -57,6 +68,9 @@ const MAP_CHARS: ReadonlySet<string> = new Set([
 const AI_TYPES: Record<AiName, AiType> = {
     random: AiType.random,
     chase: AiType.chase,
+    ambusher: AiType.ambusher,
+    patroller: AiType.patroller,
+    phantom: AiType.phantom,
 }
 
 // ---- Parsed level: what the game builds its state from ----
@@ -65,6 +79,8 @@ export type EnemySpawn = {
     pos: Readonly<Vec2>
     ai: AiType
     speed?: number
+    // Patrollers only; see EnemyData.route.
+    route?: readonly Readonly<Vec2>[]
 }
 
 export type Level = {
@@ -110,6 +126,7 @@ export function parseLevel(data: LevelData): Level {
             )
         }
         checkSpeed(problems, `enemies[${i}].speed`, enemy.speed)
+        problems.push(...routeShapeProblems(enemy, i))
     })
     // Split rows by code point, not UTF-16 unit, so a character outside the
     // BMP (e.g. an emoji) counts as one cell.
@@ -188,6 +205,16 @@ export function parseLevel(data: LevelData): Level {
         )
     }
     problems.push(...tunnelProblems(cells))
+    data.enemies.forEach((enemy, i) => {
+        enemy.route?.forEach(([x, y], j) => {
+            const field = `enemies[${i}].route[${j}]`
+            if (x >= width || y >= rows.length) {
+                problems.push(`${field} (${x}, ${y}) is off the map`)
+            } else if (cells[y][x] === Cell.wall) {
+                problems.push(`${field} (${x}, ${y}) is a wall`)
+            }
+        })
+    })
     if (problems.length > 0) throw fail()
 
     // Stage 3: every dot must be reachable from player 1's spawn.
@@ -202,6 +229,19 @@ export function parseLevel(data: LevelData): Level {
             }
         })
     )
+    // Each patroller must be able to walk its whole route from its spawn.
+    // Moves are symmetric, so that also connects the waypoints to each other.
+    data.enemies.forEach((enemy, i) => {
+        if (!enemy.route) return
+        const fromSpawn = distanceMap(cells, enemyPositions[i])
+        enemy.route.forEach(([x, y], j) => {
+            if (fromSpawn[y][x] === Infinity) {
+                problems.push(
+                    `enemies[${i}].route[${j}] (${x}, ${y}) can't be reached from the enemy's spawn`
+                )
+            }
+        })
+    })
     if (problems.length > 0) throw fail()
 
     return {
@@ -214,11 +254,14 @@ export function parseLevel(data: LevelData): Level {
             ? {}
             : { playerSpeed: data.playerSpeed }),
         enemies: enemyPositions.map((pos, i) => {
-            const { ai, speed } = data.enemies[i]
+            const { ai, speed, route } = data.enemies[i]
             return {
                 pos,
                 ai: AI_TYPES[ai],
                 ...(speed === undefined ? {} : { speed }),
+                ...(route === undefined
+                    ? {}
+                    : { route: route.map(([x, y]) => vec2(x, y)) }),
             }
         }),
         rules: data.rules ?? {},
@@ -239,6 +282,46 @@ function checkSpeed(
             `${field} must be at most ${TICK_RATE} (one cell per tick), got ${speed}`
         )
     }
+}
+
+// Route checks that need no map: patrollers have a route and nobody else
+// does, with at least two whole-number [x, y] waypoints, none the same as the
+// one before it. Whether the waypoints are on the map, open and reachable is
+// checked once the map is known.
+function routeShapeProblems(enemy: EnemyData, i: number): string[] {
+    const field = `enemies[${i}].route`
+    const { route } = enemy
+    if (enemy.ai !== "patroller") {
+        return route === undefined
+            ? []
+            : [`${field} is only allowed for patrollers, got ai "${enemy.ai}"`]
+    }
+    if (route === undefined) return [`${field} is required for patrollers`]
+    if (!Array.isArray(route) || route.length < 2) {
+        return [`${field} must list at least 2 waypoints`]
+    }
+    const problems: string[] = []
+    route.forEach((p, j) => {
+        const ok =
+            Array.isArray(p) &&
+            p.length === 2 &&
+            p.every((n) => Number.isInteger(n) && n >= 0)
+        if (!ok) {
+            problems.push(
+                `${field}[${j}] must be [x, y] with whole numbers from 0, got ${JSON.stringify(p)}`
+            )
+        }
+    })
+    if (problems.length > 0) return problems
+    route.forEach(([x, y], j) => {
+        const [px, py] = route[(j + route.length - 1) % route.length]
+        if (x === px && y === py) {
+            problems.push(
+                `${field}[${j}] (${x}, ${y}) is the same as the waypoint before it`
+            )
+        }
+    })
+    return problems
 }
 
 // An open edge cell is a tunnel to the opposite edge (see loopPos). A tunnel

@@ -77,7 +77,8 @@ export function createGameState(level: Level = levels[0]): GameState {
             ENEMY_IDS[i],
             vec2(enemy.pos.x, enemy.pos.y),
             enemy.ai,
-            enemy.speed
+            enemy.speed,
+            enemy.route
         )
     )
     return {
@@ -108,6 +109,8 @@ function respawn(state: GameState) {
         enemy.pos = vec2(spawn.x, spawn.y)
         enemy.lastPos = vec2(spawn.x, spawn.y)
         enemy.moveProgress = 0
+        // A patroller starts its route again from the first waypoint.
+        enemy.routeIndex = 0
     })
     state.bufferedStep = vec2(0, 0)
     state.eatenAt = null
@@ -192,6 +195,9 @@ export function step(
 ): Outcome | null {
     const { cells, player, enemies } = state
     const from = positions(state)
+    // Where the player came from on its latest move before this tick, for
+    // the heading an ambusher aims along.
+    const playerLast = vec2(player.lastPos.x, player.lastPos.y)
 
     if (!isZero(move.pressed)) state.bufferedStep = move.pressed
     if (advance(player, dt)) {
@@ -200,7 +206,7 @@ export function step(
     }
     enemies.forEach((enemy, i) => {
         if (!advance(enemy, dt)) return
-        enemyMove(cells, enemy, from[0], random)
+        enemyMove(cells, enemy, from[0], random, playerLast)
         if (samePos(enemy.pos, from[i + 1])) wait(enemy)
         else spend(enemy)
     })

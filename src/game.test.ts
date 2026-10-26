@@ -5,6 +5,7 @@ import {
     CharacterId,
     DOT_POINTS,
     ENEMY_SPEED,
+    PHANTOM_SPEED,
     PLAYER_SPEED,
     START_LIVES,
     TICK_RATE,
@@ -24,6 +25,7 @@ import { levels } from "./levels"
 import {
     fixedRandom,
     makeEnemy,
+    makePatroller,
     makeState,
     OLD_LEVEL,
     OLD_MAP,
@@ -501,6 +503,63 @@ describe("step: enemies", () => {
     })
 })
 
+describe("step: new enemy types", () => {
+    // A ring of dotted corridors around a solid wall block.
+    const ring = [
+        [1, 1, 1, 1, 1, 1, 1, 1, 1],
+        [1, 2, 2, 2, 2, 2, 2, 2, 1],
+        [1, 2, 1, 1, 1, 1, 1, 2, 1],
+        [1, 2, 2, 2, 2, 2, 2, 2, 1],
+        [1, 1, 1, 1, 1, 1, 1, 1, 1],
+    ] as const
+
+    it("an ambusher aims along the player's heading from the start of the tick", () => {
+        // The player at (2, 1) came from (1, 1), so it is heading east and
+        // the ambusher at (4, 3) aims at (6, 1), the short way east. In the
+        // same tick the player turns back west; that move must not count.
+        const state = makeState(ring, { x: 2, y: 1 }, [
+            makeEnemy(4, 3, AiType.ambusher),
+        ])
+        state.player.lastPos = vec2(1, 1)
+        ready(state)
+        run(state, 1, west)
+        expect(state.player.pos).toEqual(vec2(1, 1))
+        expect(state.enemies[0].pos).toEqual(vec2(5, 3))
+    })
+
+    it("a patroller starts its route again after a respawn", () => {
+        // Heading for its second waypoint, (1, 1), it walks into the player.
+        const patroller = makePatroller(2, 1, [
+            [5, 1],
+            [1, 1],
+        ])
+        patroller.routeIndex = 1
+        const state = makeState(corridor, { x: 1, y: 1 }, [patroller], {
+            lives: 2,
+        })
+        ready(state)
+        run(state, 1)
+        expect(state.lives).toBe(1)
+        expect(patroller.pos).toEqual(vec2(2, 1))
+        expect(patroller.routeIndex).toBe(0)
+    })
+
+    it("a phantom catches the player from inside a wall", () => {
+        const state = makeState(
+            [
+                [1, 1, 1, 1, 1],
+                [1, 0, 1, 2, 1],
+                [1, 1, 1, 1, 1],
+            ],
+            { x: 1, y: 1 },
+            [makeEnemy(2, 1, AiType.phantom)]
+        )
+        ready(state)
+        expect(run(state, 1)).toBe("dead")
+        expect(state.enemies[0].pos).toEqual(vec2(1, 1))
+    })
+})
+
 const OLD_PLAYER_START = vec2(4, 1)
 
 describe("createGameState", () => {
@@ -596,6 +655,46 @@ describe("createGameState", () => {
         const state = createGameState(level)
         expect(state.player.speed).toBe(6)
         expect(state.enemies.map((e) => e.speed)).toEqual([3, ENEMY_SPEED])
+    })
+
+    it("gives phantoms their slower default speed unless the level sets one", () => {
+        const level = parseLevel({
+            name: "phantoms",
+            map: ["######", "#P.EE#", "######"],
+            enemies: [{ ai: "phantom" }, { ai: "phantom", speed: 3 }],
+        })
+        const state = createGameState(level)
+        expect(state.enemies.map((e) => e.speed)).toEqual([PHANTOM_SPEED, 3])
+    })
+
+    it("gives four enemies their own ids and a patroller its route", () => {
+        const level = parseLevel({
+            name: "four",
+            map: ["######", "#PEE.#", "#.EE.#", "######"],
+            enemies: [
+                { ai: "random" },
+                { ai: "chase" },
+                { ai: "ambusher" },
+                {
+                    ai: "patroller",
+                    route: [
+                        [1, 2],
+                        [4, 1],
+                    ],
+                },
+            ],
+        })
+        const state = createGameState(level)
+        expect(state.enemies.map((e) => e.id)).toEqual([
+            CharacterId.enemy1,
+            CharacterId.enemy2,
+            CharacterId.enemy3,
+            CharacterId.enemy4,
+        ])
+        expect(state.enemies[3].route).toEqual([vec2(1, 2), vec2(4, 1)])
+        expect(state.enemies[3].route).not.toBe(level.enemies[3].route)
+        expect(state.enemies[3].routeIndex).toBe(0)
+        expect(state.enemies[0]).not.toHaveProperty("route")
     })
 
     it("uses the default speeds when the level leaves them out", () => {

@@ -1,4 +1,10 @@
-import { AiType, CharacterId, ENEMY_SPEED, PLAYER_SPEED } from "./constants"
+import {
+    AiType,
+    CharacterId,
+    ENEMY_SPEED,
+    PHANTOM_SPEED,
+    PLAYER_SPEED,
+} from "./constants"
 import { vec2, type Vec2 } from "./vec2"
 
 export type Character = {
@@ -15,6 +21,10 @@ export type Character = {
     // little above 0: the progress left over past 1, so slow ticks don't
     // round speeds down.
     moveProgress: number
+    // Patrollers only: the waypoints walked in a loop, and the index of the
+    // one it is heading for. Other characters have no route.
+    route?: readonly Vec2[]
+    routeIndex: number
 }
 
 export function createCharacter(
@@ -23,7 +33,8 @@ export function createCharacter(
     ai: AiType = AiType.random,
     // Cells per second. Omitted means the default speed for the id: the one
     // place the default speeds are applied.
-    speed?: number
+    speed?: number,
+    route?: readonly Vec2[]
 ): Character {
     return {
         id,
@@ -31,8 +42,16 @@ export function createCharacter(
         // Until its first move a character has not come from anywhere else.
         lastPos: vec2(pos.x, pos.y),
         ai,
-        speed:
-            speed ?? (id === CharacterId.player ? PLAYER_SPEED : ENEMY_SPEED),
+        speed: speed ?? defaultSpeed(id, ai),
         moveProgress: 0,
+        ...(route === undefined
+            ? {}
+            : { route: route.map((p) => vec2(p.x, p.y)) }),
+        routeIndex: 0,
     }
+}
+
+function defaultSpeed(id: CharacterId, ai: AiType): number {
+    if (id === CharacterId.player) return PLAYER_SPEED
+    return ai === AiType.phantom ? PHANTOM_SPEED : ENEMY_SPEED
 }

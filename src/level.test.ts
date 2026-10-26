@@ -5,6 +5,7 @@ import {
     LevelError,
     loopPos,
     parseLevel,
+    type CellRef,
     type LevelData,
 } from "./level"
 import { cellsFrom, OLD_LEVEL, OLD_MAP } from "./test/helpers"
@@ -81,6 +82,11 @@ function problemsOf(data: LevelData): readonly string[] {
     }
 }
 
+// `valid` with its enemy made a patroller walking `route`.
+function patrol(route: readonly CellRef[]): LevelData {
+    return { ...valid, enemies: [{ ai: "patroller", route }] }
+}
+
 describe("parseLevel", () => {
     it("parses cells, spawns and metadata", () => {
         const level = parseLevel({
@@ -154,6 +160,39 @@ describe("parseLevel", () => {
         ).toEqual([])
     })
 
+    it("accepts up to 4 enemies with every AI type", () => {
+        const level = parseLevel({
+            name: "four",
+            map: ["######", "#PEE.#", "#.EE.#", "######"],
+            enemies: [
+                { ai: "ambusher" },
+                {
+                    ai: "patroller",
+                    route: [
+                        [1, 2],
+                        [4, 1],
+                    ],
+                },
+                { ai: "phantom", speed: 1 },
+                { ai: "chase" },
+            ],
+        })
+        expect(level.enemies).toEqual([
+            { pos: vec2(2, 1), ai: AiType.ambusher },
+            {
+                pos: vec2(3, 1),
+                ai: AiType.patroller,
+                route: [vec2(1, 2), vec2(4, 1)],
+            },
+            { pos: vec2(2, 2), ai: AiType.phantom, speed: 1 },
+            { pos: vec2(3, 2), ai: AiType.chase },
+        ])
+    })
+
+    it("leaves the route out for enemies without one", () => {
+        expect(parseLevel(valid).enemies[0]).not.toHaveProperty("route")
+    })
+
     it("returns cells that are not shared with other parses", () => {
         const a = parseLevel(valid)
         const b = parseLevel(valid)
@@ -174,7 +213,7 @@ describe("parseLevel", () => {
                 enemies: [{ ai: "smart" }],
             } as unknown as LevelData
             expect(problemsOf(data)).toEqual([
-                'enemies[0].ai must be one of random, chase, got "smart"',
+                'enemies[0].ai must be one of random, chase, ambusher, patroller, phantom, got "smart"',
             ])
         })
 
@@ -278,14 +317,115 @@ describe("parseLevel", () => {
             expect(
                 problemsOf({
                     ...valid,
-                    map: ["#####", "#PEE#", "#.E.#", "#####"],
+                    map: ["#######", "#PEEE.#", "#.EE..#", "#######"],
                     enemies: [
+                        { ai: "random" },
+                        { ai: "random" },
                         { ai: "random" },
                         { ai: "random" },
                         { ai: "random" },
                     ],
                 })
-            ).toEqual(["at most 2 enemies are supported, got 3"])
+            ).toEqual(["at most 4 enemies are supported, got 5"])
+        })
+
+        it("a patroller without a route", () => {
+            expect(
+                problemsOf({ ...valid, enemies: [{ ai: "patroller" }] })
+            ).toEqual(["enemies[0].route is required for patrollers"])
+        })
+
+        it("a route on an enemy that isn't a patroller", () => {
+            expect(
+                problemsOf({
+                    ...valid,
+                    enemies: [
+                        {
+                            ai: "chase",
+                            route: [
+                                [1, 1],
+                                [3, 2],
+                            ],
+                        },
+                    ],
+                })
+            ).toEqual([
+                'enemies[0].route is only allowed for patrollers, got ai "chase"',
+            ])
+        })
+
+        it("a route with fewer than 2 waypoints", () => {
+            for (const route of [[], [[1, 1]]] as const) {
+                expect(problemsOf(patrol(route))).toEqual([
+                    "enemies[0].route must list at least 2 waypoints",
+                ])
+            }
+        })
+
+        it("waypoints that aren't whole-number [x, y] pairs", () => {
+            const route = [[1, 1], [1.5, 2], [-1, 1], [1]] as unknown as [
+                number,
+                number,
+            ][]
+            expect(problemsOf(patrol(route))).toEqual([
+                "enemies[0].route[1] must be [x, y] with whole numbers from 0, got [1.5,2]",
+                "enemies[0].route[2] must be [x, y] with whole numbers from 0, got [-1,1]",
+                "enemies[0].route[3] must be [x, y] with whole numbers from 0, got [1]",
+            ])
+        })
+
+        it("a waypoint the same as the one before it, looping round", () => {
+            expect(
+                problemsOf(
+                    patrol([
+                        [1, 2],
+                        [3, 2],
+                        [3, 2],
+                        [1, 2],
+                    ])
+                )
+            ).toEqual([
+                "enemies[0].route[0] (1, 2) is the same as the waypoint before it",
+                "enemies[0].route[2] (3, 2) is the same as the waypoint before it",
+            ])
+        })
+
+        it("waypoints off the map or on a wall", () => {
+            expect(
+                problemsOf(
+                    patrol([
+                        [1, 2],
+                        [5, 1],
+                        [1, 4],
+                        [0, 0],
+                    ])
+                )
+            ).toEqual([
+                "enemies[0].route[1] (5, 1) is off the map",
+                "enemies[0].route[2] (1, 4) is off the map",
+                "enemies[0].route[3] (0, 0) is a wall",
+            ])
+        })
+
+        it("waypoints the patroller can't reach from its spawn", () => {
+            // (4, 2) is an empty pocket, sealed off from the rest.
+            expect(
+                problemsOf({
+                    name: "pocket",
+                    map: ["######", "#P.E##", "#### #", "######"],
+                    enemies: [
+                        {
+                            ai: "patroller",
+                            route: [
+                                [1, 1],
+                                [4, 2],
+                            ],
+                        },
+                    ],
+                })
+            ).toEqual([
+                "enemies[0].route[1] (4, 2) can't be reached from the enemy's spawn",
+            ])
         })
 
         it("a tunnel that wraps into a wall", () => {
