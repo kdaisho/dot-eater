@@ -21,6 +21,9 @@ function stubContext() {
             get(_target, name) {
                 return (...args: unknown[]) => {
                     calls.push({ name: String(name), args })
+                    if (name === "createRadialGradient") {
+                        return { addColorStop() {} }
+                    }
                 }
             },
             set() {
@@ -204,6 +207,147 @@ describe("createRenderer", () => {
         drawAt(0)
         expect(dotAt(2, 1)).toBe(false)
         expect(dotAt(1, 1)).toBe(false)
+    })
+
+    describe("fog", () => {
+        // A corridor of dots 13 cells long between walls; with `tunnel` its
+        // ends are open, a wrap tunnel.
+        function corridor(tunnel = false) {
+            const end = tunnel ? 2 : 1
+            return [
+                Array(13).fill(1),
+                [end, ...Array(11).fill(2), end],
+                Array(13).fill(1),
+            ] as const
+        }
+
+        // The cells (as "x,y") where a dot or a wall block was drawn.
+        function drawnCells(
+            calls: { name: string; args: unknown[] }[],
+            canvas: HTMLCanvasElement,
+            cols: number
+        ) {
+            const cell = parseFloat(canvas.style.width) / cols
+            const dots = new Set<string>()
+            const walls = new Set<string>()
+            for (const c of calls) {
+                if (c.name !== "fillRect") continue
+                const [left, top, w, h] = c.args as number[]
+                if (w !== h || w >= cell) continue
+                const x = Math.round((left + w / 2) / cell - 0.5)
+                const y = Math.round((top + h / 2) / cell - 0.5)
+                ;(w < cell / 2 ? dots : walls).add(`${x},${y}`)
+            }
+            return { dots, walls }
+        }
+
+        const enemies = () => [
+            makeEnemy(4, 1, AiType.random, undefined, CharacterId.enemy1),
+            makeEnemy(9, 1, AiType.random, undefined, CharacterId.enemy2),
+        ]
+
+        it("hides dots, walls and enemies outside the radius", () => {
+            const { calls, canvas, renderer, texts } = setup()
+            const state = makeState(corridor(), { x: 2, y: 1 }, enemies())
+            renderer.draw(state, 0, {}, { fog: { radius: 3 } })
+            // enemy1 is 2 cells away, enemy2 7.
+            expect(texts()).toEqual(["🪰", "👹"])
+            const { dots, walls } = drawnCells(calls, canvas, 13)
+            expect([...dots].sort()).toEqual(["1,1", "3,1", "4,1", "5,1"])
+            expect(walls.has("0,1")).toBe(true)
+            expect(walls.has("2,0")).toBe(true)
+            expect(walls.has("6,0")).toBe(false)
+            expect(walls.has("12,1")).toBe(false)
+        })
+
+        // Regression: only things whose centre was inside the radius were
+        // drawn, so walls and enemies popped in at the soft edge.
+        it("draws what reaches into the light, so it fades in", () => {
+            const { calls, canvas, renderer, texts } = setup()
+            const state = makeState(corridor(), { x: 2, y: 1 }, [
+                makeEnemy(5, 1, AiType.random, undefined, CharacterId.enemy1),
+            ])
+            renderer.draw(state, 0, {}, { fog: { radius: 2.5 } })
+            // The enemy's centre is 3 cells away, the wall at (4, 0) 2.24 and
+            // the one at (5, 0) 3.16: past 2.5, but their near edges aren't.
+            expect(texts()).toEqual(["🪰", "👹"])
+            const { walls } = drawnCells(calls, canvas, 13)
+            expect(walls.has("4,0")).toBe(true)
+            expect(walls.has("5,0")).toBe(true)
+            expect(walls.has("6,0")).toBe(false)
+        })
+
+        it("draws everything without fog", () => {
+            const { calls, canvas, renderer, texts } = setup()
+            const state = makeState(corridor(), { x: 2, y: 1 }, enemies())
+            renderer.draw(state, 0, {}, {})
+            expect(texts()).toEqual(["🪰", "👹", "👺"])
+            expect(drawnCells(calls, canvas, 13).dots.size).toBe(10)
+            expect(calls.some((c) => c.name === "createRadialGradient")).toBe(
+                false
+            )
+        })
+
+        it("centres the light on the player's drawn, gliding position", () => {
+            const { calls, canvas, renderer } = setup()
+            const state = makeState(corridor(), { x: 5, y: 1 })
+            // Just moved from (4, 1): drawn there at the start of the glide.
+            state.player.lastPos = vec2(4, 1)
+            state.player.moveProgress = 0
+            renderer.draw(state, 0, {}, { fog: { radius: 2 } })
+            const { dots } = drawnCells(calls, canvas, 13)
+            expect(dots.has("2,1")).toBe(true)
+            expect(dots.has("7,1")).toBe(false)
+            const gradients = calls.filter(
+                (c) => c.name === "createRadialGradient"
+            )
+            const cell = parseFloat(canvas.style.width) / 13
+            expect(gradients).toHaveLength(1)
+            expect(gradients[0].args.slice(0, 2)).toEqual([
+                4.5 * cell,
+                1.5 * cell,
+            ])
+        })
+
+        it("sees through a wrap tunnel onto the opposite edge", () => {
+            const { calls, canvas, renderer, texts } = setup()
+            const state = makeState(corridor(true), { x: 1, y: 1 }, [
+                makeEnemy(11, 1, AiType.random, undefined, CharacterId.enemy1),
+                makeEnemy(8, 1, AiType.random, undefined, CharacterId.enemy2),
+            ])
+            renderer.draw(state, 0, {}, { fog: { radius: 3 } })
+            expect(texts()).toEqual(["🪰", "👹"])
+            const { dots } = drawnCells(calls, canvas, 13)
+            expect(dots.has("11,1")).toBe(true)
+            expect(dots.has("12,1")).toBe(true)
+            expect(dots.has("10,1")).toBe(false)
+            // The light is drawn around the player and its copy past the
+            // right edge.
+            expect(
+                calls.filter((c) => c.name === "createRadialGradient")
+            ).toHaveLength(2)
+        })
+
+        it("keeps the HUD visible", () => {
+            const { renderer, texts } = setup()
+            const state = makeState(corridor(), { x: 2, y: 1 }, enemies())
+            renderer.draw(
+                state,
+                0,
+                { score: 10, lives: 1 },
+                { fog: { radius: 1 } }
+            )
+            expect(texts()).toEqual(["Score 10", "🪰", "🪰"])
+        })
+
+        it("keeps the fog when redrawing on resize", () => {
+            const { renderer, texts, view } = setup()
+            const state = makeState(corridor(), { x: 2, y: 1 }, enemies())
+            renderer.draw(state, 0, {}, { fog: { radius: 1 } })
+            view.innerHeight = 200
+            renderer.resize()
+            expect(texts()).toEqual(["🪰", "🪰"])
+        })
     })
 
     it("does nothing without a 2D context", () => {

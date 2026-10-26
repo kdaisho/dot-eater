@@ -27,8 +27,19 @@ export type EnemyData = {
     route?: readonly CellRef[]
 }
 
-// Placeholder for per-level special rules; none exist yet.
-export type LevelRules = Record<string, never>
+// Fog: the player only sees the maze, dots and enemies within `radius` cells
+// of themselves; the rest of the map is dark. Purely visual (the renderer
+// draws it); the game logic doesn't know about it.
+export type FogRule = {
+    // In cells, from the centre of the player's sprite. A positive number.
+    radius: number
+}
+
+// Per-level special rules. Each is optional; a level without rules plays
+// normally.
+export type LevelRules = {
+    fog?: FogRule
+}
 
 export type LevelData = {
     name: string
@@ -138,6 +149,7 @@ export function parseLevel(data: LevelData): Level {
         checkSpeed(problems, `enemies[${i}].speed`, enemy.speed)
         problems.push(...routeShapeProblems(enemy, i))
     })
+    problems.push(...rulesProblems(data.rules))
     // Split rows by code point, not UTF-16 unit, so a character outside the
     // BMP (e.g. an emoji) counts as one cell.
     const rows = map.map((row) => Array.from(row))
@@ -275,8 +287,68 @@ export function parseLevel(data: LevelData): Level {
                     : { route: route.map(([x, y]) => vec2(x, y)) }),
             }
         }),
-        rules: data.rules ?? {},
+        rules: copyRules(data.rules),
     }
+}
+
+const RULE_KEYS: ReadonlySet<string> = new Set(["fog"])
+const FOG_KEYS: ReadonlySet<string> = new Set(["radius"])
+// The smallest fog radius: the renderer's soft edge is 1.5 cells, and a
+// smaller radius would darken the player's own cell.
+export const MIN_FOG_RADIUS = 1.5
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+    return typeof value === "object" && value !== null && !Array.isArray(value)
+}
+
+// Rules are optional; when given, only known rules with valid settings are
+// allowed, so a typo (e.g. "fogg") isn't silently ignored.
+function rulesProblems(rules: LevelRules | undefined): string[] {
+    if (rules === undefined) return []
+    if (!isPlainObject(rules)) {
+        return [`rules must be an object, got ${JSON.stringify(rules)}`]
+    }
+    const problems: string[] = []
+    for (const key of Object.keys(rules)) {
+        if (!RULE_KEYS.has(key)) {
+            problems.push(
+                `unknown rule ${JSON.stringify(key)} (known rules: ${[...RULE_KEYS].join(", ")})`
+            )
+        }
+    }
+    const fog: unknown = rules.fog
+    if (fog === undefined) return problems
+    if (!isPlainObject(fog)) {
+        problems.push(`rules.fog must be an object, got ${JSON.stringify(fog)}`)
+        return problems
+    }
+    for (const key of Object.keys(fog)) {
+        if (!FOG_KEYS.has(key)) {
+            problems.push(`unknown rules.fog setting ${JSON.stringify(key)}`)
+        }
+    }
+    const { radius } = fog
+    if (
+        !(
+            typeof radius === "number" &&
+            Number.isFinite(radius) &&
+            radius >= MIN_FOG_RADIUS
+        )
+    ) {
+        // String, not JSON, for numbers: JSON shows NaN and Infinity as null.
+        const got =
+            typeof radius === "number" ? String(radius) : JSON.stringify(radius)
+        problems.push(
+            `rules.fog.radius must be a number of at least ${MIN_FOG_RADIUS}, got ${got}`
+        )
+    }
+    return problems
+}
+
+// A copy of the (already validated) rules, so the parsed level shares no
+// objects with the level data.
+function copyRules(rules: LevelRules | undefined): LevelRules {
+    return rules?.fog ? { fog: { radius: rules.fog.radius } } : {}
 }
 
 function checkSpeed(

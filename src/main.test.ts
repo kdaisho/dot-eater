@@ -575,6 +575,11 @@ describe("main", () => {
         expect(drawn.last?.[2]).toEqual({ score: 7 * DOT_POINTS, lives: 2 })
     })
 
+    it("draws with the playing level's rules", () => {
+        drawnGame()
+        expect(drawn.last?.[3]).toBe(levels[0].rules)
+    })
+
     it.each(["dead", "won"] as const)(
         "shows the final score on the end screen (%s), and retries from 0",
         (outcome) => {
