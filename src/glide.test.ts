@@ -1,7 +1,14 @@
 import { describe, expect, it } from "vite-plus/test"
 import { CharacterId, TICK_MS } from "./constants"
 import { createCharacter, type Character } from "./character"
-import { glidePos, glideT, moveStep, wrapCopies } from "./glide"
+import {
+    EAT_AT,
+    eatenDotVisible,
+    glidePos,
+    glideT,
+    moveStep,
+    wrapCopies,
+} from "./glide"
 import { vec2 } from "./vec2"
 
 // A character that moved from `from` to `to`, `progress` of the way to its
@@ -132,5 +139,25 @@ describe("wrapCopies", () => {
             vec2(4, -0.5),
             vec2(4, 6.5),
         ])
+    })
+})
+
+describe("eatenDotVisible", () => {
+    it("shows the dot while the player is gliding towards it", () => {
+        expect(eatenDotVisible(mover([1, 1], [2, 1], 0), 0)).toBe(true)
+        expect(eatenDotVisible(mover([1, 1], [2, 1], 0.3), 0.5)).toBe(true)
+    })
+
+    it("hides it once the glide is EAT_AT of the way there", () => {
+        expect(eatenDotVisible(mover([1, 1], [2, 1], EAT_AT), 0)).toBe(false)
+        // Between ticks, alpha takes it over the line too.
+        const nearly = mover([1, 1], [2, 1], EAT_AT - 0.01)
+        expect(eatenDotVisible(nearly, 0)).toBe(true)
+        expect(eatenDotVisible(nearly, alphaFor(0.02))).toBe(false)
+    })
+
+    it("hides it once the player has arrived", () => {
+        expect(eatenDotVisible(mover([1, 1], [2, 1], 1), 0)).toBe(false)
+        expect(eatenDotVisible(mover([1, 1], [2, 1], 0.99), 0.99)).toBe(false)
     })
 })

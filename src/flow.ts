@@ -1,6 +1,7 @@
 import type { Random } from "./ai"
 import {
     createGameState,
+    settle,
     step,
     type GameState,
     type MoveInput,
@@ -13,14 +14,20 @@ import type { Level } from "./level"
 //
 //   title -> stageSelect -> playing <-> paused
 //                 ^            |
-//                 |            +-> stageClear / gameOver -> retry or stageSelect
+//                 |            +-> ending -> stageClear / gameOver
+//                 |                              |
+//                 +------------------------------+-> retry or stageSelect
 //
 // There is no DOM access here: main feeds in one tick of input at a time,
 // renders whatever screen comes back and shows the matching overlay.
 //
 // The game is only ever stepped in `playing`. Once a game ends the machine
-// leaves `playing` on that same tick, so nothing in the finished game changes
-// any more (this replaces the old GameState.locked flag).
+// leaves `playing` on that same tick, so the game itself (cells, score,
+// lives, positions) never changes any more (this replaces the old
+// GameState.locked flag). What follows is `ending`, a short outro: the
+// characters' glides finish (see settle in game.ts, which only raises
+// moveProgress) so the player is seen arriving on its last cell, then the
+// end screen for the outcome. Input is ignored during the outro.
 
 // What an end screen offers, in menu order. The first is selected on entry,
 // so Space retries straight away, as it always has.
@@ -32,6 +39,7 @@ export type Screen =
     | { kind: "stageSelect"; selected: number }
     | { kind: "playing"; level: number; game: GameState }
     | { kind: "paused"; level: number; game: GameState }
+    | { kind: "ending"; level: number; game: GameState; outcome: Outcome }
     | { kind: "stageClear"; level: number; game: GameState; choice: EndChoice }
     | { kind: "gameOver"; level: number; game: GameState; choice: EndChoice }
 
@@ -87,6 +95,10 @@ export function update(
             return input.wasPressed("pause") || input.wasPressed("confirm")
                 ? { ...screen, kind: "playing" }
                 : screen
+        case "ending":
+            return settle(screen.game, deps.dt)
+                ? endScreen(screen, screen.outcome)
+                : screen
         case "stageClear":
         case "gameOver":
             return updateEnd(screen, input, deps)
@@ -99,7 +111,8 @@ export function update(
 
 // Pause a game in progress; every other screen comes back unchanged (the
 // same object). For events outside the tick input, such as the window losing
-// focus or the tab being hidden.
+// focus or the tab being hidden. The `ending` outro isn't paused: it has no
+// gameplay left, and it must finish on its own.
 export function pauseIfPlaying(screen: Screen): Screen {
     return screen.kind === "playing" ? { ...screen, kind: "paused" } : screen
 }
@@ -125,11 +138,13 @@ function updatePlaying(
     if (input.wasPressed("pause")) return { ...screen, kind: "paused" }
     const stepGame = deps.step ?? step
     const outcome = stepGame(screen.game, deps.dt, input.move(), deps.random)
-    return outcome ? endScreen(screen, outcome) : screen
+    if (!outcome) return screen
+    const { level, game } = screen
+    return { kind: "ending", level, game, outcome }
 }
 
 function endScreen(
-    screen: Extract<Screen, { kind: "playing" }>,
+    screen: Extract<Screen, { kind: "ending" }>,
     outcome: Outcome
 ): Screen {
     const { level, game } = screen

@@ -57,6 +57,7 @@ export function makeState(
         bufferedStep: vec2(0, 0),
         score: 0,
         lives,
+        eatenAt: null,
         spawns: {
             player: vec2(player.x, player.y),
             enemies: enemies.map((e) => vec2(e.pos.x, e.pos.y)),

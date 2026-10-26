@@ -68,19 +68,21 @@ function tick(dt: number) {
 
 function enter(prev: Screen, next: Screen) {
     screen = next
-    if (next.kind === "stageClear" && prev.kind === "playing") celebrate(10)
+    if (next.kind === "stageClear" && prev.kind === "ending") celebrate(10)
     showOverlay(next)
 }
 
-// Interpolation only moves on during play; other screens with a game keep
-// the last picture still. Screens without one (title, stage select) show an
+// Interpolation only moves on during play and the ending outro (where the
+// glides finish); other screens with a game keep the last picture still. Screens without one (title, stage select) show an
 // empty canvas rather than the previous game's board.
 let lastAlpha = 0
 
 function render(alpha: number) {
     const game = gameOf(screen)
     if (!game) return renderer.clear()
-    if (screen.kind === "playing") lastAlpha = alpha
+    if (screen.kind === "playing" || screen.kind === "ending") {
+        lastAlpha = alpha
+    }
     renderer.draw(game, lastAlpha, { score: game.score, lives: game.lives })
 }
 
@@ -94,6 +96,7 @@ function showOverlay(s: Screen) {
                 s.selected
             )
         case "playing":
+        case "ending":
             return hideOverlay()
         case "paused":
             return showPause()

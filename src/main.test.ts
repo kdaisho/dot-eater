@@ -16,6 +16,8 @@ const drawn = vi.hoisted(() => ({
     clear: 0,
     // The arguments of the latest draw.
     last: undefined as unknown[] | undefined,
+    // The alpha of every draw.
+    alphas: [] as number[],
 }))
 vi.mock("./render", async (importOriginal) => {
     const actual = await importOriginal<typeof import("./render")>()
@@ -28,6 +30,7 @@ vi.mock("./render", async (importOriginal) => {
                 draw: (...a: Parameters<typeof renderer.draw>) => {
                     drawn.draw++
                     drawn.last = a
+                    drawn.alphas.push(a[1])
                     renderer.draw(...a)
                 },
                 clear: () => {
@@ -418,6 +421,60 @@ describe("main", () => {
         pressAndTick("ArrowDown")
         pressAndTick("Space")
         expect(screen()).toBe("stage-select")
+    })
+
+    // Regression: stage clear (overlay and confetti) came up on the tick the
+    // last dot was eaten, with the player frozen a cell short of it.
+    it("lets the player's last glide finish before stage clear", () => {
+        vi.advanceTimersByTime(1000)
+        vi.mocked(confetti).mockClear()
+        const game = drawnGame()
+        // The player has just moved onto the last dot: a whole glide to go,
+        // 1 / speed seconds.
+        game.player.moveProgress = 0
+        const glideMs = 1000 / game.player.speed
+        nextOutcome = "won"
+        vi.advanceTimersByTime(FRAMES_MS)
+        const ended = steps()
+        drawn.alphas.length = 0
+
+        // The outro: no overlay, no confetti, no stepping, input ignored, and
+        // losing focus doesn't pause it.
+        expect(screen()).toBe("playing")
+        const starting = starts()
+        press("Space")
+        press("ArrowLeft")
+        dispatchEvent(new Event("blur"))
+        vi.advanceTimersByTime(FRAMES_MS)
+        expect(screen()).toBe("playing")
+        expect(vi.mocked(confetti)).not.toHaveBeenCalled()
+        expect(game.player.moveProgress).toBeGreaterThan(0)
+        expect(game.player.moveProgress).toBeLessThan(1)
+        // The picture keeps moving between ticks.
+        expect(new Set(drawn.alphas).size).toBeGreaterThan(1)
+
+        vi.advanceTimersByTime(glideMs)
+        expect(screen()).toBe("stage-clear")
+        expect(game.player.moveProgress).toBe(1)
+        expect(selectedItem()).toBe("Retry")
+        expect(steps()).toBe(ended)
+        expect(starts()).toBe(starting)
+        vi.advanceTimersByTime(1000)
+        expect(vi.mocked(confetti)).toHaveBeenCalled()
+    })
+
+    it("lets the last glide finish before game over too, without confetti", () => {
+        vi.advanceTimersByTime(1000)
+        vi.mocked(confetti).mockClear()
+        const game = drawnGame()
+        game.player.moveProgress = 0
+        nextOutcome = "dead"
+        vi.advanceTimersByTime(FRAMES_MS)
+        expect(screen()).toBe("playing")
+        vi.advanceTimersByTime(1000 / game.player.speed)
+        expect(screen()).toBe("game-over")
+        vi.advanceTimersByTime(1000)
+        expect(vi.mocked(confetti)).not.toHaveBeenCalled()
     })
 
     it("fires the full confetti on every win and none on a loss", () => {

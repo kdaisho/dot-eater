@@ -29,6 +29,12 @@ export type GameState = {
     // Where everyone starts, and goes back to after losing a life (copied
     // from the level).
     spawns: Spawns
+    // The cell of the dot eaten on the player's latest move, or null if that
+    // move ate nothing (or the player hasn't moved since the start or a
+    // respawn). The dot is gone from `cells` and scored at once, but the
+    // renderer keeps drawing it until the player's glide reaches it (see
+    // eatenDotVisible in glide.ts). Purely visual.
+    eatenAt: Vec2 | null
 }
 
 export type Spawns = {
@@ -81,6 +87,7 @@ export function createGameState(level: Level = levels[0]): GameState {
         bufferedStep: vec2(0, 0),
         score: 0,
         lives: START_LIVES,
+        eatenAt: null,
         spawns: {
             player: vec2(spawn.x, spawn.y),
             enemies: level.enemies.map((e) => vec2(e.pos.x, e.pos.y)),
@@ -103,10 +110,11 @@ function respawn(state: GameState) {
         enemy.moveProgress = 0
     })
     state.bufferedStep = vec2(0, 0)
+    state.eatenAt = null
 }
 
-// Try to move the player one step, eating (and scoring) any dot there.
-// Returns true if the player moved; false if a wall blocked the step or the
+// Try to move the player one step, eating (and scoring) any dot there and
+// recording it in eatenAt (cleared when the step eats nothing). Returns true if the player moved; false if a wall blocked the step or the
 // step was zero.
 export function movePlayer(state: GameState, step: Vec2): boolean {
     if (isZero(step)) return false
@@ -116,6 +124,7 @@ export function movePlayer(state: GameState, step: Vec2): boolean {
         vec2(player.pos.x + step.x, player.pos.y + step.y)
     )
     const value = cells[target.y][target.x]
+    let ate = false
 
     switch (value) {
         case Cell.none:
@@ -125,6 +134,7 @@ export function movePlayer(state: GameState, step: Vec2): boolean {
         case Cell.dot:
             cells[target.y][target.x] = Cell.none
             state.score += DOT_POINTS
+            ate = true
             break
         default: {
             // Compile-time check that every Cell is handled above.
@@ -134,6 +144,7 @@ export function movePlayer(state: GameState, step: Vec2): boolean {
     }
     player.lastPos = vec2(player.pos.x, player.pos.y)
     player.pos = target
+    state.eatenAt = ate ? vec2(target.x, target.y) : null
     return true
 }
 
@@ -195,6 +206,21 @@ export function step(
     })
 
     return checkEnd(state, from)
+}
+
+// Finish the glides in progress after the game has ended, for the short
+// outro before the end screen (see flow.ts). Every character's moveProgress
+// rises by speed * dt, capped at 1 (progress already at or past 1 is left
+// alone). Nobody moves and nothing else changes (cells, score, lives,
+// positions). Returns true once the player's glide is complete, i.e. the
+// player is drawn on its cell.
+export function settle(state: GameState, dt: number): boolean {
+    for (const character of [state.player, ...state.enemies]) {
+        if (character.moveProgress >= 1) continue
+        const progress = character.moveProgress + character.speed * dt
+        character.moveProgress = progress >= 1 - EPSILON ? 1 : progress
+    }
+    return state.player.moveProgress >= 1 - EPSILON
 }
 
 // The player's move opportunity: try the buffered direction first, then each
