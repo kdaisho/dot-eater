@@ -27,9 +27,12 @@ export const owl: BreathDef = {
     duration: 0,
     maxEnergy: 100,
     speedScale: 1,
-    // Always fires, even with nobody in the line (the gust shows it). A push
-    // ignores other enemies (they overlap), so the order doesn't matter.
+    // Fires even with nobody in the line (the gust shows it). Facing a wall
+    // with no enemy on the player's cell there is nothing to blow or show,
+    // so the breath refuses and costs nothing. A push ignores other enemies
+    // (they overlap), so the order doesn't matter.
     fire(hit) {
+        if (hit.cells.length === 0 && hit.enemies.length === 0) return false
         for (const cell of hit.cells) hit.addTile(cell, GUST, GUST_SECONDS)
         for (const enemy of hit.enemies) {
             hit.push(enemy, hit.facing, WIND_PUSH)

@@ -121,6 +121,16 @@ describe("owl wind breath", () => {
         expect(state.tiles).toEqual([])
     })
 
+    it("refuses facing a wall with nobody on the player's cell", () => {
+        const { map } = textMap(["####", "#. #", "####"])
+        const state = makeState(map, { x: 2, y: 1 }, [], { breath: owl })
+        state.breather.energy = 100
+        tick(state, true)
+        expect(state.breather.energy).toBe(100)
+        expect(state.breather.cooldown).toBe(0)
+        expect(state.tiles).toEqual([])
+    })
+
     it("is gated by the 0.5 s cooldown", () => {
         const state = owlState(1, [])
         tick(state, true)
