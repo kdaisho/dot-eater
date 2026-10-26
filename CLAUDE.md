@@ -20,7 +20,7 @@ Planning lives in Linear: project **Dot Eater** (P-KDA-8), team **KDA**. For the
 
 ## Code layout
 
-`src/main.ts` is the entry and the only place with timers and the keydown listener. Game logic (`game.ts`, `ai.ts`, `level.ts`, `input.ts`) has no DOM access and takes randomness as a parameter, so it is unit-tested directly. `render.ts` and `ui.ts` touch the DOM.
+`src/main.ts` is the entry and the only place that adds listeners and starts timers. Game logic (`game.ts`, `ai.ts`, `path.ts`, `level.ts`, `flow.ts`, `loop.ts`, `glide.ts`, `layout.ts`) has no DOM access and takes randomness, time and input as parameters, so it is unit-tested directly. `input.ts` attaches to an injected `EventTarget`. `render.ts` (canvas) and `ui.ts` (overlays) touch the DOM. Levels live in `src/levels/`. See `docs/handover.md` for a module map.
 
 ## Testing
 
