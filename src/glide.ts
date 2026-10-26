@@ -45,10 +45,12 @@ export function moveStep(lastPos: Vec2, pos: Vec2, cols: number, rows: number) {
     )
 }
 
-function wrapDelta(d: number, size: number): number {
-    if (d > 1) return d - size
-    if (d < -1) return d + size
-    return d
+// The offset `d` (cells, along an axis `size` cells long) taken the short
+// way round: the copy of it, one map-width either way, nearest to 0. For a
+// one-cell move across a tunnel (d = ±(size - 1)) that is the ∓1 step off the
+// edge. Positions and offsets need not be whole cells.
+export function wrapDelta(d: number, size: number): number {
+    return d - size * Math.round(d / size)
 }
 
 // The position to draw a character at, in cell units. It may lie up to one

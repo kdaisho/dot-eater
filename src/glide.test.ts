@@ -8,6 +8,7 @@ import {
     glideT,
     moveStep,
     wrapCopies,
+    wrapDelta,
 } from "./glide"
 import { vec2 } from "./vec2"
 
@@ -117,6 +118,22 @@ describe("moveStep", () => {
         expect(moveStep(vec2(8, 4), vec2(0, 4), 9, 9)).toEqual(vec2(1, 0))
         expect(moveStep(vec2(0, 4), vec2(8, 4), 9, 9)).toEqual(vec2(-1, 0))
         expect(moveStep(vec2(4, 0), vec2(4, 6), 9, 7)).toEqual(vec2(0, -1))
+    })
+})
+
+describe("wrapDelta", () => {
+    it("leaves a short offset alone", () => {
+        expect(wrapDelta(0.4, 9)).toBe(0.4)
+        expect(wrapDelta(-1, 9)).toBe(-1)
+        expect(wrapDelta(3, 9)).toBe(3)
+    })
+
+    it("takes an offset across the edge the short way round", () => {
+        expect(wrapDelta(8, 9)).toBe(-1)
+        expect(wrapDelta(-8, 9)).toBe(1)
+        // From a sprite drawn half off the left edge to one at the right.
+        expect(wrapDelta(8.2 - -0.4, 9)).toBeCloseTo(-0.4)
+        expect(wrapDelta(-0.4 - 8.2, 9)).toBeCloseTo(0.4)
     })
 })
 

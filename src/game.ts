@@ -1,5 +1,6 @@
 import {
     AiType,
+    CATCH_DISTANCE,
     Cell,
     CharacterId,
     DOT_POINTS,
@@ -8,6 +9,7 @@ import {
 } from "./constants"
 import { enemyMove, type Random } from "./ai"
 import { createCharacter, type Character } from "./character"
+import { glidePos, wrapDelta } from "./glide"
 import { slideStep, type IceMap } from "./ice"
 import { hasDots, loopPos, type Cells, type Level } from "./level"
 import { levels } from "./levels"
@@ -193,9 +195,10 @@ function wait(character: Character) {
 // direction or walks into a wall, an enemy is boxed in) stays ready and moves
 // on the first tick it can. All moves in a tick happen together: enemies aim
 // at where the player stood at the start of the tick, and collisions are
-// checked once, after everyone has moved (see checkEnd for what a collision
-// costs). Callers stop stepping once a step
-// returns an outcome (see flow.ts), so nothing changes after the game ends.
+// checked once, after everyone has moved, on where the characters are drawn
+// over the tick (see collides, and checkEnd for what a collision costs).
+// Callers stop stepping once a step returns an outcome (see flow.ts), so
+// nothing changes after the game ends.
 //
 // On ice (see ice.ts), a sliding character's move is its slide step, taken
 // at its normal move opportunity: input and AI are ignored until the slide
@@ -212,6 +215,7 @@ export function step(
     const { cells, player, enemies } = state
     state.ticks++
     const from = positions(state)
+    const drawnFrom = drawnPositions(state)
     // Where the player came from on its latest move before this tick, for
     // the heading an ambusher aims along.
     const playerLast = vec2(player.lastPos.x, player.lastPos.y)
@@ -246,7 +250,7 @@ export function step(
         else spend(enemy)
     })
 
-    return checkEnd(state, from)
+    return checkEnd(state, drawnFrom)
 }
 
 // Finish the glides in progress after the game has ended, for the short
@@ -294,19 +298,61 @@ function positions(state: GameState): Vec2[] {
     return [state.player, ...state.enemies].map((c) => vec2(c.pos.x, c.pos.y))
 }
 
-// Two characters collide when they share a cell, or when they have just
-// swapped cells (each moved into where the other was) and so passed through
-// each other. `aFrom` and `bFrom` are where they stood at the start of the
-// tick. Everyone moves at once, so a swap never shows up as a shared cell and
-// needs this check. Start-of-tick positions are used rather than lastPos,
-// which only changes when a character moves and so may be from an older tick.
-function collides(a: Vec2, aFrom: Vec2, b: Vec2, bFrom: Vec2): boolean {
-    return samePos(a, b) || (samePos(a, bFrom) && samePos(aFrom, b))
+// Where every character is drawn (see drawnPos), in the same order as
+// positions.
+function drawnPositions(state: GameState): Vec2[] {
+    const cols = state.cells[0].length
+    const rows = state.cells.length
+    return [state.player, ...state.enemies].map((c) => drawnPos(c, cols, rows))
 }
 
-// Settle the end of a tick: collisions, lives and winning. `from` holds
-// where everyone stood at the start of the tick (see positions); without it
-// only shared cells count as collisions.
+// Where a character is for collisions: where it is drawn at a tick boundary,
+// gliding from lastPos to pos by its moveProgress (capped at 1, so a
+// character waiting to move is at pos). It is glidePos without the frame
+// alpha, so collisions happen where the player sees the sprites touch, not
+// up to a cell earlier when a move starts. Near a tunnel it may be up to a
+// cell off the map; compare positions with wrapDelta.
+function drawnPos(character: Character, cols: number, rows: number): Vec2 {
+    return glidePos(character, 0, cols, rows)
+}
+
+// Two characters collide when their drawn positions come within
+// CATCH_DISTANCE of each other at any moment of the tick. `a0`/`b0` are where
+// they were drawn at the start of the tick and `a1`/`b1` at the end; motion
+// within a tick is taken as a straight line between the two, and the closest
+// approach along it counts, so fast characters can't pass through each other
+// between ticks (a head-on swap is caught where the sprites meet). Distances
+// and motion are wrap-aware, so a catch works across a tunnel.
+//
+// Drawn positions are continuous across a move: a character that moves this
+// tick goes from just short of (or at) its old cell, gliding in, to just past
+// it, gliding out by the progress left over (see spend), so it travels at
+// most a cell within a tick, even when the move crosses a tunnel.
+//
+// This replaces checking for a shared cell or a swap of cells, which fired
+// as soon as a move started, with the sprites still up to a cell apart.
+function collides(
+    a0: Vec2,
+    a1: Vec2,
+    b0: Vec2,
+    b1: Vec2,
+    cols: number,
+    rows: number
+): boolean {
+    // b relative to a at the start of the tick, and its change over the tick.
+    const rx = wrapDelta(b0.x - a0.x, cols)
+    const ry = wrapDelta(b0.y - a0.y, rows)
+    const vx = wrapDelta(b1.x - b0.x, cols) - wrapDelta(a1.x - a0.x, cols)
+    const vy = wrapDelta(b1.y - b0.y, rows) - wrapDelta(a1.y - a0.y, rows)
+    const v2 = vx * vx + vy * vy
+    // The moment of closest approach, as a fraction of the tick.
+    const t = v2 === 0 ? 0 : Math.min(1, Math.max(0, -(rx * vx + ry * vy) / v2))
+    return Math.hypot(rx + vx * t, ry + vy * t) <= CATCH_DISTANCE + EPSILON
+}
+
+// Settle the end of a tick: collisions, lives and winning. `drawnFrom` holds
+// where everyone was drawn at the start of the tick (see drawnPositions);
+// without it only where they are drawn now counts.
 //
 // - Caught on the last life: lives drop to 0 and the game is lost ("dead").
 // - Caught with lives left: one life is lost and everyone respawns at once
@@ -316,10 +362,10 @@ function collides(a: Vec2, aFrom: Vec2, b: Vec2, bFrom: Vec2): boolean {
 //   even if the player is caught on that same tick, and costs no life.
 export function checkEnd(
     state: GameState,
-    from: readonly Vec2[] = positions(state)
+    drawnFrom: readonly Vec2[] = drawnPositions(state)
 ): Outcome | null {
     if (!hasDots(state.cells)) return "won"
-    if (!caught(state, from)) return null
+    if (!caught(state, drawnFrom)) return null
     if (state.lives <= 1) {
         state.lives = 0
         return "dead"
@@ -329,11 +375,14 @@ export function checkEnd(
     return null
 }
 
-// Whether any enemy collides with the player this tick.
-function caught(state: GameState, from: readonly Vec2[]): boolean {
-    const { player, enemies } = state
+// Whether any enemy collides with the player this tick (see collides).
+// `drawnFrom` is where everyone was drawn at the start of the tick.
+function caught(state: GameState, drawnFrom: readonly Vec2[]): boolean {
+    const cols = state.cells[0].length
+    const rows = state.cells.length
+    const [player, ...enemies] = drawnPositions(state)
     return enemies.some((enemy, i) =>
-        collides(player.pos, from[0], enemy.pos, from[i + 1])
+        collides(drawnFrom[0], player, drawnFrom[i + 1], enemy, cols, rows)
     )
 }
 
