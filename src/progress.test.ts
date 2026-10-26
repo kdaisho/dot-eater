@@ -8,6 +8,7 @@ import {
     mergeProgress,
     parseProgress,
     PROGRESS_KEY,
+    recordBests,
     recordClear,
     saveProgress,
     serializeProgress,
@@ -43,6 +44,22 @@ const cleared = (...indices: number[]): Progress =>
     indices.reduce(markCleared, emptyProgress())
 
 const clearedFlags = (p: Progress) => p.stages.map((s) => s.cleared)
+
+// A clear to record: 2 stars in 30 s, unless told otherwise.
+const run = (stars = 2, ticks = 1800) => ({ stars, ticks })
+
+// Progress whose stage 0 is cleared with these bests.
+const withStage0 = (bests: { stars?: number; bestTime?: number }): Progress => {
+    const p = cleared(0)
+    return {
+        ...p,
+        stages: [{ ...p.stages[0], ...bests }, ...p.stages.slice(1)],
+    }
+}
+
+// Parse a save whose only stage is `stage`, and return that stage.
+const parseStage0 = (stage: Record<string, unknown>) =>
+    parseProgress(JSON.stringify({ version: 1, stages: [stage] })).stages[0]
 
 describe("emptyProgress", () => {
     it("has STAGE_COUNT uncleared stages and the current version", () => {
@@ -132,6 +149,63 @@ describe("parseProgress", () => {
     })
 })
 
+describe("parseProgress: bests", () => {
+    it("reads valid stars and best time", () => {
+        expect(
+            parseStage0({ cleared: true, stars: 3, bestTime: 1234 })
+        ).toEqual({ cleared: true, stars: 3, bestTime: 1234 })
+        expect(parseStage0({ cleared: true, stars: 1, bestTime: 1 })).toEqual({
+            cleared: true,
+            stars: 1,
+            bestTime: 1,
+        })
+    })
+
+    it("leaves out bests a save doesn't have", () => {
+        expect(parseStage0({ cleared: true })).toEqual({ cleared: true })
+        expect(parseStage0({ cleared: true, stars: 2 })).toEqual({
+            cleared: true,
+            stars: 2,
+        })
+        expect(parseStage0({ cleared: true, bestTime: 90 })).toEqual({
+            cleared: true,
+            bestTime: 90,
+        })
+    })
+
+    it.each([0, 4, 1.5, -1, "3", null, true, [2], Infinity])(
+        "drops stars of %j, keeping the rest of the stage",
+        (stars) => {
+            expect(parseStage0({ cleared: true, stars, bestTime: 90 })).toEqual(
+                { cleared: true, bestTime: 90 }
+            )
+        }
+    )
+
+    it.each([0, -60, 12.5, "90", null, false, {}, Infinity, NaN])(
+        "drops a bestTime of %j, keeping the rest of the stage",
+        (bestTime) => {
+            expect(parseStage0({ cleared: true, stars: 2, bestTime })).toEqual({
+                cleared: true,
+                stars: 2,
+            })
+        }
+    )
+
+    it("keeps the other stages and extra fields when one best is malformed", () => {
+        const raw = JSON.stringify({
+            version: 1,
+            stages: [
+                { cleared: true, stars: "lots", note: "x" },
+                { cleared: true, stars: 3, bestTime: 600 },
+            ],
+        })
+        const { stages } = parseProgress(raw)
+        expect(stages[0]).toEqual({ cleared: true, note: "x" })
+        expect(stages[1]).toEqual({ cleared: true, stars: 3, bestTime: 600 })
+    })
+})
+
 describe("mergeProgress", () => {
     it("keeps a stage cleared in either copy", () => {
         expect(clearedFlags(mergeProgress(cleared(0), cleared(2)))).toEqual([
@@ -144,10 +218,102 @@ describe("mergeProgress", () => {
     })
 })
 
+describe("mergeProgress: bests", () => {
+    const merged = (
+        mine: { stars?: number; bestTime?: number },
+        saved: { stars?: number; bestTime?: number }
+    ) => mergeProgress(withStage0(mine), withStage0(saved)).stages[0]
+
+    it("keeps the most stars and the fastest time, from either side", () => {
+        expect(
+            merged({ stars: 3, bestTime: 900 }, { stars: 2, bestTime: 600 })
+        ).toEqual({ cleared: true, stars: 3, bestTime: 600 })
+        expect(
+            merged({ stars: 1, bestTime: 600 }, { stars: 2, bestTime: 900 })
+        ).toEqual({ cleared: true, stars: 2, bestTime: 600 })
+    })
+
+    it("takes a best only one side has", () => {
+        expect(merged({ stars: 2 }, { bestTime: 700 })).toEqual({
+            cleared: true,
+            stars: 2,
+            bestTime: 700,
+        })
+        expect(merged({}, {})).toEqual({ cleared: true })
+    })
+})
+
+describe("recordBests", () => {
+    it("records the first clear's stars and time", () => {
+        expect(recordBests(cleared(0), 0, run(2, 1800)).stages[0]).toEqual({
+            cleared: true,
+            stars: 2,
+            bestTime: 1800,
+        })
+    })
+
+    it("improves each best on its own", () => {
+        const start = withStage0({ stars: 2, bestTime: 1800 })
+        // More stars, but slower: only the stars change.
+        expect(recordBests(start, 0, run(3, 2400)).stages[0]).toEqual({
+            cleared: true,
+            stars: 3,
+            bestTime: 1800,
+        })
+        // Faster, but fewer stars: only the time changes.
+        expect(recordBests(start, 0, run(1, 1200)).stages[0]).toEqual({
+            cleared: true,
+            stars: 2,
+            bestTime: 1200,
+        })
+    })
+
+    it("never makes a best worse, returning the same object", () => {
+        const start = withStage0({ stars: 3, bestTime: 1200 })
+        expect(recordBests(start, 0, run(1, 5000))).toBe(start)
+        // Equal is no improvement either.
+        expect(recordBests(start, 0, run(3, 1200))).toBe(start)
+    })
+
+    it("ignores stars or a time a save couldn't hold", () => {
+        const p = withStage0({ stars: 1, bestTime: 900 })
+        expect(recordBests(p, 0, run(4, 0))).toBe(p)
+        expect(recordBests(p, 0, run(2, 0.5)).stages[0]).toEqual({
+            cleared: true,
+            stars: 2,
+            bestTime: 900,
+        })
+        expect(recordBests(cleared(0), 0, run(3, 0)).stages[0]).toEqual({
+            cleared: true,
+            stars: 3,
+        })
+    })
+
+    it("ignores slots outside the stage list", () => {
+        const p = cleared(0)
+        expect(recordBests(p, -1, run())).toBe(p)
+        expect(recordBests(p, STAGE_COUNT, run())).toBe(p)
+    })
+
+    it("keeps a stage's other fields", () => {
+        const p = withStage0({ stars: 1 })
+        const withNote = {
+            ...p,
+            stages: [{ ...p.stages[0], note: "x" }, ...p.stages.slice(1)],
+        }
+        expect(recordBests(withNote, 0, run(2, 60)).stages[0]).toEqual({
+            cleared: true,
+            note: "x",
+            stars: 2,
+            bestTime: 60,
+        })
+    })
+})
+
 describe("recordClear", () => {
     it("saves the clear, unlocking the next stage", () => {
         const storage = memoryStorage()
-        const next = recordClear(emptyProgress(), storage, 0)
+        const next = recordClear(emptyProgress(), storage, 0, run())
         expect(isUnlocked(next, 1)).toBe(true)
         expect(loadProgress(storage)).toEqual(next)
     })
@@ -157,7 +323,7 @@ describe("recordClear", () => {
     it("keeps clears another tab saved since this one loaded", () => {
         const storage = memoryStorage()
         saveProgress(storage, cleared(0, 1))
-        const next = recordClear(emptyProgress(), storage, 0)
+        const next = recordClear(emptyProgress(), storage, 0, run())
         expect(clearedFlags(loadProgress(storage)).slice(0, 2)).toEqual([
             true,
             true,
@@ -165,11 +331,54 @@ describe("recordClear", () => {
         expect(isUnlocked(next, 2)).toBe(true)
     })
 
+    it("saves the clear's stars and time as the stage's bests", () => {
+        const storage = memoryStorage()
+        recordClear(emptyProgress(), storage, 0, run(2, 1800))
+        expect(loadProgress(storage).stages[0]).toEqual({
+            cleared: true,
+            stars: 2,
+            bestTime: 1800,
+        })
+    })
+
+    it("only improves the saved bests", () => {
+        const storage = memoryStorage()
+        let p = recordClear(emptyProgress(), storage, 0, run(3, 1800))
+        p = recordClear(p, storage, 0, run(1, 1200))
+        p = recordClear(p, storage, 0, run(2, 3000))
+        expect(p.stages[0]).toEqual({ cleared: true, stars: 3, bestTime: 1200 })
+        expect(loadProgress(storage)).toEqual(p)
+    })
+
+    it("doesn't save when nothing improves", () => {
+        const storage = memoryStorage()
+        const p = recordClear(emptyProgress(), storage, 0, run(3, 600))
+        storage.setItem.mockClear()
+        recordClear(p, storage, 0, run(2, 900))
+        expect(storage.setItem).not.toHaveBeenCalled()
+    })
+
+    // Regression guard: the merge with storage used to take another tab's
+    // fields as they were, so a stale tab's worse bests could replace this
+    // tab's better ones, and the other way round.
+    it("keeps the better bests of this tab and another tab", () => {
+        const storage = memoryStorage()
+        // This tab: 3 stars, slow. The other tab saved 2 stars, fast.
+        const mine = withStage0({ stars: 3, bestTime: 3000 })
+        saveProgress(storage, withStage0({ stars: 2, bestTime: 1000 }))
+        const next = recordClear(mine, storage, 0, run(1, 2000))
+        const best = { cleared: true, stars: 3, bestTime: 1000 }
+        expect(next.stages[0]).toEqual(best)
+        expect(loadProgress(storage).stages[0]).toEqual(best)
+    })
+
     it("still records the clear in memory when storage is unusable", () => {
-        expect(isUnlocked(recordClear(emptyProgress(), throwing, 0), 1)).toBe(
-            true
-        )
-        expect(isUnlocked(recordClear(cleared(0), undefined, 1), 2)).toBe(true)
+        expect(
+            isUnlocked(recordClear(emptyProgress(), throwing, 0, run()), 1)
+        ).toBe(true)
+        expect(
+            isUnlocked(recordClear(cleared(0), undefined, 1, run()), 2)
+        ).toBe(true)
     })
 })
 
@@ -270,6 +479,20 @@ describe("stageSlots", () => {
             { kind: "locked", name: "C" },
             { kind: "comingSoon" },
             { kind: "comingSoon" },
+        ])
+    })
+
+    it("shows the bests of cleared stages only", () => {
+        const p = recordBests(
+            recordBests(cleared(0), 0, run(3, 1234)),
+            1,
+            run(2, 999)
+        )
+        // Stage 1 has bests but isn't cleared (e.g. an odd save): none shown.
+        expect(stageSlots(p, ["A", "B", "C"]).slice(0, 3)).toEqual([
+            { kind: "open", name: "A", stars: 3, bestTime: 1234 },
+            { kind: "open", name: "B" },
+            { kind: "locked", name: "C" },
         ])
     })
 

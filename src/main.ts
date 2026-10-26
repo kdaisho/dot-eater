@@ -88,7 +88,8 @@ function tick(dt: number) {
 function enter(prev: Screen, next: Screen) {
     screen = next
     if (next.kind === "stageClear" && prev.kind === "ending") {
-        progress = recordClear(progress, storage, next.level)
+        const { stars, ticks } = next.rating
+        progress = recordClear(progress, storage, next.level, { stars, ticks })
         celebrate(10)
     }
     showOverlay(next)
@@ -126,7 +127,10 @@ function showOverlay(s: Screen) {
         case "paused":
             return showPause()
         case "stageClear":
-            return showStageClear(endView(s.game, s.choice))
+            return showStageClear({
+                ...endView(s.game, s.choice),
+                rating: s.rating,
+            })
         case "gameOver":
             return showGameOver(endView(s.game, s.choice))
     }

@@ -23,6 +23,11 @@ export type GameState = {
     bufferedStep: Vec2
     // Points so far: DOT_POINTS per dot eaten.
     score: number
+    // Ticks stepped so far: the clear time, in ticks (TICK_RATE per second).
+    // Only `step` counts, and it only runs during play (see flow.ts), so
+    // pauses and the ending outro don't add to it. A lost life doesn't reset
+    // it.
+    ticks: number
     // Lives left, counting the one being played. A collision costs one;
     // losing the last ends the game.
     lives: number
@@ -87,6 +92,7 @@ export function createGameState(level: Level = levels[0]): GameState {
         enemies,
         bufferedStep: vec2(0, 0),
         score: 0,
+        ticks: 0,
         lives: START_LIVES,
         eatenAt: null,
         spawns: {
@@ -194,6 +200,7 @@ export function step(
     random: Random
 ): Outcome | null {
     const { cells, player, enemies } = state
+    state.ticks++
     const from = positions(state)
     // Where the player came from on its latest move before this tick, for
     // the heading an ambusher aims along.

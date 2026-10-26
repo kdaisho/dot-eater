@@ -14,9 +14,20 @@ export const STAGE_COUNT = 5
 export const PROGRESS_KEY = "dot-eater:progress:v1"
 export const PROGRESS_VERSION = 1
 
-// One entry per stage slot. Per-stage records (best score, stars) can be
-// added here as optional fields without a version bump.
-export type StageProgress = { cleared: boolean }
+// One entry per stage slot. Per-stage records are optional fields, added
+// without a version bump. The bests are kept separately: the best stars may
+// come from a slower run than the best time.
+export type StageProgress = {
+    cleared: boolean
+    // The most stars any clear earned (1 to 3; see stars.ts).
+    stars?: number
+    // The fastest clear, in game ticks (TICK_RATE, 60, per second): a whole
+    // number from 1. Ticks rather than seconds, so it is exact.
+    bestTime?: number
+}
+
+// A clear to record: its stars and its clear time in ticks.
+export type ClearRecord = { stars: number; ticks: number }
 
 export type Progress = {
     version: typeof PROGRESS_VERSION
@@ -39,6 +50,8 @@ export function emptyProgress(): Progress {
 // with fewer stages than STAGE_COUNT is padded with uncleared ones, and one
 // with more is cut short. Fields a stage has besides `cleared` are kept, so
 // a save written by a later build loses nothing when this one saves it back.
+// A malformed `stars` or `bestTime` is dropped on its own; the rest of the
+// save still counts.
 export function parseProgress(raw: string | null): Progress {
     if (raw === null) return emptyProgress()
     let data: unknown
@@ -55,28 +68,91 @@ export function parseProgress(raw: string | null): Progress {
     if (!stages.every((s) => isRecord(s) && typeof s.cleared === "boolean")) {
         return emptyProgress()
     }
-    const saved = stages as StageProgress[]
+    const saved = stages as Record<string, unknown>[]
     return {
         version: PROGRESS_VERSION,
-        stages: Array.from({ length: STAGE_COUNT }, (_, i) => ({
-            ...saved[i],
-            cleared: saved[i]?.cleared ?? false,
-        })),
+        stages: Array.from({ length: STAGE_COUNT }, (_, i) =>
+            saved[i] ? parseStage(saved[i]) : { cleared: false }
+        ),
     }
 }
 
+// One saved stage, already known to have a boolean `cleared`.
+function parseStage(saved: Record<string, unknown>): StageProgress {
+    const { stars, bestTime, ...rest } = saved
+    return {
+        ...rest,
+        cleared: saved.cleared as boolean,
+        ...(isStars(stars) ? { stars } : {}),
+        ...(isTicks(bestTime) ? { bestTime } : {}),
+    }
+}
+
+function isStars(value: unknown): value is number {
+    return (
+        Number.isInteger(value) &&
+        (value as number) >= 1 &&
+        (value as number) <= 3
+    )
+}
+
+function isTicks(value: unknown): value is number {
+    return Number.isInteger(value) && (value as number) >= 1
+}
+
 // Combine two copies of progress, e.g. this tab's and what another tab has
-// saved since: a stage cleared in either stays cleared. Other per-stage
-// fields come from `saved` where it has them.
+// saved since, keeping the better of each record: a stage cleared in either
+// stays cleared, and the bests are the most stars and the fastest time of
+// either. Other per-stage fields come from `saved` where it has them.
 export function mergeProgress(mine: Progress, saved: Progress): Progress {
     return {
         version: PROGRESS_VERSION,
-        stages: mine.stages.map((s, i) => ({
-            ...s,
-            ...saved.stages[i],
-            cleared: s.cleared || saved.stages[i].cleared,
-        })),
+        stages: mine.stages.map((s, i) => {
+            const other = saved.stages[i]
+            return withBests(
+                {
+                    ...s,
+                    ...other,
+                    cleared: s.cleared || other.cleared,
+                },
+                s,
+                other
+            )
+        }),
     }
+}
+
+// `stage` with the most stars and fastest time found in `records` (fields a
+// record lacks are skipped; a best no record has is left out).
+function withBests(
+    stage: StageProgress,
+    ...records: readonly {
+        stars?: number | undefined
+        bestTime?: number | undefined
+    }[]
+): StageProgress {
+    const stars = best(
+        records.map((r) => r.stars),
+        Math.max
+    )
+    const bestTime = best(
+        records.map((r) => r.bestTime),
+        Math.min
+    )
+    const { stars: _s, bestTime: _t, ...rest } = stage
+    return {
+        ...rest,
+        ...(stars === undefined ? {} : { stars }),
+        ...(bestTime === undefined ? {} : { bestTime }),
+    }
+}
+
+function best(
+    values: readonly (number | undefined)[],
+    pick: (...n: number[]) => number
+): number | undefined {
+    const known = values.filter((v): v is number => v !== undefined)
+    return known.length === 0 ? undefined : pick(...known)
 }
 
 export function serializeProgress(progress: Progress): string {
@@ -131,23 +207,60 @@ export function markCleared(progress: Progress, index: number): Progress {
     }
 }
 
-// A win: mark stage `index` cleared, which unlocks the next, and save if
-// that changed anything. Storage is read again first, so a clear another tab
-// saved since this one loaded isn't overwritten. Returns the new progress.
+// Record a clear's stars and time on stage `index` as its bests, where they
+// beat what it has: more stars, or a lower time. Each best improves on its
+// own. Returns the same object when nothing improves (or `index` isn't a
+// stage slot), so callers can skip the save.
+export function recordBests(
+    progress: Progress,
+    index: number,
+    clear: ClearRecord
+): Progress {
+    const stage = progress.stages[index]
+    if (!Number.isInteger(index) || !stage) return progress
+    // Values a save couldn't hold are ignored, as parseProgress would drop
+    // them.
+    const stars = isStars(clear.stars) ? clear.stars : undefined
+    const ticks = isTicks(clear.ticks) ? clear.ticks : undefined
+    const moreStars =
+        stars !== undefined &&
+        (stage.stars === undefined || stars > stage.stars)
+    const faster =
+        ticks !== undefined &&
+        (stage.bestTime === undefined || ticks < stage.bestTime)
+    if (!moreStars && !faster) return progress
+    const next = withBests(stage, stage, { stars, bestTime: ticks })
+    return {
+        ...progress,
+        stages: progress.stages.map((s, i) => (i === index ? next : s)),
+    }
+}
+
+// A win: mark stage `index` cleared, which unlocks the next, record the
+// clear's stars and time as bests where they improve, and save unless
+// storage already holds exactly that. Storage is read again first and merged
+// (see mergeProgress), so clears and bests another tab saved since this one
+// loaded aren't overwritten, and this tab's better bests aren't lost either.
+// Returns the new progress.
 export function recordClear(
     progress: Progress,
     storage: ProgressStorage | undefined,
-    index: number
+    index: number,
+    clear: ClearRecord
 ): Progress {
-    const latest = mergeProgress(progress, loadProgress(storage))
-    const next = markCleared(latest, index)
-    if (next !== latest) saveProgress(storage, next)
+    const stored = loadProgress(storage)
+    const latest = mergeProgress(progress, stored)
+    const next = recordBests(markCleared(latest, index), index, clear)
+    if (serializeProgress(next) !== serializeProgress(stored)) {
+        saveProgress(storage, next)
+    }
     return next
 }
 
 // What one stage select slot shows.
 export type StageSlot =
-    | { kind: "open"; name: string }
+    // A cleared stage also shows its bests (see StageProgress).
+    | { kind: "open"; name: string; stars?: number; bestTime?: number }
     | { kind: "locked"; name: string }
     // No level exists for this slot yet.
     | { kind: "comingSoon" }
@@ -160,9 +273,15 @@ export function stageSlots(
     return Array.from({ length: STAGE_COUNT }, (_, i): StageSlot => {
         if (i >= names.length) return { kind: "comingSoon" }
         const name = names[i]
-        return isUnlocked(progress, i)
-            ? { kind: "open", name }
-            : { kind: "locked", name }
+        if (!isUnlocked(progress, i)) return { kind: "locked", name }
+        const { cleared, stars, bestTime } = progress.stages[i]
+        if (!cleared) return { kind: "open", name }
+        return {
+            kind: "open",
+            name,
+            ...(stars === undefined ? {} : { stars }),
+            ...(bestTime === undefined ? {} : { bestTime }),
+        }
     })
 }
 

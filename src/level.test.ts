@@ -62,6 +62,7 @@ describe("hasDots", () => {
 // A valid level to derive broken ones from.
 const valid: LevelData = {
     name: "test",
+    parTime: 60,
     map: [
         "#####", //
         "#P.E#",
@@ -96,6 +97,7 @@ describe("parseLevel", () => {
         })
         expect(level).toEqual({
             name: "test",
+            parTime: 60,
             width: 5,
             height: 4,
             cells: [
@@ -120,6 +122,7 @@ describe("parseLevel", () => {
     it("matches enemies to E spawns in reading order", () => {
         const level = parseLevel({
             name: "order",
+            parTime: 60,
             map: ["#####", "#.E.#", "#EP.#", "#####"],
             enemies: [{ ai: "random" }, { ai: "chase" }],
         })
@@ -132,6 +135,7 @@ describe("parseLevel", () => {
     it("accepts any map size", () => {
         const level = parseLevel({
             name: "wide",
+            parTime: 60,
             map: ["#############", "#P.........E#", "#############"],
             enemies: [{ ai: "random" }],
         })
@@ -144,6 +148,7 @@ describe("parseLevel", () => {
         // The right part is only reachable through the edge tunnel.
         const level = parseLevel({
             name: "tunnel",
+            parTime: 60,
             map: ["#####", ".P#..", "#####"],
             enemies: [],
         })
@@ -154,6 +159,7 @@ describe("parseLevel", () => {
         expect(
             problemsOf({
                 name: "corners",
+                parTime: 60,
                 map: [". .", " P ", ". ."],
                 enemies: [],
             })
@@ -163,6 +169,7 @@ describe("parseLevel", () => {
     it("accepts up to 4 enemies with every AI type", () => {
         const level = parseLevel({
             name: "four",
+            parTime: 60,
             map: ["######", "#PEE.#", "#.EE.#", "######"],
             enemies: [
                 { ai: "ambusher" },
@@ -193,6 +200,12 @@ describe("parseLevel", () => {
         expect(parseLevel(valid).enemies[0]).not.toHaveProperty("route")
     })
 
+    it("carries the par time into the level", () => {
+        expect(parseLevel(valid).parTime).toBe(60)
+        expect(parseLevel({ ...valid, parTime: 0.5 }).parTime).toBe(0.5)
+        expect(parseLevel({ ...valid, parTime: 16.4 }).parTime).toBe(16.4)
+    })
+
     it("returns cells that are not shared with other parses", () => {
         const a = parseLevel(valid)
         const b = parseLevel(valid)
@@ -204,6 +217,23 @@ describe("parseLevel", () => {
         it("an empty name", () => {
             expect(problemsOf({ ...valid, name: "  " })).toEqual([
                 "name must not be empty",
+            ])
+        })
+
+        it.each([0, -5, NaN, Infinity, 45.54])("a parTime of %s", (parTime) => {
+            expect(problemsOf({ ...valid, parTime })).toEqual([
+                `parTime must be a positive number of seconds in whole tenths, got ${parTime}`,
+            ])
+        })
+
+        it("a missing or non-number parTime", () => {
+            const { parTime: _, ...missing } = valid
+            expect(problemsOf(missing as LevelData)).toEqual([
+                "parTime must be a positive number of seconds in whole tenths, got undefined",
+            ])
+            const text = { ...valid, parTime: "60" } as unknown as LevelData
+            expect(problemsOf(text)).toEqual([
+                "parTime must be a positive number of seconds in whole tenths, got 60",
             ])
         })
 
@@ -412,6 +442,7 @@ describe("parseLevel", () => {
             expect(
                 problemsOf({
                     name: "pocket",
+                    parTime: 60,
                     map: ["######", "#P.E##", "#### #", "######"],
                     enemies: [
                         {
@@ -449,10 +480,16 @@ describe("parseLevel", () => {
 
         it("with every problem of a stage in one error", () => {
             expect(() =>
-                parseLevel({ name: "", map: ["#x", "#"], enemies: [] })
+                parseLevel({
+                    name: "",
+                    parTime: 0,
+                    map: ["#x", "#"],
+                    enemies: [],
+                })
             ).toThrow(
                 'Invalid level "":\n' +
                     "- name must not be empty\n" +
+                    "- parTime must be a positive number of seconds in whole tenths, got 0\n" +
                     '- unknown map character "x" at (1, 0)\n' +
                     "- map row 1 is 1 wide, expected 2 (the width of row 0)"
             )

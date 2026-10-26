@@ -1,5 +1,6 @@
 import confetti from "canvas-confetti"
 import type { StageSlot } from "./progress"
+import { formatTicks, starList, starText, type ClearRating } from "./stars"
 
 function genConfetti(interval: number = 20) {
     return (count: number = 10) => {
@@ -35,6 +36,9 @@ export type EndScreenView = {
     items: readonly MenuItem[]
 }
 
+// Stage clear also shows the clear's stars and time.
+export type StageClearView = EndScreenView & { rating: ClearRating }
+
 type Overlay = {
     id: string
     title: string
@@ -52,7 +56,8 @@ export function showTitle() {
 }
 
 // Stage select: one item per slot. Locked stages keep their name behind a
-// lock; slots with no level yet read "Coming soon". Both are greyed out.
+// lock; slots with no level yet read "Coming soon". Both are greyed out. A
+// cleared stage shows its best stars and best time after its name.
 export function showStageSelect(slots: readonly StageSlot[], selected: number) {
     show({
         id: "stage-select",
@@ -68,8 +73,13 @@ export function showStageSelect(slots: readonly StageSlot[], selected: number) {
 
 function slotLabel(slot: StageSlot): string {
     switch (slot.kind) {
-        case "open":
-            return slot.name
+        case "open": {
+            const bests = [
+                slot.stars === undefined ? "" : starText(slot.stars),
+                slot.bestTime === undefined ? "" : formatTicks(slot.bestTime),
+            ].filter(Boolean)
+            return [slot.name, ...bests].join(" · ")
+        }
         case "locked":
             return `🔒 ${slot.name}`
         case "comingSoon":
@@ -85,8 +95,23 @@ export function showPause() {
     })
 }
 
-export function showStageClear(view: EndScreenView) {
-    show({ id: "stage-clear", title: "Stage clear!", ...endScreen(view) })
+// The score, then the clear time and the three stars, each marked earned
+// (★) or not (☆), e.g. "☆ Under par (1:00)".
+export function showStageClear(view: StageClearView) {
+    const { lines, items } = endScreen(view)
+    const { rating } = view
+    show({
+        id: "stage-clear",
+        title: "Stage clear!",
+        lines: [
+            ...lines,
+            `Time ${formatTicks(rating.ticks)}`,
+            ...starList(rating).map(
+                (star) => `${star.earned ? "★" : "☆"} ${star.label}`
+            ),
+        ],
+        items,
+    })
 }
 
 export function showGameOver(view: EndScreenView) {

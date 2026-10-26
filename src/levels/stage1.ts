@@ -6,6 +6,7 @@ import type { LevelData } from "../level"
 // bottom, and move at the default (half the player's) speed.
 export const stage1: LevelData = {
     name: "Classic",
+    parTime: 60,
     map: [
         "#################",
         "#.......#.......#",

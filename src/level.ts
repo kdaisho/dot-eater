@@ -34,6 +34,9 @@ export type LevelData = {
     name: string
     // One string per row, all the same length. See the map characters below.
     map: readonly string[]
+    // Seconds. Clearing the stage in at most this long earns the "under par"
+    // star (see stars.ts). Required, and must be positive.
+    parTime: number
     // Cells per second. Omitted means the game's default speed.
     playerSpeed?: number
     // One entry per `E` in the map, matched in reading order (left to right,
@@ -85,6 +88,8 @@ export type EnemySpawn = {
 
 export type Level = {
     name: string
+    // Seconds; see LevelData.parTime.
+    parTime: number
     width: number
     height: number
     // Shared by every game started from this level; copy before mutating.
@@ -117,6 +122,11 @@ export function parseLevel(data: LevelData): Level {
     // Stage 1: metadata and map shape.
     if (name.trim() === "") {
         problems.push("name must not be empty")
+    }
+    if (!isParTime(data.parTime)) {
+        problems.push(
+            `parTime must be a positive number of seconds in whole tenths, got ${String(data.parTime)}`
+        )
     }
     checkSpeed(problems, "playerSpeed", data.playerSpeed)
     data.enemies.forEach((enemy, i) => {
@@ -246,6 +256,7 @@ export function parseLevel(data: LevelData): Level {
 
     return {
         name,
+        parTime: data.parTime,
         width,
         height: map.length,
         cells,
@@ -380,4 +391,15 @@ export function hasDots(cells: Cells): boolean {
         }
     }
     return false
+}
+
+// Par times are shown to the tenth of a second, so they must be whole tenths:
+// otherwise a clear could earn the par star while showing a time above the
+// shown par (or the other way round).
+function isParTime(value: unknown): value is number {
+    if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) {
+        return false
+    }
+    const tenths = value * 10
+    return Math.abs(tenths - Math.round(tenths)) < 1e-9
 }

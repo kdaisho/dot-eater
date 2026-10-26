@@ -611,6 +611,7 @@ describe("createGameState", () => {
     it("builds the state from a given level", () => {
         const level = parseLevel({
             name: "tiny",
+            parTime: 60,
             map: ["#####", "#P.E#", "#####"],
             enemies: [{ ai: "chase" }],
         })
@@ -648,6 +649,7 @@ describe("createGameState", () => {
     it("gives the characters the level's speeds", () => {
         const level = parseLevel({
             name: "fast",
+            parTime: 60,
             map: ["#######", "#P.E.E#", "#######"],
             playerSpeed: 6,
             enemies: [{ ai: "chase", speed: 3 }, { ai: "random" }],
@@ -660,6 +662,7 @@ describe("createGameState", () => {
     it("gives phantoms their slower default speed unless the level sets one", () => {
         const level = parseLevel({
             name: "phantoms",
+            parTime: 60,
             map: ["######", "#P.EE#", "######"],
             enemies: [{ ai: "phantom" }, { ai: "phantom", speed: 3 }],
         })
@@ -670,6 +673,7 @@ describe("createGameState", () => {
     it("gives four enemies their own ids and a patroller its route", () => {
         const level = parseLevel({
             name: "four",
+            parTime: 60,
             map: ["######", "#PEE.#", "#.EE.#", "######"],
             enemies: [
                 { ai: "random" },
@@ -700,6 +704,7 @@ describe("createGameState", () => {
     it("uses the default speeds when the level leaves them out", () => {
         const level = parseLevel({
             name: "default",
+            parTime: 60,
             map: ["#####", "#P.E#", "#####"],
             enemies: [{ ai: "chase" }],
         })
@@ -802,6 +807,7 @@ describe("step: lives", () => {
     it("respawns at the level's spawns", () => {
         const level = parseLevel({
             name: "spawns",
+            parTime: 60,
             map: ["#######", "#P...E#", "#######"],
             enemies: [{ ai: "random", speed: PLAYER_SPEED }],
         })
@@ -1003,5 +1009,38 @@ describe("settle", () => {
         })
         expect(state.score).toBe(DOT_POINTS)
         expect(state.eatenAt).toEqual(vec2(2, 1))
+    })
+})
+
+describe("ticks (the clear time)", () => {
+    it("starts at 0 and counts every step, moving or not", () => {
+        const state = createGameState(OLD_LEVEL)
+        expect(state.ticks).toBe(0)
+        run(state, 3)
+        expect(state.ticks).toBe(3)
+        run(state, 2, east)
+        expect(state.ticks).toBe(5)
+    })
+
+    it("keeps counting through a lost life", () => {
+        // The enemy spawns on the player, so every tick costs a life.
+        const state = makeState(corridor, { x: 1, y: 1 }, [makeEnemy(1, 1)], {
+            lives: 3,
+        })
+        run(state, 1)
+        expect(state.lives).toBe(2)
+        expect(state.ticks).toBe(1)
+        run(state, 1)
+        expect(state.lives).toBe(1)
+        expect(state.ticks).toBe(2)
+    })
+
+    it("isn't counted by settle", () => {
+        const state = createGameState(OLD_LEVEL)
+        run(state, 4)
+        state.player.moveProgress = 0
+        settle(state, TICK)
+        settle(state, TICK)
+        expect(state.ticks).toBe(4)
     })
 })

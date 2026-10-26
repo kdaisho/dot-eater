@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vite-plus/test"
 import confetti from "canvas-confetti"
-import { DOT_POINTS, START_LIVES, TICK_MS } from "./constants"
+import { DOT_POINTS, START_LIVES, TICK_MS, TICK_RATE } from "./constants"
 import { createGameState, step, type GameState, type Outcome } from "./game"
 import { levels } from "./levels"
 import {
@@ -10,6 +10,7 @@ import {
     PROGRESS_KEY,
     STAGE_COUNT,
 } from "./progress"
+import { formatTicks, starText } from "./stars"
 import { vec2 } from "./vec2"
 
 // canvas-confetti touches a 2D canvas context on import, which happy-dom
@@ -513,6 +514,33 @@ describe("main", () => {
         expect(isUnlocked(saved, 1)).toBe(true)
     })
 
+    it("shows the clear time and stars, saves the bests and lists them on stage select", () => {
+        // The step is mocked, so set the clear: one life lost, 1:02.5.
+        const game = drawnGame()
+        game.ticks = 62.5 * TICK_RATE
+        game.lives = START_LIVES - 1
+        gameOver("won")
+        expect(overlayLines().slice(1)).toEqual([
+            "Time 1:02.5",
+            "★ Cleared",
+            "☆ No lives lost",
+            "☆ Under par (1:00)",
+        ])
+        const saved = parseProgress(localStorage.getItem(PROGRESS_KEY))
+        // Order-independent: an earlier win (0 ticks, 3 stars) may have
+        // saved better bests already.
+        expect(saved.stages[0].stars).toBeGreaterThanOrEqual(1)
+        expect(saved.stages[0].bestTime).toBeLessThanOrEqual(62.5 * TICK_RATE)
+
+        pressAndTick("ArrowDown")
+        pressAndTick("Space")
+        expect(screen()).toBe("stage-select")
+        const { stars = 0, bestTime = 0 } = saved.stages[0]
+        expect(selectedItem()).toBe(
+            `${levels[0].name} · ${starText(stars)} · ${formatTicks(bestTime)}`
+        )
+    })
+
     it("doesn't write progress on a loss", () => {
         const setItem = vi.spyOn(localStorage, "setItem")
         try {
@@ -552,7 +580,7 @@ describe("main", () => {
         (outcome) => {
             drawnGame().score = 12 * DOT_POINTS
             gameOver(outcome)
-            expect(overlayLines()).toEqual([`Score ${12 * DOT_POINTS}`])
+            expect(overlayLines()[0]).toBe(`Score ${12 * DOT_POINTS}`)
             pressAndTick("Space")
             expect(screen()).toBe("playing")
             expect(drawn.last?.[2]).toEqual({ score: 0, lives: START_LIVES })

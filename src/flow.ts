@@ -10,6 +10,7 @@ import {
 import type { Action } from "./input"
 import type { Level } from "./level"
 import { isPlayable, STAGE_COUNT, type Progress } from "./progress"
+import { rateClear, type ClearRating } from "./stars"
 
 // The game's screens and the transitions between them:
 //
@@ -34,6 +35,10 @@ import { isPlayable, STAGE_COUNT, type Progress } from "./progress"
 // them, locked ones included, so the player can see what's ahead; confirm
 // only starts a stage that is unlocked and has a level. Saved progress comes
 // in through FlowDeps; main records a clear when stageClear is entered.
+//
+// The clear time is the game's tick count (GameState.ticks), which only the
+// game step adds to, so pauses and the outro don't count. stageClear carries
+// the clear's star rating, worked out once on entry.
 
 // What an end screen offers, in menu order. The first is selected on entry,
 // so Space retries straight away, as it always has.
@@ -46,7 +51,13 @@ export type Screen =
     | { kind: "playing"; level: number; game: GameState }
     | { kind: "paused"; level: number; game: GameState }
     | { kind: "ending"; level: number; game: GameState; outcome: Outcome }
-    | { kind: "stageClear"; level: number; game: GameState; choice: EndChoice }
+    | {
+          kind: "stageClear"
+          level: number
+          game: GameState
+          choice: EndChoice
+          rating: ClearRating
+      }
     | { kind: "gameOver"; level: number; game: GameState; choice: EndChoice }
 
 export type ScreenKind = Screen["kind"]
@@ -105,7 +116,7 @@ export function update(
                 : screen
         case "ending":
             return settle(screen.game, deps.dt)
-                ? endScreen(screen, screen.outcome)
+                ? endScreen(screen, deps.levels)
                 : screen
         case "stageClear":
         case "gameOver":
@@ -156,11 +167,15 @@ function updatePlaying(
 
 function endScreen(
     screen: Extract<Screen, { kind: "ending" }>,
-    outcome: Outcome
+    levels: readonly Level[]
 ): Screen {
     const { level, game } = screen
-    const kind = outcome === "won" ? "stageClear" : "gameOver"
-    return { kind, level, game, choice: END_CHOICES[0] }
+    const choice = END_CHOICES[0]
+    if (screen.outcome !== "won") {
+        return { kind: "gameOver", level, game, choice }
+    }
+    const rating = rateClear(game, levels[level].parTime)
+    return { kind: "stageClear", level, game, choice, rating }
 }
 
 function updateEnd(
