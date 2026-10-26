@@ -26,4 +26,10 @@ export const CharacterId = {
 } as const
 export type CharacterId = (typeof CharacterId)[keyof typeof CharacterId]
 
+// Enemy ids in spawn order; also the most enemies a level can have.
+export const ENEMY_IDS: readonly CharacterId[] = [
+    CharacterId.enemy1,
+    CharacterId.enemy2,
+]
+
 export const TICK_MS = 1000

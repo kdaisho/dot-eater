@@ -6,6 +6,20 @@ import { vec2 } from "../vec2"
 
 export type MapLiteral = readonly (readonly Cell[])[]
 
+// The map that was hard-coded before levels became data (KDA-195). Level 1
+// keeps its walls.
+export const OLD_MAP = [
+    [1, 1, 1, 1, 0, 1, 1, 1, 1],
+    [1, 0, 0, 0, 0, 0, 0, 0, 1],
+    [1, 0, 1, 0, 1, 0, 1, 0, 1],
+    [1, 0, 1, 0, 1, 0, 1, 0, 1],
+    [0, 0, 0, 0, 1, 0, 0, 0, 0],
+    [1, 0, 1, 0, 0, 0, 1, 0, 1],
+    [1, 0, 1, 1, 1, 1, 1, 0, 1],
+    [1, 0, 0, 0, 0, 0, 0, 0, 1],
+    [1, 1, 1, 1, 0, 1, 1, 1, 1],
+] as const satisfies MapLiteral
+
 // Copy a literal map into a fresh, mutable Cells grid.
 export function cellsFrom(map: MapLiteral): Cells {
     return map.map((row) => [...row])

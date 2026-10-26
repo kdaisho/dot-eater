@@ -2,8 +2,8 @@ import { describe, expect, it } from "vite-plus/test"
 import { AiType, Cell, CharacterId } from "./constants"
 import { enemyMove } from "./ai"
 import { checkEnd, createGameState, movePlayer, tick } from "./game"
-import { createCells, ENEMY_STARTS, PLAYER_START } from "./level"
-import { fixedRandom, makeEnemy, makeState } from "./test/helpers"
+import { parseLevel } from "./level"
+import { fixedRandom, makeEnemy, makeState, OLD_MAP } from "./test/helpers"
 import { vec2 } from "./vec2"
 
 const map = [
@@ -180,12 +180,21 @@ describe("tick", () => {
     })
 })
 
+const OLD_PLAYER_START = vec2(4, 1)
+
 describe("createGameState", () => {
-    it("places characters at their start positions", () => {
+    it("starts from the first level like the old hard-coded map", () => {
         const state = createGameState()
         expect(state.player.id).toBe(CharacterId.player)
-        expect(state.player.pos).toEqual(PLAYER_START)
-        expect(state.enemies.map((e) => e.pos)).toEqual([...ENEMY_STARTS])
+        expect(state.player.pos).toEqual(OLD_PLAYER_START)
+        expect(state.enemies.map((e) => e.id)).toEqual([
+            CharacterId.enemy1,
+            CharacterId.enemy2,
+        ])
+        expect(state.enemies.map((e) => e.pos)).toEqual([
+            vec2(1, 4),
+            vec2(7, 4),
+        ])
         expect(state.enemies.map((e) => e.ai)).toEqual([
             AiType.random,
             AiType.chase,
@@ -199,12 +208,14 @@ describe("createGameState", () => {
 
     it("puts dots everywhere except walls and the player start", () => {
         const { cells } = createGameState()
-        const base = createCells()
-        for (let y = 0; y < base.length; y++) {
-            for (let x = 0; x < base[y].length; x++) {
-                if (base[y][x] === Cell.wall) {
+        for (let y = 0; y < OLD_MAP.length; y++) {
+            for (let x = 0; x < OLD_MAP[y].length; x++) {
+                if (OLD_MAP[y][x] === Cell.wall) {
                     expect(cells[y][x]).toBe(Cell.wall)
-                } else if (x === PLAYER_START.x && y === PLAYER_START.y) {
+                } else if (
+                    x === OLD_PLAYER_START.x &&
+                    y === OLD_PLAYER_START.y
+                ) {
                     expect(cells[y][x]).toBe(Cell.none)
                 } else {
                     expect(cells[y][x]).toBe(Cell.dot)
@@ -213,15 +224,36 @@ describe("createGameState", () => {
         }
     })
 
+    it("builds the state from a given level", () => {
+        const level = parseLevel({
+            name: "tiny",
+            map: ["#####", "#P.E#", "#####"],
+            enemies: [{ ai: "chase" }],
+        })
+        const state = createGameState(level)
+        expect(state.cells).toEqual([
+            [1, 1, 1, 1, 1],
+            [1, 0, 2, 2, 1],
+            [1, 1, 1, 1, 1],
+        ])
+        expect(state.player.pos).toEqual(vec2(1, 1))
+        expect(state.enemies).toHaveLength(1)
+        expect(state.enemies[0].id).toBe(CharacterId.enemy1)
+        expect(state.enemies[0].pos).toEqual(vec2(3, 1))
+        expect(state.enemies[0].ai).toBe(AiType.chase)
+    })
+
     it("returns a fresh state each time", () => {
         const a = createGameState()
-        a.cells[0][0] = Cell.none // a wall; setDots would turn a shared none into a dot
+        a.cells[0][0] = Cell.none
+        a.cells[1][1] = Cell.none
         a.player.pos.x = 99
         a.enemies[0].pos.x = 99
         a.locked = true
         const b = createGameState()
         expect(b.cells[0][0]).toBe(Cell.wall)
-        // Literals, not PLAYER_START / ENEMY_STARTS, which aliasing would have mutated.
+        expect(b.cells[1][1]).toBe(Cell.dot)
+        // Literals, so a shared (aliased) level spawn would be caught.
         expect(b.player.pos).toEqual(vec2(4, 1))
         expect(b.enemies[0].pos).toEqual(vec2(1, 4))
         expect(b.locked).toBe(false)
