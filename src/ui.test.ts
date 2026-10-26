@@ -10,6 +10,7 @@ import {
     showStageSelect,
     showTitle,
 } from "./ui"
+import type { StageSlot } from "./progress"
 
 // canvas-confetti touches a 2D canvas context on import, which happy-dom
 // doesn't provide.
@@ -55,11 +56,30 @@ describe("showTitle", () => {
 })
 
 describe("showStageSelect", () => {
+    const open = (name: string): StageSlot => ({ kind: "open", name })
+    const slots: StageSlot[] = [
+        open("Level 1"),
+        open("Level 2"),
+        { kind: "locked", name: "Level 3" },
+        { kind: "comingSoon" },
+        { kind: "comingSoon" },
+    ]
+    const locked = () =>
+        [...(overlay()?.querySelectorAll("li.locked") ?? [])].map(
+            (li) => li.textContent
+        )
+
     it("lists the stages with the selected one marked", () => {
-        showStageSelect(["Level 1", "Level 2", "Level 3"], 1)
+        showStageSelect(slots, 1)
         expectSingle()
         expect(overlay()?.dataset.screen).toBe("stage-select")
-        expect(items()).toEqual(["Level 1", "Level 2", "Level 3"])
+        expect(items()).toEqual([
+            "Level 1",
+            "Level 2",
+            "🔒 Level 3",
+            "Coming soon",
+            "Coming soon",
+        ])
         expect(selected()).toEqual(["Level 2"])
         expect(
             overlay()
@@ -68,9 +88,26 @@ describe("showStageSelect", () => {
         ).toBe("true")
     })
 
+    it("greys out locked stages and placeholders, and only those", () => {
+        showStageSelect(slots, 0)
+        expect(locked()).toEqual(["🔒 Level 3", "Coming soon", "Coming soon"])
+        const disabled = [
+            ...(overlay()?.querySelectorAll("li[aria-disabled=true]") ?? []),
+        ]
+        expect(disabled).toHaveLength(3)
+    })
+
+    it("marks a locked slot as selected when the cursor is on it", () => {
+        showStageSelect(slots, 3)
+        const li = overlay()?.querySelector("li.selected")
+        expect(li?.textContent).toBe("Coming soon")
+        expect(li?.classList.contains("locked")).toBe(true)
+        expect(selected()).toEqual(["Coming soon"])
+    })
+
     it("moves the mark when shown again", () => {
-        showStageSelect(["Level 1", "Level 2"], 0)
-        showStageSelect(["Level 1", "Level 2"], 1)
+        showStageSelect(slots, 0)
+        showStageSelect(slots, 1)
         expectSingle()
         expect(selected()).toEqual(["Level 2"])
     })
@@ -111,7 +148,7 @@ describe("showGameOver", () => {
 describe("overlays", () => {
     it("replace whatever overlay is showing", () => {
         showTitle()
-        showStageSelect(["Level 1"], 0)
+        showStageSelect([{ kind: "open", name: "Level 1" }], 0)
         showPause()
         showGameOver(endView(0))
         showStageClear(endView(0))

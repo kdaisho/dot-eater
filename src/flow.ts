@@ -9,6 +9,7 @@ import {
 } from "./game"
 import type { Action } from "./input"
 import type { Level } from "./level"
+import { isPlayable, STAGE_COUNT, type Progress } from "./progress"
 
 // The game's screens and the transitions between them:
 //
@@ -28,6 +29,11 @@ import type { Level } from "./level"
 // characters' glides finish (see settle in game.ts, which only raises
 // moveProgress) so the player is seen arriving on its last cell, then the
 // end screen for the outcome. Input is ignored during the outro.
+//
+// Stage select always has STAGE_COUNT slots. The cursor moves over all of
+// them, locked ones included, so the player can see what's ahead; confirm
+// only starts a stage that is unlocked and has a level. Saved progress comes
+// in through FlowDeps; main records a clear when stageClear is entered.
 
 // What an end screen offers, in menu order. The first is selected on entry,
 // so Space retries straight away, as it always has.
@@ -55,6 +61,8 @@ export type TickInput = {
 
 export type FlowDeps = {
     levels: readonly Level[]
+    // Which stages are unlocked.
+    progress: Progress
     // Tick length in seconds.
     dt: number
     random: Random
@@ -123,10 +131,13 @@ function updateStageSelect(
     deps: FlowDeps
 ): Screen {
     if (input.wasPressed("confirm")) {
-        return startLevel(deps.levels, screen.selected)
+        // A locked stage, or a slot with no level yet, can't be started.
+        return isPlayable(deps.progress, deps.levels.length, screen.selected)
+            ? startLevel(deps.levels, screen.selected)
+            : screen
     }
     if (input.wasPressed("pause")) return { kind: "title" }
-    const selected = moveCursor(screen.selected, deps.levels.length, input)
+    const selected = moveCursor(screen.selected, STAGE_COUNT, input)
     return selected === screen.selected ? screen : { ...screen, selected }
 }
 

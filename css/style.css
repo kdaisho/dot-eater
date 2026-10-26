@@ -66,3 +66,11 @@ body * {
 .overlay-menu li.selected::before {
     content: "▶ ";
 }
+
+.overlay-menu li.locked {
+    opacity: 0.3;
+}
+
+.overlay-menu li.locked.selected {
+    opacity: 0.5;
+}
