@@ -1,6 +1,13 @@
 // @vitest-environment happy-dom
 import { afterEach, describe, expect, it, vi } from "vite-plus/test"
-import { AiType, Cell, CharacterId } from "./constants"
+import { addStatus, addTileEffect } from "./breath"
+import {
+    AiType,
+    Cell,
+    CharacterId,
+    RESPAWN_BLINK,
+    RESPAWN_DELAY,
+} from "./constants"
 import { createCharacter } from "./character"
 import { createGameState, movePlayer } from "./game"
 import { createRenderer } from "./render"
@@ -59,7 +66,7 @@ describe("createRenderer", () => {
             renderer.draw(createGameState(OLD_LEVEL), 0.5)
         ).not.toThrow()
         expect(calls.some((c) => c.name === "fillRect")).toBe(true)
-        expect(texts()).toEqual(["🪰", "👺", "👹"])
+        expect(texts()).toEqual(["🐉", "👺", "👹"])
     })
 
     // A one-row corridor with the player at (1, 2) and `enemies` along row 1.
@@ -96,7 +103,7 @@ describe("createRenderer", () => {
         const enemies = ids.map((id, i) =>
             makeEnemy(i + 1, 1, types[i], undefined, id)
         )
-        expect(drawEnemies(enemies)).toEqual(["🪰", "👻", "🤖", "🦊", "👹"])
+        expect(drawEnemies(enemies)).toEqual(["🐉", "👻", "🤖", "🦊", "👹"])
         enemies.push(
             makeEnemy(5, 1, AiType.random, undefined, CharacterId.enemy1)
         )
@@ -108,7 +115,7 @@ describe("createRenderer", () => {
             makeEnemy(1, 1, AiType.chase, undefined, CharacterId.enemy1),
             makeEnemy(2, 1, AiType.chase, undefined, CharacterId.enemy3),
         ]
-        expect(drawEnemies(enemies)).toEqual(["🪰", "👹", "👹"])
+        expect(drawEnemies(enemies)).toEqual(["🐉", "👹", "👹"])
     })
 
     it("gives every AI type its own sprite", () => {
@@ -117,11 +124,11 @@ describe("createRenderer", () => {
             types.map((ai, i) => makeEnemy(i + 1, 1, ai))
         ).slice(1)
         expect(sprites).toHaveLength(types.length)
-        expect(sprites).not.toContain("🪰")
+        expect(sprites).not.toContain("🐉")
         expect(new Set(sprites).size).toBe(types.length)
     })
 
-    it("draws the player as a fly whatever its AI type", () => {
+    it("draws the player as its character whatever its AI type", () => {
         for (const ai of Object.values(AiType)) {
             const { renderer, texts } = setup()
             const state = makeState(
@@ -134,7 +141,7 @@ describe("createRenderer", () => {
             )
             state.player.ai = ai
             renderer.draw(state, 0)
-            expect(texts()).toEqual(["🪰"])
+            expect(texts()).toEqual(["🐉"])
         }
     })
 
@@ -195,7 +202,7 @@ describe("createRenderer", () => {
         state.player = player
         state.enemies = []
         renderer.draw(state, 0)
-        expect(texts()).toEqual(["🪰", "🪰"])
+        expect(texts()).toEqual(["🐉", "🐉"])
     })
 
     it("draws only the HUD fields given", () => {
@@ -204,11 +211,11 @@ describe("createRenderer", () => {
 
         const empty = setup()
         empty.renderer.draw(state, 0, {})
-        expect(empty.texts()).toEqual(["🪰"])
+        expect(empty.texts()).toEqual(["🐉"])
 
         const full = setup()
         full.renderer.draw(state, 0, { score: 120, lives: 2 })
-        expect(full.texts()).toEqual(["Score 120", "🪰🪰", "🪰"])
+        expect(full.texts()).toEqual(["Score 120", "🐉🐉", "🐉"])
     })
 
     // Regression: the dot the player eats is gone from the cells at once, but
@@ -307,7 +314,7 @@ describe("createRenderer", () => {
             const state = makeState(corridor(), { x: 2, y: 1 }, enemies())
             renderer.draw(state, 0, {}, { fog: { radius: 3 } })
             // enemy1 (random) is 2 cells away, enemy2 (chase) 7.
-            expect(texts()).toEqual(["🪰", "👺"])
+            expect(texts()).toEqual(["🐉", "👺"])
             const { dots, walls } = drawnCells(calls, canvas, 13)
             expect([...dots].sort()).toEqual(["1,1", "3,1", "4,1", "5,1"])
             expect(walls.has("0,1")).toBe(true)
@@ -326,7 +333,7 @@ describe("createRenderer", () => {
             renderer.draw(state, 0, {}, { fog: { radius: 2.5 } })
             // The enemy's centre is 3 cells away, the wall at (4, 0) 2.24 and
             // the one at (5, 0) 3.16: past 2.5, but their near edges aren't.
-            expect(texts()).toEqual(["🪰", "👺"])
+            expect(texts()).toEqual(["🐉", "👺"])
             const { walls } = drawnCells(calls, canvas, 13)
             expect(walls.has("4,0")).toBe(true)
             expect(walls.has("5,0")).toBe(true)
@@ -337,7 +344,7 @@ describe("createRenderer", () => {
             const { calls, canvas, renderer, texts } = setup()
             const state = makeState(corridor(), { x: 2, y: 1 }, enemies())
             renderer.draw(state, 0, {}, {})
-            expect(texts()).toEqual(["🪰", "👺", "👹"])
+            expect(texts()).toEqual(["🐉", "👺", "👹"])
             expect(drawnCells(calls, canvas, 13).dots.size).toBe(10)
             expect(calls.some((c) => c.name === "createRadialGradient")).toBe(
                 false
@@ -372,7 +379,7 @@ describe("createRenderer", () => {
                 makeEnemy(8, 1, AiType.chase, undefined, CharacterId.enemy2),
             ])
             renderer.draw(state, 0, {}, { fog: { radius: 3 } })
-            expect(texts()).toEqual(["🪰", "👺"])
+            expect(texts()).toEqual(["🐉", "👺"])
             const { dots } = drawnCells(calls, canvas, 13)
             expect(dots.has("11,1")).toBe(true)
             expect(dots.has("12,1")).toBe(true)
@@ -393,7 +400,7 @@ describe("createRenderer", () => {
                 { score: 10, lives: 1 },
                 { fog: { radius: 1 } }
             )
-            expect(texts()).toEqual(["Score 10", "🪰", "🪰"])
+            expect(texts()).toEqual(["Score 10", "🐉", "🐉"])
         })
 
         it("keeps the fog when redrawing on resize", () => {
@@ -402,7 +409,7 @@ describe("createRenderer", () => {
             renderer.draw(state, 0, {}, { fog: { radius: 1 } })
             view.innerHeight = 200
             renderer.resize()
-            expect(texts()).toEqual(["🪰", "🪰"])
+            expect(texts()).toEqual(["🐉", "🐉"])
         })
     })
 
@@ -480,5 +487,125 @@ describe("createRenderer", () => {
         vi.spyOn(canvas, "getContext").mockReturnValue(null)
         const renderer = createRenderer(canvas)
         expect(() => renderer.draw(createGameState(OLD_LEVEL), 0)).not.toThrow()
+    })
+
+    describe("breaths", () => {
+        const room = () =>
+            makeState(
+                [
+                    [1, 1, 1, 1, 1],
+                    [1, 0, 0, 0, 1],
+                    [1, 1, 1, 1, 1],
+                ],
+                { x: 1, y: 1 }
+            )
+
+        it("draws the player and its lives as the playing character", () => {
+            const { renderer, texts } = setup()
+            const state = createGameState(OLD_LEVEL, "penguin")
+            state.enemies = []
+            renderer.draw(state, 0, { lives: 2 })
+            expect(texts()).toEqual(["🐧🐧", "🐧"])
+        })
+
+        it("draws the energy meter only when the HUD has it", () => {
+            const state = room()
+            const without = setup()
+            without.renderer.draw(state, 0, {})
+            expect(without.calls.some((c) => c.name === "strokeRect")).toBe(
+                false
+            )
+
+            const { renderer, calls } = setup()
+            renderer.draw(state, 0, {
+                energy: { energy: 50, max: 100, cost: 25, ready: true },
+            })
+            expect(calls.filter((c) => c.name === "strokeRect")).toHaveLength(1)
+            // The fill is half the frame's width, in the ready colour.
+            const frame = calls.find((c) => c.name === "strokeRect")!
+            const fill = calls.find(
+                (c) => c.name === "fillRect" && c.fillStyle === "#f59e0b"
+            )!
+            expect(fill.args[2]).toBeCloseTo((frame.args[2] as number) / 2)
+            // Marks at 25, 50 and 75.
+            const marks = calls.filter(
+                (c) =>
+                    c.name === "fillRect" &&
+                    c.fillStyle === "#000" &&
+                    c.args[2] === 1
+            )
+            expect(marks).toHaveLength(3)
+        })
+
+        it("greys the meter while a breath isn't ready", () => {
+            const { renderer, calls } = setup()
+            renderer.draw(room(), 0, {
+                energy: { energy: 10, max: 100, cost: 50, ready: false },
+            })
+            expect(
+                calls.some(
+                    (c) => c.name === "fillRect" && c.fillStyle === "#9ca3af"
+                )
+            ).toBe(true)
+        })
+
+        it("draws tile effects by their look", () => {
+            const { renderer, calls, texts } = setup()
+            const state = room()
+            addTileEffect(
+                state,
+                vec2(2, 1),
+                { name: "test.fire", look: { color: "red", emoji: "🔥" } },
+                1
+            )
+            renderer.draw(state, 0)
+            expect(calls.some((c) => c.fillStyle === "red")).toBe(true)
+            expect(texts()).toEqual(["🔥", "🐉"])
+        })
+
+        it("draws enemy statuses by their look", () => {
+            const { renderer, calls, texts } = setup()
+            const enemy = makeEnemy(3, 1)
+            const state = makeState(
+                [
+                    [1, 1, 1, 1, 1],
+                    [1, 0, 0, 0, 1],
+                    [1, 1, 1, 1, 1],
+                ],
+                { x: 1, y: 1 },
+                [enemy]
+            )
+            addStatus(
+                enemy,
+                { name: "test.frozen", look: { color: "blue", emoji: "❄️" } },
+                1
+            )
+            renderer.draw(state, 0)
+            expect(
+                calls.some((c) => c.name === "fill" && c.fillStyle === "blue")
+            ).toBe(true)
+            expect(texts()).toEqual(["🐉", "👺", "❄️"])
+        })
+
+        it("hides a defeated enemy until it blinks back", () => {
+            const enemy = makeEnemy(3, 1)
+            const state = makeState(
+                [
+                    [1, 1, 1, 1, 1],
+                    [1, 0, 0, 0, 1],
+                    [1, 1, 1, 1, 1],
+                ],
+                { x: 1, y: 1 },
+                [enemy]
+            )
+            enemy.respawnIn = RESPAWN_DELAY
+            const gone = setup()
+            gone.renderer.draw(state, 0)
+            expect(gone.texts()).toEqual(["🐉"])
+            enemy.respawnIn = RESPAWN_BLINK
+            const blink = setup()
+            blink.renderer.draw(state, 0)
+            expect(blink.texts()).toEqual(["🐉", "👺"])
+        })
     })
 })

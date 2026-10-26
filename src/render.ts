@@ -1,3 +1,4 @@
+import { enemyVisible, type EnergyHud, type Look } from "./breath"
 import { AiType, Cell, SPRITE_SCALE } from "./constants"
 import {
     fogDistance,
@@ -10,12 +11,15 @@ import type { GameState } from "./game"
 import { eatenDotVisible, glidePos, wrapCopies } from "./glide"
 import { computeLayout, type Layout } from "./layout"
 import type { LevelRules } from "./level"
+import { ANIMALS } from "./roster"
 import { vec2, type Vec2 } from "./vec2"
 
 // What the HUD strip above the maze shows. Fields left out aren't drawn.
 export type Hud = {
     score?: number
     lives?: number
+    // The energy meter, in the middle (see energyHud in breath.ts).
+    energy?: EnergyHud
 }
 
 export type Renderer = {
@@ -41,6 +45,12 @@ const COLORS = {
     text: "#000",
     // The fog's darkness, as RGB so the soft edge can fade it in.
     fog: "17, 17, 17",
+    // The energy meter: its frame and cost marks, the fill while a breath
+    // is ready, and the fill while it isn't (too little energy or cooling
+    // down).
+    meter: "#000",
+    meterReady: "#f59e0b",
+    meterCharging: "#9ca3af",
 }
 
 // The width of the fog's soft edge in cells: the darkness fades in over this
@@ -53,7 +63,11 @@ const FOG_SOFT_EDGE = 1.5
 // player nears rather than popping in.
 const FOG_REACH = Math.SQRT1_2
 
-const PLAYER_SPRITE = "🪰"
+// The player is drawn as the playing character's emoji (ANIMALS in
+// roster.ts), as are the HUD's lives.
+function playerSprite(state: GameState): string {
+    return ANIMALS[state.breather.breath.animal].emoji
+}
 
 // Enemies look like what they do: every enemy of one AI type shares a
 // sprite. A Record over AiType, so a new AI type without a sprite is a type
@@ -65,6 +79,9 @@ const ENEMY_SPRITES: Record<AiType, string> = {
     [AiType.patroller]: "🤖",
     [AiType.phantom]: "👻",
 }
+
+// A status's badge emoji is this size, as a fraction of the sprite's.
+const BADGE_SCALE = 0.5
 
 // Wall blocks and dots keep the proportions of the old span grid: 30px blocks
 // on a 35px pitch and 5px dots.
@@ -125,7 +142,7 @@ export function createRenderer(
         ctx.fillStyle = COLORS.background
         ctx.fillRect(0, 0, width, height)
 
-        drawHud(ctx, hud, width, hudHeight)
+        drawHud(ctx, hud, playerSprite(state), width, hudHeight)
 
         ctx.save()
         ctx.translate(0, hudHeight)
@@ -225,8 +242,10 @@ function drawDarkness(
 
 // Ice floor, walls and dots, plus the dot the player has just eaten while its
 // glide hasn't reached it yet (see eatenDotVisible). Ice fills its whole
-// cell, so a patch reads as one surface, with any dot drawn on top. In fog,
-// only cells inside the light are drawn.
+// cell, so a patch reads as one surface, with any dot drawn on top. Tile
+// effects from breaths are drawn by their Look: the colour over the floor
+// (under the dot), the emoji on top. In fog, only cells inside the light
+// are drawn.
 function drawCells(
     ctx: CanvasRenderingContext2D,
     state: GameState,
@@ -240,22 +259,27 @@ function drawCells(
         state.eatenAt && eatenDotVisible(state.player, alpha)
             ? state.eatenAt
             : null
+    // Whole pixels, so neighbouring filled cells meet without a seam.
+    const fillCell = (x: number, y: number, color: string) => {
+        const left = Math.round(x * cell)
+        const top = Math.round(y * cell)
+        ctx.fillStyle = color
+        ctx.fillRect(
+            left,
+            top,
+            Math.round((x + 1) * cell) - left,
+            Math.round((y + 1) * cell) - top
+        )
+    }
+    const looks = tileLooks(state)
     state.cells.forEach((row, y) => {
         row.forEach((value, x) => {
             if (fog && !fog.visible(vec2(x, y))) return
             const cx = (x + 0.5) * cell
             const cy = (y + 0.5) * cell
-            if (state.ice[y][x]) {
-                // Whole pixels, so neighbouring ice cells meet without a seam.
-                const left = Math.round(x * cell)
-                const top = Math.round(y * cell)
-                ctx.fillStyle = COLORS.ice
-                ctx.fillRect(
-                    left,
-                    top,
-                    Math.round((x + 1) * cell) - left,
-                    Math.round((y + 1) * cell) - top
-                )
+            if (state.ice[y][x]) fillCell(x, y, COLORS.ice)
+            for (const look of looks[y][x]) {
+                if (look.color) fillCell(x, y, look.color)
             }
             if (value === Cell.wall) {
                 ctx.fillStyle = COLORS.wall
@@ -269,6 +293,32 @@ function drawCells(
             }
         })
     })
+    // Tile emoji go on top of everything in the cells, before characters.
+    const emoji = looks.flatMap((row, y) =>
+        row.flatMap((list, x) =>
+            list.flatMap((look) =>
+                look.emoji && !(fog && !fog.visible(vec2(x, y)))
+                    ? [{ x, y, emoji: look.emoji }]
+                    : []
+            )
+        )
+    )
+    if (emoji.length === 0) return
+    ctx.font = `${Math.round(cell * SPRITE_SCALE)}px sans-serif`
+    ctx.textAlign = "center"
+    ctx.textBaseline = "middle"
+    for (const e of emoji) {
+        ctx.fillText(e.emoji, (e.x + 0.5) * cell, (e.y + 0.5) * cell)
+    }
+}
+
+// Per cell [y][x], the looks of the tile effects on it, oldest first.
+function tileLooks(state: GameState): Look[][][] {
+    const looks: Look[][][] = state.cells.map((row) => row.map(() => []))
+    for (const t of state.tiles) {
+        if (t.effect.look) looks[t.pos.y][t.pos.x].push(t.effect.look)
+    }
+    return looks
 }
 
 function drawCharacters(
@@ -284,27 +334,54 @@ function drawCharacters(
     ctx.textAlign = "center"
     ctx.textBaseline = "middle"
     // Later characters are drawn on top of earlier ones. In fog, enemies
-    // outside the light are hidden; the player is always in it.
+    // outside the light are hidden; the player is always in it. A defeated
+    // enemy is hidden until it blinks before coming back (enemyVisible).
+    // Statuses are drawn by their Look: the colour as a disc behind the
+    // sprite, the emoji as a small badge at its top right.
+    const size = cell * SPRITE_SCALE
     for (const character of [state.player, ...state.enemies]) {
+        const isPlayer = character === state.player
+        if (!isPlayer && !enemyVisible(character)) continue
         const pos = glidePos(character, alpha, cols, rows)
-        if (fog && character !== state.player && !fog.visible(pos)) continue
+        if (fog && !isPlayer && !fog.visible(pos)) continue
+        const sprite = isPlayer
+            ? playerSprite(state)
+            : ENEMY_SPRITES[character.ai]
+        const looks = character.statuses.flatMap((s) =>
+            s.status.look ? [s.status.look] : []
+        )
         for (const p of wrapCopies(pos, cols, rows)) {
-            ctx.fillText(
-                character === state.player
-                    ? PLAYER_SPRITE
-                    : ENEMY_SPRITES[character.ai],
-                (p.x + 0.5) * cell,
-                (p.y + 0.5) * cell
-            )
+            const x = (p.x + 0.5) * cell
+            const y = (p.y + 0.5) * cell
+            for (const look of looks) {
+                if (!look.color) continue
+                ctx.fillStyle = look.color
+                ctx.beginPath()
+                ctx.arc(x, y, size / 2, 0, Math.PI * 2)
+                ctx.fill()
+            }
+            ctx.fillText(sprite, x, y)
+            const badges = looks.filter((look) => look.emoji)
+            if (badges.length === 0) continue
+            ctx.font = `${Math.round(size * BADGE_SCALE)}px sans-serif`
+            badges.forEach((look, i) => {
+                ctx.fillText(
+                    look.emoji!,
+                    x + size / 2 - i * size * BADGE_SCALE,
+                    y - size / 2
+                )
+            })
+            ctx.font = `${Math.round(size)}px sans-serif`
         }
     }
 }
 
-// Score on the left, lives on the right. The middle is free for the energy
-// meter later.
+// Score on the left, lives (as the player's emoji) on the right, the energy
+// meter in the middle.
 function drawHud(
     ctx: CanvasRenderingContext2D,
     hud: Hud,
+    sprite: string,
     width: number,
     height: number
 ) {
@@ -319,9 +396,37 @@ function drawHud(
     if (hud.lives !== undefined) {
         ctx.textAlign = "right"
         ctx.fillText(
-            PLAYER_SPRITE.repeat(Math.max(0, hud.lives)),
+            sprite.repeat(Math.max(0, hud.lives)),
             width - pad,
             height / 2
         )
+    }
+    if (hud.energy) drawMeter(ctx, hud.energy, width, height)
+}
+
+// The energy meter: a framed bar a quarter of the HUD wide, centred, filled
+// up to the energy, with a mark at every multiple of the breath's cost (so
+// the player sees how many breaths it holds). The fill is bright while a
+// breath is ready and grey otherwise.
+function drawMeter(
+    ctx: CanvasRenderingContext2D,
+    meter: EnergyHud,
+    width: number,
+    height: number
+) {
+    const w = width / 4
+    const h = height * 0.4
+    const left = (width - w) / 2
+    const top = (height - h) / 2
+    const fraction = meter.max > 0 ? Math.min(1, meter.energy / meter.max) : 0
+    ctx.fillStyle = meter.ready ? COLORS.meterReady : COLORS.meterCharging
+    ctx.fillRect(left, top, w * fraction, h)
+    ctx.strokeStyle = COLORS.meter
+    ctx.lineWidth = 1
+    ctx.strokeRect(left, top, w, h)
+    if (meter.cost <= 0) return
+    ctx.fillStyle = COLORS.meter
+    for (let e = meter.cost; e < meter.max; e += meter.cost) {
+        ctx.fillRect(left + (w * e) / meter.max - 0.5, top, 1, h)
     }
 }
