@@ -287,6 +287,7 @@ describe("characterSelect", () => {
         if (next.kind !== "playing") return
         expect(next.level).toBe(1)
         expect(next.animal).toBe(AnimalId.boar)
+        expect(next.game.breather.breath.animal).toBe(AnimalId.boar)
         expect(next.game.cells).toEqual(second.cells.map((row) => [...row]))
     })
 
@@ -612,6 +613,7 @@ describe.each(["stageClear", "gameOver"] as const)("%s", (kind) => {
         expect(next.kind).toBe("playing")
         if (next.kind !== "playing") return
         expect(next.animal).toBe(AnimalId.penguin)
+        expect(next.game.breather.breath.animal).toBe(AnimalId.penguin)
     })
 
     it("keeps the character through pause and the outro to the end screen", () => {

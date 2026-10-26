@@ -10,16 +10,12 @@
 // One pick for now: player 1's. 2-player (KDA-211) can save player 2's
 // under a key of its own.
 
-import { ANIMAL_IDS, DEFAULT_ANIMAL, type AnimalId } from "./roster"
+import { DEFAULT_ANIMAL, isAnimalId, type AnimalId } from "./roster"
 
 export const LAST_PICK_KEY = "dot-eater:character:v1"
 
 // The part of the Web Storage API this module uses.
 export type PickStorage = Pick<Storage, "getItem" | "setItem">
-
-export function isAnimalId(value: unknown): value is AnimalId {
-    return ANIMAL_IDS.includes(value as AnimalId)
-}
 
 // A saved string as a pick; DEFAULT_ANIMAL when it isn't a known id.
 export function parseLastPick(raw: string | null): AnimalId {

@@ -1,6 +1,5 @@
 import { describe, expect, it, vi } from "vite-plus/test"
 import {
-    isAnimalId,
     LAST_PICK_KEY,
     loadLastPick,
     parseLastPick,
@@ -8,7 +7,7 @@ import {
     type PickStorage,
 } from "./lastPick"
 import { PROGRESS_KEY } from "./progress"
-import { ANIMAL_IDS, AnimalId, DEFAULT_ANIMAL } from "./roster"
+import { ANIMAL_IDS, AnimalId, DEFAULT_ANIMAL, isAnimalId } from "./roster"
 
 // An in-memory Storage stand-in.
 function memoryStorage(initial: Record<string, string> = {}) {

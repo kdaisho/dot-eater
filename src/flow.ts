@@ -128,7 +128,7 @@ export function startLevel(
         kind: "playing",
         level,
         animal,
-        game: createGameState(levels[level]),
+        game: createGameState(levels[level], animal),
     }
 }
 
