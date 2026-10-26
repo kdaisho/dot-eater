@@ -196,6 +196,9 @@ function show({ id, title, lines = [], items = [], cards = [] }: Overlay) {
     if (cards.length > 0) panel.appendChild(cardRow(cards))
 
     document.body.appendChild(panel)
+    // The panel scrolls when it's taller than the window, and is rebuilt on
+    // every cursor move, so bring the selection back into view each time.
+    panel.querySelector(".selected")?.scrollIntoView({ block: "nearest" })
 }
 
 function cardRow(cards: readonly Card[]): HTMLElement {

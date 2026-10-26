@@ -205,6 +205,19 @@ describe("showCharacterSelect", () => {
         expect(marked?.dataset.animal).toBe("boar")
     })
 
+    it("scrolls the selected card into view", () => {
+        const scroll = vi.spyOn(HTMLElement.prototype, "scrollIntoView")
+        try {
+            showCharacterSelect(animals, AnimalId.boar)
+            expect(scroll).toHaveBeenCalledOnce()
+            expect(scroll.mock.contexts[0]).toBe(
+                overlay()?.querySelector("li.selected")
+            )
+        } finally {
+            scroll.mockRestore()
+        }
+    })
+
     it("adds no menu or text lines inside the cards", () => {
         showCharacterSelect(animals, AnimalId.dragon)
         expect(overlay()?.querySelector(".overlay-menu")).toBeNull()

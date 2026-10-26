@@ -34,6 +34,9 @@ body * {
 .overlay {
     color: #fff;
     left: 50%;
+    /* Scroll rather than run off a short window (the body doesn't scroll). */
+    max-height: calc(100vh - 120px);
+    overflow-y: auto;
     position: fixed;
     top: 100px;
     transform: translateX(-50%);
@@ -124,4 +127,21 @@ body * {
 
 .overlay-cards .card-stat {
     font-style: italic;
+}
+
+/* Smaller cards on narrow or short windows, so more fit on screen. */
+@media (max-width: 600px), (max-height: 600px) {
+    .overlay-cards {
+        gap: 8px;
+    }
+
+    .overlay-cards .card {
+        padding: 8px 4px;
+        width: 130px;
+    }
+
+    .overlay-cards .card-emoji {
+        font-size: 36px;
+        line-height: 42px;
+    }
 }
