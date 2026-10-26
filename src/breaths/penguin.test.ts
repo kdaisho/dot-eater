@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vite-plus/test"
+import { addStatus } from "../breath"
 import type { Character } from "../character"
 import { AiType, PLAYER_SPEED, TICK_RATE } from "../constants"
 import { step, type GameState, type MoveInput } from "../game"
@@ -225,30 +226,71 @@ describe("penguin's stat: slides faster on ice", () => {
         "#.#########",
     ])
 
-    // Ticks until the player, starting at x 1 and pressing east once,
-    // reaches x 8.
-    function ticksToEnd(breath = penguin): number {
-        const state = makeState(level.map, { x: 1, y: 1 }, [], {
-            breath,
-            ice: level.ice,
-        })
+    // The player at x 1, ready to move, on `level` (default: the one above).
+    function slideState(
+        breath = penguin,
+        { map, ice } = level,
+        enemies: Character[] = []
+    ) {
+        const state = makeState(map, { x: 1, y: 1 }, enemies, { breath, ice })
         state.player.moveProgress = 1
+        return state
+    }
+
+    // Press east once, then let go until the player comes to rest. Returns
+    // each of its glides as [the x it glides into, its speed as a factor of
+    // the normal one]: MOVE over the ticks from arriving there to moving on
+    // (or coming to rest).
+    function glideRates(state: GameState): [number, number][] {
         tick(state, { held: east })
-        for (let i = 2; i < TICK_RATE * 5; i++) {
+        const rates: [number, number][] = []
+        let x = state.player.pos.x
+        let ticks = 0
+        for (let i = 0; i < TICK_RATE * 5; i++) {
             tick(state)
-            if (state.player.pos.x === 8) return i
+            ticks++
+            const moved = state.player.pos.x !== x
+            if (moved || state.player.moveProgress >= 1) {
+                rates.push([x, MOVE / ticks])
+                if (!moved) return rates
+                x = state.player.pos.x
+                ticks = 0
+            }
         }
-        throw new Error("Never reached the end")
+        throw new Error("Never came to rest")
     }
 
     it("slides 1.5x as fast as normal", () => {
-        // The first move, onto the ice, is at normal speed; the six slide
-        // steps after it take MOVE / 1.5 ticks each.
-        expect(ticksToEnd()).toBe(1 + (6 * MOVE) / 1.5)
+        // The player's own step onto the ice, at x 2, is at normal speed;
+        // only the slide steps after it, x 3 to the floor at x 8, are
+        // faster.
+        expect(glideRates(slideState())).toEqual([
+            [2, 1],
+            [3, 1.5],
+            [4, 1.5],
+            [5, 1.5],
+            [6, 1.5],
+            [7, 1.5],
+            [8, 1.5],
+        ])
+    })
+
+    it("slides faster up to a frozen enemy, not on the step onto the ice", () => {
+        // Ice from x 2 to 5, a frozen enemy at x 5: the slide stops at x 4.
+        const short = textMap(["########", "# ~~~~ #", "########", "#.######"])
+        const enemy = makeEnemy(5, 1)
+        addStatus(enemy, FROZEN, 100)
+        expect(glideRates(slideState(penguin, short, [enemy]))).toEqual([
+            [2, 1],
+            [3, 1.5],
+            [4, 1.5],
+        ])
     })
 
     it("only on ice, and only for the Penguin", () => {
-        expect(ticksToEnd(dragon)).toBe(1 + 6 * MOVE)
+        expect(glideRates(slideState(dragon)).every(([, r]) => r === 1)).toBe(
+            true
+        )
         const state = makeState(corridor, { x: 1, y: 1 }, [], {
             breath: penguin,
         })
@@ -262,12 +304,13 @@ describe("penguin's stat: slides faster on ice", () => {
     it("on the breath's own ice too", () => {
         const state = penguinState()
         tick(state, { breath: true })
-        // Onto the new ice at x 2 at tick 2, then x 3, 4 and the floor at
-        // x 5 at the faster pace.
-        tick(state, { held: east })
-        run(state, (3 * MOVE) / 1.5 - 1)
-        expect(state.player.pos).toEqual(vec2(4, 1))
-        tick(state)
-        expect(state.player.pos).toEqual(vec2(5, 1))
+        // Onto the new ice at x 2 at the normal pace, then sliding to x 3, 4
+        // and the floor at x 5 at the faster one.
+        expect(glideRates(state)).toEqual([
+            [2, 1],
+            [3, 1.5],
+            [4, 1.5],
+            [5, 1.5],
+        ])
     })
 })

@@ -150,8 +150,8 @@ export type BreathDef = {
     // the level's (1 for normal).
     maxEnergy: number
     speedScale: number
-    // A further factor on the player's speed while it is sliding on ice
-    // (level or breath ice; see playerRate in game.ts). Leave it out for 1.
+    // A further factor on the player's speed on its slide steps on ice
+    // (level or breath ice; see GameState.playerRate). Leave it out for 1.
     slideSpeedScale?: number
     // What the breath does once its cost is paid. Return false (before
     // changing anything) to refuse, e.g. when there is nothing to hit; then
