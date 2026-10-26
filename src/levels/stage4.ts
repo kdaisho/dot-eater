@@ -9,6 +9,7 @@ import type { LevelData } from "../level"
 // chaser in the other and a wanderer in the middle.
 export const stage4: LevelData = {
     name: "Fog",
+    parTime: 75,
     map: [
         "#################",
         "#E.............E#",
