@@ -1,10 +1,10 @@
 // @vitest-environment happy-dom
 import { afterEach, describe, expect, it, vi } from "vite-plus/test"
-import { Cell, CharacterId } from "./constants"
+import { AiType, Cell, CharacterId } from "./constants"
 import { createCharacter } from "./character"
 import { createGameState, movePlayer } from "./game"
 import { createRenderer } from "./render"
-import { makeState, OLD_LEVEL } from "./test/helpers"
+import { makeEnemy, makeState, OLD_LEVEL } from "./test/helpers"
 import { vec2 } from "./vec2"
 
 // canvas-confetti crashes under happy-dom; keep it out in case anything
@@ -54,6 +54,29 @@ describe("createRenderer", () => {
         ).not.toThrow()
         expect(calls.some((c) => c.name === "fillRect")).toBe(true)
         expect(texts()).toEqual(["🪰", "👹", "👺"])
+    })
+
+    it("draws a distinct sprite for each of four enemies", () => {
+        const { renderer, texts } = setup()
+        const enemies = [
+            CharacterId.enemy1,
+            CharacterId.enemy2,
+            CharacterId.enemy3,
+            CharacterId.enemy4,
+        ].map((id, i) => makeEnemy(i + 1, 1, AiType.random, undefined, id))
+        renderer.draw(
+            makeState(
+                [
+                    [1, 1, 1, 1, 1, 1],
+                    [1, 2, 2, 2, 2, 1],
+                    [1, 0, 1, 1, 1, 1],
+                ],
+                { x: 1, y: 2 },
+                enemies
+            ),
+            0
+        )
+        expect(texts()).toEqual(["🪰", "👹", "👺", "👾", "👻"])
     })
 
     it("sizes the canvas for the window and devicePixelRatio", () => {

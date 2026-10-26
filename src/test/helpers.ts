@@ -57,6 +57,24 @@ export function makeEnemy(
     return enemy
 }
 
+// A patroller at (x, y) walking `route` ([x, y] waypoints, looped).
+export function makePatroller(
+    x: number,
+    y: number,
+    route: readonly (readonly [number, number])[],
+    last: { x: number; y: number } = { x, y }
+): Character {
+    const enemy = createCharacter(
+        CharacterId.enemy1,
+        vec2(x, y),
+        AiType.patroller,
+        undefined,
+        route.map(([rx, ry]) => vec2(rx, ry))
+    )
+    enemy.lastPos = vec2(last.x, last.y)
+    return enemy
+}
+
 // Like createGameState, the player's start cell never holds a dot, and the
 // spawns are where the characters start. The player is on their last life
 // unless `lives` says otherwise, so any collision ends the game.
