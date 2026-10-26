@@ -14,6 +14,7 @@ import {
     checkEnd,
     createGameState,
     movePlayer,
+    settle,
     step,
     type GameState,
     type Outcome,
@@ -783,5 +784,114 @@ describe("step: caught on the tick the last dot is eaten", () => {
         expect(run(state, 1, east)).toBeNull()
         expect(state.lives).toBe(1)
         expect(state.player.pos).toEqual(vec2(1, 1))
+    })
+})
+
+describe("eatenAt", () => {
+    it("starts as null", () => {
+        expect(createGameState().eatenAt).toBeNull()
+    })
+
+    it("records the dot eaten on the player's latest move", () => {
+        const state = makeState(corridor, { x: 1, y: 1 })
+        movePlayer(state, east)
+        expect(state.eatenAt).toEqual(vec2(2, 1))
+        movePlayer(state, east)
+        expect(state.eatenAt).toEqual(vec2(3, 1))
+    })
+
+    it("is cleared by a move that eats nothing", () => {
+        const state = makeState(corridor, { x: 1, y: 1 })
+        movePlayer(state, east)
+        movePlayer(state, west)
+        expect(state.player.pos).toEqual(vec2(1, 1))
+        expect(state.eatenAt).toBeNull()
+    })
+
+    it("is kept when the player doesn't move", () => {
+        const state = makeState(corridor, { x: 1, y: 1 })
+        movePlayer(state, east)
+        expect(movePlayer(state, north)).toBe(false)
+        expect(movePlayer(state, none)).toBe(false)
+        expect(state.eatenAt).toEqual(vec2(2, 1))
+    })
+
+    it("is set by stepping onto a dot", () => {
+        const state = makeState(corridor, { x: 1, y: 1 })
+        ready(state)
+        run(state, 1, east)
+        expect(state.eatenAt).toEqual(vec2(2, 1))
+    })
+
+    it("is cleared when a life is lost and everyone respawns", () => {
+        // The player eats (2, 1) while swapping cells with the enemy.
+        const state = makeState(
+            corridor,
+            { x: 1, y: 1 },
+            [makeEnemy(2, 1, AiType.random, { x: 3, y: 1 })],
+            { lives: 2 }
+        )
+        ready(state)
+        expect(run(state, 1, east)).toBeNull()
+        expect(state.lives).toBe(1)
+        expect(state.score).toBe(DOT_POINTS)
+        expect(state.eatenAt).toBeNull()
+    })
+})
+
+describe("settle", () => {
+    // The player has just eaten (2, 1); the enemy is mid-glide too.
+    function ended() {
+        const state = makeState(
+            corridor,
+            { x: 1, y: 1 },
+            [makeEnemy(6, 1, AiType.random, { x: 7, y: 1 })],
+            { lives: 2 }
+        )
+        movePlayer(state, east)
+        state.player.moveProgress = 0
+        state.enemies[0].moveProgress = 0.5
+        return state
+    }
+
+    it("raises everyone's progress by speed * dt", () => {
+        const state = ended()
+        expect(settle(state, 0.1)).toBe(false)
+        expect(state.player.moveProgress).toBeCloseTo(0.1 * PLAYER_SPEED)
+        expect(state.enemies[0].moveProgress).toBeCloseTo(
+            0.5 + 0.1 * ENEMY_SPEED
+        )
+    })
+
+    it("caps progress at 1 and says when the player's glide is done", () => {
+        const state = ended()
+        let ticks = 1
+        while (!settle(state, TICK)) ticks++
+        // One cell's glide at the player's speed.
+        expect(ticks).toBe(TICK_RATE / PLAYER_SPEED)
+        expect(state.player.moveProgress).toBe(1)
+        for (let i = 0; i < TICK_RATE; i++) settle(state, TICK)
+        expect(state.player.moveProgress).toBe(1)
+        expect(state.enemies[0].moveProgress).toBe(1)
+    })
+
+    it("leaves progress already past 1 alone", () => {
+        const state = ended()
+        state.enemies[0].moveProgress = 1.5
+        settle(state, TICK)
+        expect(state.enemies[0].moveProgress).toBe(1.5)
+    })
+
+    it("moves nobody and changes nothing else", () => {
+        const state = ended()
+        const before = structuredClone(state)
+        for (let i = 0; i < TICK_RATE; i++) settle(state, TICK)
+        expect(state).toEqual({
+            ...before,
+            player: { ...before.player, moveProgress: 1 },
+            enemies: [{ ...before.enemies[0], moveProgress: 1 }],
+        })
+        expect(state.score).toBe(DOT_POINTS)
+        expect(state.eatenAt).toEqual(vec2(2, 1))
     })
 })

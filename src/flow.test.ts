@@ -69,6 +69,17 @@ function playing(level = 0): Extract<Screen, { kind: "playing" }> {
     return screen
 }
 
+// The outro after a game ended with `outcome`, the player `progress` of the
+// way through its last glide.
+function ending(
+    outcome: "dead" | "won",
+    progress = 0
+): Extract<Screen, { kind: "ending" }> {
+    const { level, game } = playing()
+    game.player.moveProgress = progress
+    return { kind: "ending", level, game, outcome }
+}
+
 function end(
     kind: "stageClear" | "gameOver",
     choice: (typeof END_CHOICES)[number] = "retry",
@@ -183,42 +194,40 @@ describe("playing", () => {
         expect(next).toBe(screen)
     })
 
-    it("goes to game over when the game is lost, with retry selected", () => {
-        const screen = playing(1)
-        const next = update(
-            screen,
-            tickInput(),
-            deps({ step: endingStep("dead") })
-        )
-        expect(next).toEqual({
-            kind: "gameOver",
-            level: 1,
-            game: screen.game,
-            choice: "retry",
-        })
-    })
-
-    it("goes to stage clear when the game is won, with retry selected", () => {
-        const screen = playing()
-        const next = update(
-            screen,
-            tickInput(),
-            deps({ step: endingStep("won") })
-        )
-        expect(next).toEqual({
-            kind: "stageClear",
-            level: 0,
-            game: screen.game,
-            choice: "retry",
-        })
-    })
+    it.each([
+        ["dead", "gameOver"],
+        ["won", "stageClear"],
+    ] as const)(
+        "ends the game (%s) with the outro, then %s with retry selected",
+        (outcome, kind) => {
+            const screen = playing(1)
+            const d = deps({ step: endingStep(outcome) })
+            const outro = update(screen, tickInput(), d)
+            expect(outro).toEqual({
+                kind: "ending",
+                level: 1,
+                game: screen.game,
+                outcome,
+            })
+            // The player is already on its cell here, so the outro is over
+            // after one tick.
+            expect(update(outro, tickInput(), d)).toEqual({
+                kind,
+                level: 1,
+                game: screen.game,
+                choice: "retry",
+            })
+        }
+    )
 
     it("reaches stage clear through the real game", () => {
         let screen: Screen = playing()
-        for (let i = 0; i < 4 && screen.kind === "playing"; i++) {
+        const kinds: string[] = []
+        for (let i = 0; i < 6 && screen.kind !== "stageClear"; i++) {
             screen = update(screen, tickInput([], east), deps({ dt: 1 }))
+            kinds.push(screen.kind)
         }
-        expect(screen.kind).toBe("stageClear")
+        expect(kinds).toEqual(["playing", "ending", "stageClear"])
     })
 
     it("keeps playing the same game after losing a life, until the last", () => {
@@ -231,10 +240,72 @@ describe("playing", () => {
             expect(gameOf(screen)?.lives).toBe(lives)
         }
         screen = update(screen, tickInput([], east), d)
+        expect(screen.kind).toBe("ending")
+        screen = update(screen, tickInput([], east), d)
         expect(screen.kind).toBe("gameOver")
         expect(gameOf(screen)).toBe(gameOf(start))
         expect(gameOf(screen)?.lives).toBe(0)
     })
+})
+
+describe("ending", () => {
+    // Regression: the stage-clear screen came up on the tick the last dot was
+    // eaten, with the player drawn still a cell short of it, and it never
+    // arrived.
+    it("waits for the player's last glide before stage clear", () => {
+        const d = deps()
+        let screen: Screen = playing()
+        while (screen.kind === "playing") {
+            screen = update(screen, tickInput([], east), d)
+        }
+        expect(screen.kind).toBe("ending")
+        const game = gameOf(screen)!
+        // The last dot is eaten and the player has just moved onto it.
+        expect(game.player.pos).toEqual(vec2(3, 1))
+        expect(game.player.moveProgress).toBeLessThan(0.1)
+        expect(game.score).toBe(2 * DOT_POINTS)
+
+        // A glide lasts 1/speed seconds: 15 ticks at 4 cells/s.
+        const ticks = Math.ceil(
+            (1 - game.player.moveProgress) / (game.player.speed * d.dt) - 1e-9
+        )
+        expect(ticks).toBeGreaterThan(10)
+        for (let i = 1; i < ticks; i++) {
+            // Input, including confirm and pause, is ignored.
+            screen = update(screen, tickInput(["confirm", "pause"], east), d)
+            expect(screen.kind).toBe("ending")
+            expect(game.player.moveProgress).toBeLessThan(1)
+        }
+        screen = update(screen, tickInput(["confirm"], east), d)
+        expect(screen).toEqual({
+            kind: "stageClear",
+            level: 0,
+            game,
+            choice: "retry",
+        })
+        expect(game.player.moveProgress).toBe(1)
+        expect(game.player.pos).toEqual(vec2(3, 1))
+        expect(game.score).toBe(2 * DOT_POINTS)
+    })
+
+    it.each(["dead", "won"] as const)(
+        "never steps the game or reads movement (%s)",
+        (outcome) => {
+            const stepper = vi.fn<typeof step>(() => null)
+            const move = vi.fn((): MoveInput => ({
+                held: [east],
+                pressed: east,
+            }))
+            const input = { wasPressed: () => true, move }
+            let screen: Screen = ending(outcome)
+            for (let i = 0; i < 5; i++) {
+                screen = update(screen, input, deps({ step: stepper }))
+                expect(screen.kind).toBe("ending")
+            }
+            expect(stepper).not.toHaveBeenCalled()
+            expect(move).not.toHaveBeenCalled()
+        }
+    )
 })
 
 describe("pauseIfPlaying", () => {
@@ -251,6 +322,8 @@ describe("pauseIfPlaying", () => {
             initialScreen(),
             { kind: "stageSelect", selected: 0 },
             { ...game, kind: "paused" },
+            ending("won"),
+            ending("dead"),
             { ...game, kind: "stageClear", choice: "retry" },
             { ...game, kind: "gameOver", choice: "retry" },
         ]
@@ -353,23 +426,46 @@ describe("after the game ends", () => {
         }
     )
 
-    it("leaves the finished game's state untouched", () => {
+    it("changes nothing in the finished game but the glides settling", () => {
         // In the trap level every tick costs a life, so the game ends after
         // START_LIVES ticks, with dots left and the enemy free to wander off.
-        const d = deps({ levels: [trap], dt: 1 })
+        const d = deps({ levels: [trap], dt: 1 / 60 })
         let screen: Screen = startLevel([trap], 0)
         for (let i = 0; i < START_LIVES; i++) {
-            screen = update(screen, tickInput([], east), d)
+            screen = update(screen, tickInput([], east), deps({ ...d, dt: 1 }))
         }
-        expect(screen.kind).toBe("gameOver")
+        expect(screen.kind).toBe("ending")
         const game = gameOf(screen)!
-        const snapshot = structuredClone(game)
+        const before = structuredClone(game)
+        // Mid-glide, so the outro has something to settle.
+        game.player.moveProgress = before.player.moveProgress = 0
         for (let i = 0; i < 20; i++) {
             screen = update(screen, tickInput(["down"], east), d)
             screen = update(screen, tickInput(["up"], east), d)
         }
-        expect(game).toEqual(snapshot)
+        expect(screen.kind).toBe("gameOver")
+        // Only moveProgress may change during the outro: up to 1 (40 ticks
+        // is plenty for every glide here), and never down.
+        const characters = (g: typeof game) => [g.player, ...g.enemies]
+        characters(game).forEach((c, i) => {
+            const was = characters(before)[i].moveProgress
+            expect(c.moveProgress).toBe(Math.max(was, 1))
+        })
+        const withoutProgress = (g: typeof game) => ({
+            ...g,
+            player: { ...g.player, moveProgress: 0 },
+            enemies: g.enemies.map((e) => ({ ...e, moveProgress: 0 })),
+        })
+        expect(withoutProgress(game)).toEqual(withoutProgress(before))
         expect(game.cells[1][3]).toBe(Cell.dot)
+
+        // On the end screen, nothing changes at all.
+        const ended = structuredClone(game)
+        for (let i = 0; i < 20; i++) {
+            screen = update(screen, tickInput(["down"], east), d)
+            screen = update(screen, tickInput(["up"], east), d)
+        }
+        expect(game).toEqual(ended)
     })
 })
 

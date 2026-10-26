@@ -1,6 +1,6 @@
 import { Cell, CharacterId } from "./constants"
 import type { GameState } from "./game"
-import { glidePos, wrapCopies } from "./glide"
+import { eatenDotVisible, glidePos, wrapCopies } from "./glide"
 import { computeLayout, type Layout } from "./layout"
 
 // What the HUD strip above the maze shows. Fields left out aren't drawn.
@@ -96,7 +96,7 @@ export function createRenderer(
         ctx.beginPath()
         ctx.rect(0, 0, cols * cell, rows * cell)
         ctx.clip()
-        drawCells(ctx, state, cell)
+        drawCells(ctx, state, alpha, cell)
         drawCharacters(ctx, state, alpha, cell, cols, rows)
         ctx.restore()
     }
@@ -120,13 +120,20 @@ export function createRenderer(
     }
 }
 
+// Walls and dots, plus the dot the player has just eaten while its glide
+// hasn't reached it yet (see eatenDotVisible).
 function drawCells(
     ctx: CanvasRenderingContext2D,
     state: GameState,
+    alpha: number,
     cell: number
 ) {
     const wall = cell * WALL_SCALE
     const dot = Math.max(1, cell * DOT_SCALE)
+    const eaten =
+        state.eatenAt && eatenDotVisible(state.player, alpha)
+            ? state.eatenAt
+            : null
     state.cells.forEach((row, y) => {
         row.forEach((value, x) => {
             const cx = (x + 0.5) * cell
@@ -134,7 +141,10 @@ function drawCells(
             if (value === Cell.wall) {
                 ctx.fillStyle = COLORS.wall
                 ctx.fillRect(cx - wall / 2, cy - wall / 2, wall, wall)
-            } else if (value === Cell.dot) {
+            } else if (
+                value === Cell.dot ||
+                (eaten && eaten.x === x && eaten.y === y)
+            ) {
                 ctx.fillStyle = COLORS.dot
                 ctx.fillRect(cx - dot / 2, cy - dot / 2, dot, dot)
             }

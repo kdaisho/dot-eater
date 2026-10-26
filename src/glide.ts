@@ -21,6 +21,20 @@ export function glideT(character: Character, alpha: number): number {
     return Math.min(1, moveProgress + (alpha * speed * TICK_MS) / 1000)
 }
 
+// How far through its glide the player must be for the dot it just ate to
+// disappear: halfway, when the front edge of the sprite (SPRITE_SCALE 0.8 of
+// a cell wide, centred) reaches the dot in the middle of the cell. Until then
+// the dot is still drawn, so it is visibly eaten rather than vanishing a cell
+// ahead of the player.
+export const EAT_AT = 0.5
+
+// Whether to still draw the dot eaten on the player's latest move
+// (GameState.eatenAt, the player's pos): true while the player's glide
+// towards it hasn't reached EAT_AT.
+export function eatenDotVisible(player: Character, alpha: number): boolean {
+    return glideT(player, alpha) < EAT_AT
+}
+
 // The unit step of a character's latest move. A move across a wrap-around
 // tunnel (lastPos on the opposite edge) is the one-cell step off that edge,
 // not a slide back across the whole map.

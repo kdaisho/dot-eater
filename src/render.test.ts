@@ -1,9 +1,10 @@
 // @vitest-environment happy-dom
 import { afterEach, describe, expect, it, vi } from "vite-plus/test"
-import { CharacterId } from "./constants"
+import { Cell, CharacterId } from "./constants"
 import { createCharacter } from "./character"
-import { createGameState } from "./game"
+import { createGameState, movePlayer } from "./game"
 import { createRenderer } from "./render"
+import { makeState } from "./test/helpers"
 import { vec2 } from "./vec2"
 
 // canvas-confetti crashes under happy-dom; keep it out in case anything
@@ -124,6 +125,60 @@ describe("createRenderer", () => {
         const full = setup()
         full.renderer.draw(state, 0, { score: 120, lives: 2 })
         expect(full.texts()).toEqual(["Score 120", "🪰🪰", "🪰"])
+    })
+
+    // Regression: the dot the player eats is gone from the cells at once, but
+    // the player is drawn gliding in over the next move, so the dot used to
+    // vanish a cell ahead of it.
+    it("keeps drawing the eaten dot until the player's glide reaches it", () => {
+        const { calls, canvas, renderer } = setup()
+        const state = makeState(
+            [
+                [1, 1, 1, 1, 1],
+                [2, 2, 2, 2, 2],
+                [1, 1, 1, 1, 1],
+            ],
+            { x: 1, y: 1 }
+        )
+        movePlayer(state, vec2(1, 0))
+        expect(state.cells[1][2]).toBe(Cell.none)
+        // Whether a dot (a square well under half a cell) was drawn centred
+        // on cell (x, y).
+        const dotAt = (x: number, y: number) => {
+            const cell = parseFloat(canvas.style.width) / 5
+            return calls.some((c) => {
+                if (c.name !== "fillRect") return false
+                const [left, top, w, h] = c.args as number[]
+                return (
+                    w === h &&
+                    w < cell / 2 &&
+                    left + w / 2 === (x + 0.5) * cell &&
+                    top + h / 2 === (y + 0.5) * cell
+                )
+            })
+        }
+        const drawAt = (progress: number) => {
+            state.player.moveProgress = progress
+            calls.length = 0
+            renderer.draw(state, 0)
+        }
+
+        drawAt(0)
+        expect(dotAt(3, 1)).toBe(true)
+        expect(dotAt(2, 1)).toBe(true)
+        drawAt(0.4)
+        expect(dotAt(2, 1)).toBe(true)
+        drawAt(0.6)
+        expect(dotAt(2, 1)).toBe(false)
+        drawAt(1)
+        expect(dotAt(2, 1)).toBe(false)
+        expect(dotAt(3, 1)).toBe(true)
+
+        // A move that eats nothing leaves nothing to draw.
+        movePlayer(state, vec2(-1, 0))
+        drawAt(0)
+        expect(dotAt(2, 1)).toBe(false)
+        expect(dotAt(1, 1)).toBe(false)
     })
 
     it("does nothing without a 2D context", () => {
