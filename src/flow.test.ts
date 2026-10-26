@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vite-plus/test"
-import { Cell, DOT_POINTS, START_LIVES } from "./constants"
+import { Cell, DOT_POINTS, START_LIVES, TICK_RATE } from "./constants"
 import {
     END_CHOICES,
     gameOf,
@@ -15,6 +15,7 @@ import { step, type MoveInput } from "./game"
 import type { Action } from "./input"
 import { parseLevel } from "./level"
 import { emptyProgress, markCleared, STAGE_COUNT } from "./progress"
+import { rateClear } from "./stars"
 import { fixedRandom } from "./test/helpers"
 import { vec2 } from "./vec2"
 
@@ -23,13 +24,16 @@ const east = vec2(1, 0)
 
 // Two tiny levels. "corridor" has no enemies and is won by walking east to
 // eat its two dots; "second" is there so stage select has a list to move in.
-const corridor = parseLevel({
+const corridorData = {
     name: "corridor",
+    parTime: 60,
     map: ["#####", "#P..#", "#####"],
     enemies: [],
-})
+}
+const corridor = parseLevel(corridorData)
 const second = parseLevel({
     name: "second",
+    parTime: 60,
     map: ["#####", "#P.E#", "#####"],
     enemies: [{ ai: "random" }],
 })
@@ -39,6 +43,7 @@ const levels = [corridor, second]
 // (with dt 1), while dots remain.
 const trap = parseLevel({
     name: "trap",
+    parTime: 60,
     map: ["#######", "#PE...#", "#######"],
     enemies: [{ ai: "random", speed: 60 }],
 })
@@ -96,7 +101,9 @@ function end(
     level = 0
 ): Screen {
     const { game } = playing(level)
-    return { kind, level, game, choice }
+    if (kind === "gameOver") return { kind, level, game, choice }
+    const rating = rateClear(game, levels[level].parTime)
+    return { kind, level, game, choice, rating }
 }
 
 describe("initialScreen", () => {
@@ -271,6 +278,9 @@ describe("playing", () => {
                 level: 1,
                 game: screen.game,
                 choice: "retry",
+                ...(kind === "stageClear"
+                    ? { rating: rateClear(screen.game, second.parTime) }
+                    : {}),
             })
         }
     )
@@ -337,6 +347,7 @@ describe("ending", () => {
             level: 0,
             game,
             choice: "retry",
+            rating: rateClear(game, corridor.parTime),
         })
         expect(game.player.moveProgress).toBe(1)
         expect(game.player.pos).toEqual(vec2(3, 1))
@@ -363,6 +374,62 @@ describe("ending", () => {
     )
 })
 
+describe("clear time", () => {
+    // Play the corridor to the end, east held: pausing for `pausedTicks`
+    // ticks after the first move. Returns the stage clear screen.
+    function clear(pausedTicks: number, d = deps()) {
+        let screen: Screen = playing()
+        screen = update(screen, tickInput([], east), d)
+        expect(gameOf(screen)?.ticks).toBe(1)
+        screen = update(screen, tickInput(["pause"], east), d)
+        expect(screen.kind).toBe("paused")
+        for (let i = 0; i < pausedTicks; i++) {
+            screen = update(screen, tickInput([], east), d)
+        }
+        expect(gameOf(screen)?.ticks).toBe(1)
+        screen = update(screen, tickInput(["pause"], east), d)
+        expect(screen.kind).toBe("playing")
+        // Neither the pause tick nor the resume tick stepped the game.
+        expect(gameOf(screen)?.ticks).toBe(1)
+        while (screen.kind === "playing") {
+            screen = update(screen, tickInput([], east), d)
+        }
+        expect(screen.kind).toBe("ending")
+        const played = gameOf(screen)!.ticks
+        while (screen.kind === "ending") {
+            screen = update(screen, tickInput(["confirm"], east), d)
+        }
+        if (screen.kind !== "stageClear") throw new Error(screen.kind)
+        // The outro adds nothing.
+        expect(screen.game.ticks).toBe(played)
+        return screen
+    }
+
+    it("counts only the ticks that step the game", () => {
+        // The first move on tick 1, the second dot a glide (15 ticks at 4
+        // cells/s) later.
+        expect(clear(0).rating.ticks).toBe(16)
+    })
+
+    it("doesn't count paused ticks", () => {
+        expect(clear(10 * TICK_RATE).rating.ticks).toBe(16)
+    })
+
+    it("rates the clear against the level's par time", () => {
+        const fast = clear(0)
+        expect(fast.rating).toMatchObject({ stars: 3, underPar: true })
+        // A par of 15 ticks is one short of the 16 played.
+        const tight = parseLevel({ ...corridorData, parTime: 15 / TICK_RATE })
+        const slow = clear(0, deps({ levels: [tight, second] }))
+        expect(slow.rating).toMatchObject({
+            ticks: 16,
+            stars: 2,
+            noLivesLost: true,
+            underPar: false,
+        })
+    })
+})
+
 describe("pauseIfPlaying", () => {
     it("pauses a game in progress, keeping the same game", () => {
         const screen = playing()
@@ -379,8 +446,8 @@ describe("pauseIfPlaying", () => {
             { ...game, kind: "paused" },
             ending("won"),
             ending("dead"),
-            { ...game, kind: "stageClear", choice: "retry" },
-            { ...game, kind: "gameOver", choice: "retry" },
+            end("stageClear"),
+            end("gameOver"),
         ]
         for (const screen of others) {
             expect(pauseIfPlaying(screen)).toBe(screen)

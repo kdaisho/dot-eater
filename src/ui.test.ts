@@ -11,6 +11,8 @@ import {
     showTitle,
 } from "./ui"
 import type { StageSlot } from "./progress"
+import { rateClear } from "./stars"
+import { START_LIVES, TICK_RATE } from "./constants"
 
 // canvas-confetti touches a 2D canvas context on import, which happy-dom
 // doesn't provide.
@@ -42,6 +44,12 @@ const endView = (choice: 0 | 1, score = 0) => ({
         label,
         selected: i === choice,
     })),
+})
+
+// A stage clear view: 2 stars (no lives lost, over a 60 s par) in 1:02.5.
+const clearView = (choice: 0 | 1, score = 0) => ({
+    ...endView(choice, score),
+    rating: rateClear({ ticks: 62.5 * TICK_RATE, lives: START_LIVES }, 60),
 })
 
 describe("showTitle", () => {
@@ -105,6 +113,32 @@ describe("showStageSelect", () => {
         expect(selected()).toEqual(["Coming soon"])
     })
 
+    it("shows the best stars and best time of cleared stages", () => {
+        showStageSelect(
+            [
+                {
+                    kind: "open",
+                    name: "Classic",
+                    stars: 2,
+                    bestTime: 42 * 60 + 18,
+                },
+                { kind: "open", name: "Wrap", stars: 3 },
+                { kind: "open", name: "Ice" },
+                { kind: "locked", name: "Fog" },
+                { kind: "comingSoon" },
+            ],
+            0
+        )
+        expect(items()).toEqual([
+            "Classic  ★★☆  0:42.3",
+            "Wrap  ★★★",
+            "Ice",
+            "🔒 Fog",
+            "Coming soon",
+        ])
+        expect(selected()).toEqual(["Classic  ★★☆  0:42.3"])
+    })
+
     it("moves the mark when shown again", () => {
         showStageSelect(slots, 0)
         showStageSelect(slots, 1)
@@ -123,14 +157,47 @@ describe("showPause", () => {
 })
 
 describe("showStageClear", () => {
-    it("shows the clear screen with the final score and its menu", () => {
-        showStageClear(endView(0, 340))
+    it("shows the clear screen with the score, time, stars and menu", () => {
+        showStageClear(clearView(0, 340))
         expectSingle()
         expect(overlay()?.dataset.screen).toBe("stage-clear")
         expect(title()).toBe("Stage clear!")
-        expect(lines()).toEqual(["Score 340"])
+        expect(lines()).toEqual([
+            "Score 340",
+            "Time 1:02.5",
+            "★ Cleared",
+            "★ No lives lost",
+            "☆ Under par (1:00)",
+        ])
         expect(items()).toEqual(["Retry", "Stage select"])
         expect(selected()).toEqual(["Retry"])
+    })
+
+    it("marks every star earned on a perfect clear", () => {
+        showStageClear({
+            ...endView(0),
+            rating: rateClear({ ticks: 600, lives: START_LIVES }, 45),
+        })
+        expect(lines()).toEqual([
+            "Score 0",
+            "Time 0:10.0",
+            "★ Cleared",
+            "★ No lives lost",
+            "★ Under par (0:45)",
+        ])
+    })
+
+    it("marks only the clear star on a slow clear with lives lost", () => {
+        showStageClear({
+            ...endView(0),
+            rating: rateClear({ ticks: 3601, lives: 1 }, 60),
+        })
+        expect(lines().slice(1)).toEqual([
+            "Time 1:00.1",
+            "★ Cleared",
+            "☆ No lives lost",
+            "☆ Under par (1:00)",
+        ])
     })
 })
 
@@ -151,7 +218,7 @@ describe("overlays", () => {
         showStageSelect([{ kind: "open", name: "Level 1" }], 0)
         showPause()
         showGameOver(endView(0))
-        showStageClear(endView(0))
+        showStageClear(clearView(0))
         expectSingle()
         expect(overlay()?.dataset.screen).toBe("stage-clear")
     })

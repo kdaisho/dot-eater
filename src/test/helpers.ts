@@ -24,6 +24,7 @@ export const OLD_MAP = [
 // Kept as a small, well-known fixture for tests that rely on its layout.
 export const OLD_LEVEL_DATA: LevelData = {
     name: "Level 1",
+    parTime: 60,
     map: [
         "####.####",
         "#...P...#",
@@ -94,6 +95,7 @@ export function makeState(
         enemies,
         bufferedStep: vec2(0, 0),
         score: 0,
+        ticks: 0,
         lives,
         eatenAt: null,
         spawns: {
