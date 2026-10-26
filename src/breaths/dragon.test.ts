@@ -162,11 +162,17 @@ describe("dragon fire breath", () => {
         expect(chaser.pos.x).toBeLessThan(7)
     })
 
-    it("doesn't block or hurt the player", () => {
-        const state = dragonState({ x: 1, y: 1 })
+    it("lets the player walk through it while it keeps an enemy out", () => {
+        // The chaser, past the line's reach, would otherwise meet the
+        // player head on in the corridor.
+        const chaser = makeEnemy(8, 1, AiType.chase)
+        const state = dragonState({ x: 1, y: 1 }, [chaser])
         tick(state, { breath: true })
-        run(state, MOVE * 4, { held: east })
+        expect(burning(state)).toEqual([2, 3, 4, 5, 6])
+        for (let i = 0; i < MOVE * 4; i++) {
+            expect(tick(state, { held: east })).toBeNull()
+        }
         expect(state.player.pos.x).toBeGreaterThanOrEqual(5)
-        expect(state.lives).toBe(1)
+        expect(chaser.pos.x).toBeGreaterThanOrEqual(7)
     })
 })
