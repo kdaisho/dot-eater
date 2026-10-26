@@ -228,17 +228,17 @@ export function step(
                 ? null
                 : slideStep(cells, state.ice, enemy.pos, enemy.lastPos)
         if (slide) {
+            // A patroller has reached its waypoint when it stands on it as
+            // the slide carries it off (patrolStep, which would notice, is
+            // skipped) or slides onto it; otherwise it could keep sliding
+            // past and turning back for it.
+            reachWaypoint(enemy)
             enemy.lastPos = vec2(enemy.pos.x, enemy.pos.y)
             enemy.pos = loopPos(
                 cells,
                 vec2(enemy.pos.x + slide.x, enemy.pos.y + slide.y)
             )
-            // A patroller sliding over its waypoint has reached it; otherwise
-            // it could keep sliding past and turning back for it.
-            const { route } = enemy
-            if (route && samePos(enemy.pos, route[enemy.routeIndex])) {
-                enemy.routeIndex = (enemy.routeIndex + 1) % route.length
-            }
+            reachWaypoint(enemy)
         } else {
             enemyMove(cells, enemy, from[0], random, playerLast)
         }
@@ -335,4 +335,12 @@ function caught(state: GameState, from: readonly Vec2[]): boolean {
     return enemies.some((enemy, i) =>
         collides(player.pos, from[0], enemy.pos, from[i + 1])
     )
+}
+
+// Move a patroller on to its next waypoint if it stands on the current one.
+function reachWaypoint(enemy: Character) {
+    const { route } = enemy
+    if (route && samePos(enemy.pos, route[enemy.routeIndex])) {
+        enemy.routeIndex = (enemy.routeIndex + 1) % route.length
+    }
 }

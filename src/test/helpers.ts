@@ -108,7 +108,6 @@ export function makeState(
     }
 }
 
-// An ice map from one string per row: true where the row has "~".
 // A map and its ice from rows of level map characters ("#" wall, "." dot,
 // space empty, "~" ice, ":" ice with a dot), for makeState. Unlike
 // parseLevel nothing is checked, so a test can build any situation.

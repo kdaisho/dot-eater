@@ -273,6 +273,25 @@ describe("step: enemies on ice", () => {
         expect(patroller.pos).toEqual(vec2(4, 2))
         expect(patroller.routeIndex).toBe(1)
     })
+
+    // Regression: patrolStep only notices a waypoint at the patroller's next
+    // AI move, which a slide replaces, so a waypoint on ice it had stepped
+    // onto was never reached and it kept coming back for it.
+    it("a patroller carried off its waypoint by a slide moves on to the next", () => {
+        const patroller = makePatroller(
+            3,
+            2,
+            [
+                [3, 2],
+                [1, 1],
+            ],
+            { x: 2, y: 2 }
+        )
+        const state = rink(lane, vec2(1, 3), [patroller])
+        trail(state, 1, {}, patroller)
+        expect(patroller.pos).toEqual(vec2(4, 2))
+        expect(patroller.routeIndex).toBe(1)
+    })
 })
 
 describe("step: collisions while sliding", () => {
