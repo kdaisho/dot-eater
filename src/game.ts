@@ -102,17 +102,16 @@ export function createGameState(
     animal: AnimalId = DEFAULT_ANIMAL
 ): GameState {
     // Copy everything out of the level, which is shared between games.
-    // Speeds the level leaves out fall back to createCharacter's defaults;
-    // the character's speedScale scales the player's.
+    // Speeds the level leaves out fall back to the defaults: createCharacter's
+    // for enemies, PLAYER_SPEED for the player, which the character's
+    // speedScale scales.
     const breath = BREATHS[animal]
     const spawn = level.playerSpawns[0]
     const player = createCharacter(
         CharacterId.player,
         vec2(spawn.x, spawn.y),
         undefined,
-        breath.speedScale === 1
-            ? level.playerSpeed
-            : (level.playerSpeed ?? PLAYER_SPEED) * breath.speedScale
+        (level.playerSpeed ?? PLAYER_SPEED) * breath.speedScale
     )
     // The player can move on the first tick; enemies start from 0, which
     // gives the player a short grace period before they move.

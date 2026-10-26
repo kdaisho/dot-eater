@@ -10,7 +10,7 @@ import type { Character } from "./character"
 import type { GameState } from "./game"
 import { loopPos, type Cells } from "./level"
 import type { AnimalId } from "./roster"
-import { samePos, vec2, type Vec2 } from "./vec2"
+import { allDirections, directions, samePos, vec2, type Vec2 } from "./vec2"
 
 // The breath system. Pure, no DOM: time comes in as `dt`, the breath press
 // as a flag on MoveInput (see step in game.ts).
@@ -127,6 +127,7 @@ export type BreathHit = {
     enemies: readonly Character[]
     defeat(enemy: Character): void
     addStatus(enemy: Character, status: EnemyStatus, seconds: number): void
+    // Ice tiles added here show in state.ice once the hook returns.
     addTile(pos: Vec2, effect: TileEffect, seconds: number): void
     // Push `enemy` up to `distance` cells along `step` (see pushEnemy).
     // Returns how many cells it moved.
@@ -218,6 +219,9 @@ export function breathe(state: GameState): boolean {
     const enemies = struck.flatMap((cell) =>
         state.enemies.filter((e) => inPlay(e) && samePos(e.pos, cell))
     )
+    // Ice tiles are placed as the hook adds them, and the ice grid is
+    // rebuilt once after it, not once per cell.
+    let iceAdded = false
     const hit: BreathHit = {
         state,
         origin,
@@ -227,12 +231,17 @@ export function breathe(state: GameState): boolean {
         enemies,
         defeat: (enemy) => defeatEnemy(state, enemy),
         addStatus,
-        addTile: (pos, effect, seconds) =>
-            addTileEffect(state, pos, effect, seconds),
+        addTile: (pos, effect, seconds) => {
+            if (placeTile(state, pos, effect, seconds) && effect.ice) {
+                iceAdded = true
+            }
+        },
         push: (enemy, step, distance) =>
             pushEnemy(state.cells, enemy, step, distance),
     }
-    if (breath.fire(hit) === false) return false
+    const fired = breath.fire(hit) !== false
+    if (iceAdded) rebuildIce(state)
+    if (!fired) return false
     breather.energy -= breath.cost
     breather.cooldown = breath.cooldown
     return true
@@ -325,12 +334,7 @@ export function resolveShape(
             const queue = [{ p: origin, dx: 0, dy: 0 }]
             for (let head = 0; head < queue.length; head++) {
                 const { p, dx, dy } = queue[head]
-                for (const d of [
-                    vec2(0, -1),
-                    vec2(-1, 0),
-                    vec2(0, 1),
-                    vec2(1, 0),
-                ]) {
+                for (const d of allDirections.map((dir) => directions[dir])) {
                     const nx = dx + d.x
                     const ny = dy + d.y
                     if (Math.max(Math.abs(nx), Math.abs(ny)) > shape.radius) {
@@ -412,8 +416,10 @@ export function enemyVisible(enemy: Character): boolean {
 }
 
 // Push `enemy` up to `distance` cells along the unit `step`, through
-// tunnels, stopping before a wall. It then glides in over its last cell (as
-// if it had just moved there) and so carries on sliding if it lands on ice.
+// tunnels, stopping before a wall (but not before a cell that blocks
+// enemies: one pushed into it leaves by the shortest way). It then glides
+// in over its last cell (as if it had just moved there) and so carries on
+// sliding if it lands on ice.
 // Returns how many cells it moved.
 export function pushEnemy(
     cells: Cells,
@@ -449,21 +455,34 @@ export function addTileEffect(
     effect: TileEffect,
     seconds: number
 ) {
+    if (placeTile(state, pos, effect, seconds) && effect.ice) {
+        rebuildIce(state)
+    }
+}
+
+// addTileEffect without rebuilding the ice grid (the caller does, once).
+// Returns true if a new tile effect was placed.
+function placeTile(
+    state: GameState,
+    pos: Vec2,
+    effect: TileEffect,
+    seconds: number
+): boolean {
     const cell = vec2(pos.x, pos.y)
     const existing = state.tiles.find(
         (t) => t.effect.name === effect.name && samePos(t.pos, cell)
     )
     if (existing) {
         existing.left = Math.max(existing.left, seconds)
-        return
+        return false
     }
-    if (effect.ice && occupied(state, cell)) return
+    if (effect.ice && occupied(state, cell)) return false
     if (effect.opensWall) {
-        if (state.cells[cell.y][cell.x] !== Cell.wall) return
+        if (state.cells[cell.y][cell.x] !== Cell.wall) return false
         state.cells[cell.y][cell.x] = Cell.none
     }
     state.tiles.push({ pos: cell, effect, left: seconds })
-    if (effect.ice) rebuildIce(state)
+    return true
 }
 
 // Whether the player or an enemy in play stands on `cell`.
@@ -507,8 +526,9 @@ export function tickEffects(state: GameState, dt: number) {
     for (const enemy of state.enemies) {
         if (!inPlay(enemy)) {
             enemy.respawnIn -= dt
-            // Back in play where it waited (its spawn), starting to move
-            // after a grace period like at the start of a game.
+            // Back in play where it waited (its spawn). Its move progress
+            // starts from 0, so it waits a moment before moving, but it can
+            // catch at once (the blink before was the warning).
             if (enemy.respawnIn <= EPSILON) enemy.respawnIn = 0
             continue
         }
@@ -524,11 +544,10 @@ export function tickEffects(state: GameState, dt: number) {
         expired.push(t)
         return false
     })
+    // Only one opened-wall effect can be on a cell at a time (another
+    // needs a wall there), so its end always brings the wall back.
     for (const t of expired) {
-        const stillOpen = state.tiles.some(
-            (o) => o.effect.opensWall && samePos(o.pos, t.pos)
-        )
-        if (t.effect.opensWall && !stillOpen) regrowWall(state, t.pos)
+        if (t.effect.opensWall) regrowWall(state, t.pos)
     }
     if (expired.some((t) => t.effect.ice)) rebuildIce(state)
 }
@@ -557,7 +576,7 @@ function nearestOpen(cells: Cells, from: Vec2): Vec2 | null {
     const seen = new Set([key(from)])
     const queue = [from]
     for (let head = 0; head < queue.length; head++) {
-        for (const d of [vec2(0, -1), vec2(-1, 0), vec2(0, 1), vec2(1, 0)]) {
+        for (const d of allDirections.map((dir) => directions[dir])) {
             const q = add(cells, queue[head], d)
             if (seen.has(key(q))) continue
             if (cells[q.y][q.x] !== Cell.wall) return q

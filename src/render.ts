@@ -278,7 +278,7 @@ function drawCells(
             const cx = (x + 0.5) * cell
             const cy = (y + 0.5) * cell
             if (state.ice[y][x]) fillCell(x, y, COLORS.ice)
-            for (const look of looks[y][x]) {
+            for (const look of looks?.[y][x] ?? []) {
                 if (look.color) fillCell(x, y, look.color)
             }
             if (value === Cell.wall) {
@@ -293,6 +293,7 @@ function drawCells(
             }
         })
     })
+    if (!looks) return
     // Tile emoji go on top of everything in the cells, before characters.
     const emoji = looks.flatMap((row, y) =>
         row.flatMap((list, x) =>
@@ -312,8 +313,10 @@ function drawCells(
     }
 }
 
-// Per cell [y][x], the looks of the tile effects on it, oldest first.
-function tileLooks(state: GameState): Look[][][] {
+// Per cell [y][x], the looks of the tile effects on it, oldest first, or
+// null when there are no tile effects (the common case: no grid each frame).
+function tileLooks(state: GameState): Look[][][] | null {
+    if (state.tiles.length === 0) return null
     const looks: Look[][][] = state.cells.map((row) => row.map(() => []))
     for (const t of state.tiles) {
         if (t.effect.look) looks[t.pos.y][t.pos.x].push(t.effect.look)
