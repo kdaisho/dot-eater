@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vite-plus/test"
 import {
+    addStatus,
     inPlay,
     type BreathHit,
     type EnemyStatus,
@@ -339,6 +340,26 @@ describe("enemy statuses", () => {
         }
         expect(enemy.pos).toEqual(vec2(3, 1))
         expect(state.player.pos).toEqual(vec2(2, 1))
+    })
+
+    it("end a slide into a solid enemy as a wall would", () => {
+        // Ice at x 2 to 4, a frozen enemy at x 5: the player slides to x 4
+        // and stops there, free to walk back west.
+        const { map, ice } = textMap([
+            "##########",
+            "# ~~~    #",
+            "##########",
+            "#.########",
+        ])
+        const enemy = makeEnemy(5, 1, AiType.chase)
+        const state = makeState(map, { x: 1, y: 1 }, [enemy], { ice })
+        addStatus(enemy, frozen, 10)
+        state.player.moveProgress = 1
+        tick(state, { held: east })
+        run(state, MOVE * 3)
+        expect(state.player.pos).toEqual(vec2(4, 1))
+        run(state, MOVE, { held: west })
+        expect(state.player.pos.x).toBeLessThan(4)
     })
 
     it("wear off, and the enemy moves again", () => {

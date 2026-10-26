@@ -202,10 +202,7 @@ export function movePlayer(state: GameState, step: Vec2): boolean {
             throw new Error(`Unknown cell: ${String(unhandled)}`)
         }
     }
-    const solid = state.enemies.some(
-        (e) => inPlay(e) && hasStatus(e, "solid") && samePos(e.pos, target)
-    )
-    if (solid) return false
+    if (solidAt(state, target)) return false
     if (value === Cell.dot) {
         cells[target.y][target.x] = Cell.none
         state.score += DOT_POINTS
@@ -217,6 +214,14 @@ export function movePlayer(state: GameState, step: Vec2): boolean {
     state.breather.facing = vec2(step.x, step.y)
     state.eatenAt = ate ? vec2(target.x, target.y) : null
     return true
+}
+
+// Whether an enemy in play with a solid status (see EnemyStatus) stands on
+// `cell`: the player can't go there, as if it were a wall.
+function solidAt(state: GameState, cell: Vec2): boolean {
+    return state.enemies.some(
+        (e) => inPlay(e) && hasStatus(e, "solid") && samePos(e.pos, cell)
+    )
 }
 
 // Add one tick's progress. Returns true if the character may move this tick.
@@ -357,11 +362,17 @@ export function settle(state: GameState, dt: number): boolean {
 // While sliding, the move is the slide step whatever the input. A slide step
 // isn't the player's opportunity, so the buffer is left alone: a tap made
 // during a slide is used at the first opportunity after it ends (a newer tap
-// replaces it, as always).
+// replaces it, as always). A solid enemy ahead ends a slide as a wall would,
+// so the player is then free to move.
 function movePlayerTick(state: GameState, held: readonly Vec2[]): boolean {
-    const { player } = state
-    const slide = slideStep(state.cells, state.ice, player.pos, player.lastPos)
-    if (slide) return movePlayer(state, slide)
+    const { cells, player } = state
+    const slide = slideStep(cells, state.ice, player.pos, player.lastPos)
+    if (slide) {
+        const ahead = vec2(player.pos.x + slide.x, player.pos.y + slide.y)
+        if (!solidAt(state, loopPos(cells, ahead))) {
+            return movePlayer(state, slide)
+        }
+    }
     const buffered = state.bufferedStep
     state.bufferedStep = vec2(0, 0)
     const moved =

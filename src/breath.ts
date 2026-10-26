@@ -73,7 +73,8 @@ export type EnemyStatus = {
     holds?: boolean
     // The enemy doesn't catch the player.
     harmless?: boolean
-    // The player can't walk into the enemy's cell; it blocks like a wall.
+    // The player can't walk into the enemy's cell; it blocks like a wall,
+    // and a slide into it ends next to it.
     solid?: boolean
     look?: Look
 }
