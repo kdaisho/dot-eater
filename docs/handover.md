@@ -5,54 +5,48 @@ Last updated: 2026-10-26. Read `CLAUDE.md` first for project conventions.
 ## Where things stand
 
 - **Milestone 1 "Organize code & tooling"** is done and live (PRs #2–#12).
-- **Milestone 2 "Engine foundations"** is done and live (PRs #14–#20, all KDA-193 to KDA-199 Done in Linear), plus the fix #21 (the last move finishes before the end screen). `main` is at the #21 merge; 275 tests.
+- **Milestone 2 "Engine foundations"** is done and live (PRs #14–#20, all KDA-193 to KDA-199 Done in Linear), plus the fix #21 (the last move finishes before the end screen).
 - The game now has: a 60 Hz fixed-tick loop, an input action layer, ASCII level files, BFS chase AI, a canvas renderer with gliding movement and a HUD, a screen state machine (title → stage select → playing ⇄ paused → ending → stage clear / game over), and score and lives. There is one level, Stage 1 "Classic" (`src/levels/stage1.ts`, 17x15).
-- **Next: milestone "Stages"** (KDA-200 to KDA-207). Nothing started yet.
+- **Milestone "Stages": Batch 1 is done and live** (PRs #23–#25: KDA-203 Stage 1, KDA-200 stage select with unlocks, KDA-202 new enemy types). `main` is at the #25 merge; 375 tests.
+- **Next: Stages Batch 2** (KDA-201, KDA-204, KDA-205, KDA-206). See below.
 
 ## Code map
 
-| Module                                 | What it does                                                                                                                                          |
-| -------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `main.ts`                              | Entry and wiring: loop, input, screen machine, renderer, overlays; the only place with listeners and timers                                           |
-| `loop.ts`                              | Fixed-timestep loop (`createLoop`), clock and frame scheduler injected                                                                                |
-| `flow.ts`                              | Screen state machine (`Screen` union, `update`, `pauseIfPlaying`); only `playing` steps the game                                                      |
-| `game.ts`                              | `GameState`, `createGameState(level)`, `step(state, dt, move, random)`, collisions, score, lives, respawn, `settle`                                   |
-| `ai.ts`, `path.ts`                     | Enemy AI (`random`, `chase`); BFS `distanceMap` and `openNeighbours` (wrap-aware)                                                                     |
-| `level.ts`, `levels/`                  | Level format (`LevelData`: name, ASCII `map`, enemies with `ai` and `speed`), `parseLevel` with validation; `levels/index.ts` lists the parsed levels |
-| `input.ts`                             | Actions (`up/down/left/right/breath/pause/confirm`), `InputState`/`PlayerInput`, `KeyboardSource` (P1 arrows, P2 WASD defined)                        |
-| `render.ts`, `glide.ts`, `layout.ts`   | Canvas renderer (`createRenderer` → `draw(state, alpha, hud)`, `clear`, `resize`), glide maths, layout/DPR maths                                      |
-| `ui.ts`                                | DOM overlays, one per screen (`showTitle`, `showStageSelect`, `showPause`, `showStageClear`, `showGameOver`), confetti                                |
-| `constants.ts`, `character.ts`, `vec2` | Cells, AI types, character ids (`player`, `enemy1`, `enemy2`), tick rate, speeds, points, lives                                                       |
+| Module                                 | What it does                                                                                                                                                |
+| -------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `main.ts`                              | Entry and wiring: loop, input, screen machine, renderer, overlays; the only place with listeners and timers                                                 |
+| `loop.ts`                              | Fixed-timestep loop (`createLoop`), clock and frame scheduler injected                                                                                      |
+| `flow.ts`                              | Screen state machine (`Screen` union, `update`, `pauseIfPlaying`); only `playing` steps the game                                                            |
+| `progress.ts`                          | Saved progress (`STAGE_COUNT`, unlocks, `stageSlots`, `recordClear`); storage injected, every access in try/catch                                           |
+| `game.ts`                              | `GameState`, `createGameState(level)`, `step(state, dt, move, random)`, collisions, score, lives, respawn, `settle`                                         |
+| `ai.ts`, `path.ts`                     | Enemy AI (`random`, `chase`, `ambusher`, `patroller`, `phantom`); BFS `distanceMap` and `openNeighbours` (wrap-aware)                                       |
+| `level.ts`, `levels/`                  | Level format (`LevelData`: name, ASCII `map`, enemies with `ai`, `speed`, `route`), `parseLevel` with validation; `levels/index.ts` lists the parsed levels |
+| `input.ts`                             | Actions (`up/down/left/right/breath/pause/confirm`), `InputState`/`PlayerInput`, `KeyboardSource` (P1 arrows, P2 WASD defined)                              |
+| `render.ts`, `glide.ts`, `layout.ts`   | Canvas renderer (`createRenderer` → `draw(state, alpha, hud)`, `clear`, `resize`), glide maths, layout/DPR maths                                            |
+| `ui.ts`                                | DOM overlays, one per screen (`showTitle`, `showStageSelect`, `showPause`, `showStageClear`, `showGameOver`), confetti                                      |
+| `constants.ts`, `character.ts`, `vec2` | Cells, AI types, character ids (`player`, `enemy1`–`enemy4`), tick rate, speeds, points, lives                                                              |
 
-## Next milestone: Stages
+## Current milestone: Stages
 
 "5 stages, each built around one idea, unlocked one after another. Includes star ratings, best scores, and new enemy types." All issues are in Linear with checklists and "blocked by" links.
 
-| Issue   | Title                                     | Blocked by (open)   | Main files                                                           |
-| ------- | ----------------------------------------- | ------------------- | -------------------------------------------------------------------- |
-| KDA-200 | Stage select screen with unlocks          | —                   | `flow.ts`, `ui.ts`, new progress storage (`localStorage`, try/catch) |
-| KDA-201 | Star ratings and best scores per stage    | — (uses 200's save) | `game.ts` (clear time), progress storage, `ui.ts`                    |
-| KDA-202 | New enemy types                           | Splitter: KDA-208   | `ai.ts`, `constants.ts`, `level.ts` (patroller routes), `render.ts`  |
-| KDA-203 | Stage 1: Classic                          | —                   | `levels/`                                                            |
-| KDA-204 | Stage 2: Wrap maze (ambusher enemy)       | KDA-202 (ambusher)  | `levels/`                                                            |
-| KDA-205 | Stage 3: Ice rink (ice tile, sliding)     | —                   | `level.ts` (new tile), `game.ts` (sliding), `render.ts`              |
-| KDA-206 | Stage 4: Fog (visibility, phantom enemy)  | KDA-202 (phantom)   | `render.ts` (fog), `levels/`                                         |
-| KDA-207 | Stage 5: Boss lair (2×2 boss with health) | KDA-208, KDA-202    | needs the breath system from "Characters & breaths", so it waits     |
+| Issue   | Title                                     | Status / blocked by      | Main files                                                       |
+| ------- | ----------------------------------------- | ------------------------ | ---------------------------------------------------------------- |
+| KDA-200 | Stage select screen with unlocks          | Done (#24)               | `flow.ts`, `ui.ts`, `progress.ts`                                |
+| KDA-201 | Star ratings and best scores per stage    | Ready (needs thresholds) | `game.ts` (clear time), `progress.ts`, `ui.ts`                   |
+| KDA-202 | New enemy types                           | Done (#25)               | `ai.ts`, `constants.ts`, `level.ts`, `render.ts`                 |
+| KDA-203 | Stage 1: Classic                          | Done (#23)               | `levels/`                                                        |
+| KDA-204 | Stage 2: Wrap maze (ambusher enemy)       | Ready                    | `levels/`                                                        |
+| KDA-205 | Stage 3: Ice rink (ice tile, sliding)     | Ready                    | `level.ts` (new tile), `game.ts` (sliding), `render.ts`          |
+| KDA-206 | Stage 4: Fog (visibility, phantom enemy)  | Ready                    | `render.ts` (fog), `levels/`                                     |
+| KDA-207 | Stage 5: Boss lair (2×2 boss with health) | KDA-208, KDA-229         | needs the breath system from "Characters & breaths", so it waits |
+| KDA-229 | Splitter enemy (split out of KDA-202)     | KDA-208                  | `ai.ts`, `game.ts`                                               |
 
-Suggested order:
+**Batch 2:** KDA-201, KDA-204, KDA-206 in parallel; KDA-205 changes movement in `game.ts`, so keep it out of parallel work on `game.ts` (KDA-201 adds the clear time there). Every new stage adds a file in `levels/` and an entry in `levels/index.ts` (stages in order), so expect small conflicts there.
 
-1. **First, in Linear:** split the Splitter checkbox out of KDA-202 into its own issue blocked by KDA-208 (breath system), so KDA-202 can finish now. KDA-207 also stays parked until KDA-208 is done.
-2. **Batch 1, in parallel:** KDA-200 (stage select + unlocks), KDA-202 (ambusher, patroller, phantom; lift the 2-enemy cap), KDA-203 (stage 1 level). Overlap: `levels/index.ts` (203 adds a level; 200 reads the list) is small. 202 touches `constants.ts` (`CharacterId`, `ENEMY_IDS`), `level.ts` and `render.ts` sprites.
-3. **Batch 2:** KDA-201 (on top of 200), KDA-204 and KDA-206 (on top of 202), KDA-205 (independent, but it changes movement in `game.ts`, so keep it out of parallel work on `game.ts`).
+Still to settle with the user: KDA-201 star thresholds (time and lives left per star). Also open: after a win, "Stage select" puts the cursor on the stage just played, not the newly unlocked one.
 
-Questions to settle with the user before starting (product decisions):
-
-- Does Stage 1 "Classic" replace today's level 1, or stay alongside it?
-- Stage select before all 5 stages exist: show only real stages, or show locked placeholders for the missing ones?
-- KDA-201 star thresholds (time and lives left per star).
-- Saved progress: a versioned `localStorage` key, and what happens when a save from an older version is found.
-
-Follow-ups already noted on issues: a runtime shape check for untrusted level JSON (KDA-225); maybe a short "ready" pause or a lost-life signal after a respawn (KDA-198 comment).
+Follow-ups already noted on issues: a runtime shape check for untrusted level JSON (KDA-225); maybe a short "ready" pause or a lost-life signal after a respawn (KDA-198 comment); the phantom ignores wrap tunnels, so the fog stage should avoid tunnels or make it tunnel-aware (KDA-206 comment).
 
 Later milestones (Characters & breaths, Controllers & local 2-player, Polish) and an idea backlog (KDA-223 to KDA-227) are in Linear.
 
@@ -62,7 +56,7 @@ Later milestones (Characters & breaths, Controllers & local 2-player, Polish) an
 - **Code:** the swap-collision check in `collides()` matters: all moves in a tick apply together, so a player and enemy swapping cells never share one. An unknown AI type throws.
 - **Collisions** are checked once per tick against start-of-tick positions (not `lastPos`, which may be from an older tick), and enemies aim at the player's start-of-tick cell.
 - **Chase AI** scores each forward candidate by BFS distance to the player with the enemy's own cell blocked, so the no-reverse rule can't send it into a dead end. Ties go to direction order; an unreachable player falls back to the first candidate.
-- **Levels:** typed `.ts` modules exporting plain JSON-serializable `LevelData`. Map characters: `#` wall, `.` dot, space empty, `P` player spawn, `E` enemy spawn (starts on a dot). Enemies pair with `E`s in reading order. The map is the only source of dots. `parseLevel` rejects: no dots, unreachable dots, an open edge cell that wraps into a wall, wrong spawn counts, more than 2 enemies (the current `CharacterId` cap), speeds above `TICK_RATE`.
+- **Levels:** typed `.ts` modules exporting plain JSON-serializable `LevelData`. Map characters: `#` wall, `.` dot, space empty, `P` player spawn, `E` enemy spawn (starts on a dot). Enemies pair with `E`s in reading order. The map is the only source of dots. `parseLevel` rejects: no dots, unreachable dots, an open edge cell that wraps into a wall, wrong spawn counts, more than 4 enemies (the `ENEMY_IDS` cap), bad patroller routes, speeds above `TICK_RATE`.
 - **Input:** keys are matched by `KeyboardEvent.code`. P1: arrows, ShiftRight breath, P/Escape pause, Space confirm. P2 (defined, not attached): WASD, ShiftLeft, Q, E. Auto-repeat never presses; a missed keyup or keydown recovers on the next keydown.
 - **Tap buffer:** the newest freshly pressed direction is kept in `GameState.bufferedStep` and tried first at the player's next move opportunity, then the held directions; it is cleared at that opportunity either way.
 - **Held directions are an ordered fallback:** `MoveInput.held` lists every held direction, newest first (`PlayerInput.heldSteps()`), so pressing a turn early while still holding the old direction doesn't stop the player at a wall.
@@ -71,6 +65,8 @@ Later milestones (Characters & breaths, Controllers & local 2-player, Polish) an
 - **Speeds:** player 4 cells/s, enemies 2 cells/s by default (applied only in `createCharacter`); levels may override `playerSpeed` and per-enemy `speed`.
 - **Rendering:** characters glide from `lastPos` to `pos`, lagging at most one cell behind the logic. Wrap tunnels slide (the sprite is drawn on both edges, clipped). The HUD strip is above the maze: score left, lives right, middle reserved for the energy meter.
 - **Screens:** the game opens on title → stage select → play (product decision). Retry is pre-selected on both end screens. The game is only stepped in `playing`; nothing in a finished game changes afterwards except moveProgress settling in `ending`. Screens without a game show an empty canvas. Each screen change uses a whole tick and presses are cleared every tick, so menu presses never reach the game.
+- **Stages and progress:** stage 1 "Classic" replaced the old 9x9 level 1, which lives on as a test fixture (`OLD_LEVEL` in `src/test/helpers.ts`; map-dependent tests use it, not `levels[0]`). Stage select always shows `STAGE_COUNT` (5) slots: open, locked ("🔒 Name") or "Coming soon" when no level exists yet; the cursor lands on locked slots but confirm does nothing there. Progress is `{ version: 1, stages: [{ cleared, ...extra }] }` under `dot-eater:progress:v1`; bad JSON, another version or a wrong shape resets to empty (no migrations). Extra per-stage fields survive a load and save, for KDA-201. A win records the clear via `recordClear`, which merges what storage holds first, so another tab's clears aren't overwritten; a loss saves nothing.
+- **Enemy types:** up to 4 enemies. Ambusher aims `AMBUSH_AHEAD` (4) cells ahead along the player's latest move (straight line, no wrap; walks back to the first open cell, else the player; the player itself when it has no heading or the ambusher already stands on the aim point) and reuses chase scoring. Patroller follows a looped `route: [[x, y], ...]` by shortest path, may turn back, restarts the route on respawn. Phantom ignores walls, stays on the map, doesn't use tunnels, and defaults to `PHANTOM_SPEED` (1.5).
 - **Score and lives:** `DOT_POINTS` 10, `START_LIVES` 3. A collision with lives left costs one and respawns everyone at their spawns in the same tick, keeping dots and score. A collision on the last life is game over. Eating the last dot always wins, even if caught on that tick (product decision).
 - **End of a game is seen, not jumped to:** the dot the player just ate stays drawn (`GameState.eatenAt`) until the player's glide is halfway onto it, and a finished game goes through the `ending` screen (only `settle()` runs, input ignored, never auto-paused) before the end screen and confetti.
 - **Auto-pause:** during play, window `blur` or a hidden tab switches to the paused screen.
