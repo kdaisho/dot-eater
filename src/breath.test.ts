@@ -338,6 +338,43 @@ describe("tile effects", () => {
         expect(enemy.pos).toEqual(vec2(1, 0))
     })
 
+    it("push an enemy with no way back to the nearest open cell", () => {
+        const enemy = makeEnemy(1, 0)
+        const state = makeState(
+            [
+                [1, 1, 1],
+                [1, 1, 0],
+            ],
+            { x: 2, y: 1 },
+            [enemy]
+        )
+        addTileEffect(state, vec2(1, 0), opening, 1)
+        tickFor(state, 1)
+        expect(state.cells[0][1]).toBe(Cell.wall)
+        expect(enemy.pos).toEqual(vec2(2, 1))
+        expect(enemy.lastPos).toEqual(vec2(2, 1))
+    })
+
+    it("leave a defeated enemy waiting at its spawn", () => {
+        // Defeated inside the opened wall: it waits at its spawn, so the
+        // regrowing wall doesn't move it.
+        const enemy = makeEnemy(1, 0)
+        const state = makeState(
+            [
+                [0, 1, 0],
+                [0, 0, 0],
+            ],
+            { x: 0, y: 1 },
+            [enemy]
+        )
+        state.spawns.enemies = [vec2(2, 1)]
+        addTileEffect(state, vec2(1, 0), opening, 1)
+        defeatEnemy(state, enemy)
+        tickFor(state, 1)
+        expect(state.cells[0][1]).toBe(Cell.wall)
+        expect(enemy.pos).toEqual(vec2(2, 1))
+    })
+
     it("push to the nearest open cell when there is no way back", () => {
         const state = makeState(
             [

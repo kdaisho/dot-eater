@@ -341,6 +341,16 @@ describe("defeated enemies", () => {
         expect(enemy.pos).not.toEqual(vec2(6, 1))
     })
 
+    it("can catch a player on their spawn as soon as they are back", () => {
+        const { state } = defeatedSetup()
+        state.player.pos = vec2(6, 1)
+        state.player.lastPos = vec2(6, 1)
+        for (let i = 0; i < RESPAWN_DELAY * TICK_RATE - 1; i++) {
+            expect(tick(state)).toBeNull()
+        }
+        expect(tick(state)).toBe("dead")
+    })
+
     it("are all back in play when the player loses a life", () => {
         const catcher = makeEnemy(8, 1, AiType.chase)
         const victim = makeEnemy(3, 1, AiType.chase)
@@ -449,6 +459,27 @@ describe("tile effects", () => {
             expect(enemy.pos.x).toBeGreaterThanOrEqual(5)
         }
         // Once the effect is over it comes for the player.
+        run(state, TICK_RATE * 2)
+        expect(enemy.pos.x).toBeLessThan(5)
+    })
+
+    it("keep a phantom out of blocked cells", () => {
+        const block: TileEffect = { name: "test.block", blocksEnemies: true }
+        const { map } = textMap(["#######", "#     #", "#######", "#.#####"])
+        const enemy = makeEnemy(5, 1, AiType.phantom)
+        const state = makeState(map, { x: 1, y: 1 }, [enemy], {
+            breath: testBreath({
+                fire(hit) {
+                    for (const c of hit.cells) hit.addTile(c, block, 2)
+                },
+            }),
+        })
+        state.breather.energy = 100
+        tick(state, { breath: true })
+        for (let i = 0; i < TICK_RATE * 2 - 2; i++) {
+            expect(tick(state)).toBeNull()
+            expect(enemy.pos.x).toBeGreaterThanOrEqual(5)
+        }
         run(state, TICK_RATE * 2)
         expect(enemy.pos.x).toBeLessThan(5)
     })
