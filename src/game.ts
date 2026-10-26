@@ -1,4 +1,5 @@
 import {
+    AiType,
     Cell,
     CharacterId,
     DOT_POINTS,
@@ -7,6 +8,7 @@ import {
 } from "./constants"
 import { enemyMove, type Random } from "./ai"
 import { createCharacter, type Character } from "./character"
+import { slideStep, type IceMap } from "./ice"
 import { hasDots, loopPos, type Cells, type Level } from "./level"
 import { levels } from "./levels"
 import { samePos, vec2, type Vec2 } from "./vec2"
@@ -15,6 +17,8 @@ export type Outcome = "dead" | "won"
 
 export type GameState = {
     cells: Cells
+    // Where the floor is ice (see ice.ts). Never changes during a game.
+    ice: IceMap
     player: Character
     enemies: Character[]
     // The direction most recently newly pressed (not just held); zero for
@@ -88,6 +92,7 @@ export function createGameState(level: Level = levels[0]): GameState {
     )
     return {
         cells,
+        ice: level.ice.map((row) => [...row]),
         player,
         enemies,
         bufferedStep: vec2(0, 0),
@@ -123,8 +128,9 @@ function respawn(state: GameState) {
 }
 
 // Try to move the player one step, eating (and scoring) any dot there and
-// recording it in eatenAt (cleared when the step eats nothing). Returns true if the player moved; false if a wall blocked the step or the
-// step was zero.
+// recording it in eatenAt (cleared when the step eats nothing). Returns true
+// if the player moved; false if a wall blocked the step or the step was zero.
+// It doesn't know about sliding: that is up to the caller (movePlayerTick).
 export function movePlayer(state: GameState, step: Vec2): boolean {
     if (isZero(step)) return false
     const { cells, player } = state
@@ -191,6 +197,10 @@ function wait(character: Character) {
 // costs). Callers stop stepping once a step
 // returns an outcome (see flow.ts), so nothing changes after the game ends.
 //
+// On ice (see ice.ts), a sliding character's move is its slide step, taken
+// at its normal move opportunity: input and AI are ignored until the slide
+// ends. Phantoms float over ice and never slide.
+//
 // `move` is the player's input this tick (see MoveInput and movePlayerTick),
 // and `random` drives the enemy AI, so a tick is deterministic.
 export function step(
@@ -213,7 +223,25 @@ export function step(
     }
     enemies.forEach((enemy, i) => {
         if (!advance(enemy, dt)) return
-        enemyMove(cells, enemy, from[0], random, playerLast)
+        const slide =
+            enemy.ai === AiType.phantom
+                ? null
+                : slideStep(cells, state.ice, enemy.pos, enemy.lastPos)
+        if (slide) {
+            // A patroller has reached its waypoint when it stands on it as
+            // the slide carries it off (patrolStep, which would notice, is
+            // skipped) or slides onto it; otherwise it could keep sliding
+            // past and turning back for it.
+            reachWaypoint(enemy)
+            enemy.lastPos = vec2(enemy.pos.x, enemy.pos.y)
+            enemy.pos = loopPos(
+                cells,
+                vec2(enemy.pos.x + slide.x, enemy.pos.y + slide.y)
+            )
+            reachWaypoint(enemy)
+        } else {
+            enemyMove(cells, enemy, from[0], random, playerLast)
+        }
         if (samePos(enemy.pos, from[i + 1])) wait(enemy)
         else spend(enemy)
     })
@@ -240,7 +268,15 @@ export function settle(state: GameState, dt: number): boolean {
 // held direction, newest first, until one is open. The buffer is cleared
 // either way, so it never outlives one opportunity. Returns true if the
 // player moved.
+//
+// While sliding, the move is the slide step whatever the input. A slide step
+// isn't the player's opportunity, so the buffer is left alone: a tap made
+// during a slide is used at the first opportunity after it ends (a newer tap
+// replaces it, as always).
 function movePlayerTick(state: GameState, held: readonly Vec2[]): boolean {
+    const { player } = state
+    const slide = slideStep(state.cells, state.ice, player.pos, player.lastPos)
+    if (slide) return movePlayer(state, slide)
     const buffered = state.bufferedStep
     state.bufferedStep = vec2(0, 0)
     return (
@@ -299,4 +335,12 @@ function caught(state: GameState, from: readonly Vec2[]): boolean {
     return enemies.some((enemy, i) =>
         collides(player.pos, from[0], enemy.pos, from[i + 1])
     )
+}
+
+// Move a patroller on to its next waypoint if it stands on the current one.
+function reachWaypoint(enemy: Character) {
+    const { route } = enemy
+    if (route && samePos(enemy.pos, route[enemy.routeIndex])) {
+        enemy.routeIndex = (enemy.routeIndex + 1) % route.length
+    }
 }

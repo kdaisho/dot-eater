@@ -5,9 +5,12 @@ import { DOT_POINTS, START_LIVES, TICK_MS, TICK_RATE } from "./constants"
 import { createGameState, step, type GameState, type Outcome } from "./game"
 import { levels } from "./levels"
 import {
+    emptyProgress,
     isUnlocked,
+    markCleared,
     parseProgress,
     PROGRESS_KEY,
+    serializeProgress,
     STAGE_COUNT,
 } from "./progress"
 import { formatTicks, starText } from "./stars"
@@ -578,6 +581,41 @@ describe("main", () => {
     it("draws with the playing level's rules", () => {
         drawnGame()
         expect(drawn.last?.[3]).toBe(levels[0].rules)
+    })
+
+    it("draws a fog level with its fog", () => {
+        const fog = levels.findIndex((level) => level.rules.fog)
+        expect(fog).toBeGreaterThan(0)
+        // Unlock it: clears saved elsewhere (e.g. another tab) are merged in
+        // when a win is recorded.
+        let unlocked = emptyProgress()
+        for (let i = 0; i < fog; i++) unlocked = markCleared(unlocked, i)
+        localStorage.setItem(PROGRESS_KEY, serializeProgress(unlocked))
+        gameOver("won")
+        pressAndTick("ArrowDown")
+        pressAndTick("Space")
+        expect(screen()).toBe("stage-select")
+        // The cursor starts on stage 1, the one just played.
+        for (let i = 0; i < fog; i++) pressAndTick("ArrowDown")
+        expect(selectedItem()).toBe(levels[fog].name)
+        pressAndTick("Space")
+        try {
+            expect(screen()).toBe("playing")
+            expect(lastStartedLevel()).toBe(levels[fog])
+            drawnGame()
+            expect(drawn.last?.[3]).toBe(levels[fog].rules)
+            expect(drawn.last?.[3]).toEqual({
+                fog: { radius: expect.any(Number) },
+            })
+        } finally {
+            // Back to stage 1, which the other tests play.
+            gameOver()
+            pressAndTick("ArrowDown")
+            pressAndTick("Space")
+            for (let i = 0; i < fog; i++) pressAndTick("ArrowUp")
+            pressAndTick("Space")
+        }
+        expect(lastStartedLevel()).toBe(levels[0])
     })
 
     it.each(["dead", "won"] as const)(

@@ -4,7 +4,7 @@ import { AiType, Cell, CharacterId } from "./constants"
 import { createCharacter } from "./character"
 import { createGameState, movePlayer } from "./game"
 import { createRenderer } from "./render"
-import { makeEnemy, makeState, OLD_LEVEL } from "./test/helpers"
+import { makeEnemy, makeState, OLD_LEVEL, textMap } from "./test/helpers"
 import { vec2 } from "./vec2"
 
 // canvas-confetti crashes under happy-dom; keep it out in case anything
@@ -12,21 +12,24 @@ import { vec2 } from "./vec2"
 vi.mock("canvas-confetti", () => ({ default: vi.fn() }))
 
 // happy-dom has no 2D canvas, so record the calls on a stub context: every
-// method call is logged and property writes are accepted.
+// method call is logged, with the fillStyle set at the time, and property
+// writes are accepted.
 function stubContext() {
-    const calls: { name: string; args: unknown[] }[] = []
+    const calls: { name: string; args: unknown[]; fillStyle?: unknown }[] = []
+    let fillStyle: unknown
     const ctx = new Proxy(
         {},
         {
             get(_target, name) {
                 return (...args: unknown[]) => {
-                    calls.push({ name: String(name), args })
+                    calls.push({ name: String(name), args, fillStyle })
                     if (name === "createRadialGradient") {
                         return { addColorStop() {} }
                     }
                 }
             },
-            set() {
+            set(_target, name, value) {
+                if (name === "fillStyle") fillStyle = value
                 return true
             },
         }
@@ -347,6 +350,75 @@ describe("createRenderer", () => {
             view.innerHeight = 200
             renderer.resize()
             expect(texts()).toEqual(["🪰", "🪰"])
+        })
+    })
+
+    describe("ice", () => {
+        // The whole-cell tiles drawn (as "x,y", in drawing order), with the
+        // index of each call, and the fill styles used for them.
+        function iceTiles(
+            calls: { name: string; args: unknown[]; fillStyle?: unknown }[],
+            canvas: HTMLCanvasElement,
+            cols: number
+        ) {
+            const cell = parseFloat(canvas.style.width) / cols
+            const tiles: { at: string; call: number }[] = []
+            const styles = new Set<unknown>()
+            calls.forEach((c, i) => {
+                if (c.name !== "fillRect") return
+                const [left, top, w, h] = c.args as number[]
+                if (Math.abs(w - cell) > 1 || Math.abs(h - cell) > 1) return
+                const x = Math.round(left / cell)
+                const y = Math.round(top / cell)
+                tiles.push({ at: `${x},${y}`, call: i })
+                styles.add(c.fillStyle)
+            })
+            return { tiles, styles }
+        }
+
+        it("draws a pale tile on each ice cell, with its dot on top", () => {
+            const { calls, canvas, renderer } = setup()
+            const { map, ice } = textMap(["######", "# :~ #", "######"])
+            renderer.draw(makeState(map, { x: 1, y: 1 }, [], { ice }), 0)
+            const { tiles, styles } = iceTiles(calls, canvas, 6)
+            expect(tiles.map((t) => t.at)).toEqual(["2,1", "3,1"])
+            // One colour for all ice, not the background, walls or dots.
+            expect(styles.size).toBe(1)
+            const [style] = styles
+            expect(["#fff", "#000"]).not.toContain(style)
+            // The dot at (2, 1) comes after its tile, in the dot colour.
+            const cell = parseFloat(canvas.style.width) / 6
+            const dot = calls.findIndex(
+                (c, i) =>
+                    i > tiles[0].call &&
+                    c.name === "fillRect" &&
+                    (c.args[2] as number) < cell / 2
+            )
+            expect(dot).toBeGreaterThan(tiles[0].call)
+            expect(dot).toBeLessThan(tiles[1].call)
+            expect(calls[dot].fillStyle).not.toBe(style)
+        })
+
+        it("draws no ice tiles on a map without ice", () => {
+            const { calls, canvas, renderer } = setup()
+            renderer.draw(createGameState(OLD_LEVEL), 0)
+            expect(iceTiles(calls, canvas, 9).tiles).toEqual([])
+        })
+
+        it("hides ice outside the fog's light like any other cell", () => {
+            const { calls, canvas, renderer } = setup()
+            const { map, ice } = textMap([
+                "#############",
+                "#~~~~~~~~~~~#",
+                "############.",
+            ])
+            const state = makeState(map, { x: 1, y: 1 }, [], { ice })
+            renderer.draw(state, 0, {}, { fog: { radius: 2 } })
+            const drawn = iceTiles(calls, canvas, 13).tiles.map((t) => t.at)
+            expect(drawn).toContain("1,1")
+            expect(drawn).toContain("3,1")
+            expect(drawn).not.toContain("5,1")
+            expect(drawn).not.toContain("11,1")
         })
     })
 

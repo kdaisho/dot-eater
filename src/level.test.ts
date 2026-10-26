@@ -106,11 +106,40 @@ describe("parseLevel", () => {
                 [1, 2, 0, 2, 1],
                 [1, 1, 1, 1, 1],
             ],
+            ice: Array.from({ length: 4 }, () => Array(5).fill(false)),
             playerSpawns: [vec2(1, 1)],
             playerSpeed: 4,
             enemies: [{ pos: vec2(3, 1), ai: AiType.chase, speed: 2.5 }],
             rules: {},
         })
+    })
+
+    it("parses ice: ~ is empty ice and : is ice with a dot", () => {
+        const level = parseLevel({
+            ...valid,
+            map: ["#####", "#P:E#", "#~ .#", "#####"],
+        })
+        expect(level.cells).toEqual([
+            [1, 1, 1, 1, 1],
+            [1, 0, 2, 2, 1],
+            [1, 0, 0, 2, 1],
+            [1, 1, 1, 1, 1],
+        ])
+        expect(level.ice).toEqual([
+            [false, false, false, false, false],
+            [false, false, true, false, false],
+            [false, true, false, false, false],
+            [false, false, false, false, false],
+        ])
+    })
+
+    it("counts a dot on ice as the level's dot", () => {
+        const level = parseLevel({
+            ...valid,
+            map: ["#####", "#P:~#", "#####"],
+            enemies: [],
+        })
+        expect(level.cells[1][2]).toBe(Cell.dot)
     })
 
     it("leaves omitted speeds out", () => {
@@ -297,7 +326,7 @@ describe("parseLevel", () => {
         it("a map without dots", () => {
             const rows = ["#####", "#P  #", "#####"]
             expect(problemsOf({ ...valid, map: rows, enemies: [] })).toEqual([
-                'map must have at least one dot ("." or an "E" spawn)',
+                'map must have at least one dot (".", ":" or an "E" spawn)',
             ])
         })
 
@@ -476,6 +505,37 @@ describe("parseLevel", () => {
                 "dot at (3, 1) can't be reached from the player spawn",
                 "dot at (3, 2) can't be reached from the player spawn",
             ])
+        })
+
+        // Free movement reaches (3, 2), but every way past (3, 1) is a
+        // slide: right from P to the far wall, or left back to P.
+        it("dots only reachable by stopping mid-slide", () => {
+            const rows = ["#######", "#P~~~~#", "###.###", "#######"]
+            expect(problemsOf({ ...valid, map: rows, enemies: [] })).toEqual([
+                "dot at (3, 2) can't be reached from the player spawn",
+            ])
+        })
+
+        // Stepping down from P stops on the ice at (2, 2) (a wall below),
+        // but once the player slides off sideways it only ever slides
+        // between the two end walls, past (2, 2), and can't get back up.
+        it("a slide that strands the player", () => {
+            const rows = ["######", "##P###", "#~~:~#", "######"]
+            expect(problemsOf({ ...valid, map: rows, enemies: [] })).toEqual([
+                "sliding can strand the player at (1, 2), with no way back to the spawn",
+                "sliding can strand the player at (2, 2), with no way back to the spawn",
+                "sliding can strand the player at (3, 2), with no way back to the spawn",
+                "sliding can strand the player at (4, 2), with no way back to the spawn",
+            ])
+        })
+
+        // A row of ice with a tunnel at both ends and no wall: a slide along
+        // it never ends.
+        it("an endless slide through a tunnel", () => {
+            const rows = ["#####", "#P.##", "~~~~~", "#####"]
+            const problems = problemsOf({ ...valid, map: rows, enemies: [] })
+            expect(problems).toHaveLength(5)
+            for (const p of problems) expect(p).toMatch(/^sliding can strand/)
         })
 
         it("with every problem of a stage in one error", () => {

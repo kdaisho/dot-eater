@@ -36,6 +36,8 @@ const COLORS = {
     background: "#fff",
     wall: "#000",
     dot: "#000",
+    // Ice floor: a pale blue tile under the dot.
+    ice: "#d6f0fb",
     text: "#000",
     // The fog's darkness, as RGB so the soft edge can fade it in.
     fog: "17, 17, 17",
@@ -217,9 +219,10 @@ function drawDarkness(
     }
 }
 
-// Walls and dots, plus the dot the player has just eaten while its glide
-// hasn't reached it yet (see eatenDotVisible). In fog, only those inside the
-// light are drawn.
+// Ice floor, walls and dots, plus the dot the player has just eaten while its
+// glide hasn't reached it yet (see eatenDotVisible). Ice fills its whole
+// cell, so a patch reads as one surface, with any dot drawn on top. In fog,
+// only cells inside the light are drawn.
 function drawCells(
     ctx: CanvasRenderingContext2D,
     state: GameState,
@@ -238,6 +241,18 @@ function drawCells(
             if (fog && !fog.visible(vec2(x, y))) return
             const cx = (x + 0.5) * cell
             const cy = (y + 0.5) * cell
+            if (state.ice[y][x]) {
+                // Whole pixels, so neighbouring ice cells meet without a seam.
+                const left = Math.round(x * cell)
+                const top = Math.round(y * cell)
+                ctx.fillStyle = COLORS.ice
+                ctx.fillRect(
+                    left,
+                    top,
+                    Math.round((x + 1) * cell) - left,
+                    Math.round((y + 1) * cell) - top
+                )
+            }
             if (value === Cell.wall) {
                 ctx.fillStyle = COLORS.wall
                 ctx.fillRect(cx - wall / 2, cy - wall / 2, wall, wall)
