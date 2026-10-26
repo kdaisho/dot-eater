@@ -113,34 +113,70 @@ export function splitSplitter(state: GameState, i: number) {
 // just breathed gets a moment's room where the maze allows it (in a corridor
 // one half still comes its way). Each half glides out from the Splitter's
 // cell as if it had just moved there, so the no-reverse rule keeps them
-// going apart. A half left without a cell (a dead end) stays as the
-// Splitter was.
+// going apart.
 //
-// A split never catches the player on the split tick. The player's drawn
-// path this tick runs along its latest move, lastPos to pos (plus under a
-// tick's glide before lastPos), so any other cell's centre is about 0.8 or
-// more from it, beyond CATCH_DISTANCE: halves resting on their cells, or
-// gliding out from a Splitter's cell that is neither, keep clear. If the
-// Splitter stood on either of the player's cells (its sprite still gliding
-// in), gliding out from there would start on top of the player and catch at
-// once, so the halves start at rest on their new cells instead.
+// A split never catches the player, on the split tick or right after. The
+// player's drawn path this tick runs along its latest move, lastPos to pos
+// (plus under a tick's glide before lastPos), so any other cell's centre is
+// about 0.8 or more from it, beyond CATCH_DISTANCE: halves resting on their
+// cells, or gliding out from a Splitter's cell that is neither, keep clear.
+// If the Splitter stood on either of the player's cells (its sprite still
+// gliding in), gliding out from there would start on top of the player and
+// catch at once, so the halves start at rest on their new cells instead. A
+// half left without a cell of its own (a dead end) goes onto the other
+// half's, at rest, rather than staying as the Splitter was, which could
+// glide on into the player. With no free neighbour at all (the Splitter in
+// a dead end the player walked in after it), the halves go to the nearest
+// free cells further out (see freeCells), at rest. Halves at rest start
+// with no progress, so they wait a whole move before coming after the
+// player.
 function spread(state: GameState, halves: readonly Character[]) {
     const { cells, player } = state
     const at = vec2(halves[0].pos.x, halves[0].pos.y)
     const fromPlayer = distanceMap(cells, player.pos)
-    const playerCell = (to: Vec2) =>
-        samePos(to, player.pos) || samePos(to, player.lastPos)
-    const targets = openNeighbours(cells, at)
-        .filter((to) => !playerCell(to))
-        .sort((a, b) => fromPlayer[b.y][b.x] - fromPlayer[a.y][a.x] || 0)
-    const rest = playerCell(at)
-    targets.slice(0, 2).forEach((to, k) => {
-        const half = halves[k]
-        const from = rest ? to : at
+    const { free, next } = freeCells(state, at)
+    const targets = free.sort(
+        (a, b) => fromPlayer[b.y][b.x] - fromPlayer[a.y][a.x] || 0
+    )
+    if (targets.length === 0) return
+    const glide = next && !playerCell(state, at)
+    halves.forEach((half, k) => {
+        const to = targets[k] ?? targets[0]
+        const from = glide && targets[k] ? at : to
         half.lastPos = vec2(from.x, from.y)
         half.pos = vec2(to.x, to.y)
         half.moveProgress = 0
     })
+}
+
+function playerCell(state: GameState, cell: Vec2): boolean {
+    const { player } = state
+    return samePos(cell, player.pos) || samePos(cell, player.lastPos)
+}
+
+// The open cells nearest `at` by path that aren't the player's (see
+// playerCell), in direction order: its free neighbours, or if it has none,
+// the free cells at the first distance that has any. `next` is whether they
+// are neighbours. Empty only if every cell `at` can reach is the player's.
+function freeCells(
+    state: GameState,
+    at: Vec2
+): { free: Vec2[]; next: boolean } {
+    const { cells } = state
+    const seen = [at]
+    let ring = [at]
+    for (let next = true; ring.length > 0; next = false) {
+        ring = ring
+            .flatMap((pos) => openNeighbours(cells, pos))
+            .filter((v) => {
+                if (seen.some((s) => samePos(s, v))) return false
+                seen.push(v)
+                return true
+            })
+        const free = ring.filter((v) => !playerCell(state, v))
+        if (free.length > 0) return { free, next }
+    }
+    return { free: [], next: false }
 }
 
 // The half at `i` was defeated (defeatEnemy has scored it and sent it to

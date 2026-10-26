@@ -157,13 +157,14 @@ describe("a whole Splitter", () => {
         expect([main.pos, spare.pos]).toEqual([vec2(6, 1), vec2(7, 2)])
     })
 
-    it("leaves one half where it was in a dead end", () => {
+    it("puts the half left without a cell in a dead end on the other's, at rest", () => {
         // In the side cell, out of the breath's way: split it directly.
         const { state, main, spare } = setup({ at: vec2(6, 1) })
         defeatEnemy(state, main)
         expect(main.pos).toEqual(vec2(6, 2))
         expect(main.lastPos).toEqual(vec2(6, 1))
-        expect(spare.pos).toEqual(vec2(6, 1))
+        expect(spare.pos).toEqual(vec2(6, 2))
+        expect(spare.lastPos).toEqual(vec2(6, 2))
         expect(inPlay(spare)).toBe(true)
     })
 
@@ -177,8 +178,10 @@ describe("a whole Splitter", () => {
         expect(main.pos).toEqual(vec2(2, 2))
         expect(main.lastPos).toEqual(vec2(2, 2))
         expect(inPlay(spare)).toBe(true)
-        // A dead end on the player's side: the spare stays as it was.
-        expect(spare.pos).toEqual(vec2(1, 2))
+        // A dead end on the player's side: the spare shares the main's
+        // cell, at rest.
+        expect(spare.pos).toEqual(vec2(2, 2))
+        expect(spare.lastPos).toEqual(vec2(2, 2))
     })
 
     it("isn't split by effects that don't defeat", () => {
@@ -366,5 +369,33 @@ describe("a split next to the player", () => {
         expect(state.score).toBe(DEFEAT_POINTS)
         expect(main.pos).toEqual(vec2(4, 2))
         expect(drawn(state, main)).toEqual(vec2(4, 2))
+    })
+    it("gives the player room in a dead end after the split", () => {
+        // As above, the Splitter on the player's cell at the corridor's
+        // west end, gliding in from (2, 2); the player stands still.
+        const { state, main } = setup({ at: vec2(1, 2), lives: 3 })
+        main.lastPos = vec2(2, 2)
+        main.moveProgress = 0.3
+        tick(state, true)
+        expect(state.score).toBe(DEFEAT_POINTS)
+        run(state, 10)
+        expect(state.lives).toBe(3)
+    })
+
+    it("sends the halves further out when the player has the only way out", () => {
+        // The player follows the Splitter into the side cell, (6, 1), and
+        // breathes up the dead end: its one neighbour is the cell the
+        // player is leaving.
+        const { state, main, spare } = near(vec2(6, 1), vec2(6, 2), vec2(6, 2))
+        main.moveProgress = 0.7
+        expect(breatheTo(state, vec2(0, -1))).toBeNull()
+        expect(state.lives).toBe(3)
+        expect(isSplitterHalf(main)).toBe(true)
+        expect([main.pos, spare.pos]).toEqual([vec2(5, 2), vec2(7, 2)])
+        for (const half of [main, spare]) {
+            expect(drawn(state, half)).toEqual(half.pos)
+        }
+        run(state, 10)
+        expect(state.lives).toBe(3)
     })
 })
