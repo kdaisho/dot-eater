@@ -246,6 +246,35 @@ describe("breathing", () => {
         expect(hits[0].cells).toEqual([vec2(2, 1), vec2(3, 1), vec2(4, 1)])
         expect(hits[0].enemies).toEqual([near, far])
     })
+    // Regression: an enemy on the player's cell, its sprite still gliding
+    // in, was out of every line and cone, so breathing at it missed.
+    it("hits an enemy on the player's own cell first, for a line or a cone", () => {
+        for (const shape of [
+            { kind: "line", range: 3 },
+            { kind: "cone", range: 2 },
+        ] as const) {
+            const onPlayer = makeEnemy(1, 1, AiType.random, { x: 0, y: 1 })
+            onPlayer.moveProgress = 0.3
+            const ahead = makeEnemy(2, 1)
+            const hits: BreathHit[] = []
+            const breath = testBreath({
+                shape,
+                fire: (hit) => void hits.push(hit),
+            })
+            const state = makeState(
+                corridor,
+                { x: 1, y: 1 },
+                [ahead, onPlayer],
+                {
+                    breath,
+                }
+            )
+            state.breather.energy = 100
+            tick(state, { breath: true })
+            expect(hits[0].enemies).toEqual([onPlayer, ahead])
+            expect(hits[0].cells[0]).toEqual(vec2(2, 1))
+        }
+    })
 })
 
 describe("defeated enemies", () => {

@@ -69,7 +69,7 @@ A breath file exports one `BreathDef` (types in `src/breath.ts`):
 | `speedScale` | Player speed as a factor of the level's (Boar 0.875 → 3.5 cells/s)                              |
 | `fire(hit)`  | What happens. Return `false` (before changing anything) to refuse: no energy spent, no cooldown |
 
-`fire` gets a `BreathHit`: `origin` (the player's cell), `facing`, `cells` (the shape resolved against the maze, nearest first, never walls; walls stop it, tunnels wrap), `wall` (the wall a line, or a cone's first cell, stopped at), `enemies` (enemies in play on `cells`, nearest first), `state` (read only), and the effects:
+`fire` gets a `BreathHit`: `origin` (the player's cell), `facing`, `cells` (the shape resolved against the maze, nearest first, never walls; walls stop it, tunnels wrap), `wall` (the wall a line, or a cone's first cell, stopped at), `enemies` (enemies in play on `cells`, nearest first; a line or cone also hits enemies on `origin`, first, since one can be on the player's cell while its sprite still glides in), `state` (read only), and the effects:
 
 - `defeat(enemy)`: +50 points; the enemy waits at its spawn, out of play and not drawn, then blinks for the last 1 s and is back after 5 s (a patroller restarts its route).
 - `addStatus(enemy, status, seconds)`: an `EnemyStatus` with flags `holds` (doesn't move or slide), `harmless` (doesn't catch), `solid` (the player can't walk into it), and a `look`. Same `name` again refreshes to the longer time.

@@ -121,7 +121,9 @@ export type BreathHit = {
     // The wall a line (or a cone's first cell) stopped at, if any.
     wall: Vec2 | null
     // Enemies in play standing on `cells` (by their cell, pos), in the order
-    // of `cells`, so the first is the one nearest the player.
+    // of `cells`, so the first is the one nearest the player. For a line or
+    // a cone, enemies on `origin` come first: one can stand on the player's
+    // cell while its sprite is still gliding in.
     enemies: readonly Character[]
     defeat(enemy: Character): void
     addStatus(enemy: Character, status: EnemyStatus, seconds: number): void
@@ -206,7 +208,14 @@ export function breathe(state: GameState): boolean {
     const { breath, facing } = breather
     const origin = vec2(state.player.pos.x, state.player.pos.y)
     const reach = resolveShape(state.cells, origin, facing, breath.shape)
-    const enemies = reach.cells.flatMap((cell) =>
+    // Line and cone shapes start a cell ahead, but an enemy can stand on the
+    // player's own cell while its sprite still glides in (collisions are on
+    // drawn positions), so they hit enemies there too, first.
+    const struck =
+        breath.shape.kind === "line" || breath.shape.kind === "cone"
+            ? [origin, ...reach.cells]
+            : reach.cells
+    const enemies = struck.flatMap((cell) =>
         state.enemies.filter((e) => inPlay(e) && samePos(e.pos, cell))
     )
     const hit: BreathHit = {
