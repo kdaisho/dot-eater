@@ -115,13 +115,15 @@ describe("parseLevel", () => {
         })
     })
 
-    it("starts player 2 on Q, an empty cell", () => {
+    // The dot is for 1-player games; createGameState clears it when there
+    // is a player 2.
+    it("starts player 2 on Q, which holds a dot", () => {
         const level = parseLevel({
             ...valid,
             map: ["#####", "#PQE#", "#. .#", "#####"],
         })
         expect(level.playerSpawns).toEqual([vec2(1, 1), vec2(2, 1)])
-        expect(level.cells[1][2]).toBe(Cell.none)
+        expect(level.cells[1][2]).toBe(Cell.dot)
     })
 
     it("starts player 2 on player 1's spawn when there is no Q", () => {
@@ -437,6 +439,8 @@ describe("parseLevel", () => {
         it("dots player 2 can't reach from its spawn", () => {
             const rows = ["######", "#P.#Q#", "#.E# #", "######"]
             expect(problemsOf({ ...valid, map: rows })).toEqual([
+                // Q's own dot, which player 1 can't reach either.
+                "dot at (4, 1) can't be reached from the player spawn",
                 "dot at (2, 1) can't be reached from player 2's spawn",
                 "dot at (1, 2) can't be reached from player 2's spawn",
                 "dot at (2, 2) can't be reached from player 2's spawn",

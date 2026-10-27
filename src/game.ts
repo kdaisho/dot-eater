@@ -145,6 +145,11 @@ export function createGameState(
         createPlayer(level, animal, level.playerSpawns[i])
     )
     const cells = level.cells.map((row) => [...row])
+    // Like player 1's, the other players' spawns start empty. The level
+    // keeps a dot on them for the games without those players.
+    for (const { character: c } of players.slice(1)) {
+        cells[c.pos.y][c.pos.x] = Cell.none
+    }
     // One enemy slot each, two for a Splitter (see splitter.ts), all with
     // the spawn of the level's enemy they come from.
     const enemies: Character[] = []

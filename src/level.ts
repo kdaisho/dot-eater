@@ -88,8 +88,10 @@ export type LevelData = {
 //   .        dot
 //   (space)  empty
 //   P        player 1 spawn (an empty cell)
-//   Q        player 2 spawn (an empty cell). Optional: a level without one
-//            starts player 2 on player 1's spawn.
+//   Q        player 2 spawn (a dot, eaten by whoever gets there in a
+//            1-player game; createGameState clears it when there is a
+//            player 2). Optional: a level without one starts player 2 on
+//            player 1's spawn.
 //   E        enemy spawn (the enemy starts on a dot)
 //   B        boss spawn: the top-left cell of its 2x2 footprint (a dot); the
 //            other three must be "." or space
@@ -242,7 +244,11 @@ export function parseLevel(data: LevelData): Level {
                 const player = PLAYER_CHARS.indexOf(ch)
                 if (player !== -1) {
                     playerPositions[player].push(vec2(x, y))
-                    return Cell.none
+                    // Player 1's spawn is empty. Later players' spawns hold
+                    // a dot, so a 1-player game has as many as with no
+                    // player 2 at all; createGameState clears the spawn of
+                    // each player there is.
+                    return player === 0 ? Cell.none : Cell.dot
                 }
                 switch (ch) {
                     case WALL:

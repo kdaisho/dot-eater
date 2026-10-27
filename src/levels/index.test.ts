@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vite-plus/test"
 import { AiType, Cell } from "../constants"
+import { DEFAULT_ANIMAL } from "../roster"
+import { createGameState } from "../game"
 import { parseLevel, type Cells } from "../level"
 import { slideReach } from "../ice"
 import { distanceMap, openNeighbours } from "../path"
@@ -31,8 +33,27 @@ describe("levels", () => {
             expect(level.playerSpawns).toHaveLength(2)
             expect(p2).not.toEqual(p1)
             expect(Math.abs(p2.x - p1.x) + Math.abs(p2.y - p1.y)).toBe(1)
-            expect(level.cells[p2.y][p2.x]).toBe(Cell.none)
             expect(level.ice[p2.y][p2.x]).toBe(false)
+        }
+    )
+
+    // Player 2's spawn holds a dot in 1-player games, so they have the
+    // same dots as before 2-player games existed (these counts); with a
+    // player 2 it starts empty, as player 1's does.
+    const SOLO_DOTS = [129, 141, 133, 125, 145]
+    const dots = (cells: readonly (readonly Cell[])[]) =>
+        cells.flat().filter((c) => c === Cell.dot).length
+    it.each(levels.map((level, i) => [i + 1, level] as const))(
+        "stage %i keeps every dot in 1-player, the spawn's too",
+        (n, level) => {
+            const [p1, p2] = level.playerSpawns
+            const solo = createGameState(level, DEFAULT_ANIMAL)
+            expect(dots(solo.cells)).toBe(SOLO_DOTS[n - 1])
+            expect(solo.cells[p2.y][p2.x]).toBe(Cell.dot)
+            const duo = createGameState(level, [DEFAULT_ANIMAL, DEFAULT_ANIMAL])
+            expect(dots(duo.cells)).toBe(SOLO_DOTS[n - 1] - 1)
+            expect(duo.cells[p2.y][p2.x]).toBe(Cell.none)
+            expect(duo.cells[p1.y][p1.x]).toBe(Cell.none)
         }
     )
 
