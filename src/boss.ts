@@ -197,17 +197,19 @@ export function bossReach(
 // on the floor `blocked` leaves it), then on ties the player nearest its
 // footprint now, then the first. So a player in a 1-wide corridor the boss
 // can't enter doesn't draw it from one it can run down. With one player
-// that is always player 1, without searching.
+// that is always player 1, without searching. `fromPlayers` are each
+// target's path distances, if the caller has them (for bossMove too).
 export function bossTarget(
     state: GameState,
     targets: readonly Vec2[],
-    blocked: BlockMap | null = null
+    blocked: BlockMap | null = null,
+    fromPlayers?: readonly DistanceMap[]
 ): number {
     const boss = state.boss
     if (!boss || targets.length <= 1) return 0
     const reach = bossReach(boss.pos, bossFloor(state, blocked))
-    const rank = targets.map((t) => {
-        const fromPlayer = distanceMap(state.cells, t)
+    const rank = targets.map((t, i) => {
+        const fromPlayer = fromPlayers?.[i] ?? distanceMap(state.cells, t)
         let best = Infinity
         for (const r of reach) best = Math.min(best, away(fromPlayer, r.pos))
         return { best, now: away(fromPlayer, boss.pos) }
@@ -228,7 +230,8 @@ function away(fromPlayer: DistanceMap, pos: Vec2): number {
 }
 
 // The boss's next top-left position, or null to stay put. `target` is the
-// player's cell; `blocked` the cells tile effects block (see enemyBlocks in
+// player's cell, `fromPlayer` its path distances (searched here unless
+// given); `blocked` the cells tile effects block (see enemyBlocks in
 // breath.ts), or null for none.
 //
 // It heads for the reachable position whose footprint is nearest the player
@@ -246,7 +249,8 @@ function away(fromPlayer: DistanceMap, pos: Vec2): number {
 export function bossMove(
     state: GameState,
     target: Vec2,
-    blocked: BlockMap | null
+    blocked: BlockMap | null,
+    fromPlayer?: DistanceMap
 ): Vec2 | null {
     const boss = state.boss
     if (!boss || boss.defeated) return null
@@ -258,7 +262,7 @@ export function bossMove(
         )
         return escape ? escape.first : null
     }
-    const fromPlayer = distanceMap(state.cells, target)
+    fromPlayer ??= distanceMap(state.cells, target)
     let best: { first: Vec2; score: number } | null = null
     for (const r of bossReach(boss.pos, floor)) {
         // Found in order of distance, so a later one only wins on a

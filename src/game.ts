@@ -9,7 +9,13 @@ import {
     PLAYER_SPEED,
     START_LIVES,
 } from "./constants"
-import { blockedView, enemyMove, nearestTarget, type Random } from "./ai"
+import {
+    blockedView,
+    enemyMove,
+    nearestTarget,
+    targetPaths,
+    type Random,
+} from "./ai"
 import {
     breathe,
     createBreather,
@@ -37,6 +43,7 @@ import { glidePos, wrapDelta, type Glider } from "./glide"
 import { slideStep, type IceMap } from "./ice"
 import { hasDots, loopPos, type Cells, type Level } from "./level"
 import { levels } from "./levels"
+import { distanceMap } from "./path"
 import { DEFAULT_ANIMAL, type AnimalId } from "./roster"
 import { createSplitter, resetSplitter } from "./splitter"
 import { samePos, vec2, type Vec2 } from "./vec2"
@@ -425,6 +432,9 @@ export function step(
     const blocked = enemyBlocks(state)
     // Cells as enemies see them, so blocked cells also end slides.
     const enemyCells = blocked ? blockedView(cells, blocked) : cells
+    // Each player's distances, searched once a tick at most, for every
+    // enemy that aims at the nearest player.
+    const paths = targetPaths(cells, from.players, enemyCells)
     enemies.forEach((enemy, i) => {
         if (!inPlay(enemy) || hasStatus(enemy, "holds")) return
         if (!advance(enemy, dt)) return
@@ -445,7 +455,13 @@ export function step(
             )
             reachWaypoint(enemy)
         } else {
-            const target = nearestTarget(cells, enemy, from.players, enemyCells)
+            const target = nearestTarget(
+                cells,
+                enemy,
+                from.players,
+                enemyCells,
+                paths
+            )
             enemyMove(
                 cells,
                 enemy,
@@ -462,8 +478,15 @@ export function step(
     })
     const { boss } = state
     if (boss && !boss.defeated && advance(boss, dt)) {
-        const target = from.players[bossTarget(state, from.players, blocked)]
-        const next = bossMove(state, target, blocked)
+        // Each player's distances, shared by the choice and the move.
+        const fromPlayers = from.players.map((p) => distanceMap(cells, p))
+        const target = bossTarget(state, from.players, blocked, fromPlayers)
+        const next = bossMove(
+            state,
+            from.players[target],
+            blocked,
+            fromPlayers[target]
+        )
         if (next) {
             boss.lastPos = vec2(boss.pos.x, boss.pos.y)
             boss.pos = next
