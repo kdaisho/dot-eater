@@ -344,7 +344,11 @@ export function step(
         // The breath comes before the enemies move, but it may have moved
         // some (pushed or defeated) or held them: trace each enemy from
         // where it is after the breath, not along a sweep across the jump.
-        start = [start[0], ...tickStarts(state, dt, rate).slice(1)]
+        const after = tickStarts(state, dt, rate)
+        start = {
+            characters: [start.characters[0], ...after.characters.slice(1)],
+            boss: after.boss,
+        }
     }
     const blocked = enemyBlocks(state)
     // Cells as enemies see them, so blocked cells also end slides.
@@ -507,24 +511,29 @@ export type TickStart = {
     arrive: number
 }
 
-// Every character's TickStart for a tick of `dt` seconds, in the same order
-// as positions, then the boss's (of its top-left cell) if there is one.
-// Taken before anyone moves. `rate` scales the player's speed (see
-// GameState.playerRate); the default leaves it alone.
-function tickStarts(state: GameState, dt: number, rate = 1): TickStart[] {
+// Everyone's TickStart for a tick (see tickStarts).
+export type TickStarts = {
+    // The player's, then the enemies', in the same order as positions.
+    characters: TickStart[]
+    // The boss's (of its top-left cell), or null if there is no boss.
+    boss: TickStart | null
+}
+
+// Everyone's TickStart for a tick of `dt` seconds, taken before anyone
+// moves. `rate` scales the player's speed (see GameState.playerRate); the
+// default leaves it alone.
+function tickStarts(state: GameState, dt: number, rate = 1): TickStarts {
     const cols = state.cells[0].length
     const rows = state.cells.length
     const { boss } = state
-    const bossStart: TickStart[] = boss
-        ? [
-              {
-                  drawn: drawnPos(boss, cols, rows),
-                  cell: vec2(boss.pos.x, boss.pos.y),
-                  arrive: arriveTime(boss, dt),
-              },
-          ]
-        : []
-    const starts = [state.player, ...state.enemies].map((c) => ({
+    const bossStart: TickStart | null = boss
+        ? {
+              drawn: drawnPos(boss, cols, rows),
+              cell: vec2(boss.pos.x, boss.pos.y),
+              arrive: arriveTime(boss, dt),
+          }
+        : null
+    const characters = [state.player, ...state.enemies].map((c) => ({
         drawn: drawnPos(c, cols, rows),
         cell: vec2(c.pos.x, c.pos.y),
         // A held enemy's progress doesn't move on this tick, so it stays
@@ -534,7 +543,7 @@ function tickStarts(state: GameState, dt: number, rate = 1): TickStart[] {
                 ? Infinity
                 : arriveTime(c, c === state.player ? dt * rate : dt),
     }))
-    return [...starts, ...bossStart]
+    return { characters, boss: bossStart }
 }
 
 // When in a tick of `dt` seconds a character's glide reaches its cell: the
@@ -680,7 +689,7 @@ function collides(
 //   costs no life.
 export function checkEnd(
     state: GameState,
-    start: readonly TickStart[] = tickStarts(state, 0)
+    start: TickStarts = tickStarts(state, 0)
 ): Outcome | null {
     const bossLeft = state.boss !== null && !state.boss.defeated
     if (!hasDots(state.cells) && !bossLeft) return "won"
@@ -703,22 +712,29 @@ export function checkEnd(
 // take a far-off player the short way round the map, but on a map without
 // tunnels that leaves it at least a cell from the boss's square, so it never
 // makes a catch.
-function caught(state: GameState, start: readonly TickStart[]): boolean {
+function caught(state: GameState, start: TickStarts): boolean {
     const cols = state.cells[0].length
     const rows = state.cells.length
     const [player, ...enemies] = drawnPositions(state)
     const byEnemy = enemies.some((enemy, i) => {
         const e = state.enemies[i]
         if (!inPlay(e) || hasStatus(e, "harmless")) return false
-        return collides(start[0], player, start[i + 1], enemy, cols, rows)
+        return collides(
+            start.characters[0],
+            player,
+            start.characters[i + 1],
+            enemy,
+            cols,
+            rows
+        )
     })
     if (byEnemy) return true
     const { boss } = state
-    if (!boss || boss.defeated) return false
+    if (!boss || boss.defeated || !start.boss) return false
     return collides(
-        start[1 + state.enemies.length],
+        start.boss,
         drawnPos(boss, cols, rows),
-        start[0],
+        start.characters[0],
         player,
         cols,
         rows,
