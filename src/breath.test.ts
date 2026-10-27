@@ -201,6 +201,46 @@ describe("resolveShape with a boss's body in the way", () => {
         ])
     })
 
+    it("keeps a longer cone out of the cells behind its body", () => {
+        // A 7x7 room, the same body, from (1, 3) facing right, range 5. As
+        // above up to column 4. Rows 3 and 4 are its body's rows, so in
+        // columns 5 and 6 they are behind it and dark, though (5, 2) and
+        // (6, 2) beside them are lit: only y 1-2 there.
+        const room = cellsFrom(
+            textMap([
+                "#########",
+                "#       #",
+                "#       #",
+                "#       #",
+                "#       #",
+                "#       #",
+                "#       #",
+                "#       #",
+                "#########",
+            ]).map
+        )
+        const reach = resolveShape(
+            room,
+            vec2(1, 3),
+            east,
+            { kind: "cone", range: 5 },
+            body
+        )
+        expect(xy(reach.cells)).toEqual([
+            [2, 3],
+            [3, 2],
+            [3, 3],
+            [3, 4],
+            [4, 1],
+            [4, 2],
+            [4, 3],
+            [5, 1],
+            [5, 2],
+            [6, 1],
+            [6, 2],
+        ])
+    })
+
     it("doesn't change an area", () => {
         const area = { kind: "area", radius: 1 } as const
         expect(resolveShape(cells, vec2(2, 3), east, area, body)).toEqual(

@@ -294,7 +294,10 @@ function add(cells: Cells, p: Vec2, d: Vec2): Vec2 {
 //
 // `body`, if given, marks the cells a big body (the boss) fills: a line or
 // a cone covers them but goes no further through them, so they cast
-// shadows like walls without being walls. Area and self shapes ignore it.
+// shadows like walls without being walls. A cone's shadow is the cells
+// behind the body: once a row meets it, those offsets across the facing
+// stay dark for the rest of the cone, except for more of the body itself.
+// Area and self shapes ignore it.
 export function resolveShape(
     cells: Cells,
     origin: Vec2,
@@ -329,6 +332,8 @@ export function resolveShape(
             let wall: Vec2 | null = null
             let centre = origin
             let lit = new Set<number>([0])
+            // Offsets across the facing the body has been met at.
+            const shadow = new Set<number>()
             for (let k = 1; k <= shape.range && lit.size > 0; k++) {
                 centre = add(cells, centre, facing)
                 const next = new Set<number>()
@@ -351,7 +356,9 @@ export function resolveShape(
                         if (k === 1) wall = p
                         continue
                     }
-                    if (!body(p)) next.add(o)
+                    if (body(p)) shadow.add(o)
+                    else if (shadow.has(o)) continue
+                    else next.add(o)
                     if (seen.has(key(p))) continue
                     seen.add(key(p))
                     result.push(p)
