@@ -10,6 +10,7 @@ import {
     type Screen,
 } from "./flow"
 import type { GameState } from "./game"
+import { GamepadSource, type PadChange } from "./gamepad"
 import { InputState, KeyboardSource } from "./input"
 import { loadLastPick, saveLastPick } from "./lastPick"
 import { levels } from "./levels"
@@ -26,12 +27,14 @@ import {
     burst,
     celebrate,
     hideOverlay,
+    hideToast,
     showCharacterSelect,
     showGameOver,
     showPause,
     showStageClear,
     showStageSelect,
     showTitle,
+    showToast,
     type EndScreenView,
 } from "./ui"
 
@@ -75,7 +78,12 @@ const loop = createLoop({
     stepMs: TICK_MS,
     maxFrameMs: MAX_FRAME_MS,
     now: () => performance.now(),
-    requestFrame: (callback) => requestAnimationFrame(callback),
+    // Pads are polled once per frame, before the frame's ticks read input.
+    requestFrame: (callback) =>
+        requestAnimationFrame(() => {
+            pads.poll()
+            callback()
+        }),
     cancelFrame: (id) => cancelAnimationFrame(id),
 })
 
@@ -192,6 +200,33 @@ document.addEventListener("visibilitychange", () => {
     if (document.hidden) autoPause()
 })
 
+// Gamepads: in one-player play every pad drives player 1, alongside the
+// keyboard. A pad lost mid-game pauses it, like leaving the window.
+const TOAST_MS = 2000
+let toastTimer: ReturnType<typeof setTimeout> | undefined
+function onPadChange({ kind }: PadChange) {
+    showToast(
+        kind === "connected"
+            ? "Controller connected"
+            : "Controller disconnected"
+    )
+    clearTimeout(toastTimer)
+    toastTimer = setTimeout(hideToast, TOAST_MS)
+    if (kind === "disconnected") autoPause()
+}
+// getGamepads is missing in some browsers and throws where a permissions
+// policy blocks gamepads; the game then runs on the keyboard alone.
+function gamepads(): readonly (Gamepad | null)[] {
+    try {
+        return navigator.getGamepads()
+    } catch {
+        return []
+    }
+}
+const pads = new GamepadSource(gamepads, globalThis, onPadChange)
+pads.setAssignment("shared")
+
 new KeyboardSource().attach(input)
+pads.attach(input)
 showOverlay(screen)
 loop.start()
