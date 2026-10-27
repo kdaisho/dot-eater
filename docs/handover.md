@@ -4,17 +4,17 @@ Last updated: 2026-10-27. Read `CLAUDE.md` first for project conventions.
 
 ## Where things stand
 
-- **Organize code & tooling** (#2–#12), **Engine foundations** (#14–#21) and **Characters & breaths** (#37–#43) are done and live.
-- **Characters & breaths:** KDA-208 breath system and energy meter (#37), KDA-209 character select (#38), KDA-216–220 the five breaths (#39–#43). All Done in Linear.
-- **Stages:** stages 1–4 live (#23–#34). KDA-229 Splitter enemy merged (#44) but no stage uses it yet. **KDA-207 Stage 5 "Boss lair" is the only issue left**, unblocked, not started (Backlog).
-- `main` is at `7d05986` (merge of #44): 767 tests passing, Pages deploy green. No open PRs, no feature branches, no worktrees.
+- **Organize code & tooling** (#2–#12), **Engine foundations** (#14–#21), **Characters & breaths** (#37–#43) and **Stages** (#23–#34, #44, #46) are done and live.
+- **Stages** finished with KDA-207 Stage 5 "Boss lair" (https://github.com/kdaisho/dot-eater/pull/46, merge `1a09e73`): a 2×2 boss 🐙 with health, plus a Splitter and a chaser. All five stages are live, unlocked in order.
+- `main` is at `1a09e73`: 850 tests passing, Pages deploy green. No open PRs, no feature branches, no worktrees.
+- Nothing is in progress. Open Linear issues: Controllers & local 2-player (KDA-210, 211, 221, 222), Polish (KDA-212–215), the idea backlog (KDA-223–227) and KDA-245, all in Backlog.
 
 ### Start here (new session)
 
-1. Read this file and `CLAUDE.md`, then KDA-207 in Linear.
-2. KDA-207's product questions are settled (see "Decisions already made" and the KDA-207 description).
-3. Plan KDA-207. It probably splits into an engine part (a 2×2 boss with health) and a level part (the stage map, minions, par). Run the parts in parallel only if a contract keeps them in separate files.
-4. Offer the user a playable preview before asking to merge (see "How we work").
+1. Read this file and `CLAUDE.md`.
+2. Ask the user which milestone is next. Recommend **Controllers & local 2-player**, starting with KDA-211 (two players in the game state and input), since the engine already keeps breath state per player in anticipation of it. The other option is **Polish** (KDA-212–215).
+3. Read that milestone's issues in Linear, settle their product questions with the user (ask with a recommendation), and write the answers into the issues and into "Decisions already made".
+4. Plan, delegate to agents in worktrees, verify, review, and offer a playable preview before asking to merge (see "How we work").
 
 ## Code map
 
@@ -30,47 +30,34 @@ Last updated: 2026-10-27. Read `CLAUDE.md` first for project conventions.
 | `breaths/`                                | One `BreathDef` per animal plus `<animal>.test.ts`; `index.ts` maps `AnimalId` → `BREATHS`                                                           |
 | `roster.ts`                               | `AnimalId`, `ANIMALS` (name, emoji, card text), `ANIMAL_IDS`, `DEFAULT_ANIMAL`, `isAnimalId`                                                         |
 | `splitter.ts`                             | Splitter slots (main + spare), `splitSplitter`/`spread`, `halfDefeated`, `resetSplitter`, `GONE`                                                     |
+| `boss.ts`                                 | The 2×2 boss (`GameState.boss`): `createBoss`, `bossFits`/`bossReach`/`bossMove`, `damageBoss`, `resetBoss`, footprint and collision helpers         |
 | `ai.ts`, `path.ts`                        | Enemy AI (random, chase, ambusher, patroller, phantom, splitter), `blockedView`/`goalView`; BFS `distanceMap`, `openNeighbours`                      |
 | `ice.ts`, `fog.ts`                        | Sliding (`slideStep`, `slideReach`, `slideDistances`); fog distance and light centres                                                                |
-| `level.ts`, `levels/`                     | `LevelData` format, `parseLevel` validation; `levels/index.ts` lists stages 1–4                                                                      |
+| `level.ts`, `levels/`                     | `LevelData` format, `parseLevel` validation; `levels/index.ts` lists stages 1–5                                                                      |
 | `input.ts`                                | Actions, `InputState`/`PlayerInput` (`ignoreHeld`), `KeyboardSource`                                                                                 |
 | `render.ts`, `glide.ts`, `layout.ts`      | Canvas renderer (maze, ice, fog, breath looks, HUD energy meter), glide maths, layout/DPR                                                            |
 | `ui.ts`                                   | DOM overlays per screen (title, stage select, character select, pause, end screens), confetti                                                        |
 | `constants.ts`, `character.ts`, `vec2.ts` | Cells, AI types, ids, tick rate, speeds, points, lives; the `Character` record                                                                       |
 
-## Current work: KDA-207 Stage 5 "Boss lair"
-
-Linear spec: one big boss (2×2 cells) with a health bar that takes several breath hits, plus minions. Clearing needs all dots eaten **and** the boss defeated.
-
-Where it touches the engine (not yet designed):
-
-- **Size:** every character is one cell today (`Character.pos`, BFS, collisions, rendering). A 2×2 boss needs its own footprint in movement, collisions (`CATCH_DISTANCE` is centre to centre), what breaths hit (`hit.enemies` is per cell) and the renderer.
-- **Health:** `defeat` is one hit today (`defeatEnemy`). Damage, and which breaths count, belong in the engine so breath files stay unchanged.
-- **Win condition:** today eating the last dot always wins (`game.ts`). The boss stage needs an extra rule, probably a level `rules` flag, plus `parseLevel` validation.
-- **Minions:** existing enemy types, e.g. Splitters (count 2 toward the cap of 4, and the boss needs a slot too).
-- **Stage slot:** `STAGE_COUNT` is already 5; stage 5 shows "Coming soon" until a level exists in `levels/index.ts`. It unlocks after stage 4.
-
-The breath contract every breath follows (and the boss must respect) is in `docs/decisions.md` under "Breath contract".
-
 ## Open questions and follow-ups
 
-- **Gameplay since the five breaths are tunable:** the user hasn't commented on ranges and sizes (Dragon/Owl 5, Penguin cone 3, Skunk 3×3). A frozen Penguin enemy is solid, so refreezing every 1 s can block a 1-wide corridor for long. Revisit after playtesting.
+- **Boss lair tuning:** the user played the preview and kept the defaults (par 90 s, boss speed 1.5 cells/s, refill 10/s, Dragon fire and Skunk stink knocking the boss back). Two things to watch in later playtests: the arena doors are quite safe (a player in a door can breathe at the boss waiting at the mouth), and after a Boar wall regrows next to the boss the player lands beside it and can be caught right after.
+- **Breath tuning:** the user hasn't commented on ranges and sizes (Dragon/Owl 5, Penguin cone 3, Skunk 3×3). A frozen Penguin enemy is solid, so refreezing every 1 s can block a 1-wide corridor for long.
 - **Open with the user since Stages:** after a win, "Stage select" puts the cursor on the stage just played, not the newly unlocked one.
-- **Filed:** KDA-245 reject sealed-off open areas in `parseLevel` (a Boar could get sealed in after a wall regrows; no current stage has one). KDA-225 runtime shape check for untrusted level JSON.
-- **Noted, not filed:** a "ready" pause or lost-life signal after a respawn (KDA-198 comment); the phantom ignores wrap tunnels; a fog test for levels with tunnels; a Skunk cloud breathed over another shows two 💨 until the first runs out; an enemy pushed off the player's cell doesn't slide on ice.
-- **Later milestones** in Linear: Controllers & local 2-player (KDA-210, 211, 221, 222), Polish (KDA-212–215), idea backlog (KDA-223–227). 2-player gives each player their own character, facing and energy, so keep breath state per player.
+- **Filed:** KDA-245 reject sealed-off open areas in `parseLevel`. KDA-225 runtime shape check for untrusted level JSON.
+- **Noted, not filed:** a "ready" pause or lost-life signal after a respawn (KDA-198 comment); the phantom ignores wrap tunnels; a fog test for levels with tunnels; a Skunk cloud breathed over another shows two 💨 until the first runs out; an enemy pushed off the player's cell doesn't slide on ice; the boss can't use tunnels or ice, so `parseLevel` keeps them off boss levels.
+- **2-player** will give each player their own character, facing and energy (`Breather` is per player; character select keeps `picks` per player; P2 keys WASD, ShiftLeft breath, Q pause, E confirm are defined but not attached). Decide with the user how a boss, collisions and lives work with two players.
 
 ## Decisions already made
 
-The decisions KDA-207 touches. All others (movement, input, screens, progress, rendering, each breath's details) are in `docs/decisions.md`.
+The decisions the next milestone is likely to touch. Everything else (movement, input, screens, progress, rendering, each breath, the Splitter, the boss) is in `docs/decisions.md`.
 
-- **Breaths and energy** (with the user): meter 100 (Skunk 150), +5 per dot, empty each stage, kept on a lost life. Costs Dragon 50, Penguin 50, Owl 25, Skunk 50, Boar 75; cooldown 1 s (Owl 0.5 s). Breath kills score 50. Refusing a breath costs nothing.
-- **Defeated enemies** (with the user): back at their spawn after 5 s, blinking the last 1 s. A lost life resets every enemy to its spawn, in play, with no statuses; tiles, energy and cooldown carry over.
-- **Splitter** (with the user): only `defeat` splits it (+50); halves at 2.5 cells/s, +50 each, back whole 5 s after both are gone; counts 2 toward the 4-slot cap; a split never catches the player. Details in `docs/decisions.md`.
-- **Characters** (with the user): Dragon is the default; stars and par are the same for every character.
-- **Collisions** (product decision): on drawn positions, caught within `CATCH_DISTANCE` 0.6, any touch counts. Eating the last dot always wins, even if caught on that tick (product decision; KDA-207 changes this for the boss stage only).
-- **Stars:** 1 for clearing, +1 for no lives lost, +1 for beating `parTime`. Pars so far 60, 70, 80, 75 s.
-- **Boss lair** (KDA-207, with the user): boss health 12; any breath whose shape touches the 2×2 footprint does `cost ÷ 25` damage (Owl 1, Dragon/Penguin/Skunk 2, Boar 3, even where the Boar has no wall to break), applied by the engine with breath files unchanged. The boss can't be frozen or pushed, but fire and stink tiles still block it. It chases (1.5 cells/s) only where its 2×2 fits, so 1-wide corridors are safe; touching it catches. Once the dots run out with the boss alive, energy refills on its own (10/s). A lost life sends it to its spawn with its damage kept. Defeated: gone for good, +500, a big burst. Health shows as a bar above the sprite plus a white flash per hit. Minions: a Splitter and a chaser (4 slots with the boss). Win needs all dots and the boss defeated (a level `rules` flag). Defaults to tune at preview: par 90 s, sprite 🐙, trickle rate, boss speed.
+- **Gameplay** (with the user): grid-based movement with smooth animation; each character has a signature breath plus one stat; breaths use an energy meter refilled by eating dots; local 2-player has both co-op and versus; stages unlock in order.
+- **Breaths and energy** (with the user): meter 100 (Skunk 150), +5 per dot, empty each stage, kept on a lost life. Costs Dragon 50, Penguin 50, Owl 25, Skunk 50, Boar 75; cooldown 1 s (Owl 0.5 s). Breath kills score 50.
+- **Characters** (with the user): Dragon is the default; stars and par are the same for every character. The last pick is saved under `dot-eater:character:v1`.
+- **Input** (product decision): keys by `KeyboardEvent.code`. P1 arrows, ShiftRight breath, P/Escape pause, Space confirm. Auto-repeat never presses.
+- **Collisions** (product decision): on drawn positions, caught within `CATCH_DISTANCE` 0.6, any touch counts. Eating the last dot always wins, even if caught on that tick, except on a boss level, where the boss must also be defeated.
+- **Boss** (KDA-207, with the user): health 12, damage `cost ÷ 25` per breath, can't be frozen or pushed, 2×2 so it can't enter 1-wide corridors, keeps its damage over a lost life, +500 and gone for good when defeated. Details in `docs/decisions.md`.
 - **Code:** an unknown AI type throws. Breath looks come from data; `render.ts` has no per-breath code.
 
 ## How we work
