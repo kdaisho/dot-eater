@@ -7,12 +7,19 @@ import {
     CharacterId,
     RESPAWN_BLINK,
     RESPAWN_DELAY,
+    SPRITE_SCALE,
 } from "./constants"
 import { createCharacter } from "./character"
 import { createGameState, movePlayer } from "./game"
-import { createRenderer, HALF_SCALE } from "./render"
+import { BOSS_SCALE, BOSS_SPRITE, createRenderer, HALF_SCALE } from "./render"
 import { createSplitter } from "./splitter"
-import { makeEnemy, makeState, OLD_LEVEL, textMap } from "./test/helpers"
+import {
+    makeBoss,
+    makeEnemy,
+    makeState,
+    OLD_LEVEL,
+    textMap,
+} from "./test/helpers"
 import { vec2 } from "./vec2"
 
 // canvas-confetti crashes under happy-dom; keep it out in case anything
@@ -697,6 +704,113 @@ describe("createRenderer", () => {
             const blink = setup()
             blink.renderer.draw(state, 0)
             expect(blink.texts()).toEqual(["🐉", "👺"])
+        })
+    })
+
+    describe("the boss", () => {
+        // A 9x5 room with the player at (1, 1) and the boss's footprint at
+        // (3, 1) to (4, 2).
+        const room = textMap([
+            "#########",
+            "#       #",
+            "#       #",
+            "#       #",
+            "#########",
+        ]).map
+        function bossState() {
+            return makeState(room, { x: 1, y: 1 }, [], { boss: makeBoss(3, 1) })
+        }
+        const cellOf = (canvas: HTMLCanvasElement) =>
+            parseFloat(canvas.style.width) / 9
+
+        it("draws it twice the size of a sprite, centred on its footprint, under the others", () => {
+            const { calls, canvas, renderer, texts } = setup()
+            renderer.draw(bossState(), 0)
+            expect(texts()).toEqual([BOSS_SPRITE, "🐉"])
+            const cell = cellOf(canvas)
+            const boss = calls.find(
+                (c) => c.name === "fillText" && c.args[0] === BOSS_SPRITE
+            )!
+            expect(boss.args[1]).toBeCloseTo(4 * cell)
+            expect(boss.args[2]).toBeCloseTo(2 * cell)
+            expect(boss.font).toBe(
+                `${Math.round(cell * SPRITE_SCALE * BOSS_SCALE)}px sans-serif`
+            )
+        })
+
+        it("glides it between cells like any character", () => {
+            const state = bossState()
+            const boss = state.boss!
+            boss.lastPos = vec2(4, 1)
+            boss.moveProgress = 0.5
+            const { calls, canvas, renderer } = setup()
+            renderer.draw(state, 0)
+            const sprite = calls.find(
+                (c) => c.name === "fillText" && c.args[0] === BOSS_SPRITE
+            )!
+            expect(sprite.args[1]).toBeCloseTo(4.5 * cellOf(canvas))
+        })
+
+        // The health bar's fill: the fillRect drawn in its colour.
+        const healthBar = (calls: ReturnType<typeof setup>["calls"]) =>
+            calls.filter(
+                (c) => c.name === "fillRect" && c.fillStyle === "#dc2626"
+            )
+
+        it("draws a health bar above it, filled to its health", () => {
+            const state = bossState()
+            const full = setup()
+            full.renderer.draw(state, 0)
+            const [fullBar] = healthBar(full.calls)
+            const cell = cellOf(full.canvas)
+            const [left, top, width] = fullBar.args as number[]
+            expect(width).toBeCloseTo(cell * SPRITE_SCALE * BOSS_SCALE)
+            expect(left + width / 2).toBeCloseTo(4 * cell)
+            // Inside the footprint's top row, above the sprite.
+            expect(top).toBeGreaterThanOrEqual(1 * cell)
+            expect(top).toBeLessThan(2 * cell - (cell * SPRITE_SCALE * 2) / 2)
+
+            state.boss!.health = state.boss!.maxHealth / 4
+            const hurt = setup()
+            hurt.renderer.draw(state, 0)
+            expect(healthBar(hurt.calls)[0].args[2]).toBeCloseTo(width / 4)
+        })
+
+        it("flashes it white just after a hit", () => {
+            const state = bossState()
+            const flashes = (calls: ReturnType<typeof setup>["calls"]) =>
+                calls.filter((c) => c.name === "fill" && c.fillStyle === "#fff")
+            const calm = setup()
+            calm.renderer.draw(state, 0)
+            expect(flashes(calm.calls)).toHaveLength(0)
+            state.boss!.flash = 0.1
+            const hit = setup()
+            hit.renderer.draw(state, 0)
+            expect(flashes(hit.calls)).toHaveLength(1)
+        })
+
+        it("doesn't draw it once defeated", () => {
+            const state = bossState()
+            state.boss!.defeated = true
+            const { calls, renderer, texts } = setup()
+            renderer.draw(state, 0)
+            expect(texts()).toEqual(["🐉"])
+            expect(healthBar(calls)).toHaveLength(0)
+        })
+
+        it("hides it in fog when none of it reaches into the light", () => {
+            const state = bossState()
+            state.boss!.pos = vec2(6, 1)
+            state.boss!.lastPos = vec2(6, 1)
+            const dark = setup()
+            dark.renderer.draw(state, 0, {}, { fog: { radius: 2 } })
+            expect(dark.texts()).toEqual(["🐉"])
+            // Its nearest cell, (3, 1), is 2 cells from the player.
+            state.boss!.pos = vec2(3, 1)
+            state.boss!.lastPos = vec2(3, 1)
+            const lit = setup()
+            lit.renderer.draw(state, 0, {}, { fog: { radius: 2 } })
+            expect(lit.texts()).toEqual([BOSS_SPRITE, "🐉"])
         })
     })
 })

@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vite-plus/test"
 import confetti from "canvas-confetti"
+import { createBoss } from "./boss"
 import { energyHud } from "./breath"
 import { DOT_POINTS, START_LIVES, TICK_MS, TICK_RATE } from "./constants"
 import { createGameState, step, type GameState, type Outcome } from "./game"
@@ -648,6 +649,31 @@ describe("main", () => {
 
         gameOver("won")
         expect(bursts()).toBe(11)
+    })
+
+    it("fires one big burst as the boss is defeated, mid-game", () => {
+        vi.advanceTimersByTime(1000)
+        vi.mocked(confetti).mockClear()
+        const game = drawnGame()
+        // Stage 1 has no boss; give this game one for the test.
+        game.boss = createBoss(vec2(1, 1))
+        try {
+            vi.mocked(step).mockImplementationOnce((state) => {
+                state.boss!.defeated = true
+                return null
+            })
+            vi.advanceTimersByTime(FRAMES_MS)
+            expect(screen()).toBe("playing")
+            expect(vi.mocked(confetti)).toHaveBeenCalledTimes(1)
+            expect(vi.mocked(confetti).mock.lastCall?.[0]).toMatchObject({
+                origin: { x: 0.5, y: 0.5 },
+            })
+            // Only on the tick it falls.
+            vi.advanceTimersByTime(1000)
+            expect(vi.mocked(confetti)).toHaveBeenCalledTimes(1)
+        } finally {
+            game.boss = null
+        }
     })
 
     // Order-independent: an earlier win may already have saved it.

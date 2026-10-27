@@ -1,3 +1,4 @@
+import { footprint } from "./boss"
 import { enemyVisible, hasStatus, type EnergyHud, type Look } from "./breath"
 import { AiType, Cell, SPRITE_SCALE } from "./constants"
 import {
@@ -52,6 +53,12 @@ const COLORS = {
     meter: "#000",
     meterReady: "#f59e0b",
     meterCharging: "#9ca3af",
+    // The boss's health bar: health left over a dark track, framed; and
+    // its flash when hit.
+    bossHealth: "#dc2626",
+    bossTrack: "#374151",
+    bossFrame: "#000",
+    bossFlash: "#fff",
 }
 
 // The width of the fog's soft edge in cells: the darkness fades in over this
@@ -85,6 +92,16 @@ const ENEMY_SPRITES: Record<AiType, string> = {
 // A Splitter's half (see splitter.ts) is drawn at this fraction of the usual
 // sprite size.
 export const HALF_SCALE = 0.65
+
+// The boss (see boss.ts): its sprite, drawn at this many times the usual
+// sprite size, so it fills its 2x2 footprint as an enemy fills its cell.
+export const BOSS_SPRITE = "🐙"
+export const BOSS_SCALE = 2
+// Its health bar runs along the top of the footprint, above the sprite: as
+// wide as the sprite and this tall, as a fraction of a cell.
+const BOSS_BAR_HEIGHT = 0.12
+// How opaque the white flash over the sprite is just after a hit.
+const BOSS_FLASH_ALPHA = 0.7
 
 // A status's badge emoji is this size, as a fraction of the sprite's.
 const BADGE_SCALE = 0.5
@@ -160,6 +177,7 @@ export function createRenderer(
             ? createFog(state, alpha, cols, rows, rules.fog.radius)
             : null
         drawCells(ctx, state, alpha, cell, fog)
+        drawBoss(ctx, state, alpha, cell, cols, rows, fog)
         drawCharacters(ctx, state, alpha, cell, cols, rows, fog)
         if (fog) drawDarkness(ctx, fog, cell, cols, rows)
         ctx.restore()
@@ -328,6 +346,55 @@ function tileLooks(state: GameState): Look[][][] | null {
         if (t.effect.look) looks[t.pos.y][t.pos.x].push(t.effect.look)
     }
     return looks
+}
+
+// The boss, unless it is defeated (gone for good): its sprite centred on
+// its gliding 2x2 footprint, under the other characters, with a thin health
+// bar above the sprite and a white flash over it just after a hit. In fog
+// it is hidden once none of its four cells reaches into the light. Boss
+// levels have no tunnels, so it never needs wrap copies.
+function drawBoss(
+    ctx: CanvasRenderingContext2D,
+    state: GameState,
+    alpha: number,
+    cell: number,
+    cols: number,
+    rows: number,
+    fog: Fog | null
+) {
+    const { boss } = state
+    if (!boss || boss.defeated) return
+    const pos = glidePos(boss, alpha, cols, rows)
+    if (fog && !footprint(pos).some((p) => fog.visible(p))) return
+    const size = cell * SPRITE_SCALE * BOSS_SCALE
+    const x = (pos.x + 1) * cell
+    const y = (pos.y + 1) * cell
+    ctx.textAlign = "center"
+    ctx.textBaseline = "middle"
+    ctx.font = `${Math.round(size)}px sans-serif`
+    ctx.fillText(BOSS_SPRITE, x, y)
+    if (boss.flash > 0) {
+        ctx.save()
+        ctx.globalAlpha = BOSS_FLASH_ALPHA
+        ctx.fillStyle = COLORS.bossFlash
+        ctx.beginPath()
+        ctx.arc(x, y, size / 2, 0, Math.PI * 2)
+        ctx.fill()
+        ctx.restore()
+    }
+    // Between the top of the footprint and the top of the sprite.
+    const h = cell * BOSS_BAR_HEIGHT
+    const left = x - size / 2
+    const top = y - size / 2 - h * 1.5
+    const fraction =
+        boss.maxHealth > 0 ? Math.max(0, boss.health / boss.maxHealth) : 0
+    ctx.fillStyle = COLORS.bossTrack
+    ctx.fillRect(left, top, size, h)
+    ctx.fillStyle = COLORS.bossHealth
+    ctx.fillRect(left, top, size * fraction, h)
+    ctx.strokeStyle = COLORS.bossFrame
+    ctx.lineWidth = 1
+    ctx.strokeRect(left, top, size, h)
 }
 
 function drawCharacters(
