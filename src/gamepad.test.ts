@@ -1,0 +1,342 @@
+import { beforeEach, describe, expect, it } from "vite-plus/test"
+import {
+    GamepadSource,
+    padControls,
+    stickAction,
+    STICK_DEAD_ZONE,
+    type Pad,
+    type PadChange,
+} from "./gamepad"
+import { InputState, KeyboardSource, type Action } from "./input"
+import { vec2 } from "./vec2"
+
+// A fake pad holding the given standard-mapping buttons, with the left stick
+// at (x, y).
+function pad(index: number, buttons: number[] = [], x = 0, y = 0): Pad {
+    return {
+        index,
+        buttons: Array.from({ length: 17 }, (_, i) => ({
+            pressed: buttons.includes(i),
+        })),
+        axes: [x, y, 0, 0],
+    }
+}
+
+const A = 0
+const START = 9
+const UP = 12
+const DOWN = 13
+const LEFT = 14
+const RIGHT = 15
+
+function connectEvent(type: string, index: number): Event {
+    return Object.assign(new Event(type), { gamepad: { index } })
+}
+
+describe("stickAction", () => {
+    it("ignores the stick inside the dead zone", () => {
+        expect(stickAction(0, 0)).toBeUndefined()
+        expect(stickAction(0.49, -0.49)).toBeUndefined()
+        expect(stickAction(-STICK_DEAD_ZONE + 0.01, 0)).toBeUndefined()
+    })
+
+    it("maps each direction past the dead zone", () => {
+        expect(stickAction(0, -STICK_DEAD_ZONE)).toBe("up")
+        expect(stickAction(0, 1)).toBe("down")
+        expect(stickAction(-0.8, 0)).toBe("left")
+        expect(stickAction(0.6, 0)).toBe("right")
+    })
+
+    it("takes only the dominant axis", () => {
+        expect(stickAction(0.9, -0.6)).toBe("right")
+        expect(stickAction(-0.55, 0.7)).toBe("down")
+        expect(stickAction(0.3, -0.8)).toBe("up")
+    })
+})
+
+describe("padControls", () => {
+    it("maps the D-pad, A and Start of the standard mapping", () => {
+        const held = padControls(pad(1, [UP, DOWN, LEFT, RIGHT, A, START]))
+        expect(Object.fromEntries(held)).toEqual({
+            "pad:1:12": ["up"],
+            "pad:1:13": ["down"],
+            "pad:1:14": ["left"],
+            "pad:1:15": ["right"],
+            "pad:1:0": ["breath", "confirm"],
+            "pad:1:9": ["pause"],
+        })
+    })
+
+    it("ignores unmapped buttons", () => {
+        expect(padControls(pad(0, [1, 2, 3, 16])).size).toBe(0)
+    })
+
+    it("adds the stick as one control", () => {
+        expect(Object.fromEntries(padControls(pad(2, [], -1, 0)))).toEqual({
+            "pad:2:stick": ["left"],
+        })
+    })
+})
+
+describe("GamepadSource", () => {
+    let pads: (Pad | null)[]
+    let target: EventTarget
+    let changes: PadChange[]
+    let input: InputState
+    let source: GamepadSource
+
+    beforeEach(() => {
+        pads = []
+        target = new EventTarget()
+        changes = []
+        input = new InputState()
+        source = new GamepadSource(
+            () => pads,
+            target,
+            (change) => changes.push(change)
+        )
+        source.attach(input)
+    })
+
+    const p1 = () => input.player(0)
+    const p2 = () => input.player(1)
+    // Poll, then read what player `who` saw this tick, then end the tick.
+    function tick(who = p1) {
+        source.poll()
+        const seen = {
+            pressed: ACTIONS_SEEN.filter((a) => who().wasPressed(a)),
+            down: ACTIONS_SEEN.filter((a) => who().isDown(a)),
+        }
+        input.endTick()
+        return seen
+    }
+    const ACTIONS_SEEN: Action[] = [
+        "up",
+        "down",
+        "left",
+        "right",
+        "breath",
+        "confirm",
+        "pause",
+    ]
+
+    it("presses on the frame a button goes down", () => {
+        pads = [pad(0, [UP])]
+        expect(tick()).toEqual({ pressed: ["up"], down: ["up"] })
+    })
+
+    it("A is breath and confirm, Start is pause", () => {
+        pads = [pad(0, [A, START])]
+        expect(tick().pressed).toEqual(["breath", "confirm", "pause"])
+    })
+
+    it("holding never presses again", () => {
+        pads = [pad(0, [A])]
+        tick()
+        for (let i = 0; i < 5; i++) {
+            expect(tick()).toEqual({ pressed: [], down: ["breath", "confirm"] })
+        }
+    })
+
+    it("releases on the frame a button goes up, and presses again after", () => {
+        pads = [pad(0, [RIGHT])]
+        tick()
+        pads = [pad(0)]
+        expect(tick()).toEqual({ pressed: [], down: [] })
+        pads = [pad(0, [RIGHT])]
+        expect(tick().pressed).toEqual(["right"])
+    })
+
+    it("lets the stick through only past the dead zone", () => {
+        pads = [pad(0, [], 0.4, 0)]
+        expect(tick().down).toEqual([])
+        pads = [pad(0, [], 0.7, 0)]
+        expect(tick()).toEqual({ pressed: ["right"], down: ["right"] })
+        // Leaning harder is still the same hold.
+        pads = [pad(0, [], 1, 0)]
+        expect(tick().pressed).toEqual([])
+    })
+
+    it("swings the stick from one direction to another", () => {
+        pads = [pad(0, [], 0, -1)]
+        tick()
+        pads = [pad(0, [], -1, -0.3)]
+        expect(tick()).toEqual({ pressed: ["left"], down: ["left"] })
+        expect(p1().step()).toEqual(vec2(-1, 0))
+    })
+
+    it("holds a direction from both the D-pad and the stick", () => {
+        pads = [pad(0, [UP], 0, -1)]
+        tick()
+        pads = [pad(0, [], 0, -1)]
+        expect(tick().down).toEqual(["up"])
+        pads = [pad(0)]
+        expect(tick().down).toEqual([])
+    })
+
+    it("holds an action independently of the keyboard", () => {
+        const keys = new EventTarget()
+        new KeyboardSource(undefined, keys).attach(input)
+        keys.dispatchEvent(
+            Object.assign(new Event("keydown"), { code: "ArrowUp" })
+        )
+        pads = [pad(0, [UP])]
+        // Already held by the key, so the pad adds no second press.
+        expect(tick().pressed).toEqual(["up"])
+        expect(tick().pressed).toEqual([])
+        keys.dispatchEvent(
+            Object.assign(new Event("keyup"), { code: "ArrowUp" })
+        )
+        expect(tick().down).toEqual(["up"])
+        pads = [pad(0)]
+        expect(tick().down).toEqual([])
+    })
+
+    it("releases a pad's hold without touching the keyboard's", () => {
+        const keys = new EventTarget()
+        new KeyboardSource(undefined, keys).attach(input)
+        pads = [pad(0, [A])]
+        tick()
+        keys.dispatchEvent(
+            Object.assign(new Event("keydown"), { code: "Space" })
+        )
+        pads = [pad(0)]
+        expect(tick().down).toEqual(["confirm"])
+    })
+
+    describe("shared assignment (the default)", () => {
+        it("lets every pad drive player 1", () => {
+            pads = [pad(0, [UP]), pad(1, [LEFT])]
+            expect(tick()).toEqual({
+                pressed: ["up", "left"],
+                down: ["up", "left"],
+            })
+            expect(p2().isDown("up")).toBe(false)
+            expect(p2().isDown("left")).toBe(false)
+        })
+
+        it("keeps player 1 held until both pads let go", () => {
+            pads = [pad(0, [A]), pad(1, [A])]
+            tick()
+            pads = [pad(0), pad(1, [A])]
+            expect(tick().down).toEqual(["breath", "confirm"])
+        })
+    })
+
+    describe("perPad assignment", () => {
+        beforeEach(() => source.setAssignment("perPad"))
+
+        it("gives the first pad player 1 and the second player 2", () => {
+            pads = [pad(0, [UP]), pad(1, [LEFT])]
+            source.poll()
+            expect(p1().isDown("up")).toBe(true)
+            expect(p1().isDown("left")).toBe(false)
+            expect(p2().isDown("left")).toBe(true)
+            expect(p2().isDown("up")).toBe(false)
+        })
+
+        it("follows connection order, not the pad index", () => {
+            target.dispatchEvent(connectEvent("gamepadconnected", 3))
+            target.dispatchEvent(connectEvent("gamepadconnected", 1))
+            pads = [null, pad(1, [DOWN]), null, pad(3, [RIGHT])]
+            source.poll()
+            expect(p1().isDown("right")).toBe(true)
+            expect(p2().isDown("down")).toBe(true)
+        })
+
+        it("gives a reconnecting pad the free player", () => {
+            pads = [pad(0), pad(1)]
+            source.poll()
+            target.dispatchEvent(connectEvent("gamepaddisconnected", 0))
+            pads = [null, pad(1)]
+            source.poll()
+            target.dispatchEvent(connectEvent("gamepadconnected", 2))
+            pads = [null, pad(1), pad(2, [A])]
+            source.poll()
+            expect(p1().isDown("breath")).toBe(true)
+        })
+
+        it("ignores a pad beyond the players", () => {
+            input = new InputState(2)
+            source.attach(input)
+            pads = [pad(0), pad(1), pad(2, [A])]
+            source.poll()
+            expect(input.players.some((p) => p.isDown("breath"))).toBe(false)
+        })
+    })
+
+    it("hands held buttons over only after they're released", () => {
+        pads = [pad(0), pad(1, [A])]
+        tick()
+        expect(p1().isDown("confirm")).toBe(true)
+        source.setAssignment("perPad")
+        // Released from player 1 at once; not pressed for player 2.
+        expect(p1().isDown("confirm")).toBe(false)
+        expect(tick(p2)).toEqual({ pressed: [], down: [] })
+        pads = [pad(0), pad(1)]
+        tick(p2)
+        pads = [pad(0), pad(1, [A])]
+        expect(tick(p2).pressed).toEqual(["breath", "confirm"])
+    })
+
+    describe("connect and disconnect", () => {
+        it("reports a connect event once, even when the poll sees it too", () => {
+            target.dispatchEvent(connectEvent("gamepadconnected", 0))
+            pads = [pad(0)]
+            source.poll()
+            source.poll()
+            expect(changes).toEqual([{ kind: "connected", index: 0 }])
+        })
+
+        it("reports a pad first seen by polling", () => {
+            pads = [null, pad(1)]
+            source.poll()
+            expect(changes).toEqual([{ kind: "connected", index: 1 }])
+        })
+
+        it("releases everything a pad held when it disconnects", () => {
+            pads = [pad(0, [A, UP], 1, 0)]
+            tick()
+            target.dispatchEvent(connectEvent("gamepaddisconnected", 0))
+            expect(p1().isDown("breath")).toBe(false)
+            expect(p1().isDown("up")).toBe(false)
+            expect(p1().isDown("right")).toBe(false)
+            expect(changes.at(-1)).toEqual({ kind: "disconnected", index: 0 })
+        })
+
+        it("leaves other pads' holds alone", () => {
+            pads = [pad(0, [UP]), pad(1, [UP])]
+            tick()
+            target.dispatchEvent(connectEvent("gamepaddisconnected", 0))
+            expect(p1().isDown("up")).toBe(true)
+        })
+
+        it("treats a pad gone from the list as disconnected", () => {
+            pads = [pad(0, [A])]
+            tick()
+            pads = [{ ...pad(0, [A]), connected: false }]
+            source.poll()
+            expect(p1().isDown("breath")).toBe(false)
+            expect(changes.at(-1)).toEqual({ kind: "disconnected", index: 0 })
+            pads = []
+            source.poll()
+            expect(changes).toHaveLength(2)
+        })
+
+        it("ignores a disconnect for a pad it never saw", () => {
+            target.dispatchEvent(connectEvent("gamepaddisconnected", 4))
+            expect(changes).toEqual([])
+        })
+
+        it("stops listening and releases on detach", () => {
+            pads = [pad(0, [A])]
+            tick()
+            source.detach()
+            expect(p1().isDown("breath")).toBe(false)
+            target.dispatchEvent(connectEvent("gamepadconnected", 1))
+            source.poll()
+            expect(p1().isDown("breath")).toBe(false)
+            expect(changes).toHaveLength(1)
+        })
+    })
+})
