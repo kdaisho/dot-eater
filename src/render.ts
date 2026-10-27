@@ -15,7 +15,7 @@ import type { LevelRules } from "./level"
 import { ANIMALS } from "./roster"
 import { isSplitterHalf } from "./splitter"
 import { vec2, type Vec2 } from "./vec2"
-import { stunned } from "./versus"
+import { stunImmune, stunned } from "./versus"
 
 // What the HUD strip above the maze shows. Fields left out aren't drawn.
 export type Hud = {
@@ -549,7 +549,7 @@ function drawCharacters(
                           sprite: playerSprite(player),
                           rate: player.rate,
                           marker: marked ? i : null,
-                          dazed: stunned(player),
+                          badge: versusBadge(player),
                       },
                   ]
         ),
@@ -558,10 +558,10 @@ function drawCharacters(
             sprite: ENEMY_SPRITES[enemy.ai],
             rate: 1,
             marker: null,
-            dazed: false,
+            badge: null,
         })),
     ]
-    for (const { character, sprite, rate, marker, dazed } of sprites) {
+    for (const { character, sprite, rate, marker, badge } of sprites) {
         const isPlayer = character.id === CharacterId.player
         if (!isPlayer && !enemyVisible(character)) continue
         const held = !isPlayer && hasStatus(character, "holds")
@@ -587,11 +587,11 @@ function drawCharacters(
             }
             ctx.fillText(sprite, x, y)
             if (marker !== null) drawMarker(ctx, marker, x, y, size)
-            // A stunned player (versus) wears the stun badge, like a
-            // status's.
+            // A stunned player (versus) wears the stun badge, and one
+            // immune just after a stun the immune badge, like a status's.
             const badges = [
                 ...looks.filter((look) => look.emoji),
-                ...(dazed ? [{ emoji: STUN_BADGE }] : []),
+                ...(badge ? [{ emoji: badge }] : []),
             ]
             if (badges.length === 0) continue
             ctx.font = `${Math.round(size * BADGE_SCALE)}px sans-serif`
@@ -723,6 +723,17 @@ export function stunLabel(seconds: number): string {
 
 // Drawn on a stunned player's sprite, and in its HUD slot.
 export const STUN_BADGE = "💫"
+
+// Drawn on a versus player's sprite while it is immune to stuns, just after
+// one wore off (see STUN_IMMUNITY_SECONDS in versus.ts).
+export const IMMUNE_BADGE = "🛡️"
+
+// The badge a versus player's sprite wears: the stun badge while stunned,
+// the immune badge while immune, else none.
+function versusBadge(player: Player): string | null {
+    if (stunned(player)) return STUN_BADGE
+    return stunImmune(player) ? IMMUNE_BADGE : null
+}
 
 // What an out player's HUD slot shows: the whole seconds left until it is
 // back (rounded up, so it counts 3, 2, 1), "back soon" once it is due but

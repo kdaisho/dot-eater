@@ -8,7 +8,8 @@ import { samePos, vec2, type Vec2 } from "./vec2"
 // - A breath that covers the other player's cell stuns it for STUN_SECONDS
 //   instead of defeating it (see opponentsStruck): it can't move or
 //   breathe. A stunned player can't be stunned again until it is over, so
-//   the timer never resets. Lasting tile effects (fire, stink, ice) never
+//   the timer never resets, and once it wears off the player is immune for
+//   STUN_IMMUNITY_SECONDS, so it always gets time to get away. Lasting tile effects (fire, stink, ice) never
 //   stun; only the cells a breath covers as it fires.
 // - There are no lives: a catch costs CATCH_DOTS dots (never below 0) and
 //   takes the player out for PLAYER_RESPAWN_DELAY seconds (see versusCatch
@@ -20,6 +21,10 @@ import { samePos, vec2, type Vec2 } from "./vec2"
 
 // Seconds a player hit by the other's breath is stunned.
 export const STUN_SECONDS = 2
+// Seconds after a stun wears off in which that player can't be stunned
+// again, so a breath fired every time it is free can't keep it stunned.
+// Being taken out (caught) ends the immunity, as it ends a stun.
+export const STUN_IMMUNITY_SECONDS = 1.5
 // Dots a player caught by an enemy or the boss loses.
 export const CATCH_DOTS = 5
 // Round wins that take a match (best of 3).
@@ -33,28 +38,43 @@ export function stunned(player: Player): boolean {
     return player.stunnedFor > 0
 }
 
+// Whether `player` is immune to stuns, just after one wore off (see
+// STUN_IMMUNITY_SECONDS).
+export function stunImmune(player: Player): boolean {
+    return player.stunImmuneFor > 0
+}
+
 // Stun `player` for STUN_SECONDS: until it is over it doesn't move (a glide
 // in progress still finishes) or breathe, and its input is ignored. A
-// player already stunned, or out of play, is left alone. Anything buffered
-// is dropped.
+// player already stunned, immune, or out of play, is left alone. Anything
+// buffered is dropped.
 export function stun(player: Player) {
-    if (player.out || stunned(player)) return
+    if (player.out || stunned(player) || stunImmune(player)) return
     player.stunnedFor = STUN_SECONDS
     player.bufferedStep = vec2(0, 0)
 }
 
-// Count every stun down by `dt` seconds, at the start of a tick.
+// Count every stun, and every immunity, down by `dt` seconds, at the start
+// of a tick. A stun that wears off starts STUN_IMMUNITY_SECONDS of
+// immunity, counted from the next tick.
 export function tickStuns(players: readonly Player[], dt: number) {
     for (const player of players) {
+        if (stunImmune(player)) {
+            player.stunImmuneFor -= dt
+            if (player.stunImmuneFor <= EPSILON) player.stunImmuneFor = 0
+        }
         if (!stunned(player)) continue
         player.stunnedFor -= dt
-        if (player.stunnedFor <= EPSILON) player.stunnedFor = 0
+        if (player.stunnedFor <= EPSILON) {
+            player.stunnedFor = 0
+            player.stunImmuneFor = STUN_IMMUNITY_SECONDS
+        }
     }
 }
 
 // The players a breath by `by` stuns when it covers `cells` (the cells it
 // strikes, as for enemies; see breathe in breath.ts): in versus only, every
-// other player in play, not already stunned, standing (by its cell, pos) on
+// other player in play, not already stunned or immune, standing (by its cell, pos) on
 // one of them. Empty in any other mode.
 export function opponentsStruck(
     state: GameState,
@@ -67,6 +87,7 @@ export function opponentsStruck(
             p !== by &&
             !p.out &&
             !stunned(p) &&
+            !stunImmune(p) &&
             cells.some((c) => samePos(c, p.character.pos))
     )
 }

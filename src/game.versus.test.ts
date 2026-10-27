@@ -14,6 +14,7 @@ import {
     IDLE,
     movePlayer,
     step,
+    takeOut,
     type GameState,
     type Mode,
     type MoveInput,
@@ -27,7 +28,13 @@ import {
     textMap,
 } from "./test/helpers"
 import { vec2, type Vec2 } from "./vec2"
-import { CATCH_DOTS, STUN_SECONDS, stunned } from "./versus"
+import {
+    CATCH_DOTS,
+    STUN_IMMUNITY_SECONDS,
+    STUN_SECONDS,
+    stunImmune,
+    stunned,
+} from "./versus"
 
 // Versus (KDA-222) in the game itself: breaths stun the other player, a
 // catch costs dots instead of a life, and the game is never lost.
@@ -37,6 +44,7 @@ const none = vec2(0, 0)
 const east = vec2(1, 0)
 const west = vec2(-1, 0)
 const STUN_TICKS = STUN_SECONDS * TICK_RATE
+const IMMUNITY_TICKS = STUN_IMMUNITY_SECONDS * TICK_RATE
 const RESPAWN_TICKS = PLAYER_RESPAWN_DELAY * TICK_RATE
 
 const hold = (d: Vec2, breath = false): MoveInput => ({
@@ -145,13 +153,65 @@ describe("a breath on the other player in versus", () => {
         expect(state.players[1].stunnedFor).toBe(left)
     })
 
-    it("can stun it again once the stun is over", () => {
+    it("can stun it again once the stun and its immunity are over", () => {
         const state = duel(BREATHS[AnimalId.owl], vec2(3, 1))
-        breathe(state, state.players[0])
+        const [p1, p2] = state.players
+        breathe(state, p1)
         run(state, [IDLE, IDLE], STUN_TICKS)
-        expect(stunned(state.players[1])).toBe(false)
-        expect(breathe(state, state.players[0])).toBe(true)
-        expect(state.players[1].stunnedFor).toBe(STUN_SECONDS)
+        expect(stunned(p2)).toBe(false)
+        expect(stunImmune(p2)).toBe(true)
+        breathe(state, p1)
+        expect(stunned(p2)).toBe(false)
+        run(state, [IDLE, IDLE], IMMUNITY_TICKS)
+        expect(stunImmune(p2)).toBe(false)
+        p1.breather.energy = p1.breather.breath.maxEnergy
+        p1.breather.cooldown = 0
+        expect(breathe(state, p1)).toBe(true)
+        expect(p2.stunnedFor).toBe(STUN_SECONDS)
+    })
+
+    // Regression: with no immunity, an Owl breathing whenever player 2 was
+    // free stunned it again on the tick its stun wore off, so it never got
+    // away.
+    it(`gets ${STUN_IMMUNITY_SECONDS} s free after each stun, however often it is breathed at`, () => {
+        // A short hall: player 2, holding away, is stopped by the wall
+        // still in the Owl's reach.
+        const short = textMap(["#######", "#     #", "#######", "#.#####"]).map
+        const state = makeState(short, [vec2(1, 1), vec2(3, 1)], [], {
+            mode: "versus",
+            breath: [BREATHS[AnimalId.owl], BREATHS[AnimalId.dragon]],
+        })
+        const [p1, p2] = state.players
+        // Each stretch of ticks player 2 spends free between two stuns.
+        const free: number[] = []
+        let stretch = 0
+        let stuns = 0
+        for (let i = 0; i < 8 * TICK_RATE; i++) {
+            p1.breather.energy = p1.breather.breath.maxEnergy
+            const was = stunned(p2)
+            const p1Move = { held: [], pressed: none, breath: !was }
+            step(state, TICK, [p1Move, hold(east)], fixedRandom(0))
+            if (!stunned(p2)) {
+                stretch++
+            } else if (!was) {
+                stuns++
+                if (stuns > 1) free.push(stretch)
+                stretch = 0
+            }
+        }
+        expect(p2.character.pos).toEqual(vec2(5, 1))
+        expect(stuns).toBeGreaterThan(2)
+        for (const ticks of free) {
+            expect(ticks).toBeGreaterThanOrEqual(IMMUNITY_TICKS)
+        }
+    })
+
+    it("loses its immunity when it is taken out", () => {
+        const state = duel(BREATHS[AnimalId.owl], vec2(3, 1))
+        const p2 = state.players[1]
+        p2.stunImmuneFor = STUN_IMMUNITY_SECONDS
+        takeOut(p2, PLAYER_RESPAWN_DELAY)
+        expect(stunImmune(p2)).toBe(false)
     })
 
     it("doesn't stun from the tiles it leaves behind", () => {

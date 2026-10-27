@@ -20,6 +20,7 @@ import {
     HALF_SCALE,
     outLabel,
     PLAYER_COLORS,
+    IMMUNE_BADGE,
     STUN_BADGE,
     stunLabel,
 } from "./render"
@@ -1199,5 +1200,13 @@ describe("createRenderer in versus", () => {
         state.players[1].stunnedFor = 1
         renderer.draw(state, 0)
         expect(texts()).toEqual(["🦉", "1", "🐗", "2", STUN_BADGE])
+    })
+
+    it("marks a player immune after a stun with the immune badge", () => {
+        const { renderer, texts } = setup()
+        const state = pair()
+        state.players[1].stunImmuneFor = 1
+        renderer.draw(state, 0)
+        expect(texts()).toEqual(["🦉", "1", "🐗", "2", IMMUNE_BADGE])
     })
 })

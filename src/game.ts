@@ -134,6 +134,10 @@ export type Player = {
     // Seconds left of a versus stun (see stun in versus.ts), 0 when not
     // stunned.
     stunnedFor: number
+    // Seconds left of a versus stun's immunity (see STUN_IMMUNITY_SECONDS in
+    // versus.ts): once a stun wears off the player can't be stunned again
+    // until this is over. 0 when not immune.
+    stunImmuneFor: number
 }
 
 export type Spawns = {
@@ -262,6 +266,7 @@ export function newPlayer(character: Character, breath: BreathDef): Player {
         out: false,
         respawnIn: null,
         stunnedFor: 0,
+        stunImmuneFor: 0,
     }
 }
 
@@ -311,6 +316,7 @@ export function bringBack(state: GameState, player: Player) {
     player.out = false
     player.respawnIn = null
     player.stunnedFor = 0
+    player.stunImmuneFor = 0
 }
 
 // Take `player` out of play on its own (see Player.out), where it stands:
@@ -328,6 +334,7 @@ export function takeOut(player: Player, respawnAfter: number | null) {
     player.out = true
     player.respawnIn = respawnAfter
     player.stunnedFor = 0
+    player.stunImmuneFor = 0
 }
 
 // Whether `player` is out of play with no way back (see takeOut).
