@@ -229,6 +229,7 @@ function hudOf(game: GameState): Hud {
         players: game.players.map((p, i) => ({
             score: p.score,
             energy: energyHud(game, i),
+            ...(p.out ? { out: { respawnIn: p.respawnIn } } : {}),
         })),
     }
 }

@@ -4,6 +4,7 @@ import {
     settle,
     step,
     type GameState,
+    type Mode,
     type MoveInput,
     type Outcome,
 } from "./game"
@@ -70,14 +71,13 @@ import { rateClear, type ClearRating } from "./stars"
 export const END_CHOICES = ["retry", "stageSelect"] as const
 export type EndChoice = (typeof END_CHOICES)[number]
 
-// How a game is played: by one player, or by two together (co-op) or
-// against each other (versus).
-export type Mode = "solo" | "coop" | "versus"
+// How a game is played (see Mode in game.ts, whose rules it decides).
+export type { Mode }
 
-// The modes the title's mode select offers, in menu order. Co-op and versus
-// get their own rules in KDA-221 and KDA-222; until then "coop" is the one
-// "2 players" entry, playing by placeholder rules (see resolveCatch in
-// game.ts). To offer versus, add it here (main labels each mode).
+// The modes the title's mode select offers, in menu order. Each game plays
+// by its mode's rules (see resolveCatch in game.ts): "coop" by the co-op
+// ones; versus gets its own in KDA-222 and plays as co-op until then. To
+// offer versus, add it here (main labels each mode).
 export const MODE_CHOICES: readonly Mode[] = ["solo", "coop"]
 
 // How many players a mode has.
@@ -202,7 +202,7 @@ export function startLevel(
         mode,
         level,
         animals: picks,
-        game: createGameState(levels[level], picks),
+        game: createGameState(levels[level], picks, mode),
     }
 }
 

@@ -10,6 +10,7 @@ import {
     newPlayer,
     step,
     type GameState,
+    type Mode,
     type MoveInput,
 } from "../game"
 import type { IceMap } from "../ice"
@@ -97,7 +98,8 @@ type Cell2 = { x: number; y: number }
 // game. There is no ice unless `ice` says where (see textMap). Every player
 // has the default character's breath unless `breath` says otherwise (one
 // breath for all, or one per player), with an empty meter. There is no boss
-// unless `boss` gives one (see makeBoss).
+// unless `boss` gives one (see makeBoss). The game plays by `mode`'s rules
+// (solo unless given; see resolveCatch).
 export function makeState(
     map: MapLiteral,
     player: Cell2 | readonly Cell2[],
@@ -107,11 +109,13 @@ export function makeState(
         ice,
         breath = BREATHS[DEFAULT_ANIMAL],
         boss = null,
+        mode = "solo",
     }: {
         lives?: number
         ice?: IceMap
         breath?: BreathDef | readonly BreathDef[]
         boss?: Boss | null
+        mode?: Mode
     } = {}
 ): GameState {
     const starts = "x" in player ? [player] : player
@@ -123,6 +127,7 @@ export function makeState(
     const breathOf = (i: number) =>
         "fire" in breath ? breath : (breath[i] ?? breath[0])
     return {
+        mode,
         cells,
         ice: floorIce,
         floorIce,

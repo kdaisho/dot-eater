@@ -1,6 +1,13 @@
 // @vitest-environment happy-dom
 import { describe, expect, it, vi } from "vite-plus/test"
-import { createGameState, step, type GameState, type Outcome } from "./game"
+import {
+    bringBack,
+    createGameState,
+    step,
+    takeOut,
+    type GameState,
+    type Outcome,
+} from "./game"
 import { LAST_PICK_KEY } from "./lastPick"
 import { levels } from "./levels"
 import { emptyProgress, PROGRESS_KEY, serializeProgress } from "./progress"
@@ -106,6 +113,7 @@ describe("main with two players", () => {
         expect(vi.mocked(createGameState).mock.lastCall).toEqual([
             levels[0],
             ["dragon", "owl"],
+            "coop",
         ])
         // The saved 1-player pick is left alone, player 1's included.
         expect(localStorage.getItem(LAST_PICK_KEY)).toBeNull()
@@ -129,6 +137,16 @@ describe("main with two players", () => {
             lives: game.lives,
             players: [{ score: 0 }, { score: 0 }],
         })
+        expect(drawn.last?.[2]).not.toHaveProperty("players.0.out")
+
+        // A player out of play shows when it is back instead of its meter.
+        takeOut(game.players[1], 2.5)
+        vi.advanceTimersByTime(100)
+        expect(drawn.last?.[2]).toMatchObject({
+            players: [{ score: 0 }, { score: 0, out: { respawnIn: 2.5 } }],
+        })
+        expect(drawn.last?.[2]).not.toHaveProperty("players.0.out")
+        bringBack(game, game.players[1])
 
         // Player 2 can pause, and resume.
         pressAndTick("KeyQ")

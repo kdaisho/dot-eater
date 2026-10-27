@@ -78,6 +78,9 @@ export const CATCH_DISTANCE = 0.6
 export const DOT_POINTS = 10
 // Lives at the start of a game.
 export const START_LIVES = 3
+// Seconds a player caught in a 2-player game stays out of play before it is
+// back at its own spawn (see takeOut in game.ts).
+export const PLAYER_RESPAWN_DELAY = 3
 
 // ---- Breaths (see breath.ts) ----
 

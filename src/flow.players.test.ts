@@ -103,6 +103,16 @@ describe("modes", () => {
         expect(playerCount("versus")).toBe(2)
     })
 
+    it("start the game by their own rules", () => {
+        const game = (screen: Screen) =>
+            screen.kind === "playing" ? screen.game : null
+        expect(game(startLevel(levels, 0, AnimalId.owl))?.mode).toBe("solo")
+        const picks: Picks = [AnimalId.dragon, AnimalId.owl]
+        for (const mode of ["coop", "versus"] as const) {
+            expect(game(startLevel(levels, 0, picks, mode))?.mode).toBe(mode)
+        }
+    })
+
     it("records progress only for 1-player games", () => {
         expect(recordsProgress("solo")).toBe(true)
         expect(recordsProgress("coop")).toBe(false)
@@ -202,6 +212,7 @@ describe("2-player character select", () => {
         expect(screen.kind).toBe("playing")
         if (screen.kind !== "playing") return
         expect(screen.mode).toBe("coop")
+        expect(screen.game.mode).toBe("coop")
         expect(screen.animals).toEqual([AnimalId.owl, AnimalId.boar])
         expect(screen.game.players).toHaveLength(2)
         expect(screen.game.players[1].breather.breath.animal).toBe(
@@ -316,6 +327,8 @@ describe("2-player play", () => {
             mode: "coop",
             animals: [AnimalId.boar, AnimalId.penguin],
         })
+        // The retried game plays by the same rules.
+        expect(retry.kind === "playing" && retry.game.mode).toBe("coop")
         const back = update(
             {
                 ...(screen as Extract<Screen, { kind: "stageClear" }>),
