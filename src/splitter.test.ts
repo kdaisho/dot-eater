@@ -187,7 +187,7 @@ describe("a whole Splitter", () => {
     it("isn't split by effects that don't defeat", () => {
         const { state, main, spare } = setup()
         addStatus(main, { name: "test.frozen", holds: true }, 3)
-        pushEnemy(state.cells, main, vec2(1, 0), 2)
+        pushEnemy(state.cells, main, vec2(1, 0), 2, state.player)
         run(state, TICK_RATE)
         expect(main.pos).toEqual(vec2(6, 2))
         expect(isWholeSplitter(main)).toBe(true)
