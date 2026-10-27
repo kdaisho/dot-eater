@@ -210,6 +210,76 @@ function endScreen({
     return { lines: [`Score ${score}`, ...shares], items }
 }
 
+// What a versus round's result shows (see roundResult in flow.ts).
+export type RoundResultView = {
+    // Which round it was, from 1 (replayed rounds count).
+    round: number
+    // The round's winner (player 1 is 0), or null for an exact tie.
+    winner: number | null
+    // Each player's dots and score, player 1 first.
+    dots: readonly number[]
+    scores: readonly number[]
+    // Each player's round wins so far, this round included.
+    wins: readonly number[]
+    // The menu (Next round / Quit), in order; exactly one item is selected.
+    items: readonly MenuItem[]
+}
+
+// A versus round is over: who won it (or that it is replayed), each
+// player's dots and score, the tally, and the menu.
+export function showRoundResult(view: RoundResultView) {
+    const { round, winner } = view
+    show({
+        id: "round-result",
+        title:
+            winner === null
+                ? `Round ${round}: a draw`
+                : `Round ${round}: ${winner + 1}P wins!`,
+        lines: [
+            perPlayer("Dots", view.dots),
+            perPlayer("Score", view.scores),
+            ...(winner === null ? ["A draw doesn't count: play it again"] : []),
+            `Rounds ${view.wins.join("–")}`,
+        ],
+        items: view.items,
+    })
+}
+
+// What a versus match's result shows (see matchResult in flow.ts).
+export type MatchResultView = {
+    // The match winner (player 1 is 0).
+    winner: number
+    // Every round played, in order, replayed ones included.
+    rounds: readonly { winner: number | null; dots: readonly number[] }[]
+    // Each player's round wins.
+    wins: readonly number[]
+    // The menu, in order; exactly one item is selected.
+    items: readonly MenuItem[]
+}
+
+// A versus match is over: the winner, the tally and a line per round.
+export function showMatchResult(view: MatchResultView) {
+    show({
+        id: "match-result",
+        title: `🏆 ${view.winner + 1}P wins the match!`,
+        lines: [
+            `Rounds ${view.wins.join("–")}`,
+            ...view.rounds.map(
+                ({ winner, dots }, i) =>
+                    `Round ${i + 1}: ${
+                        winner === null ? "draw, replayed" : `${winner + 1}P`
+                    } · ${dots.join("–")} dots`
+            ),
+        ],
+        items: view.items,
+    })
+}
+
+// "Dots 1P 12 · 2P 9": one value per player, player 1 first.
+function perPlayer(label: string, values: readonly number[]): string {
+    return `${label} ${values.map((v, i) => `${i + 1}P ${v}`).join(" · ")}`
+}
+
 function dotCount(n: number): string {
     return n === 1 ? "1 dot" : `${n} dots`
 }

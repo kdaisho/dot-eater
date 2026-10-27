@@ -52,6 +52,7 @@ import { levels } from "./levels"
 import { distanceMap } from "./path"
 import { DEFAULT_ANIMAL, type AnimalId } from "./roster"
 import { createSplitter, resetSplitter } from "./splitter"
+import { loseDots, stunned, tickStuns } from "./versus"
 import { samePos, vec2, type Vec2 } from "./vec2"
 
 export type Outcome = "dead" | "won"
@@ -88,7 +89,8 @@ export type GameState = {
     // Lives left, shared by the players. In solo it counts the one being
     // played: a collision costs one and losing the last ends the game. In
     // co-op it is a pool of respawns: each catch spends one, and a player
-    // caught with none left is out for good (see resolveCatch).
+    // caught with none left is out for good (see resolveCatch). Versus has
+    // no lives and ignores it: a catch costs dots instead.
     lives: number
     // Where everyone starts, and goes back to after losing a life (copied
     // from the level).
@@ -108,7 +110,9 @@ export type Player = {
     // Points so far: DOT_POINTS per dot eaten, plus what its breaths earn
     // (see totalScore for the whole game's).
     score: number
-    // Dots eaten so far, for the end screens' per-player breakdown.
+    // Dots eaten so far, for the end screens' per-player breakdown. In
+    // versus a catch also lowers it (CATCH_DOTS, see versus.ts), and it
+    // decides each round.
     dots: number
     // The cell of the dot eaten on the player's latest move, or null if that
     // move ate nothing (or the player hasn't moved since the start or a
@@ -130,6 +134,13 @@ export type Player = {
     // it waits for the spawn to be clear; see tickPlayersOut), or null if it
     // is out for good. Null while in play.
     respawnIn: number | null
+    // Seconds left of a versus stun (see stun in versus.ts), 0 when not
+    // stunned.
+    stunnedFor: number
+    // Seconds left of a versus stun's immunity (see STUN_IMMUNITY_SECONDS in
+    // versus.ts): once a stun wears off the player can't be stunned again
+    // until this is over. 0 when not immune.
+    stunImmuneFor: number
 }
 
 export type Spawns = {
@@ -257,6 +268,8 @@ export function newPlayer(character: Character, breath: BreathDef): Player {
         rate: 1,
         out: false,
         respawnIn: null,
+        stunnedFor: 0,
+        stunImmuneFor: 0,
     }
 }
 
@@ -305,6 +318,8 @@ export function bringBack(state: GameState, player: Player) {
     player.rate = 1
     player.out = false
     player.respawnIn = null
+    player.stunnedFor = 0
+    player.stunImmuneFor = 0
 }
 
 // Take `player` out of play on its own (see Player.out), where it stands:
@@ -321,6 +336,8 @@ export function takeOut(player: Player, respawnAfter: number | null) {
     player.rate = 1
     player.out = true
     player.respawnIn = respawnAfter
+    player.stunnedFor = 0
+    player.stunImmuneFor = 0
 }
 
 // Whether `player` is out of play with no way back (see takeOut).
@@ -491,9 +508,13 @@ function wait(character: Glider) {
 // anyone moves. A breath press fires after the players' moves, from the cell
 // the player is moving into and along its new facing, and before the
 // enemies move, so it hits them where they stood at the start of the tick.
-// Player 1's breath fires first. Breaths don't affect players. Enemies out
-// of play don't move or catch; held ones (e.g. frozen) don't move; harmless
-// ones don't catch; and enemies keep out of cells a tile effect blocks.
+// Player 1's breath fires first. Breaths don't affect players, except in
+// versus, where a breath stuns the other player (see versus.ts): a stunned
+// player ignores its input, finishes its glide (and, on ice, its slide) and
+// doesn't move on or breathe, and its stun counts down with the breath
+// timers. Enemies out of play don't move or catch; held ones (e.g. frozen)
+// don't move; harmless ones don't catch; and enemies keep out of cells a
+// tile effect blocks.
 //
 // A boss (see boss.ts) moves with the enemies, after the breaths, and keeps
 // out of blocked cells too; a defeated one doesn't move or catch. Once the
@@ -514,6 +535,7 @@ export function step(
     state.ticks++
     tickEffects(state, dt)
     tickPlayersOut(state, dt)
+    tickStuns(players, dt)
     trickle(state, dt)
     const from = positions(state)
     let start = tickStarts(state, dt)
@@ -526,6 +548,16 @@ export function step(
     players.forEach((player, i) => {
         // A player out of play ignores its input altogether.
         if (player.out) return
+        // A stunned player (versus) ignores its input too: it finishes the
+        // glide it is in and, on ice, its slide (PM decision), but makes no
+        // move of its own.
+        if (stunned(player)) {
+            if (advance(player.character, dt * player.rate)) {
+                if (slideTick(state, player)) spend(player.character)
+                else wait(player.character)
+            }
+            return
+        }
         const move = inputs[i] ?? IDLE
         if (!isZero(move.pressed)) player.bufferedStep = move.pressed
         // The rate was taken in tickStarts too, before anyone moved, so its
@@ -540,7 +572,9 @@ export function step(
     })
     let breathed = false
     players.forEach((player, i) => {
-        if (player.out) return
+        // A player stunned by an earlier player's breath on this same tick
+        // doesn't breathe either.
+        if (player.out || stunned(player)) return
         if (inputs[i]?.breath && breathe(state, player)) breathed = true
     })
     if (breathed) {
@@ -702,17 +736,8 @@ function movePlayerTick(
     player: Player,
     held: readonly Vec2[]
 ): boolean {
-    const { cells } = state
-    const { character } = player
-    const slide = slideStep(cells, state.ice, character.pos, character.lastPos)
-    if (slide) {
-        const ahead = vec2(character.pos.x + slide.x, character.pos.y + slide.y)
-        if (!solidAt(state, loopPos(cells, ahead))) {
-            if (!movePlayer(state, slide, player)) return false
-            player.rate = player.breather.breath.slideSpeedScale ?? 1
-            return true
-        }
-    }
+    const slid = slideTick(state, player)
+    if (slid !== null) return slid
     const buffered = player.bufferedStep
     player.bufferedStep = vec2(0, 0)
     const moved =
@@ -724,6 +749,21 @@ function movePlayerTick(
         player.breather.facing = vec2(tried.x, tried.y)
     }
     return moved
+}
+
+// Player's slide step, if it is sliding (see movePlayerTick): whether it
+// moved, or null if it isn't sliding (or a solid enemy ahead ended the
+// slide), so it is free to make a move of its own.
+function slideTick(state: GameState, player: Player): boolean | null {
+    const { cells } = state
+    const { character } = player
+    const slide = slideStep(cells, state.ice, character.pos, character.lastPos)
+    if (!slide) return null
+    const ahead = vec2(character.pos.x + slide.x, character.pos.y + slide.y)
+    if (solidAt(state, loopPos(cells, ahead))) return null
+    if (!movePlayer(state, slide, player)) return false
+    player.rate = player.breather.breath.slideSpeedScale ?? 1
+    return true
 }
 
 function isZero(v: Vec2): boolean {
@@ -932,17 +972,22 @@ function collides(
 // first: eating the last dot (whichever player eats it), or defeating the
 // boss when that comes last, clears the stage even if a player is caught
 // on that same tick, and costs no life. Otherwise any player in play caught
-// this tick goes to resolveCatch.
+// this tick goes to resolveCatch. In versus a catch on that tick still
+// counts (it costs dots and takes the player out) before the round is won,
+// so the round is scored with it.
 export function checkEnd(
     state: GameState,
     start: TickStarts = tickStarts(state, 0)
 ): Outcome | null {
     const bossLeft = state.boss !== null && !state.boss.defeated
-    if (!hasDots(state.cells) && !bossLeft) return "won"
+    const cleared = !hasDots(state.cells) && !bossLeft
+    if (cleared && state.mode !== "versus") return "won"
     const caughtPlayers = state.players.filter(
         (p, i) => !p.out && caught(state, start, i)
     )
-    return caughtPlayers.length > 0 ? resolveCatch(state, caughtPlayers) : null
+    const outcome =
+        caughtPlayers.length > 0 ? resolveCatch(state, caughtPlayers) : null
+    return cleared ? "won" : outcome
 }
 
 // What catching `caught` (one or more players in play, caught on the same
@@ -955,7 +1000,7 @@ export function checkEnd(
 //   respawns at once (see respawn), keeping the dots and scores. That is no
 //   outcome; the game goes on, and callers can watch `lives` to notice it.
 // - coop: see coopCatch.
-// - versus: KDA-222 gives it its own rules; until then it plays as coop.
+// - versus: see versusCatch.
 export function resolveCatch(
     state: GameState,
     caught: readonly Player[]
@@ -967,10 +1012,7 @@ export function resolveCatch(
         case "coop":
             return coopCatch(state, caught)
         case "versus":
-            // KDA-222 fills this in with the versus rules. Until then it
-            // plays as coop, so nothing crashes; takeOut, bringBack,
-            // outForGood and playersInPlay are the pieces to build them from.
-            return coopCatch(state, caught)
+            return versusCatch(caught)
         default: {
             // Compile-time check that every Mode is handled above.
             const unhandled: never = state.mode
@@ -1008,6 +1050,18 @@ function coopCatch(
         }
     }
     return state.players.every(outForGood) ? "dead" : null
+}
+
+// Versus (see versus.ts): there are no lives. Each caught player loses
+// CATCH_DOTS of its dot count (not below 0) and is out for
+// PLAYER_RESPAWN_DELAY seconds, then back at its spawn. A versus game is
+// never lost: it only ends when the stage is cleared (see checkEnd).
+function versusCatch(caught: readonly Player[]): null {
+    for (const player of caught) {
+        loseDots(player)
+        takeOut(player, PLAYER_RESPAWN_DELAY)
+    }
+    return null
 }
 
 // Whether any enemy, or the boss, collides with player `index` this tick

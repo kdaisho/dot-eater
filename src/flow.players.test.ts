@@ -92,9 +92,8 @@ function playing(
 }
 
 describe("modes", () => {
-    it("offers 1 player first, then one 2-player entry for now", () => {
-        expect(MODE_CHOICES).toEqual(["solo", "coop"])
-        expect(MODE_CHOICES).not.toContain("versus")
+    it("offers 1 player first, then co-op and versus", () => {
+        expect(MODE_CHOICES).toEqual(["solo", "coop", "versus"])
     })
 
     it("counts the players in each mode", () => {
@@ -129,7 +128,9 @@ describe("the title's mode select", () => {
         const solo = initialScreen()
         const coop = update(solo, input([["down"]]), deps())
         expect(coop).toEqual({ kind: "title", mode: "coop" })
-        expect(update(coop, input([["down"]]), deps())).toBe(coop)
+        const versus = update(coop, input([["down"]]), deps())
+        expect(versus).toEqual({ kind: "title", mode: "versus" })
+        expect(update(versus, input([["down"]]), deps())).toBe(versus)
         expect(update(coop, input([["up"]]), deps())).toEqual(solo)
         expect(update(solo, input([["up"]]), deps())).toBe(solo)
     })

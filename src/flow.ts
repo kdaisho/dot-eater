@@ -13,6 +13,7 @@ import type { Level } from "./level"
 import { isPlayable, STAGE_COUNT, type Progress } from "./progress"
 import { ANIMAL_IDS, DEFAULT_ANIMAL, type AnimalId } from "./roster"
 import { rateClear, type ClearRating } from "./stars"
+import { matchWinner, roundResult, type RoundResult } from "./versus"
 
 // The game's screens and the transitions between them:
 //
@@ -62,6 +63,19 @@ import { rateClear, type ClearRating } from "./stars"
 // follow player 1. During a 2-player game either player can pause, and
 // either can resume.
 //
+// Versus (see versus.ts) is a best-of-3 match on one stage. Its game
+// screens carry `match`, the rounds finished so far. A cleared round goes
+// from `ending` to roundResult, whose menu is ROUND_CHOICES: Next round
+// plays it on a fresh copy of the stage with the same characters, Quit
+// drops the match for stage select. The round that decides the match goes
+// to matchResult instead, whose menu is END_CHOICES (Retry is a rematch: a
+// new match from round 1). A versus game is never lost, so it never
+// reaches stageClear or gameOver. Both screens ignore confirm for
+// END_CONFIRM_DELAY, like the end screens, and follow player 1.
+//
+//   playing -> ending -> roundResult -> playing (next round) / stageSelect
+//                    \-> matchResult -> playing (rematch) / stageSelect
+//
 // The clear time is the game's tick count (GameState.ticks), which only the
 // game step adds to, so pauses and the outro don't count. stageClear carries
 // the clear's star rating, worked out once on entry.
@@ -71,14 +85,19 @@ import { rateClear, type ClearRating } from "./stars"
 export const END_CHOICES = ["retry", "stageSelect"] as const
 export type EndChoice = (typeof END_CHOICES)[number]
 
+// What a versus round's result offers, in menu order: the next round
+// (selected on entry, so Space plays on), or quitting the match for stage
+// select, still in versus.
+export const ROUND_CHOICES = ["nextRound", "quit"] as const
+export type RoundChoice = (typeof ROUND_CHOICES)[number]
+
 // How a game is played (see Mode in game.ts, whose rules it decides).
 export type { Mode }
 
 // The modes the title's mode select offers, in menu order. Each game plays
-// by its mode's rules (see resolveCatch in game.ts): "coop" by the co-op
-// ones; versus gets its own in KDA-222 and plays as co-op until then. To
-// offer versus, add it here (main labels each mode).
-export const MODE_CHOICES: readonly Mode[] = ["solo", "coop"]
+// by its mode's rules (see resolveCatch in game.ts; versus.ts). Main labels
+// each mode.
+export const MODE_CHOICES: readonly Mode[] = ["solo", "coop", "versus"]
 
 // How many players a mode has.
 export function playerCount(mode: Mode): number {
@@ -105,6 +124,10 @@ export const END_CONFIRM_DELAY = 0.5
 // it) without a new screen every tick. Left out, confirm works at once.
 export type ShownFor = { seconds: number }
 
+// The rounds of a versus match finished so far, in order, replayed ones
+// included (see RoundResult).
+export type Match = readonly RoundResult[]
+
 export type Screen =
     | { kind: "title"; mode: Mode }
     | { kind: "stageSelect"; mode: Mode; selected: number }
@@ -124,6 +147,8 @@ export type Screen =
           level: number
           animals: Picks
           game: GameState
+          // Versus only: the match so far.
+          match?: Match
       }
     | {
           kind: "paused"
@@ -131,6 +156,7 @@ export type Screen =
           level: number
           animals: Picks
           game: GameState
+          match?: Match
       }
     | {
           kind: "ending"
@@ -139,6 +165,33 @@ export type Screen =
           animals: Picks
           game: GameState
           outcome: Outcome
+          match?: Match
+      }
+    | {
+          // A versus round is over and the match goes on.
+          kind: "roundResult"
+          mode: Mode
+          level: number
+          animals: Picks
+          game: GameState
+          // The rounds so far, this one last.
+          match: Match
+          choice: RoundChoice
+          shown?: ShownFor
+      }
+    | {
+          // A versus match is over.
+          kind: "matchResult"
+          mode: Mode
+          level: number
+          animals: Picks
+          game: GameState
+          // Every round, the deciding one last.
+          match: Match
+          // The match winner's index (player 1 is 0).
+          winner: number
+          choice: EndChoice
+          shown?: ShownFor
       }
     | {
           kind: "stageClear"
@@ -189,12 +242,14 @@ export function initialScreen(): Screen {
 }
 
 // Start `level` as `animals` (one per player of `mode`; a single animal for
-// 1 player).
+// 1 player). A versus game is a round of `match` (the rounds before it; a
+// new match unless given).
 export function startLevel(
     levels: readonly Level[],
     level: number,
     animals: AnimalId | Picks = DEFAULT_ANIMAL,
-    mode: Mode = "solo"
+    mode: Mode = "solo",
+    match: Match = []
 ): Screen {
     const picks: Picks = typeof animals === "string" ? [animals] : animals
     return {
@@ -203,6 +258,7 @@ export function startLevel(
         level,
         animals: picks,
         game: createGameState(levels[level], picks, mode),
+        ...(mode === "versus" ? { match } : {}),
     }
 }
 
@@ -239,6 +295,10 @@ export function update(
         case "stageClear":
         case "gameOver":
             return updateEnd(screen, input, deps)
+        case "roundResult":
+            return updateRoundResult(screen, input, deps)
+        case "matchResult":
+            return updateMatchResult(screen, input, deps)
         default: {
             const unhandled: never = screen
             throw new Error(`Unknown screen: ${JSON.stringify(unhandled)}`)
@@ -364,14 +424,23 @@ function updatePlaying(
             : Array.from({ length: count }, (_, i) => input.move(i))
     const outcome = stepGame(screen.game, deps.dt, moves, deps.random)
     if (!outcome) return screen
-    const { mode, level, animals, game } = screen
-    return { kind: "ending", mode, level, animals, game, outcome }
+    const { mode, level, animals, game, match } = screen
+    return {
+        kind: "ending",
+        mode,
+        level,
+        animals,
+        game,
+        outcome,
+        ...(match ? { match } : {}),
+    }
 }
 
 function endScreen(
     screen: Extract<Screen, { kind: "ending" }>,
     levels: readonly Level[]
 ): Screen {
+    if (screen.mode === "versus") return versusRoundEnd(screen)
     const { mode, level, animals, game } = screen
     const choice = END_CHOICES[0]
     const shown = { seconds: 0 }
@@ -396,10 +465,88 @@ function updateEnd(
     input: TickInput,
     deps: FlowDeps
 ): Screen {
-    const { shown } = screen
-    if (shown) shown.seconds += deps.dt
+    const ready = confirmReady(screen.shown, deps.dt)
+    if (ready && input.wasPressed("confirm")) {
+        return screen.choice === "retry"
+            ? startLevel(deps.levels, screen.level, screen.animals, screen.mode)
+            : { kind: "stageSelect", mode: screen.mode, selected: screen.level }
+    }
+    const index = END_CHOICES.indexOf(screen.choice)
+    const next = moveCursor(index, END_CHOICES.length, input)
+    return next === index ? screen : { ...screen, choice: END_CHOICES[next] }
+}
+
+// A versus round is over (the stage is cleared; a versus game is never
+// lost): add its result to the match and show it, or the match's result
+// once a player has won enough rounds.
+function versusRoundEnd(screen: Extract<Screen, { kind: "ending" }>): Screen {
+    const { mode, level, animals, game } = screen
+    const match = [...(screen.match ?? []), roundResult(game)]
+    const shown = { seconds: 0 }
+    const winner = matchWinner(match)
+    if (winner === null) {
+        const choice = ROUND_CHOICES[0]
+        return {
+            kind: "roundResult",
+            mode,
+            level,
+            animals,
+            game,
+            match,
+            choice,
+            shown,
+        }
+    }
+    return {
+        kind: "matchResult",
+        mode,
+        level,
+        animals,
+        game,
+        match,
+        winner,
+        choice: END_CHOICES[0],
+        shown,
+    }
+}
+
+// Whether a screen with `shown` takes confirm yet (see END_CONFIRM_DELAY),
+// counting this tick.
+function confirmReady(shown: ShownFor | undefined, dt: number): boolean {
+    if (!shown) return true
+    shown.seconds += dt
     // The epsilon absorbs float drift from summing dt.
-    const ready = !shown || shown.seconds >= END_CONFIRM_DELAY - 1e-9
+    return shown.seconds >= END_CONFIRM_DELAY - 1e-9
+}
+
+// Next round plays the next round of the match: a fresh copy of the same
+// stage, with the same characters. Quit drops the match and goes to stage
+// select, still in versus.
+function updateRoundResult(
+    screen: Extract<Screen, { kind: "roundResult" }>,
+    input: TickInput,
+    deps: FlowDeps
+): Screen {
+    const ready = confirmReady(screen.shown, deps.dt)
+    if (ready && input.wasPressed("confirm")) {
+        const { level, animals, mode, match } = screen
+        return screen.choice === "nextRound"
+            ? startLevel(deps.levels, level, animals, mode, match)
+            : { kind: "stageSelect", mode, selected: level }
+    }
+    const index = ROUND_CHOICES.indexOf(screen.choice)
+    const next = moveCursor(index, ROUND_CHOICES.length, input)
+    return next === index ? screen : { ...screen, choice: ROUND_CHOICES[next] }
+}
+
+// Like the end screens: Retry is a rematch (a new match, same stage and
+// characters), Stage select goes back to it.
+function updateMatchResult(
+    screen: Extract<Screen, { kind: "matchResult" }>,
+    input: TickInput,
+    deps: FlowDeps
+): Screen {
+    const ready = confirmReady(screen.shown, deps.dt)
     if (ready && input.wasPressed("confirm")) {
         return screen.choice === "retry"
             ? startLevel(deps.levels, screen.level, screen.animals, screen.mode)

@@ -17,6 +17,7 @@ import {
     isWholeSplitter,
     splitSplitter,
 } from "./splitter"
+import { opponentsStruck, stun } from "./versus"
 import { allDirections, directions, samePos, vec2, type Vec2 } from "./vec2"
 
 // The breath system. Pure, no DOM: time comes in as `dt`, the breath press
@@ -218,7 +219,11 @@ export function canBreathe(breather: Breather): boolean {
 // Breathe as `who` (player 1 unless given), if allowed: resolve the shape
 // from its cell along its facing, run the breath's hook, and pay (cost and
 // cooldown) unless the hook refused. What it defeats scores for `who`.
-// Breaths don't affect players. Returns true if the breath happened.
+// Breaths don't affect players, except in versus: there the other player,
+// standing on any cell the breath strikes (as for enemies: the origin too
+// for a line or a cone), is stunned (see versus.ts), whatever the breath,
+// and the breath counts as fired even if the hook refused. Only the strike
+// stuns: tile effects it leaves don't. Returns true if the breath happened.
 //
 // A boss in the way (see boss.ts) stops a line or a cone like a wall would,
 // except that its cells are covered: the big body takes the breath. If any
@@ -275,10 +280,13 @@ export function breathe(
             ),
     }
     const bossHit = body !== undefined && struck.some(body)
+    // In versus, the other player on a struck cell (see opponentsStruck).
+    const stuns = opponentsStruck(state, who, struck)
     const fired = breath.fire(hit) !== false
     if (iceAdded) rebuildIce(state)
-    if (!fired && !bossHit) return false
+    if (!fired && !bossHit && stuns.length === 0) return false
     if (bossHit) damageBoss(state, bossDamage(breath.cost), who)
+    stuns.forEach(stun)
     breather.energy -= breath.cost
     breather.cooldown = breath.cooldown
     return true
