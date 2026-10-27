@@ -23,6 +23,7 @@ import {
 import { createRenderer } from "./render"
 import { ANIMAL_IDS, ANIMALS, type AnimalId } from "./roster"
 import {
+    burst,
     celebrate,
     hideOverlay,
     showCharacterSelect,
@@ -80,8 +81,11 @@ const loop = createLoop({
 
 // One logic tick: advance the screen machine with player 1's input, then
 // clear this tick's press edges, so a press is seen by exactly one tick (and
-// one screen).
+// one screen). A boss defeated during the tick gets its burst of confetti
+// at once, mid-game.
 function tick(dt: number) {
+    const boss = gameOf(screen)?.boss
+    const wasDefeated = boss?.defeated ?? true
     const next = update(screen, tickInput, {
         levels,
         progress,
@@ -90,6 +94,7 @@ function tick(dt: number) {
         random: Math.random,
     })
     input.endTick()
+    if (boss && !wasDefeated && boss.defeated) burst()
     if (next !== screen) enter(screen, next)
 }
 

@@ -5,6 +5,13 @@ import { vec2, type Vec2 } from "./vec2"
 // Where to draw a character between cells. Pure maths, no DOM, so the
 // renderer's animation can be unit-tested.
 
+// What gliding needs of a character: a Character, or the boss (boss.ts),
+// whose pos is the top-left cell of its footprint.
+export type Glider = Pick<
+    Character,
+    "pos" | "lastPos" | "moveProgress" | "speed"
+>
+
 // How far through its latest move (lastPos -> pos) a character should be
 // drawn, from 0 (at lastPos) to 1 (at pos).
 //
@@ -17,7 +24,7 @@ import { vec2, type Vec2 } from "./vec2"
 // is drawn at pos. `rate` is a factor on its speed for this glide, as the
 // game applies it (the player's GameState.playerRate, e.g. a faster slide),
 // so frames between ticks keep up with the ticks.
-export function glideT(character: Character, alpha: number, rate = 1): number {
+export function glideT(character: Glider, alpha: number, rate = 1): number {
     const { moveProgress, speed } = character
     if (moveProgress >= 1) return 1
     return Math.min(1, moveProgress + (alpha * speed * rate * TICK_MS) / 1000)
@@ -64,7 +71,7 @@ export function wrapDelta(d: number, size: number): number {
 // every position wrapCopies returns, clipped to the map, so it slides off one
 // edge and in from the opposite one. `rate` as for glideT.
 export function glidePos(
-    character: Character,
+    character: Glider,
     alpha: number,
     cols: number,
     rows: number,

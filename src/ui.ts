@@ -20,6 +20,17 @@ function genConfetti(interval: number = 20) {
 
 export const celebrate = genConfetti()
 
+// One big burst from the middle of the screen, for the boss's defeat: far
+// more confetti than a single shot of celebrate, all at once, mid-game.
+export function burst() {
+    void confetti({
+        particleCount: 250,
+        spread: 160,
+        startVelocity: 45,
+        origin: { x: 0.5, y: 0.5 },
+    })
+}
+
 // Screen overlays. Every screen other than plain play is one overlay: a
 // backdrop plus a panel with a title, optional detail lines and an optional
 // menu (on character select, a row of cards instead). At most one overlay

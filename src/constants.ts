@@ -92,3 +92,24 @@ export const RESPAWN_DELAY = 5
 export const RESPAWN_BLINK = 1
 // Blinks per second during RESPAWN_BLINK (each one shown, then hidden).
 export const BLINK_RATE = 4
+
+// ---- The boss (see boss.ts) ----
+
+// Hit points a boss starts with. A breath that reaches it does
+// BOSS_DAMAGE_PER_ENERGY of its cost in damage, so it takes 12 Owl breaths,
+// 6 Dragon, Penguin or Skunk breaths, or 4 Boar breaths.
+export const BOSS_HEALTH = 12
+// Damage per energy a breath costs: the Owl's 25 does 1, a 50 does 2, the
+// Boar's 75 does 3. Pricier breaths hit harder, so every character needs
+// about the same energy (300) to bring a boss down.
+export const BOSS_DAMAGE_PER_ENERGY = 1 / 25
+// The boss's default speed in cells per second: slower than a normal enemy,
+// since it is big and catches on any touch.
+export const BOSS_SPEED = 1.5
+// Points for defeating the boss.
+export const BOSS_DEFEAT_POINTS = 500
+// Energy per second the player's meter refills by itself once every dot is
+// eaten with the boss still about, so there is always a way to finish it.
+export const BOSS_TRICKLE = 10
+// Seconds the boss flashes white after each hit.
+export const BOSS_FLASH = 0.15

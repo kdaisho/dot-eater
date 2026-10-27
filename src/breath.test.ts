@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vite-plus/test"
+import { inFootprint } from "./boss"
 import {
     addStatus,
     addTileEffect,
@@ -145,6 +146,106 @@ describe("resolveShape", () => {
             [2, 4],
             [4, 4],
         ])
+    })
+})
+
+describe("resolveShape with a boss's body in the way", () => {
+    // An open 5x5 room; the boss's footprint is (3, 3) to (4, 4).
+    const cells = cellsFrom(
+        textMap([
+            "#######",
+            "#     #",
+            "#     #",
+            "#     #",
+            "#     #",
+            "#     #",
+            "#######",
+        ]).map
+    )
+    const body = (p: Vec2) => inFootprint(vec2(3, 3), p)
+
+    it("ends a line on its body, covering the cell it hits", () => {
+        const line = { kind: "line", range: 5 } as const
+        const reach = resolveShape(cells, vec2(1, 3), east, line, body)
+        expect(xy(reach.cells)).toEqual([
+            [2, 3],
+            [3, 3],
+        ])
+        expect(reach.wall).toBeNull()
+        // Without it the line runs on to the wall.
+        expect(resolveShape(cells, vec2(1, 3), east, line).cells).toHaveLength(
+            4
+        )
+    })
+
+    it("lets its body cast a cone's shadow, covered itself", () => {
+        // From (1, 3) facing right: (2, 3); then column 3, y 2-4, of which
+        // (3, 3) and (3, 4) are the body; then column 4 fed only from
+        // (3, 2): y 1-3, (4, 3) the body again, and (4, 4) and (4, 5) in
+        // its shadow.
+        const reach = resolveShape(
+            cells,
+            vec2(1, 3),
+            east,
+            { kind: "cone", range: 3 },
+            body
+        )
+        expect(xy(reach.cells)).toEqual([
+            [2, 3],
+            [3, 2],
+            [3, 3],
+            [3, 4],
+            [4, 1],
+            [4, 2],
+            [4, 3],
+        ])
+    })
+
+    it("keeps a longer cone out of the cells behind its body", () => {
+        // A 7x7 room, the same body, from (1, 3) facing right, range 5. As
+        // above up to column 4. Rows 3 and 4 are its body's rows, so in
+        // columns 5 and 6 they are behind it and dark, though (5, 2) and
+        // (6, 2) beside them are lit: only y 1-2 there.
+        const room = cellsFrom(
+            textMap([
+                "#########",
+                "#       #",
+                "#       #",
+                "#       #",
+                "#       #",
+                "#       #",
+                "#       #",
+                "#       #",
+                "#########",
+            ]).map
+        )
+        const reach = resolveShape(
+            room,
+            vec2(1, 3),
+            east,
+            { kind: "cone", range: 5 },
+            body
+        )
+        expect(xy(reach.cells)).toEqual([
+            [2, 3],
+            [3, 2],
+            [3, 3],
+            [3, 4],
+            [4, 1],
+            [4, 2],
+            [4, 3],
+            [5, 1],
+            [5, 2],
+            [6, 1],
+            [6, 2],
+        ])
+    })
+
+    it("doesn't change an area", () => {
+        const area = { kind: "area", radius: 1 } as const
+        expect(resolveShape(cells, vec2(2, 3), east, area, body)).toEqual(
+            resolveShape(cells, vec2(2, 3), east, area)
+        )
     })
 })
 
