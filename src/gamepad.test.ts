@@ -1,5 +1,6 @@
-import { beforeEach, describe, expect, it } from "vite-plus/test"
+import { beforeEach, describe, expect, it, vi } from "vite-plus/test"
 import {
+    browserPadList,
     GamepadSource,
     padControls,
     stickAction,
@@ -83,6 +84,33 @@ describe("padControls", () => {
         expect(Object.fromEntries(padControls(pad(2, [], -1, 0)))).toEqual({
             "pad:2:stick": ["left"],
         })
+    })
+})
+
+describe("browserPadList", () => {
+    it("lists nothing where getGamepads is missing", () => {
+        expect(browserPadList({})()).toEqual([])
+    })
+
+    it("passes the browser's list through, called on navigator", () => {
+        const nav = {
+            list: [pad(0)],
+            getGamepads() {
+                return this.list
+            },
+        }
+        expect(browserPadList(nav)()).toEqual([pad(0)])
+    })
+
+    // Regression: where a permissions policy blocks gamepads, every frame
+    // called getGamepads again and caught its throw.
+    it("stops calling getGamepads once it has thrown", () => {
+        const getGamepads = vi.fn((): Pad[] => {
+            throw new DOMException("blocked", "SecurityError")
+        })
+        const list = browserPadList({ getGamepads })
+        for (let i = 0; i < 5; i++) expect(list()).toEqual([])
+        expect(getGamepads).toHaveBeenCalledTimes(1)
     })
 })
 

@@ -10,7 +10,7 @@ import {
     type Screen,
 } from "./flow"
 import type { GameState } from "./game"
-import { GamepadSource, type PadChange } from "./gamepad"
+import { browserPadList, GamepadSource, type PadChange } from "./gamepad"
 import { InputState, KeyboardSource } from "./input"
 import { loadLastPick, saveLastPick } from "./lastPick"
 import { levels } from "./levels"
@@ -225,16 +225,11 @@ function onPadChange(change: PadChange) {
     toastTimer = setTimeout(hideToast, TOAST_MS)
     if (change.kind === "disconnected" && change.wasUsed) autoPause()
 }
-// getGamepads is missing in some browsers and throws where a permissions
-// policy blocks gamepads; the game then runs on the keyboard alone.
-function gamepads(): readonly (Gamepad | null)[] {
-    try {
-        return navigator.getGamepads()
-    } catch {
-        return []
-    }
-}
-const pads = new GamepadSource(gamepads, globalThis, onPadChange)
+const pads = new GamepadSource(
+    browserPadList(navigator),
+    globalThis,
+    onPadChange
+)
 pads.setAssignment("shared")
 
 new KeyboardSource().attach(input)

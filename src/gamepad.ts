@@ -22,6 +22,25 @@ export type Pad = {
 // navigator.getGamepads, or a fake. Empty slots are null.
 export type PadList = () => readonly (Pad | null)[]
 
+// The browser's pad list (pass navigator). getGamepads is missing in some
+// browsers, and throws where a permissions policy blocks gamepads; either
+// way the list is empty from then on, decided once rather than paying for a
+// throw every frame. The game then runs on the keyboard alone.
+export function browserPadList(nav: { getGamepads?: PadList }): PadList {
+    if (typeof nav.getGamepads !== "function") return () => []
+    const getGamepads = nav.getGamepads.bind(nav)
+    let blocked = false
+    return () => {
+        if (blocked) return []
+        try {
+            return getGamepads()
+        } catch {
+            blocked = true
+            return []
+        }
+    }
+}
+
 // How pads map to players. "shared": every pad drives player 1, alongside
 // the keyboard (one-player play). "perPad": pads take players in connection
 // order, the first pad player 1, the second player 2.
