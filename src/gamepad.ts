@@ -81,11 +81,17 @@ export class GamepadSource implements InputSource {
     private input: InputState | undefined
     private assignment: PadAssignment = "shared"
     // Connected pads by index, each with its player slot in perPad mode (the
-    // lowest slot free when it connected), what it holds, and whether it
-    // has driven a player yet.
+    // lowest slot free when it connected), what it holds, whether it has
+    // driven a player yet, and whether a poll has listed it yet (a connect
+    // event can come before the pad list shows the pad).
     private readonly pads = new Map<
         number,
-        { slot: number; held: Map<string, Held>; used: boolean }
+        {
+            slot: number
+            held: Map<string, Held>
+            used: boolean
+            listed: boolean
+        }
     >()
     // Controls held when the assignment changed. They count again only once
     // released, so a button held through the change doesn't press for the
@@ -142,10 +148,11 @@ export class GamepadSource implements InputSource {
             this.connect(pad.index)
             this.update(pad)
         }
-        // A pad gone from the list without a disconnect event. (Deleting the
-        // current entry while iterating a Map is safe.)
-        for (const index of this.pads.keys()) {
-            if (!seen.has(index)) this.disconnect(index)
+        // A pad gone from the list without a disconnect event. A pad only
+        // announced by its connect event isn't gone until a poll has listed
+        // it. (Deleting the current entry while iterating a Map is safe.)
+        for (const [index, { listed }] of this.pads) {
+            if (listed && !seen.has(index)) this.disconnect(index)
         }
     }
 
@@ -161,6 +168,7 @@ export class GamepadSource implements InputSource {
         const state = this.pads.get(pad.index)
         const input = this.input
         if (!state || !input) return
+        state.listed = true
         const now = padControls(pad)
         for (const control of this.latched) {
             if (control.startsWith(`pad:${pad.index}:`) && !now.has(control)) {
@@ -200,7 +208,12 @@ export class GamepadSource implements InputSource {
         const used = new Set([...this.pads.values()].map((p) => p.slot))
         let slot = 0
         while (used.has(slot)) slot++
-        this.pads.set(index, { slot, held: new Map(), used: false })
+        this.pads.set(index, {
+            slot,
+            held: new Map(),
+            used: false,
+            listed: false,
+        })
         this.onChange({ kind: "connected", index })
     }
 

@@ -362,6 +362,24 @@ describe("GamepadSource", () => {
             })
         })
 
+        // Regression: a connect event for a pad the list didn't show yet was
+        // reported as a disconnect on the next poll.
+        it("waits for the list to show a pad announced by its event", () => {
+            target.dispatchEvent(connectEvent("gamepadconnected", 0))
+            pads = []
+            source.poll()
+            source.poll()
+            expect(changes).toEqual([{ kind: "connected", index: 0 }])
+            pads = [pad(0)]
+            source.poll()
+            pads = []
+            source.poll()
+            expect(changes).toEqual([
+                { kind: "connected", index: 0 },
+                { kind: "disconnected", index: 0, wasUsed: false },
+            ])
+        })
+
         it("ignores a disconnect for a pad it never saw", () => {
             target.dispatchEvent(connectEvent("gamepaddisconnected", 4))
             expect(changes).toEqual([])
