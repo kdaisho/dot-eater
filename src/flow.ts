@@ -465,10 +465,7 @@ function updateEnd(
     input: TickInput,
     deps: FlowDeps
 ): Screen {
-    const { shown } = screen
-    if (shown) shown.seconds += deps.dt
-    // The epsilon absorbs float drift from summing dt.
-    const ready = !shown || shown.seconds >= END_CONFIRM_DELAY - 1e-9
+    const ready = confirmReady(screen.shown, deps.dt)
     if (ready && input.wasPressed("confirm")) {
         return screen.choice === "retry"
             ? startLevel(deps.levels, screen.level, screen.animals, screen.mode)

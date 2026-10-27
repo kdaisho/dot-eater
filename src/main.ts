@@ -46,14 +46,15 @@ import {
     hideToast,
     showCharacterSelect,
     showGameOver,
+    showMatchResult,
     showPause,
+    showRoundResult,
     showStageClear,
     showStageSelect,
     showTitle,
     showToast,
     type EndScreenView,
 } from "./ui"
-import { showMatchResult, showRoundResult } from "./ui"
 import { roundWins, stunned, tallyText } from "./versus"
 
 let screen: Screen = initialScreen()
