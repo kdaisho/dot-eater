@@ -46,6 +46,9 @@ export type EndScreenView = {
     score: number
     // With two players, each one's share of it, player 1 first.
     playerScores?: readonly number[]
+    // With two players, the dots each one ate, player 1 first. Given with
+    // playerScores, each player gets a line of its own with both.
+    playerDots?: readonly number[]
     // The menu, in order; exactly one item is selected.
     items: readonly MenuItem[]
 }
@@ -152,11 +155,16 @@ export function showCharacterSelect(
     })
 }
 
-export function showPause() {
+// The pause screen. With two players either one resumes, so the hint
+// gives player 2's keys too.
+export function showPause(players = 1) {
     show({
         id: "pause",
         title: "Paused",
-        lines: ["Press P, Esc or Space to resume"],
+        lines:
+            players > 1
+                ? ["1P: P, Esc or Space to resume", "2P: Q or E to resume"]
+                : ["Press P, Esc or Space to resume"],
     })
 }
 
@@ -183,11 +191,22 @@ export function showGameOver(view: EndScreenView) {
     show({ id: "game-over", title: "💀 Game over", ...endScreen(view) })
 }
 
-function endScreen({ score, playerScores = [], items }: EndScreenView) {
+// The score, then with two players each one's share: on one line, or a
+// line each with the dots it ate when playerDots are given.
+function endScreen({
+    score,
+    playerScores = [],
+    playerDots,
+    items,
+}: EndScreenView) {
     const shares =
-        playerScores.length > 1
-            ? [playerScores.map((s, i) => `${i + 1}P ${s}`).join(" · ")]
-            : []
+        playerScores.length < 2
+            ? []
+            : playerDots
+              ? playerScores.map(
+                    (s, i) => `${i + 1}P ${s} · ${dotCount(playerDots[i] ?? 0)}`
+                )
+              : [playerScores.map((s, i) => `${i + 1}P ${s}`).join(" · ")]
     return { lines: [`Score ${score}`, ...shares], items }
 }
 
@@ -257,6 +276,10 @@ export function showMatchResult(view: MatchResultView) {
 // "Dots 1P 12 · 2P 9": one value per player, player 1 first.
 function perPlayer(label: string, values: readonly number[]): string {
     return `${label} ${values.map((v, i) => `${i + 1}P ${v}`).join(" · ")}`
+}
+
+function dotCount(n: number): string {
+    return n === 1 ? "1 dot" : `${n} dots`
 }
 
 export function hideOverlay() {

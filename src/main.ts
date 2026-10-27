@@ -287,7 +287,7 @@ function showOverlay(s: Screen) {
         case "ending":
             return hideOverlay()
         case "paused":
-            return showPause()
+            return showPause(s.game.players.length)
         case "stageClear":
             return showStageClear({
                 ...endView(s.game, s.choice),
@@ -323,11 +323,11 @@ const MATCH_LABELS = { retry: "Rematch", stageSelect: "Stage select" } as const
 
 const END_LABELS = { retry: "Retry", stageSelect: "Stage select" } as const
 
-// The mode select's labels. Until KDA-221 and KDA-222 give co-op and versus
-// their own rules, the one 2-player entry (coop) is just "2 players".
+// The mode select's labels, one per mode (MODE_CHOICES says which are
+// offered).
 const MODE_LABELS: Record<Mode, string> = {
     solo: "1 player",
-    coop: "2 players",
+    coop: "Co-op",
     versus: "Versus",
 }
 
@@ -335,7 +335,10 @@ function endView(game: GameState, choice: EndChoice): EndScreenView {
     return {
         score: totalScore(game),
         ...(game.players.length > 1
-            ? { playerScores: game.players.map((p) => p.score) }
+            ? {
+                  playerScores: game.players.map((p) => p.score),
+                  playerDots: game.players.map((p) => p.dots),
+              }
             : {}),
         items: END_CHOICES.map((c) => ({
             label: END_LABELS[c],

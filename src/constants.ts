@@ -81,6 +81,10 @@ export const START_LIVES = 3
 // Seconds a player caught in a 2-player game stays out of play before it is
 // back at its own spawn (see takeOut in game.ts).
 export const PLAYER_RESPAWN_DELAY = 3
+// How far (in cells, centre to centre) every enemy and the boss must be
+// drawn from a player's spawn for it to come back there (see spawnClear in
+// game.ts): far enough that nothing gliding in can catch it a tick later.
+export const RESPAWN_CLEAR_DISTANCE = 1.5
 
 // ---- Breaths (see breath.ts) ----
 

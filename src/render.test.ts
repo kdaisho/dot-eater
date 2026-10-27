@@ -1097,6 +1097,14 @@ describe("createRenderer with a player out of play", () => {
             "❤️",
         ])
         expect(calls.filter((c) => c.name === "strokeRect")).toHaveLength(0)
+        // Each label fits its meter's slot.
+        const labels = calls.filter(
+            (c) =>
+                c.name === "fillText" &&
+                (c.args[0] === "back in 3" || c.args[0] === "OUT")
+        )
+        expect(labels).toHaveLength(2)
+        for (const c of labels) expect(c.args[3]).toBeGreaterThan(0)
     })
 
     it("counts down in whole seconds, rounding up", () => {
@@ -1105,7 +1113,7 @@ describe("createRenderer with a player out of play", () => {
         expect(outLabel({ respawnIn: 2 })).toBe("back in 2")
         expect(outLabel({ respawnIn: 0.2 })).toBe("back in 1")
         // Due, waiting for its spawn to be clear.
-        expect(outLabel({ respawnIn: 0 })).toBe("back in 1")
+        expect(outLabel({ respawnIn: 0 })).toBe("back soon")
         expect(outLabel({ respawnIn: null })).toBe("OUT")
     })
 

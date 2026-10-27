@@ -82,7 +82,7 @@ describe("main in versus", () => {
         await import("./main")
         const setItem = vi.spyOn(localStorage, "setItem")
 
-        expect(menu()).toEqual(["1 player", "2 players", "Versus"])
+        expect(menu()).toEqual(["1 player", "Co-op", "Versus"])
         pressAndTick("ArrowDown")
         pressAndTick("ArrowDown")
         pressAndTick("Space")

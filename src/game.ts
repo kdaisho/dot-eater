@@ -8,6 +8,7 @@ import {
     ENEMY_IDS,
     PLAYER_RESPAWN_DELAY,
     PLAYER_SPEED,
+    RESPAWN_CLEAR_DISTANCE,
     START_LIVES,
 } from "./constants"
 import {
@@ -28,14 +29,17 @@ import {
     START_FACING,
     tickEffects,
     type ActiveTile,
+    type BlockMap,
     type BreathDef,
     type Breather,
 } from "./breath"
 import { BREATHS } from "./breaths"
 import {
+    bossHomeStep,
     bossMove,
     bossTarget,
     createBoss,
+    footprint,
     resetBoss,
     squareDistance,
     type Boss,
@@ -333,10 +337,10 @@ export function outForGood(player: Player): boolean {
 
 // Count down every out player's wait by `dt` seconds, at the start of a
 // tick, and bring back each one whose wait is over (see bringBack). One
-// that is due waits on (at 0) while its spawn isn't clear: while it would be
-// caught there at once, standing still, by an enemy or the boss as they are
-// drawn now (see spawnClear). It comes back on the first tick its spawn is
-// clear, before anyone moves, so it may move on that same tick.
+// that is due waits on (at 0) while its spawn isn't clear: while an enemy
+// or the boss is near it (see spawnClear). It comes back on the first tick
+// its spawn is clear, before anyone moves, so it may move on that same
+// tick.
 function tickPlayersOut(state: GameState, dt: number) {
     state.players.forEach((player, i) => {
         if (!player.out || player.respawnIn === null) return
@@ -347,12 +351,37 @@ function tickPlayersOut(state: GameState, dt: number) {
     })
 }
 
-// Whether player `index` could stand on its spawn now without being caught
-// at once by an enemy or the boss, as they are drawn now (see caughtBy).
+// Whether player `index` may come back on its spawn now: no enemy in play
+// (harmless ones aside) and no undefeated boss is drawn within
+// RESPAWN_CLEAR_DISTANCE of it (the boss by its footprint's square), or is
+// in a move that ends on it or next to it. So nothing gliding in can catch
+// it on the tick it is back or the next; checking only for a catch at once
+// let an enemy just out of reach catch it a tick later.
 function spawnClear(state: GameState, index: number): boolean {
     const spawn = state.spawns.players[index]
-    const here: TickStart = { drawn: spawn, cell: spawn, arrive: 0 }
-    return !caughtBy(state, tickStarts(state, 0), here, spawn)
+    const cols = state.cells[0].length
+    const rows = state.cells.length
+    // `spawn` relative to `at`, the short way round.
+    const offset = (at: Vec2) =>
+        vec2(wrapDelta(spawn.x - at.x, cols), wrapDelta(spawn.y - at.y, rows))
+    const nextTo = (cell: Vec2) => {
+        const { x, y } = offset(cell)
+        return Math.abs(x) + Math.abs(y) <= 1
+    }
+    const near = (d: number) => d < RESPAWN_CLEAR_DISTANCE - EPSILON
+    const byEnemy = state.enemies.some((e) => {
+        if (!inPlay(e) || hasStatus(e, "harmless")) return false
+        const { x, y } = offset(drawnPos(e, cols, rows))
+        return near(Math.hypot(x, y)) || nextTo(e.pos)
+    })
+    if (byEnemy) return false
+    const { boss } = state
+    if (!boss || boss.defeated) return true
+    const fromBoss = offset(drawnPos(boss, cols, rows))
+    return !(
+        near(squareDistance(fromBoss, fromBoss)) ||
+        footprint(boss.pos).some(nextTo)
+    )
 }
 
 // Try to move `who` (player 1 unless given) one step, eating (and scoring)
@@ -455,8 +484,8 @@ function wait(character: Glider) {
 //
 // A player out of play (see takeOut) sits the tick out: its input is
 // ignored, it doesn't move, breathe or get caught, and enemies and the boss
-// go after the players in play only (while nobody is, after where the
-// players went out). Its wait counts down first, with the breath timers,
+// go after the players in play only (while nobody is, each heads back to
+// its own spawn). Its wait counts down first, with the breath timers,
 // so one that is back (see tickPlayersOut) plays the whole tick.
 //
 // On ice (see ice.ts), a sliding character's move is its slide step, taken
@@ -545,11 +574,12 @@ export function step(
     const blocked = enemyBlocks(state)
     // Cells as enemies see them, so blocked cells also end slides.
     const enemyCells = blocked ? blockedView(cells, blocked) : cells
-    // What enemies and the boss go after: the players in play, or, while
-    // nobody is, where the players were taken out.
-    const aimed = players.some((p) => !p.out)
-        ? players.flatMap((p, i) => (p.out ? [] : [i]))
-        : players.map((_, i) => i)
+    // What enemies and the boss go after: the players in play. While
+    // nobody is, each heads back to its own spawn instead, so none parks on
+    // a player's spawn and keeps it from coming back (see tickPlayersOut).
+    // Random enemies and patrollers go their own way either way.
+    const goingHome = !players.some((p) => !p.out)
+    const aimed = players.flatMap((p, i) => (p.out ? [] : [i]))
     const targets = aimed.map((i) => from.players[i])
     const targetLasts = aimed.map((i) => lasts[i])
     // Each target's distances, searched once a tick at most, for every
@@ -574,6 +604,18 @@ export function step(
                 vec2(enemy.pos.x + slide.x, enemy.pos.y + slide.y)
             )
             reachWaypoint(enemy)
+        } else if (goingHome) {
+            const home = state.spawns.enemies[i]
+            enemyMove(
+                cells,
+                enemy,
+                home,
+                random,
+                home,
+                state.ice,
+                blocked,
+                enemyCells
+            )
         } else {
             const target = nearestTarget(
                 cells,
@@ -598,15 +640,9 @@ export function step(
     })
     const { boss } = state
     if (boss && !boss.defeated && advance(boss, dt)) {
-        // Each player's distances, shared by the choice and the move.
-        const fromPlayers = targets.map((p) => distanceMap(cells, p))
-        const target = bossTarget(state, targets, blocked, fromPlayers)
-        const next = bossMove(
-            state,
-            targets[target],
-            blocked,
-            fromPlayers[target]
-        )
+        const next = goingHome
+            ? bossHomeStep(state, blocked)
+            : bossChaseStep(state, targets, blocked)
         if (next) {
             boss.lastPos = vec2(boss.pos.x, boss.pos.y)
             boss.pos = next
@@ -617,6 +653,19 @@ export function step(
     }
 
     return checkEnd(state, start)
+}
+
+// The boss's next top-left position going after the nearest of `targets`
+// (the players in play), or null to stay put (see bossTarget, bossMove).
+function bossChaseStep(
+    state: GameState,
+    targets: readonly Vec2[],
+    blocked: BlockMap | null
+): Vec2 | null {
+    // Each player's distances, shared by the choice and the move.
+    const fromPlayers = targets.map((p) => distanceMap(state.cells, p))
+    const target = bossTarget(state, targets, blocked, fromPlayers)
+    return bossMove(state, targets[target], blocked, fromPlayers[target])
 }
 
 // On a boss level, once every dot is eaten and the boss is still about,
