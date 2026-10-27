@@ -27,24 +27,41 @@ export function candidateMoves(cells: Cells, enemy: Character): Vec2[] {
 
 // Which of `targets` (the players' cells, player 1 first) `enemy` goes
 // after: the nearest by maze distance from where it stands (wrap tunnels
-// included), the first on ties. A phantom, which drifts through walls,
-// measures straight across instead (Manhattan, as phantomStep moves). An
-// unreachable player counts as infinitely far; if none can be reached it is
-// player 1. With one player that is always player 1, without searching.
+// included), the first on ties. Distances are measured over `view`, the
+// cells as enemies see them (blockedView; `cells` when nothing is blocked),
+// so a player cut off by a blocking tile, or standing on one, counts as
+// unreachable. An unreachable player counts as infinitely far; if none can
+// be reached on `view`, distances are measured over `cells` instead, and if
+// none can be reached there either it is player 1. A phantom, which drifts
+// through walls, measures straight across instead (Manhattan, as
+// phantomStep moves). With one player that is always player 1, without
+// searching.
 export function nearestTarget(
     cells: Cells,
     enemy: Character,
-    targets: readonly Vec2[]
+    targets: readonly Vec2[],
+    view: Cells = cells
 ): number {
     if (targets.length <= 1) return 0
-    const away =
-        enemy.ai === AiType.phantom
-            ? (p: Vec2) =>
-                  Math.abs(p.x - enemy.pos.x) + Math.abs(p.y - enemy.pos.y)
-            : (() => {
-                  const dist = distanceMap(cells, enemy.pos)
-                  return (p: Vec2) => dist[p.y][p.x]
-              })()
+    if (enemy.ai === AiType.phantom) {
+        return nearestBy(
+            targets,
+            (p) => Math.abs(p.x - enemy.pos.x) + Math.abs(p.y - enemy.pos.y)
+        )
+    }
+    const byPath = (over: Cells) => {
+        const dist = distanceMap(over, enemy.pos)
+        return (p: Vec2) => dist[p.y][p.x]
+    }
+    const seen = byPath(view)
+    if (view === cells || targets.some((p) => seen(p) < Infinity)) {
+        return nearestBy(targets, seen)
+    }
+    return nearestBy(targets, byPath(cells))
+}
+
+// The index of the first of `targets` with the smallest `away`.
+function nearestBy(targets: readonly Vec2[], away: (p: Vec2) => number) {
     let best = 0
     for (let i = 1; i < targets.length; i++) {
         if (away(targets[i]) < away(targets[best])) best = i

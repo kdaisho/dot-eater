@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vite-plus/test"
-import { nearestTarget } from "./ai"
+import { blockedView, nearestTarget } from "./ai"
 import { bossTarget } from "./boss"
-import { addTileEffect, energyHud } from "./breath"
+import { addTileEffect, energyHud, enemyBlocks } from "./breath"
 import {
     AiType,
     BOSS_DEFEAT_POINTS,
@@ -413,6 +413,73 @@ describe("enemies with two players", () => {
         solo.enemies[0].moveProgress = 1
         step(solo, TICK, IDLE, fixedRandom(0))
         expect(solo.enemies[0].pos).toEqual(vec2(4, 1))
+    })
+
+    // A 2-row room with player 1 boxed into its left corner by a 2x2
+    // patch that blocks enemies: the chaser can't get at player 1, so it
+    // goes for player 2, farther away but reachable.
+    const room = textMap([
+        "#############",
+        "#           #",
+        "#           #",
+        "#############",
+        "#.###########",
+    ]).map
+    const block = { name: "test.block", blocksEnemies: true }
+    const blockCells = (state: GameState, cells: [number, number][]) => {
+        for (const [x, y] of cells) addTileEffect(state, vec2(x, y), block, 10)
+    }
+    const patch: [number, number][] = [
+        [1, 1],
+        [2, 1],
+        [1, 2],
+        [2, 2],
+    ]
+
+    it("go for a player they can reach over one a blocking tile cuts off", () => {
+        const chaser = makeEnemy(4, 1, AiType.chase)
+        const state = makeState(
+            room,
+            [
+                { x: 1, y: 1 },
+                { x: 11, y: 2 },
+            ],
+            [chaser]
+        )
+        blockCells(state, patch)
+        const view = blockedView(state.cells, enemyBlocks(state)!)
+        const targets = state.players.map((p) => p.character.pos)
+        expect(nearestTarget(state.cells, chaser, targets, view)).toBe(1)
+        // Measured over plain cells, player 1 is the nearer.
+        expect(nearestTarget(state.cells, chaser, targets)).toBe(0)
+        // Through step it heads for player 2 and catches it, rather than
+        // shuffling at the patch's edge.
+        const lives = state.lives
+        for (let i = 0; i < TICK_RATE * 8 && state.lives === lives; i++) {
+            step(state, TICK, [IDLE, IDLE], fixedRandom(0))
+            if (state.lives === lives) {
+                expect(chaser.pos.x).toBeGreaterThanOrEqual(4)
+            }
+        }
+        expect(state.lives).toBe(lives - 1)
+    })
+
+    it("fall back to plain maze distance when no player can be reached", () => {
+        const chaser = makeEnemy(4, 1, AiType.chase)
+        const state = makeState(
+            room,
+            [
+                { x: 11, y: 2 },
+                { x: 1, y: 1 },
+            ],
+            [chaser]
+        )
+        // Both players boxed in: player 2 (nearer by plain path) on the
+        // left, player 1 on the right.
+        blockCells(state, [...patch, [10, 2], [11, 1], [11, 2]])
+        const view = blockedView(state.cells, enemyBlocks(state)!)
+        const targets = state.players.map((p) => p.character.pos)
+        expect(nearestTarget(state.cells, chaser, targets, view)).toBe(1)
     })
 
     it("ambush along the heading of the player they target", () => {

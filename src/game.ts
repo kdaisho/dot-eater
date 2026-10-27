@@ -445,7 +445,7 @@ export function step(
             )
             reachWaypoint(enemy)
         } else {
-            const target = nearestTarget(cells, enemy, from.players)
+            const target = nearestTarget(cells, enemy, from.players, enemyCells)
             enemyMove(
                 cells,
                 enemy,
