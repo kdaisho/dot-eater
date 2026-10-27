@@ -201,18 +201,19 @@ document.addEventListener("visibilitychange", () => {
 })
 
 // Gamepads: in one-player play every pad drives player 1, alongside the
-// keyboard. A pad lost mid-game pauses it, like leaving the window.
+// keyboard. A pad in use lost mid-game pauses it, like leaving the window;
+// an idle pad going to sleep doesn't.
 const TOAST_MS = 2000
 let toastTimer: ReturnType<typeof setTimeout> | undefined
-function onPadChange({ kind }: PadChange) {
+function onPadChange(change: PadChange) {
     showToast(
-        kind === "connected"
+        change.kind === "connected"
             ? "Controller connected"
             : "Controller disconnected"
     )
     clearTimeout(toastTimer)
     toastTimer = setTimeout(hideToast, TOAST_MS)
-    if (kind === "disconnected") autoPause()
+    if (change.kind === "disconnected" && change.wasUsed) autoPause()
 }
 // getGamepads is missing in some browsers and throws where a permissions
 // policy blocks gamepads; the game then runs on the keyboard alone.

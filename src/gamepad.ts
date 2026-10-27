@@ -25,11 +25,17 @@ export type PadList = () => readonly (Pad | null)[]
 // order, the first pad player 1, the second player 2.
 export type PadAssignment = "shared" | "perPad"
 
-export type PadChange = {
-    kind: "connected" | "disconnected"
-    // The pad's index in the pad list.
-    index: number
-}
+// `index` is the pad's index in the pad list.
+export type PadChange =
+    | { kind: "connected"; index: number }
+    | {
+          kind: "disconnected"
+          index: number
+          // Whether the pad drove a player since it connected (held any
+          // control while it had one), so main pauses only for a pad in use,
+          // not for an idle one going to sleep.
+          wasUsed: boolean
+      }
 
 // Buttons of the browser's "standard" mapping.
 export const PAD_BUTTONS: Readonly<Record<number, readonly Action[]>> = {
@@ -75,10 +81,11 @@ export class GamepadSource implements InputSource {
     private input: InputState | undefined
     private assignment: PadAssignment = "shared"
     // Connected pads by index, each with its player slot in perPad mode (the
-    // lowest slot free when it connected) and what it holds.
+    // lowest slot free when it connected), what it holds, and whether it
+    // has driven a player yet.
     private readonly pads = new Map<
         number,
-        { slot: number; held: Map<string, Held> }
+        { slot: number; held: Map<string, Held>; used: boolean }
     >()
     // Controls held when the assignment changed. They count again only once
     // released, so a button held through the change doesn't press for the
@@ -175,6 +182,7 @@ export class GamepadSource implements InputSource {
         }
         const player = this.playerOf(pad.index)
         if (player === undefined) return
+        if (now.size) state.used = true
         for (const [control, actions] of now) {
             if (this.latched.has(control)) continue
             const before = state.held.get(control)?.actions ?? []
@@ -192,19 +200,20 @@ export class GamepadSource implements InputSource {
         const used = new Set([...this.pads.values()].map((p) => p.slot))
         let slot = 0
         while (used.has(slot)) slot++
-        this.pads.set(index, { slot, held: new Map() })
+        this.pads.set(index, { slot, held: new Map(), used: false })
         this.onChange({ kind: "connected", index })
     }
 
     private disconnect(index: number) {
-        if (!this.pads.has(index)) return
+        const state = this.pads.get(index)
+        if (!state) return
         this.releasePad(index)
         this.pads.delete(index)
         for (const control of this.latched) {
             if (control.startsWith(`pad:${index}:`))
                 this.latched.delete(control)
         }
-        this.onChange({ kind: "disconnected", index })
+        this.onChange({ kind: "disconnected", index, wasUsed: state.used })
     }
 
     // Release everything a pad holds.

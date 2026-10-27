@@ -16,9 +16,9 @@ vi.mock("./game", async (importOriginal) => {
 
 let pads: (Pad | null)[] = []
 
-function pad(buttons: number[] = []): Pad {
+function pad(buttons: number[] = [], index = 0): Pad {
     return {
-        index: 0,
+        index,
         buttons: Array.from({ length: 17 }, (_, i) => ({
             pressed: buttons.includes(i),
         })),
@@ -26,8 +26,8 @@ function pad(buttons: number[] = []): Pad {
     }
 }
 
-function padEvent(type: string) {
-    dispatchEvent(Object.assign(new Event(type), { gamepad: { index: 0 } }))
+function padEvent(type: string, index = 0) {
+    dispatchEvent(Object.assign(new Event(type), { gamepad: { index } }))
 }
 
 const A = 0
@@ -96,6 +96,17 @@ describe("main with a gamepad", () => {
         tap(START)
         expect(screen()).toBe("pause")
         tap(START)
+        expect(screen()).toBe("playing")
+    })
+
+    // Regression: every disconnect paused play.
+    it("doesn't pause when an idle second pad disconnects", () => {
+        pads = [pad(), pad([], 1)]
+        padEvent("gamepadconnected", 1)
+        vi.advanceTimersByTime(100)
+        pads = [pad()]
+        padEvent("gamepaddisconnected", 1)
+        expect(toast()).toBe("Controller disconnected")
         expect(screen()).toBe("playing")
     })
 

@@ -301,7 +301,11 @@ describe("GamepadSource", () => {
             expect(p1().isDown("breath")).toBe(false)
             expect(p1().isDown("up")).toBe(false)
             expect(p1().isDown("right")).toBe(false)
-            expect(changes.at(-1)).toEqual({ kind: "disconnected", index: 0 })
+            expect(changes.at(-1)).toEqual({
+                kind: "disconnected",
+                index: 0,
+                wasUsed: true,
+            })
         })
 
         it("leaves other pads' holds alone", () => {
@@ -317,10 +321,45 @@ describe("GamepadSource", () => {
             pads = [{ ...pad(0, [A]), connected: false }]
             source.poll()
             expect(p1().isDown("breath")).toBe(false)
-            expect(changes.at(-1)).toEqual({ kind: "disconnected", index: 0 })
+            expect(changes.at(-1)).toEqual({
+                kind: "disconnected",
+                index: 0,
+                wasUsed: true,
+            })
             pads = []
             source.poll()
             expect(changes).toHaveLength(2)
+        })
+
+        // Regression: main paused play for every disconnect, even an idle
+        // second pad going to sleep.
+        it("says whether a pad drove a player before it disconnected", () => {
+            pads = [pad(0), pad(1)]
+            tick()
+            pads = [pad(0, [A]), pad(1)]
+            tick()
+            pads = [pad(0), pad(1)]
+            tick()
+            target.dispatchEvent(connectEvent("gamepaddisconnected", 1))
+            target.dispatchEvent(connectEvent("gamepaddisconnected", 0))
+            expect(changes.slice(-2)).toEqual([
+                { kind: "disconnected", index: 1, wasUsed: false },
+                { kind: "disconnected", index: 0, wasUsed: true },
+            ])
+        })
+
+        it("doesn't count a pad without a player as used", () => {
+            input = new InputState(1)
+            source.attach(input)
+            source.setAssignment("perPad")
+            pads = [pad(0), pad(1, [A])]
+            tick()
+            target.dispatchEvent(connectEvent("gamepaddisconnected", 1))
+            expect(changes.at(-1)).toEqual({
+                kind: "disconnected",
+                index: 1,
+                wasUsed: false,
+            })
         })
 
         it("ignores a disconnect for a pad it never saw", () => {
