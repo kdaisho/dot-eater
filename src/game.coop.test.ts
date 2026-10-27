@@ -21,7 +21,9 @@ import {
     type Mode,
     type MoveInput,
 } from "./game"
+import { BREATHS } from "./breaths"
 import { levels } from "./levels"
+import { ANIMAL_IDS } from "./roster"
 import {
     fixedRandom,
     makeBoss,
@@ -494,5 +496,50 @@ describe("dots eaten", () => {
         run(state, [hold(east), hold(west)], MOVE * 2)
         expect(state.players.map((p) => p.dots)).toEqual([2, 1])
         expect(state.players.map((p) => p.score)).toEqual([20, 10])
+    })
+})
+
+describe("breaths in co-op", () => {
+    // Player 1 breathes east along a hall with player 2 right in front of
+    // it and an enemy beyond: whatever the breath does, player 2 is left
+    // alone and can walk on through whatever it left behind.
+    it.each(ANIMAL_IDS)("never affect the partner: %s", (animal) => {
+        const map = textMap([
+            "##########",
+            "#        #",
+            "##########",
+            "#.########",
+        ]).map
+        const enemy = makeEnemy(5, 1)
+        enemy.speed = 0
+        const state = makeState(map, [vec2(1, 1), vec2(2, 1)], [enemy], {
+            lives: START_LIVES,
+            mode: "coop",
+            breath: BREATHS[animal],
+        })
+        const [p1, p2] = state.players
+        p1.breather.energy = p1.breather.breath.maxEnergy
+        p2.breather.energy = 40
+        p2.character.moveProgress = 1
+        p2.breather.facing = west
+        expect(
+            step(state, TICK, [{ ...IDLE, breath: true }, IDLE], fixedRandom(0))
+        ).toBeNull()
+        // It fired (the Boar's refuses: there is no wall in front, only
+        // the partner).
+        const spent = p1.breather.energy < p1.breather.breath.maxEnergy
+        expect(spent).toBe(animal !== "boar")
+        expect(p2.character.pos).toEqual(vec2(2, 1))
+        expect(p2.character.lastPos).toEqual(vec2(2, 1))
+        expect(p2.out).toBe(false)
+        expect(p2.score).toBe(0)
+        expect(p2.breather.energy).toBe(40)
+        expect(p2.breather.cooldown).toBe(0)
+        expect(p2.breather.facing).toEqual(west)
+        expect(state.ice[1][2]).toBe(false)
+        expect(state.lives).toBe(START_LIVES)
+        // Player 2 walks on through the breath's cells.
+        run(state, [IDLE, hold(east)], MOVE)
+        expect(p2.character.pos).toEqual(vec2(3, 1))
     })
 })
