@@ -124,7 +124,7 @@ describe("main with a gamepad", () => {
             vi.advanceTimersByTime(100)
             expect(selectedItem()).toBe("1 player")
             tapPad(1, DOWN)
-            expect(selectedItem()).toBe("2 players")
+            expect(selectedItem()).toBe("Co-op")
             tapPad(0, UP)
             expect(selectedItem()).toBe("1 player")
             tapPad(1, A)
@@ -142,7 +142,7 @@ describe("main with a gamepad", () => {
 
         it("gives pad 1 to player 1 and pad 2 to player 2 in 2-player", () => {
             tapPad(1, DOWN)
-            expect(selectedItem()).toBe("2 players")
+            expect(selectedItem()).toBe("Co-op")
             tapPad(0, A)
             expect(screen()).toBe("stage-select")
             // Stage select follows player 1, and pad 2 is player 2's now.

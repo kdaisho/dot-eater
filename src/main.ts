@@ -274,11 +274,11 @@ function showOverlay(s: Screen) {
 
 const END_LABELS = { retry: "Retry", stageSelect: "Stage select" } as const
 
-// The mode select's labels. Until KDA-221 and KDA-222 give co-op and versus
-// their own rules, the one 2-player entry (coop) is just "2 players".
+// The mode select's labels, one per mode (MODE_CHOICES says which are
+// offered).
 const MODE_LABELS: Record<Mode, string> = {
     solo: "1 player",
-    coop: "2 players",
+    coop: "Co-op",
     versus: "Versus",
 }
 

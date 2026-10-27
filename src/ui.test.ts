@@ -349,12 +349,12 @@ describe("two players", () => {
     it("shows the title's mode select", () => {
         showTitle([
             { label: "1 player", selected: false },
-            { label: "2 players", selected: true },
+            { label: "Co-op", selected: true },
         ])
         expect(title()).toBe("Dot Eater")
         expect(lines()).toEqual(["↑ ↓ to choose, Space to start"])
-        expect(items()).toEqual(["1 player", "2 players"])
-        expect(selected()).toEqual(["2 players"])
+        expect(items()).toEqual(["1 player", "Co-op"])
+        expect(selected()).toEqual(["Co-op"])
     })
 
     describe("character select", () => {

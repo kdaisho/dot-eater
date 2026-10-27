@@ -72,7 +72,7 @@ const cardOf = (player: 1 | 2) =>
     overlay()?.querySelector<HTMLElement>(`li.card.p${player}`)?.dataset.animal
 
 describe("main with two players", () => {
-    it("picks 2 players, picks a character each and plays together", async () => {
+    it("picks co-op, picks a character each and plays together", async () => {
         vi.useFakeTimers()
         const saved = serializeProgress(emptyProgress())
         localStorage.setItem(PROGRESS_KEY, saved)
@@ -85,10 +85,10 @@ describe("main with two players", () => {
             [...(overlay()?.querySelectorAll("li") ?? [])].map(
                 (li) => li.textContent
             )
-        ).toEqual(["1 player", "2 players"])
+        ).toEqual(["1 player", "Co-op"])
         expect(selectedItem()).toBe("1 player")
         pressAndTick("ArrowDown")
-        expect(selectedItem()).toBe("2 players")
+        expect(selectedItem()).toBe("Co-op")
         pressAndTick("Space")
         expect(screen()).toBe("stage-select")
         pressAndTick("Space")
