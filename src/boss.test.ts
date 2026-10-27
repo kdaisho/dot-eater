@@ -7,6 +7,7 @@ import {
     damageBoss,
     footprint,
     inFootprint,
+    mapFloor,
     resetBoss,
     squareDistance,
     tickBoss,
@@ -75,12 +76,13 @@ describe("footprint", () => {
     })
 
     it("fits only where all four cells are open and on the map", () => {
-        expect(bossFits(lair, vec2(1, 1))).toBe(true)
-        expect(bossFits(lair, vec2(3, 3))).toBe(true)
+        const floor = mapFloor(lair)
+        expect(bossFits(floor, vec2(1, 1))).toBe(true)
+        expect(bossFits(floor, vec2(3, 3))).toBe(true)
         // Half in the corridor's walls.
-        expect(bossFits(lair, vec2(4, 1))).toBe(false)
-        expect(bossFits(lair, vec2(4, 2))).toBe(false)
-        expect(bossFits(lair, vec2(9, 6))).toBe(false)
+        expect(bossFits(floor, vec2(4, 1))).toBe(false)
+        expect(bossFits(floor, vec2(4, 2))).toBe(false)
+        expect(bossFits(floor, vec2(9, 6))).toBe(false)
     })
 })
 

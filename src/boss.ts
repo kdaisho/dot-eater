@@ -125,38 +125,47 @@ export function resetBoss(boss: Boss) {
 
 const key = (p: Vec2) => `${p.x},${p.y}`
 
-// Per cell [y][x], whether the boss may have it under its footprint: inside
-// the map, not a wall, not blocked by a tile effect (when `blocked` is
-// given) and not a wall a breath has opened. An opened wall grows back, and
-// the boss is too big to push out of the way, so it treats one as the wall
-// it will be again.
-function bossFloor(
-    state: GameState,
-    blocked: BlockMap | null
-): (cell: Vec2) => boolean {
-    const { cells } = state
-    const opened = new Set(
-        state.tiles.filter((t) => t.effect.opensWall).map((t) => key(t.pos))
-    )
+// Whether the boss may have a cell under its footprint.
+export type BossFloor = (cell: Vec2) => boolean
+
+// The floor of a level's `cells` with no tile effects about: inside the map
+// and not a wall. For checking where a boss can go on a level.
+export function mapFloor(cells: readonly (readonly Cell[])[]): BossFloor {
     return (c) =>
         c.y >= 0 &&
         c.x >= 0 &&
         c.y < cells.length &&
         c.x < cells[0].length &&
-        cells[c.y][c.x] !== Cell.wall &&
-        !opened.has(key(c)) &&
-        !blocked?.[c.y][c.x]
+        cells[c.y][c.x] !== Cell.wall
+}
+
+// The boss's floor now: mapFloor, and not blocked by a tile effect (when
+// `blocked` is given) and not a wall a breath has opened. An opened wall
+// grows back, and the boss is too big to push out of the way, so it treats
+// one as the wall it will be again.
+function bossFloor(state: GameState, blocked: BlockMap | null): BossFloor {
+    const onMap = mapFloor(state.cells)
+    const opened = new Set(
+        state.tiles.filter((t) => t.effect.opensWall).map((t) => key(t.pos))
+    )
+    return (c) => onMap(c) && !opened.has(key(c)) && !blocked?.[c.y][c.x]
+}
+
+// Whether the boss's whole footprint fits on `floor` with its top-left cell
+// at `pos`.
+export function bossFits(floor: BossFloor, pos: Vec2): boolean {
+    return footprint(pos).every(floor)
 }
 
 // Breadth-first over the boss's top-left positions from `from`, through
 // positions whose whole footprint is on `floor`. For each reachable position
 // (in the order found, which is by distance, then direction order): its
 // distance and the first step towards it (the position itself for `from`).
-function bossReach(
+export function bossReach(
     from: Vec2,
-    floor: (cell: Vec2) => boolean
+    floor: BossFloor
 ): { pos: Vec2; dist: number; first: Vec2 }[] {
-    const fits = (p: Vec2) => footprint(p).every(floor)
+    const fits = (p: Vec2) => bossFits(floor, p)
     const found = [{ pos: from, dist: 0, first: from }]
     const seen = new Set([key(from)])
     for (let head = 0; head < found.length; head++) {
@@ -199,7 +208,7 @@ export function bossMove(
     const boss = state.boss
     if (!boss || boss.defeated) return null
     const floor = bossFloor(state, blocked)
-    const clear = (p: Vec2) => footprint(p).every(floor)
+    const clear = (p: Vec2) => bossFits(floor, p)
     if (blocked && !clear(boss.pos)) {
         const escape = bossReach(boss.pos, bossFloor(state, null)).find((r) =>
             clear(r.pos)
@@ -284,21 +293,4 @@ function pointToSegment(c: Vec2, p: Vec2, q: Vec2): number {
                   Math.max(0, ((c.x - p.x) * dx + (c.y - p.y) * dy) / d2)
               )
     return Math.hypot(p.x + dx * t - c.x, p.y + dy * t - c.y)
-}
-
-// Whether the boss's footprint fits at `pos` on a level's `cells`, with no
-// tile effects about: all four cells on the map and not walls. For checking
-// where a boss can go on a level.
-export function bossFits(
-    cells: readonly (readonly Cell[])[],
-    pos: Vec2
-): boolean {
-    return footprint(pos).every(
-        (c) =>
-            c.y >= 0 &&
-            c.x >= 0 &&
-            c.y < cells.length &&
-            c.x < cells[0].length &&
-            cells[c.y][c.x] !== Cell.wall
-    )
 }

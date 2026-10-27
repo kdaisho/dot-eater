@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vite-plus/test"
-import { bossDamage, bossFits, footprint } from "../boss"
+import { bossDamage, bossReach, footprint, mapFloor } from "../boss"
 import { BREATHS } from "../breaths"
 import { AiType, BOSS_HEALTH, BOSS_SPEED, Cell, DOT_ENERGY } from "../constants"
 import { createGameState } from "../game"
@@ -23,29 +23,12 @@ describe("stage 5", () => {
     const dots = open.filter(({ x, y }) => cells[y][x] === Cell.dot)
     // Every top-left position the boss can get to from its spawn, through
     // positions where it fits (as bossMove moves it, with no tile effects).
-    const bossReach: Vec2[] = (() => {
-        const start = level.boss!.pos
-        const found = [vec2(start.x, start.y)]
-        const seen = new Set([`${start.x},${start.y}`])
-        for (let head = 0; head < found.length; head++) {
-            for (const d of [
-                vec2(0, -1),
-                vec2(-1, 0),
-                vec2(0, 1),
-                vec2(1, 0),
-            ]) {
-                const next = vec2(found[head].x + d.x, found[head].y + d.y)
-                const k = `${next.x},${next.y}`
-                if (seen.has(k) || !bossFits(cells, next)) continue
-                seen.add(k)
-                found.push(next)
-            }
-        }
-        return found
-    })()
+    const reachable: Vec2[] = bossReach(level.boss!.pos, mapFloor(cells)).map(
+        (r) => r.pos
+    )
     // Cells the boss's footprint can ever cover.
     const bossCells = new Set(
-        bossReach.flatMap((p) => footprint(p).map((c) => `${c.x},${c.y}`))
+        reachable.flatMap((p) => footprint(p).map((c) => `${c.x},${c.y}`))
     )
 
     it("is the fifth level, the Boss lair", () => {
@@ -114,7 +97,7 @@ describe("stage 5", () => {
     })
 
     it("gives the boss an arena to roam with most of the dots", () => {
-        expect(bossReach.length).toBeGreaterThanOrEqual(40)
+        expect(reachable.length).toBeGreaterThanOrEqual(40)
         const arenaDots = dots.filter(({ x, y }) => bossCells.has(`${x},${y}`))
         expect(arenaDots.length / dots.length).toBeGreaterThan(0.5)
     })
