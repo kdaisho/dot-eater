@@ -105,7 +105,7 @@ function enter(prev: Screen, next: Screen) {
     // keeps held directions, so holding through a pause carries on moving.
     if (next.kind === "playing" && prev.kind !== "paused") input.ignoreHeld()
     if (next.kind === "playing" && prev.kind === "characterSelect") {
-        lastAnimal = next.animal
+        lastAnimal = next.animals[0]
         saveLastPick(storage, lastAnimal)
     }
     if (next.kind === "stageClear" && prev.kind === "ending") {

@@ -94,9 +94,9 @@ function ending(
     outcome: "dead" | "won",
     progress = 0
 ): Extract<Screen, { kind: "ending" }> {
-    const { level, animal, game } = playing()
+    const { mode, level, animals, game } = playing()
     game.players[0].character.moveProgress = progress
-    return { kind: "ending", level, animal, game, outcome }
+    return { kind: "ending", mode, level, animals, game, outcome }
 }
 
 function end(
@@ -105,10 +105,10 @@ function end(
     level = 0,
     animal: AnimalId = DEFAULT_ANIMAL
 ): Screen {
-    const { game } = playing(level, animal)
-    if (kind === "gameOver") return { kind, level, animal, game, choice }
+    const { mode, animals, game } = playing(level, animal)
+    if (kind === "gameOver") return { kind, mode, level, animals, game, choice }
     const rating = rateClear(game, levels[level].parTime)
-    return { kind, level, animal, game, choice, rating }
+    return { kind, mode, level, animals, game, choice, rating }
 }
 
 // Character select for stage `level`, player 1's cursor on `pick`.
@@ -116,25 +116,31 @@ function characterSelect(
     level = 0,
     pick: AnimalId = DEFAULT_ANIMAL
 ): Extract<Screen, { kind: "characterSelect" }> {
-    return { kind: "characterSelect", level, picks: [pick] }
+    return {
+        kind: "characterSelect",
+        mode: "solo",
+        level,
+        picks: [pick],
+        ready: [false],
+    }
 }
 
 describe("initialScreen", () => {
     it("opens on the title screen", () => {
-        expect(initialScreen()).toEqual({ kind: "title" })
+        expect(initialScreen()).toEqual({ kind: "title", mode: "solo" })
     })
 })
 
 describe("title", () => {
     it("goes to stage select on confirm, with the first stage selected", () => {
         expect(update(initialScreen(), tickInput(["confirm"]), deps())).toEqual(
-            { kind: "stageSelect", selected: 0 }
+            { kind: "stageSelect", mode: "solo", selected: 0 }
         )
     })
 
     it("stays put on any other input", () => {
         const title = initialScreen()
-        for (const action of ["up", "down", "left", "pause", "breath"]) {
+        for (const action of ["up", "left", "right", "pause", "breath"]) {
             expect(update(title, tickInput([action as Action]), deps())).toBe(
                 title
             )
@@ -145,6 +151,7 @@ describe("title", () => {
 describe("stageSelect", () => {
     const select = (selected: number): Screen => ({
         kind: "stageSelect",
+        mode: "solo",
         selected,
     })
 
@@ -226,6 +233,7 @@ describe("stageSelect", () => {
     it("goes back to the title on pause", () => {
         expect(update(select(0), tickInput(["pause"]), deps())).toEqual({
             kind: "title",
+            mode: "solo",
         })
     })
 
@@ -272,8 +280,10 @@ describe("characterSelect", () => {
         )
         expect(next).toEqual({
             kind: "characterSelect",
+            mode: "solo",
             level: 1,
             picks: [AnimalId.penguin],
+            ready: [false],
         })
     })
 
@@ -286,7 +296,7 @@ describe("characterSelect", () => {
         expect(next.kind).toBe("playing")
         if (next.kind !== "playing") return
         expect(next.level).toBe(1)
-        expect(next.animal).toBe(AnimalId.boar)
+        expect(next.animals).toEqual([AnimalId.boar])
         expect(next.game.players[0].breather.breath.animal).toBe(AnimalId.boar)
         expect(next.game.cells).toEqual(second.cells.map((row) => [...row]))
     })
@@ -297,7 +307,7 @@ describe("characterSelect", () => {
             tickInput(["pause"]),
             deps()
         )
-        expect(next).toEqual({ kind: "stageSelect", selected: 1 })
+        expect(next).toEqual({ kind: "stageSelect", mode: "solo", selected: 1 })
     })
 
     it("stays put with no input", () => {
@@ -308,14 +318,14 @@ describe("characterSelect", () => {
     it("goes stage select -> character select -> playing, one screen per confirm", () => {
         const stepper = vi.fn<typeof step>(() => null)
         const d = deps({ step: stepper, lastAnimal: AnimalId.penguin })
-        let screen: Screen = { kind: "stageSelect", selected: 0 }
+        let screen: Screen = { kind: "stageSelect", mode: "solo", selected: 0 }
         screen = update(screen, tickInput(["confirm"]), d)
         expect(screen).toEqual(characterSelect(0, AnimalId.penguin))
         screen = update(screen, tickInput(["right"]), d)
         screen = update(screen, tickInput(["confirm"]), d)
         expect(screen.kind).toBe("playing")
         if (screen.kind !== "playing") return
-        expect(screen.animal).toBe(AnimalId.owl)
+        expect(screen.animals).toEqual([AnimalId.owl])
         expect(stepper).not.toHaveBeenCalled()
     })
 })
@@ -377,7 +387,8 @@ describe("playing", () => {
             expect(outro).toEqual({
                 kind: "ending",
                 level: 1,
-                animal: AnimalId.skunk,
+                mode: "solo",
+                animals: [AnimalId.skunk],
                 game: screen.game,
                 outcome,
             })
@@ -386,7 +397,8 @@ describe("playing", () => {
             expect(update(outro, tickInput(), d)).toEqual({
                 kind,
                 level: 1,
-                animal: AnimalId.skunk,
+                mode: "solo",
+                animals: [AnimalId.skunk],
                 game: screen.game,
                 choice: "retry",
                 ...(kind === "stageClear"
@@ -458,7 +470,8 @@ describe("ending", () => {
         expect(screen).toEqual({
             kind: "stageClear",
             level: 0,
-            animal: DEFAULT_ANIMAL,
+            mode: "solo",
+            animals: [DEFAULT_ANIMAL],
             game,
             choice: "retry",
             rating: rateClear(game, corridor.parTime),
@@ -556,7 +569,7 @@ describe("pauseIfPlaying", () => {
         const game = playing()
         const others: Screen[] = [
             initialScreen(),
-            { kind: "stageSelect", selected: 0 },
+            { kind: "stageSelect", mode: "solo", selected: 0 },
             characterSelect(),
             { ...game, kind: "paused" },
             ending("won"),
@@ -614,7 +627,7 @@ describe.each(["stageClear", "gameOver"] as const)("%s", (kind) => {
         )
         expect(next.kind).toBe("playing")
         if (next.kind !== "playing") return
-        expect(next.animal).toBe(AnimalId.penguin)
+        expect(next.animals).toEqual([AnimalId.penguin])
         expect(next.game.players[0].breather.breath.animal).toBe(
             AnimalId.penguin
         )
@@ -624,12 +637,12 @@ describe.each(["stageClear", "gameOver"] as const)("%s", (kind) => {
         const stepper = endingStep(kind === "stageClear" ? "won" : "dead")
         let screen: Screen = playing(1, AnimalId.boar)
         screen = update(screen, tickInput(["pause"]), deps())
-        expect(screen).toMatchObject({ kind: "paused", animal: "boar" })
+        expect(screen).toMatchObject({ kind: "paused", animals: ["boar"] })
         screen = update(screen, tickInput(["pause"]), deps())
         screen = update(screen, tickInput(), deps({ step: stepper }))
-        expect(screen).toMatchObject({ kind: "ending", animal: "boar" })
+        expect(screen).toMatchObject({ kind: "ending", animals: ["boar"] })
         screen = update(screen, tickInput(), deps())
-        expect(screen).toMatchObject({ kind, animal: "boar" })
+        expect(screen).toMatchObject({ kind, animals: ["boar"] })
     })
 
     it("retries with the score reset and full lives", () => {
@@ -646,6 +659,7 @@ describe.each(["stageClear", "gameOver"] as const)("%s", (kind) => {
         const screen = end(kind, "stageSelect", 1)
         expect(update(screen, tickInput(["confirm"]), deps())).toEqual({
             kind: "stageSelect",
+            mode: "solo",
             selected: 1,
         })
     })
@@ -751,7 +765,7 @@ describe("no input carry-over", () => {
             east
         )
         const fromStages = update(
-            { kind: "stageSelect", selected: 0 },
+            { kind: "stageSelect", mode: "solo", selected: 0 },
             everything,
             d
         )
@@ -774,7 +788,7 @@ describe("no input carry-over", () => {
         const input = { wasPressed: () => false, move }
         const screens: Screen[] = [
             initialScreen(),
-            { kind: "stageSelect", selected: 0 },
+            { kind: "stageSelect", mode: "solo", selected: 0 },
             characterSelect(),
             { ...playing(), kind: "paused" },
             end("stageClear"),
@@ -801,7 +815,9 @@ describe("gameOf", () => {
 
     it("returns undefined on menus", () => {
         expect(gameOf(initialScreen())).toBeUndefined()
-        expect(gameOf({ kind: "stageSelect", selected: 0 })).toBeUndefined()
+        expect(
+            gameOf({ kind: "stageSelect", mode: "solo", selected: 0 })
+        ).toBeUndefined()
         expect(gameOf(characterSelect())).toBeUndefined()
     })
 })
