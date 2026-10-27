@@ -35,8 +35,8 @@ import { vec2, type Vec2 } from "./vec2"
 // Co-op catches (KDA-221): a caught player is out on its own and back at
 // its spawn PLAYER_RESPAWN_DELAY seconds later, spending a life from the
 // shared pool; with the pool empty it is out for good, and the game is lost
-// once nobody is in play or coming back. Versus plays the same until
-// KDA-222 gives it its own rules.
+// once nobody is in play or coming back. Versus has its own rules (see
+// game.versus.test.ts).
 
 const TICK = 1 / TICK_RATE
 const none = vec2(0, 0)
@@ -452,16 +452,6 @@ describe("coming back onto an occupied spawn", () => {
         boss.defeated = true
         step(state, TICK, [IDLE, IDLE], fixedRandom(0))
         expect(state.players[0].out).toBe(false)
-    })
-})
-
-describe("versus, until KDA-222", () => {
-    it("plays as co-op", () => {
-        const state = coop([post(1, 1)], { mode: "versus" })
-        expect(step(state, TICK, [IDLE, IDLE], fixedRandom(0))).toBeNull()
-        expect(state.players[0].out).toBe(true)
-        expect(state.players[1].out).toBe(false)
-        expect(state.lives).toBe(START_LIVES - 1)
     })
 })
 

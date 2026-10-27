@@ -1,0 +1,344 @@
+import { describe, expect, it } from "vite-plus/test"
+import { breathe, type BreathDef } from "./breath"
+import { BREATHS } from "./breaths"
+import { damageBoss } from "./boss"
+import {
+    BOSS_DEFEAT_POINTS,
+    BOSS_HEALTH,
+    PLAYER_RESPAWN_DELAY,
+    START_LIVES,
+    TICK_RATE,
+} from "./constants"
+import {
+    checkEnd,
+    IDLE,
+    movePlayer,
+    step,
+    type GameState,
+    type Mode,
+    type MoveInput,
+} from "./game"
+import { AnimalId } from "./roster"
+import {
+    fixedRandom,
+    makeBoss,
+    makeEnemy,
+    makeState,
+    textMap,
+} from "./test/helpers"
+import { vec2, type Vec2 } from "./vec2"
+import { CATCH_DOTS, STUN_SECONDS, stunned } from "./versus"
+
+// Versus (KDA-222) in the game itself: breaths stun the other player, a
+// catch costs dots instead of a life, and the game is never lost.
+
+const TICK = 1 / TICK_RATE
+const none = vec2(0, 0)
+const east = vec2(1, 0)
+const west = vec2(-1, 0)
+const STUN_TICKS = STUN_SECONDS * TICK_RATE
+const RESPAWN_TICKS = PLAYER_RESPAWN_DELAY * TICK_RATE
+
+const hold = (d: Vec2, breath = false): MoveInput => ({
+    held: [d],
+    pressed: none,
+    breath,
+})
+const breath: MoveInput = { held: [], pressed: none, breath: true }
+
+// A one-row hall, cells (1, 1) to (11, 1), with a dot in a pocket below so
+// the game isn't won. Breakable inner walls sit below the hall.
+const hall = textMap([
+    "#############",
+    "#           #",
+    "#############",
+    "#.###########",
+]).map
+
+// A 2-player game in the hall: player 1 at (1, 1) facing east with a full
+// meter, breathing `p1`, and player 2 at `p2At`, by `mode`'s rules.
+function duel(
+    p1: BreathDef,
+    p2At: Vec2,
+    { mode = "versus" }: { mode?: Mode } = {}
+): GameState {
+    const state = makeState(hall, [vec2(1, 1), p2At], [], {
+        lives: START_LIVES,
+        mode,
+        breath: [p1, BREATHS[AnimalId.dragon]],
+    })
+    state.players[0].breather.energy = p1.maxEnergy
+    return state
+}
+
+function run(state: GameState, moves: readonly MoveInput[], ticks: number) {
+    for (let i = 0; i < ticks; i++) {
+        const outcome = step(state, TICK, moves, fixedRandom(0))
+        if (outcome) return outcome
+    }
+    return null
+}
+
+describe("a breath on the other player in versus", () => {
+    const cases: [AnimalId, Vec2][] = [
+        [AnimalId.dragon, vec2(6, 1)],
+        [AnimalId.penguin, vec2(4, 1)],
+        [AnimalId.owl, vec2(6, 1)],
+        [AnimalId.skunk, vec2(2, 1)],
+        [AnimalId.boar, vec2(2, 1)],
+    ]
+    for (const [animal, at] of cases) {
+        it(`stuns it for ${STUN_SECONDS} s (${animal})`, () => {
+            const def = BREATHS[animal]
+            const state = duel(def, at)
+            expect(breathe(state, state.players[0])).toBe(true)
+            const p2 = state.players[1]
+            expect(p2.stunnedFor).toBe(STUN_SECONDS)
+            expect(stunned(p2)).toBe(true)
+            // It costs the breath's normal energy.
+            expect(state.players[0].breather.energy).toBe(
+                def.maxEnergy - def.cost
+            )
+            // Nothing else happens to it: not pushed, not out.
+            expect(p2.character.pos).toEqual(at)
+            expect(p2.out).toBe(false)
+        })
+
+        it(`doesn't reach it a cell further off (${animal})`, () => {
+            const state = duel(BREATHS[animal], vec2(at.x + 1, at.y))
+            breathe(state, state.players[0])
+            expect(stunned(state.players[1])).toBe(false)
+        })
+    }
+
+    it("stuns it on the breather's own cell", () => {
+        const state = duel(BREATHS[AnimalId.dragon], vec2(1, 1))
+        breathe(state, state.players[0])
+        expect(stunned(state.players[1])).toBe(true)
+    })
+
+    it("fires even when the hook would refuse (the Boar, no wall)", () => {
+        const state = duel(BREATHS[AnimalId.boar], vec2(3, 1))
+        // Nothing to break and nobody there: refused, nothing spent.
+        expect(breathe(state, state.players[0])).toBe(false)
+        state.players[1].character.pos = vec2(2, 1)
+        expect(breathe(state, state.players[0])).toBe(true)
+        expect(state.players[0].breather.cooldown).toBeGreaterThan(0)
+    })
+
+    it("never stuns in co-op or solo", () => {
+        for (const mode of ["coop", "solo"] as const) {
+            const state = duel(BREATHS[AnimalId.dragon], vec2(3, 1), { mode })
+            expect(breathe(state, state.players[0])).toBe(true)
+            expect(state.players[1].stunnedFor).toBe(0)
+        }
+    })
+
+    it("doesn't stun a player already stunned again", () => {
+        const state = duel(BREATHS[AnimalId.owl], vec2(3, 1))
+        breathe(state, state.players[0])
+        // Half a second on, past the Owl's cooldown.
+        run(state, [IDLE, IDLE], TICK_RATE / 2)
+        const left = state.players[1].stunnedFor
+        expect(left).toBeCloseTo(STUN_SECONDS - 0.5)
+        expect(breathe(state, state.players[0])).toBe(true)
+        expect(state.players[1].stunnedFor).toBe(left)
+    })
+
+    it("can stun it again once the stun is over", () => {
+        const state = duel(BREATHS[AnimalId.owl], vec2(3, 1))
+        breathe(state, state.players[0])
+        run(state, [IDLE, IDLE], STUN_TICKS)
+        expect(stunned(state.players[1])).toBe(false)
+        expect(breathe(state, state.players[0])).toBe(true)
+        expect(state.players[1].stunnedFor).toBe(STUN_SECONDS)
+    })
+
+    it("doesn't stun from the tiles it leaves behind", () => {
+        // The fire burns (2, 1) to (6, 1); player 2 walks into it after.
+        const state = duel(BREATHS[AnimalId.dragon], vec2(7, 1))
+        breathe(state, state.players[0])
+        expect(state.tiles.length).toBeGreaterThan(0)
+        run(state, [IDLE, hold(west)], TICK_RATE / 2)
+        expect(state.players[1].character.pos.x).toBeLessThan(7)
+        expect(stunned(state.players[1])).toBe(false)
+    })
+
+    it("doesn't reach a player out of play", () => {
+        const state = duel(BREATHS[AnimalId.dragon], vec2(3, 1))
+        state.players[1].out = true
+        state.players[1].respawnIn = 1
+        breathe(state, state.players[0])
+        expect(state.players[1].stunnedFor).toBe(0)
+    })
+
+    it("stuns through step, before the stunned player's own breath", () => {
+        const state = duel(BREATHS[AnimalId.dragon], vec2(3, 1))
+        const p2 = state.players[1]
+        p2.breather.energy = 100
+        p2.breather.facing = west
+        step(state, TICK, [breath, breath], fixedRandom(0))
+        expect(stunned(p2)).toBe(true)
+        expect(p2.breather.energy).toBe(100)
+        expect(stunned(state.players[0])).toBe(false)
+    })
+})
+
+describe("a stunned player", () => {
+    function stunnedP2() {
+        const state = duel(BREATHS[AnimalId.owl], vec2(3, 1))
+        breathe(state, state.players[0])
+        return state
+    }
+
+    it("doesn't move until the stun is over", () => {
+        const state = stunnedP2()
+        const p2 = state.players[1]
+        run(state, [IDLE, hold(east)], STUN_TICKS - 1)
+        expect(p2.character.pos).toEqual(vec2(3, 1))
+        run(state, [IDLE, hold(east)], 1)
+        expect(p2.character.pos).toEqual(vec2(4, 1))
+    })
+
+    it("ignores taps made while stunned", () => {
+        const state = stunnedP2()
+        const p2 = state.players[1]
+        step(state, TICK, [IDLE, { held: [], pressed: east }], fixedRandom(0))
+        run(state, [IDLE, IDLE], STUN_TICKS)
+        expect(p2.character.pos).toEqual(vec2(3, 1))
+    })
+
+    it("finishes the glide it is in", () => {
+        const state = duel(BREATHS[AnimalId.owl], vec2(3, 1))
+        const p2 = state.players[1].character
+        p2.lastPos = vec2(4, 1)
+        p2.moveProgress = 0.5
+        breathe(state, state.players[0])
+        run(state, [IDLE, hold(west)], TICK_RATE / 2)
+        expect(p2.moveProgress).toBe(1)
+        expect(p2.pos).toEqual(vec2(3, 1))
+    })
+
+    it("can't breathe", () => {
+        const state = stunnedP2()
+        const p2 = state.players[1]
+        p2.breather.energy = 100
+        run(state, [IDLE, breath], 1)
+        expect(p2.breather.energy).toBe(100)
+    })
+
+    it("can still be caught, which ends the stun", () => {
+        const enemy = makeEnemy(11, 1)
+        enemy.speed = 0
+        const state = makeState(hall, [vec2(1, 1), vec2(11, 1)], [enemy], {
+            mode: "versus",
+        })
+        state.spawns = { ...state.spawns, enemies: [vec2(6, 1)] }
+        state.players[1].stunnedFor = STUN_SECONDS
+        expect(step(state, TICK, [IDLE, IDLE], fixedRandom(0))).toBeNull()
+        expect(state.players[1].out).toBe(true)
+        expect(state.players[1].stunnedFor).toBe(0)
+    })
+})
+
+describe("a versus catch", () => {
+    // An enemy that never moves, on player 1's spawn.
+    function caughtP1(dots: number) {
+        const enemy = makeEnemy(1, 1)
+        enemy.speed = 0
+        const state = makeState(hall, [vec2(1, 1), vec2(11, 1)], [enemy], {
+            lives: 1,
+            mode: "versus",
+        })
+        state.players[0].dots = dots
+        const outcome = step(state, TICK, [IDLE, IDLE], fixedRandom(0))
+        return { state, enemy, outcome }
+    }
+
+    it(`costs ${CATCH_DOTS} dots and takes the player out, not a life`, () => {
+        const { state, outcome } = caughtP1(12)
+        expect(outcome).toBeNull()
+        const [p1, p2] = state.players
+        expect(p1.dots).toBe(12 - CATCH_DOTS)
+        expect(p1.out).toBe(true)
+        expect(p1.respawnIn).toBe(PLAYER_RESPAWN_DELAY)
+        expect(p2.out).toBe(false)
+        expect(state.lives).toBe(1)
+    })
+
+    it("doesn't take the dots below 0", () => {
+        expect(caughtP1(3).state.players[0].dots).toBe(0)
+    })
+
+    it("keeps the score", () => {
+        const enemy = makeEnemy(1, 1)
+        enemy.speed = 0
+        const state = makeState(hall, [vec2(1, 1), vec2(11, 1)], [enemy], {
+            mode: "versus",
+        })
+        state.players[0].score = 120
+        step(state, TICK, [IDLE, IDLE], fixedRandom(0))
+        expect(state.players[0].score).toBe(120)
+    })
+
+    it("brings the player back at its spawn after the delay", () => {
+        const { state, enemy } = caughtP1(0)
+        enemy.pos = vec2(6, 1)
+        enemy.lastPos = vec2(6, 1)
+        run(state, [IDLE, IDLE], RESPAWN_TICKS - 1)
+        expect(state.players[0].out).toBe(true)
+        run(state, [IDLE, IDLE], 1)
+        expect(state.players[0].out).toBe(false)
+        expect(state.players[0].character.pos).toEqual(vec2(1, 1))
+    })
+
+    it("never loses the game, even with both caught over and over", () => {
+        const a = makeEnemy(1, 1)
+        const b = makeEnemy(11, 1)
+        a.speed = 0
+        b.speed = 0
+        const state = makeState(hall, [vec2(1, 1), vec2(11, 1)], [a, b], {
+            lives: 0,
+            mode: "versus",
+        })
+        // Both spawns stay occupied: they wait to come back, the game goes
+        // on.
+        expect(run(state, [IDLE, IDLE], RESPAWN_TICKS * 3)).toBeNull()
+        for (const p of state.players) {
+            expect(p.out).toBe(true)
+            expect(p.respawnIn).toBe(0)
+        }
+    })
+})
+
+describe("a versus round's end", () => {
+    it("comes when the last dot is eaten, by either player", () => {
+        const map = textMap(["#####", "#. .#", "#####"]).map
+        const state = makeState(map, [vec2(2, 1), vec2(3, 1)], [], {
+            mode: "versus",
+        })
+        expect(checkEnd(state)).toBeNull()
+        movePlayer(state, west, state.players[0])
+        expect(checkEnd(state)).toBe("won")
+        expect(state.players.map((p) => p.dots)).toEqual([1, 0])
+    })
+
+    it("waits for the boss on a boss stage, which scores but adds no dots", () => {
+        const arena = textMap([
+            "#######",
+            "#     #",
+            "#     #",
+            "#     #",
+            "#######",
+        ]).map
+        const state = makeState(arena, [vec2(1, 1), vec2(5, 3)], [], {
+            mode: "versus",
+            boss: makeBoss(3, 1, 0),
+        })
+        expect(checkEnd(state)).toBeNull()
+        damageBoss(state, BOSS_HEALTH, state.players[1])
+        expect(checkEnd(state)).toBe("won")
+        expect(state.players[1].score).toBe(BOSS_DEFEAT_POINTS)
+        expect(state.players[1].dots).toBe(0)
+    })
+})
