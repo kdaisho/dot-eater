@@ -110,6 +110,12 @@ describe("GamepadSource", () => {
         input.endTick()
         return seen
     }
+    // List `count` idle pads (indexes 0 up) once, so what they hold next
+    // counts: a button held when a pad is first listed doesn't press.
+    function plugIn(count = 1) {
+        pads = Array.from({ length: count }, (_, i) => pad(i))
+        source.poll()
+    }
     const ACTIONS_SEEN: Action[] = [
         "up",
         "down",
@@ -121,16 +127,41 @@ describe("GamepadSource", () => {
     ]
 
     it("presses on the frame a button goes down", () => {
+        plugIn()
         pads = [pad(0, [UP])]
         expect(tick()).toEqual({ pressed: ["up"], down: ["up"] })
     })
 
+    // Regression: Chrome and Safari list a pad only after a button on it is
+    // pressed, and that press (often A, confirm) went straight through.
+    it.each([
+        ["by polling", () => {}],
+        [
+            "after its connect event",
+            () => target.dispatchEvent(connectEvent("gamepadconnected", 0)),
+        ],
+    ])(
+        "doesn't press a button held when the pad is first listed (%s)",
+        (_, announce) => {
+            announce()
+            pads = [pad(0, [A], 1, 0)]
+            expect(tick()).toEqual({ pressed: [], down: [] })
+            expect(tick()).toEqual({ pressed: [], down: [] })
+            pads = [pad(0)]
+            tick()
+            pads = [pad(0, [A], 1, 0)]
+            expect(tick().pressed).toEqual(["right", "breath", "confirm"])
+        }
+    )
+
     it("A is breath and confirm, Start is pause", () => {
+        plugIn()
         pads = [pad(0, [A, START])]
         expect(tick().pressed).toEqual(["breath", "confirm", "pause"])
     })
 
     it("holding never presses again", () => {
+        plugIn()
         pads = [pad(0, [A])]
         tick()
         for (let i = 0; i < 5; i++) {
@@ -139,6 +170,7 @@ describe("GamepadSource", () => {
     })
 
     it("releases on the frame a button goes up, and presses again after", () => {
+        plugIn()
         pads = [pad(0, [RIGHT])]
         tick()
         pads = [pad(0)]
@@ -158,6 +190,7 @@ describe("GamepadSource", () => {
     })
 
     it("swings the stick from one direction to another", () => {
+        plugIn()
         pads = [pad(0, [], 0, -1)]
         tick()
         pads = [pad(0, [], -1, -0.3)]
@@ -166,6 +199,7 @@ describe("GamepadSource", () => {
     })
 
     it("holds a direction from both the D-pad and the stick", () => {
+        plugIn()
         pads = [pad(0, [UP], 0, -1)]
         tick()
         pads = [pad(0, [], 0, -1)]
@@ -175,6 +209,7 @@ describe("GamepadSource", () => {
     })
 
     it("holds an action independently of the keyboard", () => {
+        plugIn()
         const keys = new EventTarget()
         new KeyboardSource(undefined, keys).attach(input)
         keys.dispatchEvent(
@@ -193,6 +228,7 @@ describe("GamepadSource", () => {
     })
 
     it("releases a pad's hold without touching the keyboard's", () => {
+        plugIn()
         const keys = new EventTarget()
         new KeyboardSource(undefined, keys).attach(input)
         pads = [pad(0, [A])]
@@ -206,6 +242,7 @@ describe("GamepadSource", () => {
 
     describe("shared assignment (the default)", () => {
         it("lets every pad drive player 1", () => {
+            plugIn(2)
             pads = [pad(0, [UP]), pad(1, [LEFT])]
             expect(tick()).toEqual({
                 pressed: ["up", "left"],
@@ -216,6 +253,7 @@ describe("GamepadSource", () => {
         })
 
         it("keeps player 1 held until both pads let go", () => {
+            plugIn(2)
             pads = [pad(0, [A]), pad(1, [A])]
             tick()
             pads = [pad(0), pad(1, [A])]
@@ -227,6 +265,7 @@ describe("GamepadSource", () => {
         beforeEach(() => source.setAssignment("perPad"))
 
         it("gives the first pad player 1 and the second player 2", () => {
+            plugIn(2)
             pads = [pad(0, [UP]), pad(1, [LEFT])]
             source.poll()
             expect(p1().isDown("up")).toBe(true)
@@ -238,6 +277,8 @@ describe("GamepadSource", () => {
         it("follows connection order, not the pad index", () => {
             target.dispatchEvent(connectEvent("gamepadconnected", 3))
             target.dispatchEvent(connectEvent("gamepadconnected", 1))
+            pads = [null, pad(1), null, pad(3)]
+            source.poll()
             pads = [null, pad(1, [DOWN]), null, pad(3, [RIGHT])]
             source.poll()
             expect(p1().isDown("right")).toBe(true)
@@ -251,6 +292,8 @@ describe("GamepadSource", () => {
             pads = [null, pad(1)]
             source.poll()
             target.dispatchEvent(connectEvent("gamepadconnected", 2))
+            pads = [null, pad(1), pad(2)]
+            source.poll()
             pads = [null, pad(1), pad(2, [A])]
             source.poll()
             expect(p1().isDown("breath")).toBe(true)
@@ -266,6 +309,7 @@ describe("GamepadSource", () => {
     })
 
     it("hands held buttons over only after they're released", () => {
+        plugIn(2)
         pads = [pad(0), pad(1, [A])]
         tick()
         expect(p1().isDown("confirm")).toBe(true)
@@ -295,6 +339,7 @@ describe("GamepadSource", () => {
         })
 
         it("releases everything a pad held when it disconnects", () => {
+            plugIn()
             pads = [pad(0, [A, UP], 1, 0)]
             tick()
             target.dispatchEvent(connectEvent("gamepaddisconnected", 0))
@@ -309,6 +354,7 @@ describe("GamepadSource", () => {
         })
 
         it("leaves other pads' holds alone", () => {
+            plugIn(2)
             pads = [pad(0, [UP]), pad(1, [UP])]
             tick()
             target.dispatchEvent(connectEvent("gamepaddisconnected", 0))
@@ -316,6 +362,7 @@ describe("GamepadSource", () => {
         })
 
         it("treats a pad gone from the list as disconnected", () => {
+            plugIn()
             pads = [pad(0, [A])]
             tick()
             pads = [{ ...pad(0, [A]), connected: false }]

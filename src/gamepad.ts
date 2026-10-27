@@ -93,9 +93,10 @@ export class GamepadSource implements InputSource {
             listed: boolean
         }
     >()
-    // Controls held when the assignment changed. They count again only once
-    // released, so a button held through the change doesn't press for the
-    // new player.
+    // Controls held when the assignment changed, or when their pad was
+    // first listed. They count only once released, so a button held through
+    // the change doesn't press for the new player, and the press that woke
+    // a pad up doesn't press at all.
     private readonly latched = new Set<string>()
 
     constructor(
@@ -168,8 +169,14 @@ export class GamepadSource implements InputSource {
         const state = this.pads.get(pad.index)
         const input = this.input
         if (!state || !input) return
-        state.listed = true
         const now = padControls(pad)
+        // Some browsers list a pad only once a button on it is pressed.
+        // Whatever it holds when first listed counts only after a release,
+        // like a button held through an assignment change.
+        if (!state.listed) {
+            for (const control of now.keys()) this.latched.add(control)
+            state.listed = true
+        }
         for (const control of this.latched) {
             if (control.startsWith(`pad:${pad.index}:`) && !now.has(control)) {
                 this.latched.delete(control)

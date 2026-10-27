@@ -46,9 +46,12 @@ function disconnect() {
     padEvent("gamepaddisconnected")
 }
 
+// Connect an idle pad and let a frame list it (a button held when a pad is
+// first listed doesn't press).
 function connect() {
     pads = [pad()]
     padEvent("gamepadconnected")
+    vi.advanceTimersByTime(20)
 }
 
 const screen = () =>
