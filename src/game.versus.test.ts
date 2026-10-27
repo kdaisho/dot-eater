@@ -405,6 +405,38 @@ describe("a versus round's end", () => {
         expect(state.players.map((p) => p.dots)).toEqual([1, 0])
     })
 
+    // Regression: the last dot was checked first, so a catch on that tick
+    // cost nothing and the round was scored without it.
+    it(`still costs a player caught on the last dot's tick ${CATCH_DOTS} dots`, () => {
+        const map = textMap(["#######", "#.    #", "#######"]).map
+        const enemy = makeEnemy(5, 1)
+        enemy.speed = 0
+        const state = makeState(map, [vec2(2, 1), vec2(5, 1)], [enemy], {
+            mode: "versus",
+        })
+        state.players[1].dots = 7
+        movePlayer(state, west, state.players[0])
+        expect(checkEnd(state)).toBe("won")
+        expect(state.players.map((p) => p.dots)).toEqual([1, 7 - CATCH_DOTS])
+        expect(state.players[1].out).toBe(true)
+    })
+
+    it("leaves co-op and solo as they were: the last dot wins, free", () => {
+        for (const mode of ["coop", "solo"] as const) {
+            const map = textMap(["#######", "#.    #", "#######"]).map
+            const enemy = makeEnemy(5, 1)
+            enemy.speed = 0
+            const state = makeState(map, [vec2(2, 1), vec2(5, 1)], [enemy], {
+                lives: START_LIVES,
+                mode,
+            })
+            movePlayer(state, west, state.players[0])
+            expect(checkEnd(state)).toBe("won")
+            expect(state.lives).toBe(START_LIVES)
+            expect(state.players[1].out).toBe(false)
+        }
+    })
+
     it("waits for the boss on a boss stage, which scores but adds no dots", () => {
         const arena = textMap([
             "#######",

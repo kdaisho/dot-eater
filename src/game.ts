@@ -969,17 +969,22 @@ function collides(
 // first: eating the last dot (whichever player eats it), or defeating the
 // boss when that comes last, clears the stage even if a player is caught
 // on that same tick, and costs no life. Otherwise any player in play caught
-// this tick goes to resolveCatch.
+// this tick goes to resolveCatch. In versus a catch on that tick still
+// counts (it costs dots and takes the player out) before the round is won,
+// so the round is scored with it.
 export function checkEnd(
     state: GameState,
     start: TickStarts = tickStarts(state, 0)
 ): Outcome | null {
     const bossLeft = state.boss !== null && !state.boss.defeated
-    if (!hasDots(state.cells) && !bossLeft) return "won"
+    const cleared = !hasDots(state.cells) && !bossLeft
+    if (cleared && state.mode !== "versus") return "won"
     const caughtPlayers = state.players.filter(
         (p, i) => !p.out && caught(state, start, i)
     )
-    return caughtPlayers.length > 0 ? resolveCatch(state, caughtPlayers) : null
+    const outcome =
+        caughtPlayers.length > 0 ? resolveCatch(state, caughtPlayers) : null
+    return cleared ? "won" : outcome
 }
 
 // What catching `caught` (one or more players in play, caught on the same
