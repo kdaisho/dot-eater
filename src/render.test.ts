@@ -612,6 +612,29 @@ describe("createRenderer", () => {
             expect(spriteX(0.9)).toBe(spriteX(0))
         })
 
+        // Regression: frames between ticks moved the player at its normal
+        // speed during a faster slide, so it fell behind and snapped forward
+        // each tick.
+        it("glides the player between ticks at its current rate", () => {
+            const state = room()
+            state.player.pos = vec2(2, 1)
+            state.player.lastPos = vec2(1, 1)
+            state.player.moveProgress = 0.5
+            const spriteX = (rate: number, alpha: number) => {
+                state.playerRate = rate
+                const { renderer, calls } = setup()
+                renderer.draw(state, alpha)
+                return calls.find(
+                    (c) => c.name === "fillText" && c.args[0] === "🐉"
+                )!.args[1] as number
+            }
+            // At 1.5x it gets 1.5 times as far through the frame.
+            const start = spriteX(1.5, 0)
+            expect(spriteX(1.5, 0.9) - start).toBeCloseTo(
+                1.5 * (spriteX(1, 0.9) - start)
+            )
+        })
+
         it("hides a defeated enemy until it blinks back", () => {
             const enemy = makeEnemy(3, 1)
             const state = makeState(

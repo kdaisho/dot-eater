@@ -113,6 +113,7 @@ export function makeState(
         ticks: 0,
         lives,
         eatenAt: null,
+        playerRate: 1,
         spawns: {
             player: vec2(player.x, player.y),
             enemies: enemies.map((e) => vec2(e.pos.x, e.pos.y)),

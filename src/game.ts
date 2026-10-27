@@ -69,6 +69,11 @@ export type GameState = {
     // renderer keeps drawing it until the player's glide reaches it (see
     // eatenDotVisible in glide.ts). Purely visual.
     eatenAt: Vec2 | null
+    // The factor on the player's speed for the glide of its latest move
+    // (lastPos -> pos): its breath's slideSpeedScale if that move was a
+    // slide step (see movePlayerTick), else 1. The renderer reads it too, so
+    // frames between ticks glide at the same rate (see glideT).
+    playerRate: number
 }
 
 export type Spawns = {
@@ -140,6 +145,7 @@ export function createGameState(
         ticks: 0,
         lives: START_LIVES,
         eatenAt: null,
+        playerRate: 1,
         spawns: {
             player: vec2(spawn.x, spawn.y),
             enemies: level.enemies.map((e) => vec2(e.pos.x, e.pos.y)),
@@ -170,6 +176,7 @@ function respawn(state: GameState) {
     state.breather.facing = vec2(START_FACING.x, START_FACING.y)
     state.bufferedStep = vec2(0, 0)
     state.eatenAt = null
+    state.playerRate = 1
 }
 
 // Try to move the player one step, eating (and scoring) any dot there and
@@ -260,7 +267,8 @@ function wait(character: Character) {
 //
 // On ice (see ice.ts), a sliding character's move is its slide step, taken
 // at its normal move opportunity: input and AI are ignored until the slide
-// ends. Phantoms float over ice and never slide.
+// ends. Phantoms float over ice and never slide. The player's breath may
+// speed its slides up (slideSpeedScale; see GameState.playerRate).
 //
 // Breaths (see breath.ts): their timers count down first, so anything that
 // runs out (a status, a tile effect, a defeated enemy's wait) is over before
@@ -282,13 +290,16 @@ export function step(
     state.ticks++
     tickEffects(state, dt)
     const from = positions(state)
-    let start = tickStarts(state, dt)
+    // Taken once, before anyone moves, so the player's progress and its
+    // drawn path for collisions use the same rate all tick.
+    const rate = state.playerRate
+    let start = tickStarts(state, dt, rate)
     // Where the player came from on its latest move before this tick, for
     // the heading an ambusher aims along.
     const playerLast = vec2(player.lastPos.x, player.lastPos.y)
 
     if (!isZero(move.pressed)) state.bufferedStep = move.pressed
-    if (advance(player, dt)) {
+    if (advance(player, dt * rate)) {
         if (movePlayerTick(state, move.held)) spend(player)
         else wait(player)
     }
@@ -296,7 +307,7 @@ export function step(
         // The breath comes before the enemies move, but it may have moved
         // some (pushed or defeated) or held them: trace each enemy from
         // where it is after the breath, not along a sweep across the jump.
-        start = [start[0], ...tickStarts(state, dt).slice(1)]
+        start = [start[0], ...tickStarts(state, dt, rate).slice(1)]
     }
     const blocked = enemyBlocks(state)
     // Cells as enemies see them, so blocked cells also end slides.
@@ -346,9 +357,11 @@ export function step(
 // positions). Returns true once the player's glide is complete, i.e. the
 // player is drawn on its cell.
 export function settle(state: GameState, dt: number): boolean {
+    const rate = state.playerRate
     for (const character of [state.player, ...state.enemies]) {
         if (character.moveProgress >= 1) continue
-        const progress = character.moveProgress + character.speed * dt
+        const scale = character === state.player ? rate : 1
+        const progress = character.moveProgress + character.speed * dt * scale
         character.moveProgress = progress >= 1 - EPSILON ? 1 : progress
     }
     return state.player.moveProgress >= 1 - EPSILON
@@ -368,14 +381,17 @@ export function settle(state: GameState, dt: number): boolean {
 // isn't the player's opportunity, so the buffer is left alone: a tap made
 // during a slide is used at the first opportunity after it ends (a newer tap
 // replaces it, as always). A solid enemy ahead ends a slide as a wall would,
-// so the player is then free to move.
+// so the player is then free to move. The glide of a slide step (and only of
+// a slide step) runs at the breath's slideSpeedScale (GameState.playerRate).
 function movePlayerTick(state: GameState, held: readonly Vec2[]): boolean {
     const { cells, player } = state
     const slide = slideStep(cells, state.ice, player.pos, player.lastPos)
     if (slide) {
         const ahead = vec2(player.pos.x + slide.x, player.pos.y + slide.y)
         if (!solidAt(state, loopPos(cells, ahead))) {
-            return movePlayer(state, slide)
+            if (!movePlayer(state, slide)) return false
+            state.playerRate = state.breather.breath.slideSpeedScale ?? 1
+            return true
         }
     }
     const buffered = state.bufferedStep
@@ -383,6 +399,7 @@ function movePlayerTick(state: GameState, held: readonly Vec2[]): boolean {
     const moved =
         movePlayer(state, buffered) ||
         held.some((direction) => movePlayer(state, direction))
+    if (moved) state.playerRate = 1
     const tried = isZero(buffered) ? held[0] : buffered
     if (!moved && tried && !isZero(tried)) {
         state.breather.facing = vec2(tried.x, tried.y)
@@ -434,8 +451,9 @@ export type TickStart = {
 }
 
 // Every character's TickStart for a tick of `dt` seconds, in the same order
-// as positions. Taken before anyone moves.
-function tickStarts(state: GameState, dt: number): TickStart[] {
+// as positions. Taken before anyone moves. `rate` scales the player's speed
+// (see GameState.playerRate); the default leaves it alone.
+function tickStarts(state: GameState, dt: number, rate = 1): TickStart[] {
     const cols = state.cells[0].length
     const rows = state.cells.length
     return [state.player, ...state.enemies].map((c) => ({
@@ -446,7 +464,7 @@ function tickStarts(state: GameState, dt: number): TickStart[] {
         arrive:
             c !== state.player && hasStatus(c, "holds")
                 ? Infinity
-                : arriveTime(c, dt),
+                : arriveTime(c, c === state.player ? dt * rate : dt),
     }))
 }
 

@@ -14,11 +14,13 @@ import { vec2, type Vec2 } from "./vec2"
 // move and lag at most one cell behind the logic. `alpha` in [0, 1) adds the
 // part of the next tick that has already passed, for smooth frames between
 // ticks. A resting character (progress 1: idle, blocked or waiting to move)
-// is drawn at pos.
-export function glideT(character: Character, alpha: number): number {
+// is drawn at pos. `rate` is a factor on its speed for this glide, as the
+// game applies it (the player's GameState.playerRate, e.g. a faster slide),
+// so frames between ticks keep up with the ticks.
+export function glideT(character: Character, alpha: number, rate = 1): number {
     const { moveProgress, speed } = character
     if (moveProgress >= 1) return 1
-    return Math.min(1, moveProgress + (alpha * speed * TICK_MS) / 1000)
+    return Math.min(1, moveProgress + (alpha * speed * rate * TICK_MS) / 1000)
 }
 
 // How far through its glide the player must be for the dot it just ate to
@@ -30,9 +32,13 @@ export const EAT_AT = 0.5
 
 // Whether to still draw the dot eaten on the player's latest move
 // (GameState.eatenAt, the player's pos): true while the player's glide
-// towards it hasn't reached EAT_AT.
-export function eatenDotVisible(player: Character, alpha: number): boolean {
-    return glideT(player, alpha) < EAT_AT
+// towards it hasn't reached EAT_AT. `rate` as for glideT.
+export function eatenDotVisible(
+    player: Character,
+    alpha: number,
+    rate = 1
+): boolean {
+    return glideT(player, alpha, rate) < EAT_AT
 }
 
 // The unit step of a character's latest move. A move across a wrap-around
@@ -56,15 +62,16 @@ export function wrapDelta(d: number, size: number): number {
 // The position to draw a character at, in cell units. It may lie up to one
 // cell outside the map while the character goes through a tunnel; draw it at
 // every position wrapCopies returns, clipped to the map, so it slides off one
-// edge and in from the opposite one.
+// edge and in from the opposite one. `rate` as for glideT.
 export function glidePos(
     character: Character,
     alpha: number,
     cols: number,
-    rows: number
+    rows: number,
+    rate = 1
 ): Vec2 {
     const { pos, lastPos } = character
-    const back = 1 - glideT(character, alpha)
+    const back = 1 - glideT(character, alpha, rate)
     const d = moveStep(lastPos, pos, cols, rows)
     return vec2(pos.x - d.x * back, pos.y - d.y * back)
 }
