@@ -85,7 +85,7 @@ describe("main with two players", () => {
             [...(overlay()?.querySelectorAll("li") ?? [])].map(
                 (li) => li.textContent
             )
-        ).toEqual(["1 player", "2 players"])
+        ).toEqual(["1 player", "2 players", "Versus"])
         expect(selectedItem()).toBe("1 player")
         pressAndTick("ArrowDown")
         expect(selectedItem()).toBe("2 players")

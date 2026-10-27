@@ -52,6 +52,8 @@ import {
     showToast,
     type EndScreenView,
 } from "./ui"
+import { showMatchResult, showRoundResult } from "./ui"
+import { roundWins, stunned, tallyText } from "./versus"
 
 let screen: Screen = initialScreen()
 
@@ -196,6 +198,7 @@ function enter(prev: Screen, next: Screen) {
         }
         celebrate(10)
     }
+    if (next.kind === "matchResult" && prev.kind === "ending") celebrate(10)
     showOverlay(next)
 }
 
@@ -212,7 +215,30 @@ function render(alpha: number) {
     }
     // Every screen with a game also says which level it is.
     const rules = "level" in screen ? levels[screen.level]?.rules : undefined
-    renderer.draw(game, lastAlpha, hudOf(game), rules)
+    const hud = game.mode === "versus" ? versusHud(game, screen) : hudOf(game)
+    renderer.draw(game, lastAlpha, hud, rules)
+}
+
+// The versus HUD: each player's dots, meter, stun or respawn countdown, and
+// the round tally (no lives). The result screens keep showing the round
+// just played as it was during play.
+function versusHud(game: GameState, s: Screen): Hud {
+    const match =
+        s.kind === "roundResult" || s.kind === "matchResult"
+            ? s.match.slice(0, -1)
+            : "match" in s
+              ? (s.match ?? [])
+              : []
+    return {
+        round: tallyText(match),
+        players: game.players.map((p, i) => ({
+            score: p.score,
+            dots: p.dots,
+            energy: energyHud(game, i),
+            ...(p.out ? { out: { respawnIn: p.respawnIn } } : {}),
+            ...(stunned(p) ? { stunned: p.stunnedFor } : {}),
+        })),
+    }
 }
 
 // The HUD: with one player its score and meter; with two, each one's.
@@ -269,8 +295,31 @@ function showOverlay(s: Screen) {
             })
         case "gameOver":
             return showGameOver(endView(s.game, s.choice))
+        case "roundResult": {
+            const last = s.match[s.match.length - 1]
+            return showRoundResult({
+                round: s.match.length,
+                winner: last.winner,
+                dots: last.dots,
+                scores: last.scores,
+                wins: roundWins(s.match),
+            })
+        }
+        case "matchResult":
+            return showMatchResult({
+                winner: s.winner,
+                rounds: s.match,
+                wins: roundWins(s.match),
+                items: END_CHOICES.map((c) => ({
+                    label: MATCH_LABELS[c],
+                    selected: c === s.choice,
+                })),
+            })
     }
 }
+
+// The match result's menu: Retry plays a new match.
+const MATCH_LABELS = { retry: "Rematch", stageSelect: "Stage select" } as const
 
 const END_LABELS = { retry: "Retry", stageSelect: "Stage select" } as const
 
