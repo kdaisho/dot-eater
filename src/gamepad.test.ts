@@ -323,6 +323,23 @@ describe("GamepadSource", () => {
         expect(tick(p2).pressed).toEqual(["breath", "confirm"])
     })
 
+    // Regression: a pad with no player in perPad holds nothing for anyone,
+    // so its A, held through the switch to shared, pressed confirm.
+    it("doesn't press a button a pad without a player held through a switch", () => {
+        input = new InputState(1)
+        source.attach(input)
+        source.setAssignment("perPad")
+        plugIn(2)
+        pads = [pad(0), pad(1, [A])]
+        tick()
+        source.setAssignment("shared")
+        expect(tick()).toEqual({ pressed: [], down: [] })
+        pads = [pad(0), pad(1)]
+        tick()
+        pads = [pad(0), pad(1, [A])]
+        expect(tick().pressed).toEqual(["breath", "confirm"])
+    })
+
     describe("connect and disconnect", () => {
         it("reports a connect event once, even when the poll sees it too", () => {
             target.dispatchEvent(connectEvent("gamepadconnected", 0))

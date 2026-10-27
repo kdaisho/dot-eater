@@ -81,7 +81,8 @@ export class GamepadSource implements InputSource {
     private input: InputState | undefined
     private assignment: PadAssignment = "shared"
     // Connected pads by index, each with its player slot in perPad mode (the
-    // lowest slot free when it connected), what it holds, whether it has
+    // lowest slot free when it connected), what it holds for a player, every
+    // control down at the last poll (with a player or not), whether it has
     // driven a player yet, and whether a poll has listed it yet (a connect
     // event can come before the pad list shows the pad).
     private readonly pads = new Map<
@@ -89,6 +90,7 @@ export class GamepadSource implements InputSource {
         {
             slot: number
             held: Map<string, Held>
+            down: ReadonlySet<string>
             used: boolean
             listed: boolean
         }
@@ -131,7 +133,10 @@ export class GamepadSource implements InputSource {
         if (assignment === this.assignment) return
         this.assignment = assignment
         for (const [index, pad] of this.pads) {
-            for (const control of pad.held.keys()) this.latched.add(control)
+            // Every control down, not just those held for a player: a pad
+            // with no player in perPad holds nothing, yet its A must not
+            // confirm once it shares player 1.
+            for (const control of pad.down) this.latched.add(control)
             this.releasePad(index)
         }
     }
@@ -177,6 +182,7 @@ export class GamepadSource implements InputSource {
             for (const control of now.keys()) this.latched.add(control)
             state.listed = true
         }
+        state.down = new Set(now.keys())
         for (const control of this.latched) {
             if (control.startsWith(`pad:${pad.index}:`) && !now.has(control)) {
                 this.latched.delete(control)
@@ -218,6 +224,7 @@ export class GamepadSource implements InputSource {
         this.pads.set(index, {
             slot,
             held: new Map(),
+            down: new Set(),
             used: false,
             listed: false,
         })
