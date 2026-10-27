@@ -1,11 +1,13 @@
 import { describe, expect, it } from "vite-plus/test"
-import { AiType, Cell } from "../constants"
+import { AiType, Cell, PLAYER_RESPAWN_DELAY, TICK_RATE } from "../constants"
+import { footprint } from "../boss"
+import { wrapDelta } from "../glide"
 import { DEFAULT_ANIMAL } from "../roster"
-import { createGameState } from "../game"
+import { createGameState, IDLE, step, takeOut } from "../game"
 import { parseLevel, type Cells } from "../level"
 import { slideReach } from "../ice"
 import { distanceMap, openNeighbours } from "../path"
-import { vec2 } from "../vec2"
+import { vec2, type Vec2 } from "../vec2"
 import { levels } from "./index"
 import { stage1 } from "./stage1"
 import { stage2 } from "./stage2"
@@ -34,6 +36,60 @@ describe("levels", () => {
             expect(p2).not.toEqual(p1)
             expect(Math.abs(p2.x - p1.x) + Math.abs(p2.y - p1.y)).toBe(1)
             expect(level.ice[p2.y][p2.x]).toBe(false)
+        }
+    )
+
+    // While nobody is in play in a 2-player game, the enemies and the boss
+    // head back to their own spawns, and a player waiting to come back
+    // needs its spawn clear of them (see tickPlayersOut in game.ts). So no
+    // enemy or boss spawn may be near a player spawn: SPAWN_GAP cells keeps
+    // a chaser circling its spawn, a cell off it, out of the way.
+    const SPAWN_GAP = 3
+    it.each(levels.map((level, i) => [i + 1, level] as const))(
+        "stage %i has no enemy or boss spawn near a player spawn",
+        (_n, level) => {
+            const gap = (a: Vec2, b: Vec2) =>
+                Math.hypot(
+                    wrapDelta(a.x - b.x, level.width),
+                    wrapDelta(a.y - b.y, level.height)
+                )
+            const others = [
+                ...level.enemies.map((e) => e.pos),
+                ...(level.boss ? footprint(level.boss.pos) : []),
+            ]
+            for (const player of level.playerSpawns) {
+                for (const other of others) {
+                    expect(gap(player, other)).toBeGreaterThanOrEqual(SPAWN_GAP)
+                }
+            }
+        }
+    )
+
+    // With both players out, player 1 with a life to come back on and
+    // player 2 for good, the game goes on: player 1 is back within a
+    // couple of seconds of its wait.
+    it.each(levels.map((level, i) => [i + 1, level] as const))(
+        "stage %i brings a co-op player back while nobody is in play",
+        (_n, level) => {
+            const state = createGameState(
+                level,
+                [DEFAULT_ANIMAL, DEFAULT_ANIMAL],
+                "coop"
+            )
+            const [p1, p2] = state.players
+            takeOut(p1, PLAYER_RESPAWN_DELAY)
+            takeOut(p2, null)
+            const max = (PLAYER_RESPAWN_DELAY + 2) * TICK_RATE
+            for (let i = 0; i < max && p1.out; i++) {
+                const outcome = step(
+                    state,
+                    1 / TICK_RATE,
+                    [IDLE, IDLE],
+                    () => 0
+                )
+                expect(outcome).toBeNull()
+            }
+            expect(p1.out).toBe(false)
         }
     )
 

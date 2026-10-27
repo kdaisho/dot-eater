@@ -276,6 +276,31 @@ export function bossMove(
     return best.first
 }
 
+// The boss's next top-left position heading back to its spawn, or null to
+// stay put: for while no player is in play (see step in game.ts). It takes
+// the shortest way to the spawn itself, the first in direction order on
+// ties, and stays there. Standing on a blocked cell, it leaves by the
+// shortest way first (as bossMove). If its spawn can't be reached, it
+// gets as near as bossMove would to a player standing on it.
+export function bossHomeStep(
+    state: GameState,
+    blocked: BlockMap | null
+): Vec2 | null {
+    const boss = state.boss
+    if (!boss || boss.defeated) return null
+    const floor = bossFloor(state, blocked)
+    if (
+        samePos(boss.pos, boss.spawn) ||
+        (blocked && !bossFits(floor, boss.pos))
+    ) {
+        return bossMove(state, boss.spawn, blocked)
+    }
+    const home = bossReach(boss.pos, floor).find((r) =>
+        samePos(r.pos, boss.spawn)
+    )
+    return home ? home.first : bossMove(state, boss.spawn, blocked)
+}
+
 // ---- Collisions ----
 
 // How close the segment from `p` to `q` comes to the square of cell centres
