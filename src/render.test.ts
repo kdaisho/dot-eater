@@ -189,7 +189,7 @@ describe("createRenderer", () => {
                 ],
                 { x: 1, y: 1 }
             )
-            state.player.ai = ai
+            state.players[0].character.ai = ai
             renderer.draw(state, 0)
             expect(texts()).toEqual(["🐉"])
         }
@@ -249,7 +249,7 @@ describe("createRenderer", () => {
         const player = createCharacter(CharacterId.player, vec2(0, 4))
         player.lastPos = vec2(8, 4)
         player.moveProgress = 0.5
-        state.player = player
+        state.players[0].character = player
         state.enemies = []
         renderer.draw(state, 0)
         expect(texts()).toEqual(["🐉", "🐉"])
@@ -299,7 +299,7 @@ describe("createRenderer", () => {
             })
         }
         const drawAt = (progress: number) => {
-            state.player.moveProgress = progress
+            state.players[0].character.moveProgress = progress
             calls.length = 0
             renderer.draw(state, 0)
         }
@@ -405,8 +405,8 @@ describe("createRenderer", () => {
             const { calls, canvas, renderer } = setup()
             const state = makeState(corridor(), { x: 5, y: 1 })
             // Just moved from (4, 1): drawn there at the start of the glide.
-            state.player.lastPos = vec2(4, 1)
-            state.player.moveProgress = 0
+            state.players[0].character.lastPos = vec2(4, 1)
+            state.players[0].character.moveProgress = 0
             renderer.draw(state, 0, {}, { fog: { radius: 2 } })
             const { dots } = drawnCells(calls, canvas, 13)
             expect(dots.has("2,1")).toBe(true)
@@ -667,11 +667,11 @@ describe("createRenderer", () => {
         // each tick.
         it("glides the player between ticks at its current rate", () => {
             const state = room()
-            state.player.pos = vec2(2, 1)
-            state.player.lastPos = vec2(1, 1)
-            state.player.moveProgress = 0.5
+            state.players[0].character.pos = vec2(2, 1)
+            state.players[0].character.lastPos = vec2(1, 1)
+            state.players[0].character.moveProgress = 0.5
             const spriteX = (rate: number, alpha: number) => {
-                state.playerRate = rate
+                state.players[0].rate = rate
                 const { renderer, calls } = setup()
                 renderer.draw(state, alpha)
                 return calls.find(

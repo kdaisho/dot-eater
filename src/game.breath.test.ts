@@ -76,57 +76,59 @@ const corridor = textMap([
 
 describe("facing", () => {
     it("starts facing right", () => {
-        expect(createGameState(OLD_LEVEL).breather.facing).toEqual(east)
+        expect(createGameState(OLD_LEVEL).players[0].breather.facing).toEqual(
+            east
+        )
     })
 
     it("follows the player's moves and stays while it waits at a wall", () => {
         const { map } = textMap(["#####", "#   #", "#####"])
         const state = makeState(map, { x: 2, y: 1 })
-        state.player.moveProgress = 1
+        state.players[0].character.moveProgress = 1
         tick(state, { held: west, pressed: west })
-        expect(state.breather.facing).toEqual(west)
+        expect(state.players[0].breather.facing).toEqual(west)
         // Against the wall, still holding left: it keeps facing left.
         run(state, MOVE * 3, { held: west })
-        expect(state.player.pos).toEqual(vec2(1, 1))
-        expect(state.breather.facing).toEqual(west)
+        expect(state.players[0].character.pos).toEqual(vec2(1, 1))
+        expect(state.players[0].breather.facing).toEqual(west)
         // Let go: still facing left.
         run(state, MOVE)
-        expect(state.breather.facing).toEqual(west)
+        expect(state.players[0].breather.facing).toEqual(west)
     })
 
     it("turns to face a wall the player tries to walk into", () => {
         const { map } = textMap(["#####", "#   #", "#####"])
         const state = makeState(map, { x: 2, y: 1 })
-        state.player.moveProgress = 1
+        state.players[0].character.moveProgress = 1
         tick(state, { pressed: north })
-        expect(state.player.pos).toEqual(vec2(2, 1))
-        expect(state.breather.facing).toEqual(north)
+        expect(state.players[0].character.pos).toEqual(vec2(2, 1))
+        expect(state.players[0].breather.facing).toEqual(north)
         run(state, MOVE)
-        expect(state.breather.facing).toEqual(north)
+        expect(state.players[0].breather.facing).toEqual(north)
     })
 
     it("keeps the move's direction across a tunnel", () => {
         const state = makeState(corridor, { x: 1, y: 1 })
-        state.player.moveProgress = 1
+        state.players[0].character.moveProgress = 1
         // Two moves left: to x 0, then through the tunnel to x 8.
         run(state, MOVE + 1, { held: west })
-        expect(state.player.pos).toEqual(vec2(8, 1))
-        expect(state.breather.facing).toEqual(west)
+        expect(state.players[0].character.pos).toEqual(vec2(8, 1))
+        expect(state.players[0].breather.facing).toEqual(west)
         run(state, MOVE * 2)
-        expect(state.breather.facing).toEqual(west)
+        expect(state.players[0].breather.facing).toEqual(west)
     })
 
     it("follows a slide, and a breath mid-slide fires along it", () => {
         const { map, ice } = textMap(["#######", "#  ~~ #", "#######"])
         const { breath, hits } = defeating()
         const state = makeState(map, { x: 2, y: 1 }, [], { ice, breath })
-        state.breather.energy = 100
-        state.player.moveProgress = 1
+        state.players[0].breather.energy = 100
+        state.players[0].character.moveProgress = 1
         tick(state, { held: east, pressed: east })
-        expect(state.player.pos).toEqual(vec2(3, 1))
+        expect(state.players[0].character.pos).toEqual(vec2(3, 1))
         // Now sliding: steering up is ignored, and the breath goes east.
         run(state, MOVE, { held: north })
-        expect(state.player.pos).toEqual(vec2(4, 1))
+        expect(state.players[0].character.pos).toEqual(vec2(4, 1))
         tick(state, { held: north, breath: true })
         expect(hits).toHaveLength(1)
         expect(hits[0].facing).toEqual(east)
@@ -138,12 +140,12 @@ describe("facing", () => {
         const state = makeState(corridor, { x: 2, y: 1 }, [enemy], {
             lives: 2,
         })
-        state.breather.facing = west
-        state.player.pos = vec2(4, 1)
-        state.player.lastPos = vec2(4, 1)
+        state.players[0].breather.facing = west
+        state.players[0].character.pos = vec2(4, 1)
+        state.players[0].character.lastPos = vec2(4, 1)
         tick(state)
         expect(state.lives).toBe(1)
-        expect(state.breather.facing).toEqual(east)
+        expect(state.players[0].breather.facing).toEqual(east)
     })
 })
 
@@ -153,29 +155,29 @@ describe("energy", () => {
         const state = makeState(map, { x: 1, y: 1 }, [], {
             breath: testBreath({ maxEnergy: 12 }),
         })
-        expect(state.breather.energy).toBe(0)
-        state.player.moveProgress = 1
+        expect(state.players[0].breather.energy).toBe(0)
+        state.players[0].character.moveProgress = 1
         tick(state, { held: east })
-        expect(state.breather.energy).toBe(DOT_ENERGY)
+        expect(state.players[0].breather.energy).toBe(DOT_ENERGY)
         run(state, MOVE, { held: east })
-        expect(state.breather.energy).toBe(DOT_ENERGY * 2)
+        expect(state.players[0].breather.energy).toBe(DOT_ENERGY * 2)
         run(state, MOVE, { held: east })
-        expect(state.breather.energy).toBe(12)
+        expect(state.players[0].breather.energy).toBe(12)
     })
 
     it("starts empty in a new game and is kept when a life is lost", () => {
         const game = createGameState(levels[0])
-        expect(game.breather.energy).toBe(0)
+        expect(game.players[0].breather.energy).toBe(0)
         const enemy = makeEnemy(4, 1, AiType.chase)
         const state = makeState(corridor, { x: 2, y: 1 }, [enemy], {
             lives: 2,
         })
-        state.breather.energy = 40
-        state.player.pos = vec2(4, 1)
-        state.player.lastPos = vec2(4, 1)
+        state.players[0].breather.energy = 40
+        state.players[0].character.pos = vec2(4, 1)
+        state.players[0].character.lastPos = vec2(4, 1)
         tick(state)
         expect(state.lives).toBe(1)
-        expect(state.breather.energy).toBe(40)
+        expect(state.players[0].breather.energy).toBe(40)
     })
 })
 
@@ -185,14 +187,14 @@ describe("breathing", () => {
         const state = makeState(corridor, { x: 1, y: 1 }, [], {
             breath: testBreath({ cost: 25, fire }),
         })
-        state.breather.energy = 20
+        state.players[0].breather.energy = 20
         tick(state, { breath: true })
         expect(fire).not.toHaveBeenCalled()
-        expect(state.breather.energy).toBe(20)
-        state.breather.energy = 30
+        expect(state.players[0].breather.energy).toBe(20)
+        state.players[0].breather.energy = 30
         tick(state, { breath: true })
         expect(fire).toHaveBeenCalledTimes(1)
-        expect(state.breather.energy).toBe(5)
+        expect(state.players[0].breather.energy).toBe(5)
     })
 
     it("waits out the cooldown between breaths", () => {
@@ -200,7 +202,7 @@ describe("breathing", () => {
         const state = makeState(corridor, { x: 1, y: 1 }, [], {
             breath: testBreath({ cost: 10, cooldown: 0.5, fire }),
         })
-        state.breather.energy = 100
+        state.players[0].breather.energy = 100
         tick(state, { breath: true })
         expect(fire).toHaveBeenCalledTimes(1)
         // A press during the cooldown is dropped, not kept for later.
@@ -208,7 +210,7 @@ describe("breathing", () => {
         tick(state, { breath: true })
         tick(state)
         expect(fire).toHaveBeenCalledTimes(1)
-        expect(state.breather.energy).toBe(90)
+        expect(state.players[0].breather.energy).toBe(90)
         tick(state, { breath: true })
         expect(fire).toHaveBeenCalledTimes(2)
     })
@@ -217,10 +219,10 @@ describe("breathing", () => {
         const state = makeState(corridor, { x: 1, y: 1 }, [], {
             breath: testBreath({ fire: () => false }),
         })
-        state.breather.energy = 100
+        state.players[0].breather.energy = 100
         tick(state, { breath: true })
-        expect(state.breather.energy).toBe(100)
-        expect(state.breather.cooldown).toBe(0)
+        expect(state.players[0].breather.energy).toBe(100)
+        expect(state.players[0].breather.cooldown).toBe(0)
     })
 
     it("does nothing without a press", () => {
@@ -228,7 +230,7 @@ describe("breathing", () => {
         const state = makeState(corridor, { x: 1, y: 1 }, [], {
             breath: testBreath({ fire }),
         })
-        state.breather.energy = 100
+        state.players[0].breather.energy = 100
         run(state, 10)
         expect(fire).not.toHaveBeenCalled()
     })
@@ -241,7 +243,7 @@ describe("breathing", () => {
         const state = makeState(corridor, { x: 1, y: 1 }, [far, near, behind], {
             breath,
         })
-        state.breather.energy = 100
+        state.players[0].breather.energy = 100
         tick(state, { breath: true })
         expect(hits[0].cells).toEqual([vec2(2, 1), vec2(3, 1), vec2(4, 1)])
         expect(hits[0].enemies).toEqual([near, far])
@@ -269,7 +271,7 @@ describe("breathing", () => {
                     breath,
                 }
             )
-            state.breather.energy = 100
+            state.players[0].breather.energy = 100
             tick(state, { breath: true })
             expect(hits[0].enemies).toEqual([onPlayer, ahead])
             expect(hits[0].cells[0]).toEqual(vec2(2, 1))
@@ -292,7 +294,7 @@ describe("pushed enemies", () => {
                 },
             }),
         })
-        state.breather.energy = 100
+        state.players[0].breather.energy = 100
         expect(tick(state, { breath: true })).toBeNull()
         expect(enemy.pos).toEqual(vec2(4, 1))
     })
@@ -307,22 +309,22 @@ describe("defeated enemies", () => {
             lives,
         })
         state.spawns.enemies = [vec2(6, 1)]
-        state.breather.energy = 100
+        state.players[0].breather.energy = 100
         tick(state, { breath: true })
         return { state, enemy }
     }
 
     it("score DEFEAT_POINTS and wait at their spawn", () => {
         const { state, enemy } = defeatedSetup()
-        expect(state.score).toBe(DEFEAT_POINTS)
+        expect(state.players[0].score).toBe(DEFEAT_POINTS)
         expect(inPlay(enemy)).toBe(false)
         expect(enemy.pos).toEqual(vec2(6, 1))
     })
 
     it("don't move or catch while gone", () => {
         const { state, enemy } = defeatedSetup()
-        state.player.pos = vec2(6, 1)
-        state.player.lastPos = vec2(6, 1)
+        state.players[0].character.pos = vec2(6, 1)
+        state.players[0].character.lastPos = vec2(6, 1)
         for (let i = 0; i < TICK_RATE * 2; i++) {
             expect(tick(state)).toBeNull()
         }
@@ -343,8 +345,8 @@ describe("defeated enemies", () => {
 
     it("can catch a player on their spawn as soon as they are back", () => {
         const { state } = defeatedSetup()
-        state.player.pos = vec2(6, 1)
-        state.player.lastPos = vec2(6, 1)
+        state.players[0].character.pos = vec2(6, 1)
+        state.players[0].character.lastPos = vec2(6, 1)
         for (let i = 0; i < RESPAWN_DELAY * TICK_RATE - 1; i++) {
             expect(tick(state)).toBeNull()
         }
@@ -359,11 +361,11 @@ describe("defeated enemies", () => {
             breath,
             lives: 2,
         })
-        state.breather.energy = 100
+        state.players[0].breather.energy = 100
         tick(state, { breath: true })
         expect(inPlay(victim)).toBe(false)
-        state.player.pos = vec2(8, 1)
-        state.player.lastPos = vec2(8, 1)
+        state.players[0].character.pos = vec2(8, 1)
+        state.players[0].character.lastPos = vec2(8, 1)
         tick(state)
         expect(state.lives).toBe(1)
         expect(inPlay(victim)).toBe(true)
@@ -392,14 +394,14 @@ describe("enemy statuses", () => {
         const state = makeState(corridor, { x: 1, y: 1 }, [enemy], {
             breath: freezing(1),
         })
-        state.breather.energy = 100
+        state.players[0].breather.energy = 100
         tick(state, { breath: true })
         // Walk east into it: the player stops next to it, uncaught.
         for (let i = 0; i < TICK_RATE / 2; i++) {
             expect(tick(state, { held: east })).toBeNull()
         }
         expect(enemy.pos).toEqual(vec2(3, 1))
-        expect(state.player.pos).toEqual(vec2(2, 1))
+        expect(state.players[0].character.pos).toEqual(vec2(2, 1))
     })
 
     it("end a slide into a solid enemy as a wall would", () => {
@@ -414,12 +416,12 @@ describe("enemy statuses", () => {
         const enemy = makeEnemy(5, 1, AiType.chase)
         const state = makeState(map, { x: 1, y: 1 }, [enemy], { ice })
         addStatus(enemy, frozen, 10)
-        state.player.moveProgress = 1
+        state.players[0].character.moveProgress = 1
         tick(state, { held: east })
         run(state, MOVE * 3)
-        expect(state.player.pos).toEqual(vec2(4, 1))
+        expect(state.players[0].character.pos).toEqual(vec2(4, 1))
         run(state, MOVE, { held: west })
-        expect(state.player.pos.x).toBeLessThan(4)
+        expect(state.players[0].character.pos.x).toBeLessThan(4)
     })
 
     it("wear off, and the enemy moves again", () => {
@@ -428,7 +430,7 @@ describe("enemy statuses", () => {
         const state = makeState(corridor, { x: 1, y: 1 }, [enemy], {
             breath: freezing(0.5),
         })
-        state.breather.energy = 100
+        state.players[0].breather.energy = 100
         tick(state, { breath: true })
         run(state, TICK_RATE / 2 - 1)
         expect(enemy.pos).toEqual(vec2(3, 1))
@@ -452,7 +454,7 @@ describe("tile effects", () => {
                 },
             }),
         })
-        state.breather.energy = 100
+        state.players[0].breather.energy = 100
         tick(state, { breath: true })
         for (let i = 0; i < TICK_RATE * 2 - 2; i++) {
             expect(tick(state)).toBeNull()
@@ -474,7 +476,7 @@ describe("tile effects", () => {
                 },
             }),
         })
-        state.breather.energy = 100
+        state.players[0].breather.energy = 100
         tick(state, { breath: true })
         for (let i = 0; i < TICK_RATE * 2 - 2; i++) {
             expect(tick(state)).toBeNull()
@@ -497,7 +499,7 @@ describe("tile effects", () => {
                 },
             }),
         })
-        state.breather.energy = 100
+        state.players[0].breather.energy = 100
         tick(state, { breath: true })
         // Blocked: x 2 and 3. Out is east, away from the player.
         expect(enemy.pos).toEqual(vec2(4, 1))
@@ -514,15 +516,15 @@ describe("tile effects", () => {
                 },
             }),
         })
-        state.breather.energy = 100
-        state.player.moveProgress = 1
+        state.players[0].breather.energy = 100
+        state.players[0].character.moveProgress = 1
         tick(state, { breath: true })
-        expect(state.breather.energy).toBe(90)
+        expect(state.players[0].breather.energy).toBe(90)
         tick(state, { held: east })
-        expect(state.player.pos).toEqual(vec2(2, 1))
+        expect(state.players[0].character.pos).toEqual(vec2(2, 1))
         run(state, TICK_RATE)
         expect(state.cells[1][2]).toBe(1)
-        expect(state.player.pos).toEqual(vec2(1, 1))
+        expect(state.players[0].character.pos).toEqual(vec2(1, 1))
     })
 
     it("make temporary ice the player slides on", () => {
@@ -535,28 +537,35 @@ describe("tile effects", () => {
                 },
             }),
         })
-        state.breather.energy = 100
-        state.player.moveProgress = 1
+        state.players[0].breather.energy = 100
+        state.players[0].character.moveProgress = 1
         tick(state, { breath: true })
         tick(state, { held: east })
         // Onto the ice at x 2, then slides over x 3 to the floor at x 4,
         // even with nothing held.
         run(state, MOVE * 2)
-        expect(state.player.pos).toEqual(vec2(4, 1))
-        expect(state.player.lastPos).toEqual(vec2(3, 1))
+        expect(state.players[0].character.pos).toEqual(vec2(4, 1))
+        expect(state.players[0].character.lastPos).toEqual(vec2(3, 1))
     })
 })
 
 describe("characters", () => {
     it("play as the default (the Dragon) unless told otherwise", () => {
-        expect(createGameState(OLD_LEVEL).breather.breath.animal).toBe("dragon")
-        expect(createGameState(OLD_LEVEL, "skunk").breather.breath.animal).toBe(
-            "skunk"
-        )
+        expect(
+            createGameState(OLD_LEVEL).players[0].breather.breath.animal
+        ).toBe("dragon")
+        expect(
+            createGameState(OLD_LEVEL, "skunk").players[0].breather.breath
+                .animal
+        ).toBe("skunk")
     })
 
     it("move at the character's speed", () => {
-        expect(createGameState(OLD_LEVEL).player.speed).toBe(PLAYER_SPEED)
-        expect(createGameState(OLD_LEVEL, "boar").player.speed).toBe(3.5)
+        expect(createGameState(OLD_LEVEL).players[0].character.speed).toBe(
+            PLAYER_SPEED
+        )
+        expect(
+            createGameState(OLD_LEVEL, "boar").players[0].character.speed
+        ).toBe(3.5)
     })
 })

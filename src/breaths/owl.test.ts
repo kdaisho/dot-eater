@@ -31,7 +31,7 @@ const corridor = textMap([
 // The player at (x, 1) facing right (the start facing) with a full meter.
 function owlState(x: number, enemies = [makeEnemy(3, 1)]) {
     const state = makeState(corridor, { x, y: 1 }, enemies, { breath: owl })
-    state.breather.energy = 100
+    state.players[0].breather.energy = 100
     return state
 }
 
@@ -48,7 +48,7 @@ describe("owl wind breath", () => {
         const { map } = textMap(["#######", "#     #", "#######", "#.#####"])
         const enemy = makeEnemy(4, 1)
         const state = makeState(map, { x: 1, y: 1 }, [enemy], { breath: owl })
-        state.breather.energy = 100
+        state.players[0].breather.energy = 100
         tick(state, true)
         expect(enemy.pos).toEqual(vec2(5, 1))
     })
@@ -100,7 +100,7 @@ describe("owl wind breath", () => {
         expect(tick(without)).toBeNull()
         const enemy = glidingIn()
         const state = makeState(map, { x: 2, y: 1 }, [enemy], { breath: owl })
-        state.breather.energy = 100
+        state.players[0].breather.energy = 100
         expect(tick(state, true)).toBeNull()
         expect(enemy.pos).toEqual(vec2(3, 1))
         expect(state.lives).toBe(1)
@@ -127,14 +127,14 @@ describe("owl wind breath", () => {
         const state = owlState(1, [enemy])
         tick(state, true)
         expect(inPlay(enemy)).toBe(true)
-        expect(state.score).toBe(0)
-        expect(state.breather.energy).toBe(75)
+        expect(state.players[0].score).toBe(0)
+        expect(state.players[0].breather.energy).toBe(75)
     })
 
     it("fires with nobody in the line, showing a short gust", () => {
         const state = owlState(1, [])
         tick(state, true)
-        expect(state.breather.energy).toBe(75)
+        expect(state.players[0].breather.energy).toBe(75)
         expect(state.tiles.map((t) => t.pos)).toEqual(
             [2, 3, 4, 5, 6].map((x) => vec2(x, 1))
         )
@@ -146,10 +146,10 @@ describe("owl wind breath", () => {
     it("refuses facing a wall with nobody on the player's cell", () => {
         const { map } = textMap(["####", "#. #", "####"])
         const state = makeState(map, { x: 2, y: 1 }, [], { breath: owl })
-        state.breather.energy = 100
+        state.players[0].breather.energy = 100
         tick(state, true)
-        expect(state.breather.energy).toBe(100)
-        expect(state.breather.cooldown).toBe(0)
+        expect(state.players[0].breather.energy).toBe(100)
+        expect(state.players[0].breather.cooldown).toBe(0)
         expect(state.tiles).toEqual([])
     })
 
@@ -158,21 +158,21 @@ describe("owl wind breath", () => {
         tick(state, true)
         // Breaths before the cooldown is over are dropped.
         for (let i = 1; i < TICK_RATE * 0.5; i++) tick(state, true)
-        expect(state.breather.energy).toBe(75)
+        expect(state.players[0].breather.energy).toBe(75)
         tick(state, true)
-        expect(state.breather.energy).toBe(50)
+        expect(state.players[0].breather.energy).toBe(50)
     })
 
     it("costs 25 and can't fire with less", () => {
         const enemy = makeEnemy(3, 1)
         const state = owlState(1, [enemy])
-        state.breather.energy = 24
+        state.players[0].breather.energy = 24
         tick(state, true)
-        expect(state.breather.energy).toBe(24)
+        expect(state.players[0].breather.energy).toBe(24)
         expect(enemy.pos).toEqual(vec2(3, 1))
-        state.breather.energy = 25
+        state.players[0].breather.energy = 25
         tick(state, true)
-        expect(state.breather.energy).toBe(0)
+        expect(state.players[0].breather.energy).toBe(0)
         expect(enemy.pos).toEqual(vec2(6, 1))
     })
 
@@ -191,7 +191,7 @@ describe("owl wind breath", () => {
             ice,
             breath: owl,
         })
-        state.breather.energy = 100
+        state.players[0].breather.energy = 100
         tick(state, true)
         expect(enemy.pos).toEqual(vec2(5, 1))
         // One enemy move (2 cells/s): the slide step.

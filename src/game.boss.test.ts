@@ -101,7 +101,7 @@ function bossGame(
         lives,
         boss: makeBoss(boss.x, boss.y, speed),
     })
-    state.breather.energy = breath.maxEnergy
+    state.players[0].breather.energy = breath.maxEnergy
     if (!ready) state.boss!.moveProgress = 0
     return state
 }
@@ -111,7 +111,7 @@ function bossGame(
 function gap(state: GameState): number {
     const cols = state.cells[0].length
     const rows = state.cells.length
-    const p = drawn(state, state.player)
+    const p = drawn(state, state.players[0].character)
     const b = drawnPos(state.boss!, cols, rows)
     const dx = Math.max(b.x - p.x, 0, p.x - (b.x + 1))
     const dy = Math.max(b.y - p.y, 0, p.y - (b.y + 1))
@@ -158,8 +158,10 @@ describe("breathing at the boss", () => {
         expect(boss.health).toBe(BOSS_HEALTH - damage[animal])
         expect(boss.flash).toBeGreaterThan(0)
         // Paid for, like any breath that fires.
-        expect(state.breather.energy).toBe(breath.maxEnergy - breath.cost)
-        expect(state.breather.cooldown).toBeCloseTo(breath.cooldown)
+        expect(state.players[0].breather.energy).toBe(
+            breath.maxEnergy - breath.cost
+        )
+        expect(state.players[0].breather.cooldown).toBeCloseTo(breath.cooldown)
         // Not pushed (the Owl) or moved otherwise.
         expect(boss.pos).toEqual(vec2(2, 1))
     })
@@ -175,7 +177,7 @@ describe("breathing at the boss", () => {
         })
         tick(missed, { breath: true })
         expect(missed.boss!.health).toBe(BOSS_HEALTH)
-        expect(missed.breather.energy).toBe(BREATHS.boar.maxEnergy)
+        expect(missed.players[0].breather.energy).toBe(BREATHS.boar.maxEnergy)
     })
 
     it("damages it once however many of its cells a breath covers", () => {
@@ -212,7 +214,7 @@ describe("breathing at the boss", () => {
             boss: makeBoss(3, 1),
         })
         state.boss!.moveProgress = 0
-        state.breather.energy = 100
+        state.players[0].breather.energy = 100
         tick(state, { breath: true })
         expect(hits[0].cells).toEqual([vec2(2, 2), vec2(3, 2)])
         expect(hits[0].enemies).toEqual([])
@@ -239,20 +241,20 @@ describe("breathing at the boss", () => {
         const boss = state.boss!
         expect(boss.defeated).toBe(true)
         expect(boss.health).toBe(0)
-        expect(state.score).toBe(BOSS_DEFEAT_POINTS)
+        expect(state.players[0].score).toBe(BOSS_DEFEAT_POINTS)
         // It doesn't move, and touching where it was doesn't catch.
-        state.player.pos = vec2(2, 2)
-        state.player.lastPos = vec2(1, 2)
+        state.players[0].character.pos = vec2(2, 2)
+        state.players[0].character.lastPos = vec2(1, 2)
         for (let i = 0; i < TICK_RATE * 2; i++) {
             expect(tick(state)).toBeNull()
         }
         expect(boss.pos).toEqual(vec2(2, 1))
         expect(state.lives).toBe(1)
         // A breath no longer hits it.
-        state.breather.cooldown = 0
-        state.breather.energy = 100
+        state.players[0].breather.cooldown = 0
+        state.players[0].breather.energy = 100
         tick(state, { breath: true })
-        expect(state.score).toBe(BOSS_DEFEAT_POINTS)
+        expect(state.players[0].score).toBe(BOSS_DEFEAT_POINTS)
     })
 
     it("flashes for a moment after a hit", () => {
@@ -332,7 +334,7 @@ describe("the boss moving", () => {
             lives: 2,
         })
         state.cells[1][5] = Cell.none
-        state.player.lastPos = vec2(4, 1)
+        state.players[0].character.lastPos = vec2(4, 1)
         state.tiles.push({ pos: vec2(5, 1), effect: open, left: 5 })
         for (let i = 0; i < TICK_RATE * 4; i++) {
             expect(tick(state)).toBeNull()
@@ -345,7 +347,7 @@ describe("the boss moving", () => {
         // clear of it. (The boss sets off after the player on that tick:
         // a fair chase from there.)
         expect(state.cells[1][5]).toBe(Cell.wall)
-        expect(state.player.pos).toEqual(vec2(2, 1))
+        expect(state.players[0].character.pos).toEqual(vec2(2, 1))
         expect(state.boss!.lastPos).toEqual(vec2(3, 1))
         expect(state.lives).toBe(2)
     })
@@ -364,7 +366,7 @@ describe("the boss catching", () => {
 
     it("catches the player head on where the sprites meet", () => {
         const state = bossGame(vec2(1, 2), vec2(6, 1), { ready: true })
-        state.player.moveProgress = 1
+        state.players[0].character.moveProgress = 1
         ticksUntilCaught(state, east, TICK_RATE * 5)
         const closing = (BOSS_SPEED + PLAYER_SPEED) / TICK_RATE
         expect(gap(state)).toBeLessThanOrEqual(CATCH_DISTANCE + 1e-9)
@@ -373,7 +375,7 @@ describe("the boss catching", () => {
 
     it("catches the player walking into it", () => {
         const state = bossGame(vec2(1, 2), vec2(3, 1), { speed: 0.01 })
-        state.player.moveProgress = 1
+        state.players[0].character.moveProgress = 1
         ticksUntilCaught(state, east)
         expect(state.boss!.pos).toEqual(vec2(3, 1))
         expect(gap(state)).toBeLessThanOrEqual(CATCH_DISTANCE + 1e-9)
@@ -396,11 +398,11 @@ describe("the boss catching", () => {
 
     it("doesn't catch a player walking past along its side", () => {
         const state = bossGame(vec2(1, 3), vec2(3, 1), { speed: 0.01 })
-        state.player.moveProgress = 1
+        state.players[0].character.moveProgress = 1
         for (let i = 0; i < TICK_RATE * 2; i++) {
             expect(tick(state, { held: east })).toBeNull()
         }
-        expect(state.player.pos).toEqual(vec2(8, 3))
+        expect(state.players[0].character.pos).toEqual(vec2(8, 3))
     })
 
     it("goes back to its spawn after a lost life, keeping its damage", () => {
@@ -409,8 +411,8 @@ describe("the boss catching", () => {
         expect(state.boss!.health).toBe(BOSS_HEALTH - 2)
         state.boss!.pos = vec2(5, 2)
         state.boss!.lastPos = vec2(5, 2)
-        state.player.pos = vec2(6, 3)
-        state.player.lastPos = vec2(6, 3)
+        state.players[0].character.pos = vec2(6, 3)
+        state.players[0].character.lastPos = vec2(6, 3)
         expect(tick(state)).toBeNull()
         expect(state.lives).toBe(2)
         expect(state.boss!.pos).toEqual(vec2(2, 1))
@@ -435,16 +437,16 @@ describe("winning a boss level", () => {
             map: oneDot,
             breath: BREATHS.owl,
         })
-        state.player.moveProgress = 1
+        state.players[0].character.moveProgress = 1
         // The last dot: no win yet, with the boss still about.
         expect(tick(state, { held: east })).toBeNull()
         expect(state.cells[4][8]).toBe(Cell.none)
         expect(tick(state)).toBeNull()
         // Its last hit wins, even if it catches the player on that tick.
         state.boss!.health = 1
-        state.player.pos = vec2(3, 2)
-        state.player.lastPos = vec2(3, 2)
-        state.breather.cooldown = 0
+        state.players[0].character.pos = vec2(3, 2)
+        state.players[0].character.lastPos = vec2(3, 2)
+        state.players[0].breather.cooldown = 0
         expect(tick(state, { breath: true })).toBe("won")
         expect(state.lives).toBe(1)
         expect(state.boss!.defeated).toBe(true)
@@ -458,9 +460,9 @@ describe("winning a boss level", () => {
         state.boss!.health = 1
         expect(tick(state, { breath: true })).toBeNull()
         expect(state.boss!.defeated).toBe(true)
-        state.player.pos = vec2(7, 4)
-        state.player.lastPos = vec2(7, 4)
-        state.player.moveProgress = 1
+        state.players[0].character.pos = vec2(7, 4)
+        state.players[0].character.lastPos = vec2(7, 4)
+        state.players[0].character.moveProgress = 1
         expect(tick(state, { held: east })).toBe("won")
     })
 
@@ -476,18 +478,21 @@ describe("energy on a boss level", () => {
             map: bare,
             speed: 0.01,
         })
-        state.breather.energy = 0
+        state.players[0].breather.energy = 0
         for (let i = 0; i < TICK_RATE; i++) tick(state)
-        expect(state.breather.energy).toBeCloseTo(BOSS_TRICKLE)
-        state.breather.energy = state.breather.breath.maxEnergy - 1
+        expect(state.players[0].breather.energy).toBeCloseTo(BOSS_TRICKLE)
+        state.players[0].breather.energy =
+            state.players[0].breather.breath.maxEnergy - 1
         for (let i = 0; i < TICK_RATE; i++) tick(state)
-        expect(state.breather.energy).toBe(state.breather.breath.maxEnergy)
+        expect(state.players[0].breather.energy).toBe(
+            state.players[0].breather.breath.maxEnergy
+        )
     })
 
     it("doesn't refill while dots are left", () => {
         const state = bossGame(vec2(1, 4), vec2(7, 1), { speed: 0.01 })
-        state.breather.energy = 0
+        state.players[0].breather.energy = 0
         for (let i = 0; i < TICK_RATE; i++) tick(state)
-        expect(state.breather.energy).toBe(0)
+        expect(state.players[0].breather.energy).toBe(0)
     })
 })

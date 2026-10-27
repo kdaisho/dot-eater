@@ -56,7 +56,7 @@ function skunkState(
     enemies: Character[] = []
 ) {
     const state = makeState(map, player, enemies, { breath: skunk })
-    state.breather.energy = skunk.maxEnergy
+    state.players[0].breather.energy = skunk.maxEnergy
     return state
 }
 
@@ -99,10 +99,10 @@ describe("the Skunk's smelly breath", () => {
 
     it("stays where it was breathed when the player walks off", () => {
         const state = skunkState(corridor, { x: 1, y: 1 })
-        state.player.moveProgress = 1
+        state.players[0].character.moveProgress = 1
         tick(state, true)
         for (let i = 0; i < TICK_RATE; i++) tick(state, false, vec2(1, 0))
-        expect(state.player.pos.x).toBeGreaterThan(3)
+        expect(state.players[0].character.pos.x).toBeGreaterThan(3)
         expect(cloud(state)).toEqual(["1,1", "2,1"])
     })
 
@@ -120,11 +120,11 @@ describe("the Skunk's smelly breath", () => {
     // first, so it was refreshed without its 💨.
     it("shows a 💨 on the centre of a cloud breathed over another", () => {
         const state = skunkState(corridor, { x: 3, y: 1 })
-        state.player.moveProgress = 1
+        state.players[0].character.moveProgress = 1
         tick(state, true)
         tick(state, false, vec2(1, 0))
-        expect(state.player.pos).toEqual(vec2(4, 1))
-        while (state.breather.cooldown > 0) tick(state)
+        expect(state.players[0].character.pos).toEqual(vec2(4, 1))
+        while (state.players[0].breather.cooldown > 0) tick(state)
         tick(state, true)
         expect(puffs(state)).toContain("4,1")
         // Still one haze and one block per cell, the overlap refreshed.
@@ -227,12 +227,14 @@ describe("the Skunk's smelly breath", () => {
 
 describe("the Skunk's stats", () => {
     it("has a 150 meter: three breaths from full", () => {
-        expect(createGameState(OLD_LEVEL, "skunk").breather.breath).toBe(skunk)
+        expect(
+            createGameState(OLD_LEVEL, "skunk").players[0].breather.breath
+        ).toBe(skunk)
         const state = skunkState(room, centre)
         expect(energyHud(state).max).toBe(150)
         for (const left of [100, 50, 0]) {
             tick(state, true)
-            expect(state.breather.energy).toBe(left)
+            expect(state.players[0].breather.energy).toBe(left)
             for (let i = 0; i < TICK_RATE * skunk.cooldown; i++) tick(state)
         }
     })
@@ -240,22 +242,22 @@ describe("the Skunk's stats", () => {
     it("fills the meter up to 150 from dots", () => {
         const { map } = textMap(["#####", "#  .#", "#####", "#.###"])
         const state = skunkState(map, { x: 1, y: 1 })
-        state.breather.energy = 148
-        state.player.moveProgress = 1
+        state.players[0].breather.energy = 148
+        state.players[0].character.moveProgress = 1
         for (let i = 0; i < TICK_RATE; i++) tick(state, false, vec2(1, 0))
-        expect(state.player.pos).toEqual(vec2(3, 1))
-        expect(state.breather.energy).toBe(150)
+        expect(state.players[0].character.pos).toEqual(vec2(3, 1))
+        expect(state.players[0].breather.energy).toBe(150)
     })
 
     it("does nothing without enough energy", () => {
         const enemy = makeEnemy(4, 3, AiType.chase, { x: 5, y: 3 })
         enemy.moveProgress = 1
         const state = skunkState(room, centre, [enemy])
-        state.breather.energy = skunk.cost - 5
+        state.players[0].breather.energy = skunk.cost - 5
         tick(state, true)
         expect(state.tiles).toEqual([])
-        expect(state.breather.energy).toBe(skunk.cost - 5)
-        expect(state.breather.cooldown).toBe(0)
+        expect(state.players[0].breather.energy).toBe(skunk.cost - 5)
+        expect(state.players[0].breather.cooldown).toBe(0)
         // The enemy steps onto the player as if nothing happened.
         expect(enemy.pos).toEqual(vec2(3, 3))
     })

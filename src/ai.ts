@@ -25,6 +25,33 @@ export function candidateMoves(cells: Cells, enemy: Character): Vec2[] {
     return forward.length > 0 ? forward : open
 }
 
+// Which of `targets` (the players' cells, player 1 first) `enemy` goes
+// after: the nearest by maze distance from where it stands (wrap tunnels
+// included), the first on ties. A phantom, which drifts through walls,
+// measures straight across instead (Manhattan, as phantomStep moves). An
+// unreachable player counts as infinitely far; if none can be reached it is
+// player 1. With one player that is always player 1, without searching.
+export function nearestTarget(
+    cells: Cells,
+    enemy: Character,
+    targets: readonly Vec2[]
+): number {
+    if (targets.length <= 1) return 0
+    const away =
+        enemy.ai === AiType.phantom
+            ? (p: Vec2) =>
+                  Math.abs(p.x - enemy.pos.x) + Math.abs(p.y - enemy.pos.y)
+            : (() => {
+                  const dist = distanceMap(cells, enemy.pos)
+                  return (p: Vec2) => dist[p.y][p.x]
+              })()
+    let best = 0
+    for (let i = 1; i < targets.length; i++) {
+        if (away(targets[i]) < away(targets[best])) best = i
+    }
+    return best
+}
+
 // Move one enemy according to its AI. `target` is the player's position and
 // `targetLast` the cell the player came from on its latest move (the same as
 // `target` if it hasn't moved), which gives the player's heading. `ice` is

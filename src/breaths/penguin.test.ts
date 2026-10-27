@@ -64,8 +64,8 @@ function penguinState(
         breath: penguin,
         ...(ice ? { ice } : {}),
     })
-    state.breather.energy = 100
-    state.player.moveProgress = 1
+    state.players[0].breather.energy = 100
+    state.players[0].character.moveProgress = 1
     return state
 }
 
@@ -89,7 +89,7 @@ describe("penguin's ice breath", () => {
         enemy.moveProgress = 1
         const state = penguinState(corridor, [enemy])
         tick(state, { breath: true })
-        expect(state.breather.energy).toBe(50)
+        expect(state.players[0].breather.energy).toBe(50)
         expect(enemy.statuses).toEqual([{ status: FROZEN, left: 3 }])
         // Walking east into it: onto the new ice at x 2, and the slide
         // stops against the frozen enemy, uncaught.
@@ -97,7 +97,7 @@ describe("penguin's ice breath", () => {
             expect(tick(state, { held: east })).toBeNull()
             expect(enemy.pos).toEqual(vec2(3, 1))
         }
-        expect(state.player.pos).toEqual(vec2(2, 1))
+        expect(state.players[0].character.pos).toEqual(vec2(2, 1))
         // Thawed, it steps at once towards the player next to it, and
         // catches it as soon as it has glided close enough.
         tick(state, { held: east })
@@ -124,7 +124,7 @@ describe("penguin's ice breath", () => {
         const state = makeState(map, { x: 1, y: 3 }, [lit, shaded], {
             breath: penguin,
         })
-        state.breather.energy = 100
+        state.players[0].breather.energy = 100
         tick(state, { breath: true })
         expect(lit.statuses.map((s) => s.status)).toEqual([FROZEN])
         expect(shaded.statuses).toEqual([])
@@ -170,9 +170,9 @@ describe("penguin's ice breath", () => {
         // with nothing held.
         tick(state, { held: east })
         run(state, MOVE * 3)
-        expect(state.player.pos).toEqual(vec2(5, 1))
+        expect(state.players[0].character.pos).toEqual(vec2(5, 1))
         run(state, MOVE * 2)
-        expect(state.player.pos).toEqual(vec2(5, 1))
+        expect(state.players[0].character.pos).toEqual(vec2(5, 1))
     })
 
     it("leaves a frozen enemy on ice in place, sliding on once it thaws", () => {
@@ -201,19 +201,19 @@ describe("penguin's ice breath", () => {
     it("does nothing without enough energy", () => {
         const enemy = makeEnemy(3, 1)
         const state = penguinState(corridor, [enemy])
-        state.breather.energy = 49
+        state.players[0].breather.energy = 49
         tick(state, { breath: true })
-        expect(state.breather.energy).toBe(49)
+        expect(state.players[0].breather.energy).toBe(49)
         expect(enemy.statuses).toEqual([])
         expect(state.tiles).toEqual([])
     })
 
     it("keeps the energy when facing straight into a wall", () => {
         const state = penguinState()
-        state.breather.facing = vec2(-1, 0)
+        state.players[0].breather.facing = vec2(-1, 0)
         tick(state, { breath: true })
-        expect(state.breather.energy).toBe(100)
-        expect(state.breather.cooldown).toBe(0)
+        expect(state.players[0].breather.energy).toBe(100)
+        expect(state.players[0].breather.cooldown).toBe(0)
     })
 })
 
@@ -233,7 +233,7 @@ describe("penguin's stat: slides faster on ice", () => {
         enemies: Character[] = []
     ) {
         const state = makeState(map, { x: 1, y: 1 }, enemies, { breath, ice })
-        state.player.moveProgress = 1
+        state.players[0].character.moveProgress = 1
         return state
     }
 
@@ -244,16 +244,16 @@ describe("penguin's stat: slides faster on ice", () => {
     function glideRates(state: GameState): [number, number][] {
         tick(state, { held: east })
         const rates: [number, number][] = []
-        let x = state.player.pos.x
+        let x = state.players[0].character.pos.x
         let ticks = 0
         for (let i = 0; i < TICK_RATE * 5; i++) {
             tick(state)
             ticks++
-            const moved = state.player.pos.x !== x
-            if (moved || state.player.moveProgress >= 1) {
+            const moved = state.players[0].character.pos.x !== x
+            if (moved || state.players[0].character.moveProgress >= 1) {
                 rates.push([x, MOVE / ticks])
                 if (!moved) return rates
-                x = state.player.pos.x
+                x = state.players[0].character.pos.x
                 ticks = 0
             }
         }
@@ -294,11 +294,11 @@ describe("penguin's stat: slides faster on ice", () => {
         const state = makeState(corridor, { x: 1, y: 1 }, [], {
             breath: penguin,
         })
-        state.player.moveProgress = 1
+        state.players[0].character.moveProgress = 1
         run(state, 1 + MOVE * 2, { held: east })
-        expect(state.player.pos).toEqual(vec2(4, 1))
+        expect(state.players[0].character.pos).toEqual(vec2(4, 1))
         tick(state, { held: east })
-        expect(state.player.pos).toEqual(vec2(4, 1))
+        expect(state.players[0].character.pos).toEqual(vec2(4, 1))
     })
 
     it("on the breath's own ice too", () => {

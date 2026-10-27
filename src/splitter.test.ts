@@ -82,7 +82,7 @@ function setup({ lives = 1, at = vec2(4, 2) } = {}) {
         lives,
     })
     state.spawns.enemies = [vec2(8, 2), vec2(8, 2)]
-    state.breather.energy = 100
+    state.players[0].breather.energy = 100
     return { state, main, spare }
 }
 
@@ -132,7 +132,7 @@ describe("a whole Splitter", () => {
 
     it("splits into two halves when a breath defeats it, scoring DEFEAT_POINTS", () => {
         const { state, main, spare } = split()
-        expect(state.score).toBe(DEFEAT_POINTS)
+        expect(state.players[0].score).toBe(DEFEAT_POINTS)
         for (const half of [main, spare]) {
             expect(inPlay(half)).toBe(true)
             expect(isSplitterHalf(half)).toBe(true)
@@ -174,7 +174,7 @@ describe("a whole Splitter", () => {
         main.lastPos = vec2(2, 2)
         main.moveProgress = 0.3
         expect(tick(state, true)).toBeNull()
-        expect(state.score).toBe(DEFEAT_POINTS)
+        expect(state.players[0].score).toBe(DEFEAT_POINTS)
         expect(main.pos).toEqual(vec2(2, 2))
         expect(main.lastPos).toEqual(vec2(2, 2))
         expect(inPlay(spare)).toBe(true)
@@ -187,12 +187,14 @@ describe("a whole Splitter", () => {
     it("isn't split by effects that don't defeat", () => {
         const { state, main, spare } = setup()
         addStatus(main, { name: "test.frozen", holds: true }, 3)
-        pushEnemy(state.cells, main, vec2(1, 0), 2, state.player)
+        pushEnemy(state.cells, main, vec2(1, 0), 2, [
+            state.players[0].character,
+        ])
         run(state, TICK_RATE)
         expect(main.pos).toEqual(vec2(6, 2))
         expect(isWholeSplitter(main)).toBe(true)
         expect(inPlay(spare)).toBe(false)
-        expect(state.score).toBe(0)
+        expect(state.players[0].score).toBe(0)
     })
 })
 
@@ -200,12 +202,12 @@ describe("a Splitter's halves", () => {
     it("don't split again: each is defeated for DEFEAT_POINTS", () => {
         const { state, main, spare } = split()
         defeatEnemy(state, spare)
-        expect(state.score).toBe(DEFEAT_POINTS * 2)
+        expect(state.players[0].score).toBe(DEFEAT_POINTS * 2)
         expect(inPlay(spare)).toBe(false)
         expect(inPlay(main)).toBe(true)
         expect(isSplitterHalf(main)).toBe(true)
         defeatEnemy(state, main)
-        expect(state.score).toBe(DEFEAT_POINTS * 3)
+        expect(state.players[0].score).toBe(DEFEAT_POINTS * 3)
         expect(inPlay(main)).toBe(false)
     })
 
@@ -243,8 +245,8 @@ describe("a Splitter's halves", () => {
         const { state, main, spare } = setup({ lives: 2 })
         tick(state, true)
         // Both halves are drawn near (4, 2), gliding out.
-        state.player.pos = vec2(4, 2)
-        state.player.lastPos = vec2(4, 2)
+        state.players[0].character.pos = vec2(4, 2)
+        state.players[0].character.lastPos = vec2(4, 2)
         tick(state)
         expect(state.lives).toBe(1)
         expect(isWholeSplitter(main)).toBe(true)
@@ -270,8 +272,8 @@ describe("a Splitter's halves", () => {
             defeatEnemy(state, main)
             const halves: Character[] = [spare, main].slice(0, gone)
             for (const half of halves) defeatEnemy(state, half)
-            state.player.pos = vec2(9, 2)
-            state.player.lastPos = vec2(9, 2)
+            state.players[0].character.pos = vec2(9, 2)
+            state.players[0].character.lastPos = vec2(9, 2)
             tick(state)
             expect(state.lives).toBe(1)
             expect(inPlay(main)).toBe(true)
@@ -326,8 +328,8 @@ describe("a split next to the player", () => {
             lives: 3,
         })
         state.spawns.enemies = [vec2(8, 2), vec2(8, 2)]
-        state.breather.energy = 100
-        state.player.moveProgress = 1
+        state.players[0].breather.energy = 100
+        state.players[0].character.moveProgress = 1
         return { state, main, spare }
     }
 
@@ -337,7 +339,7 @@ describe("a split next to the player", () => {
         const { state, main } = near(vec2(2, 2), vec2(3, 2), vec2(1, 2))
         expect(breatheTo(state, vec2(1, 0))).toBeNull()
         expect(state.lives).toBe(3)
-        expect(state.score).toBe(DEFEAT_POINTS)
+        expect(state.players[0].score).toBe(DEFEAT_POINTS)
         expect(isSplitterHalf(main)).toBe(true)
         expect(main.pos).toEqual(vec2(3, 2))
         // At rest on it, not gliding out from under the player's sprite.
@@ -366,7 +368,7 @@ describe("a split next to the player", () => {
         )
         expect(breatheTo(state, vec2(-1, 0))).toBeNull()
         expect(state.lives).toBe(3)
-        expect(state.score).toBe(DEFEAT_POINTS)
+        expect(state.players[0].score).toBe(DEFEAT_POINTS)
         expect(main.pos).toEqual(vec2(4, 2))
         expect(drawn(state, main)).toEqual(vec2(4, 2))
     })
@@ -377,7 +379,7 @@ describe("a split next to the player", () => {
         main.lastPos = vec2(2, 2)
         main.moveProgress = 0.3
         tick(state, true)
-        expect(state.score).toBe(DEFEAT_POINTS)
+        expect(state.players[0].score).toBe(DEFEAT_POINTS)
         run(state, 10)
         expect(state.lives).toBe(3)
     })

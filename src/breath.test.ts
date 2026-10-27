@@ -278,7 +278,7 @@ describe("defeatEnemy", () => {
         enemy.moveProgress = 0.5
         addStatus(enemy, { name: "x", holds: true }, 10)
         defeatEnemy(state, enemy)
-        expect(state.score).toBe(DEFEAT_POINTS)
+        expect(state.players[0].score).toBe(DEFEAT_POINTS)
         expect(enemy.respawnIn).toBe(RESPAWN_DELAY)
         expect(enemy.pos).toEqual(vec2(3, 0))
         expect(enemy.lastPos).toEqual(vec2(3, 0))
@@ -287,7 +287,7 @@ describe("defeatEnemy", () => {
 
         // A second defeat while out scores nothing.
         defeatEnemy(state, enemy)
-        expect(state.score).toBe(DEFEAT_POINTS)
+        expect(state.players[0].score).toBe(DEFEAT_POINTS)
 
         tickFor(state, RESPAWN_DELAY - TICK)
         expect(enemy.respawnIn).toBeGreaterThan(0)
@@ -330,7 +330,7 @@ describe("pushEnemy", () => {
     it("pushes up to the distance, through a tunnel", () => {
         const cells = cellsFrom(map)
         const enemy = makeEnemy(1, 1)
-        expect(pushEnemy(cells, enemy, west, 3, player)).toBe(3)
+        expect(pushEnemy(cells, enemy, west, 3, [player])).toBe(3)
         expect(enemy.pos).toEqual(vec2(3, 1))
         // It glides in over its last cell, as if it had just moved there.
         expect(enemy.lastPos).toEqual(vec2(4, 1))
@@ -340,11 +340,11 @@ describe("pushEnemy", () => {
     it("stops before a wall", () => {
         const cells = cellsFrom(map)
         const enemy = makeEnemy(2, 1)
-        expect(pushEnemy(cells, enemy, south, 3, player)).toBe(1)
+        expect(pushEnemy(cells, enemy, south, 3, [player])).toBe(1)
         expect(enemy.pos).toEqual(vec2(2, 2))
         const stuck = makeEnemy(1, 1)
         stuck.moveProgress = 0.5
-        expect(pushEnemy(cells, stuck, south, 3, player)).toBe(0)
+        expect(pushEnemy(cells, stuck, south, 3, [player])).toBe(0)
         expect(stuck.pos).toEqual(vec2(1, 1))
         expect(stuck.moveProgress).toBe(0.5)
     })
@@ -356,14 +356,14 @@ describe("pushEnemy", () => {
         walker.lastPos = vec2(1, 1)
         for (const x of [2, 1]) {
             const enemy = makeEnemy(x, 1)
-            expect(pushEnemy(cells, enemy, east, 1, walker)).toBe(1)
+            expect(pushEnemy(cells, enemy, east, 1, [walker])).toBe(1)
             expect(enemy.pos).toEqual(vec2(x + 1, 1))
             expect(enemy.lastPos).toEqual(vec2(x + 1, 1))
             expect(enemy.moveProgress).toBe(0)
         }
         // Pushed 2 cells, it glides in from a cell clear of the player.
         const enemy = makeEnemy(2, 1)
-        expect(pushEnemy(cells, enemy, east, 2, walker)).toBe(2)
+        expect(pushEnemy(cells, enemy, east, 2, [walker])).toBe(2)
         expect(enemy.lastPos).toEqual(vec2(3, 1))
         expect(enemy.moveProgress).toBe(0)
     })
@@ -453,12 +453,12 @@ describe("tile effects", () => {
             [enemy]
         )
         addTileEffect(state, vec2(1, 1), opening, 1)
-        state.player.pos = vec2(1, 1)
-        state.player.lastPos = vec2(0, 1)
+        state.players[0].character.pos = vec2(1, 1)
+        state.players[0].character.lastPos = vec2(0, 1)
         tickFor(state, 1)
         expect(state.cells[1][1]).toBe(Cell.wall)
-        expect(state.player.pos).toEqual(vec2(0, 1))
-        expect(state.player.lastPos).toEqual(vec2(0, 1))
+        expect(state.players[0].character.pos).toEqual(vec2(0, 1))
+        expect(state.players[0].character.lastPos).toEqual(vec2(0, 1))
         expect(enemy.pos).toEqual(vec2(1, 0))
     })
 
@@ -508,10 +508,10 @@ describe("tile effects", () => {
             { x: 2, y: 1 }
         )
         addTileEffect(state, vec2(1, 0), opening, 1)
-        state.player.pos = vec2(1, 0)
-        state.player.lastPos = vec2(1, 0)
+        state.players[0].character.pos = vec2(1, 0)
+        state.players[0].character.lastPos = vec2(1, 0)
         tickFor(state, 1)
-        expect(state.player.pos).toEqual(vec2(2, 1))
+        expect(state.players[0].character.pos).toEqual(vec2(2, 1))
     })
 })
 

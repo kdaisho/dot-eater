@@ -104,14 +104,14 @@ describe("damage", () => {
         expect(boss.health).toBe(BOSS_HEALTH - 5)
         expect(boss.flash).toBe(BOSS_FLASH)
         expect(boss.defeated).toBe(false)
-        expect(state.score).toBe(0)
+        expect(state.players[0].score).toBe(0)
         damageBoss(state, BOSS_HEALTH)
         expect(boss.health).toBe(0)
         expect(boss.defeated).toBe(true)
-        expect(state.score).toBe(BOSS_DEFEAT_POINTS)
+        expect(state.players[0].score).toBe(BOSS_DEFEAT_POINTS)
         damageBoss(state, 1)
         expect(boss.health).toBe(0)
-        expect(state.score).toBe(BOSS_DEFEAT_POINTS)
+        expect(state.players[0].score).toBe(BOSS_DEFEAT_POINTS)
     })
 
     it("counts the flash down", () => {

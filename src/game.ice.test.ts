@@ -33,7 +33,7 @@ function rink(
 ): GameState {
     const { map, ice } = textMap(rows)
     const state = makeState(map, player, enemies, { lives, ice })
-    state.player.moveProgress = 1
+    state.players[0].character.moveProgress = 1
     for (const enemy of enemies) enemy.moveProgress = 1
     return state
 }
@@ -46,7 +46,7 @@ function trail(
     state: GameState,
     n: number,
     input: Tick = {},
-    who: Character = state.player
+    who: Character = state.players[0].character
 ): Vec2[] {
     const cells: Vec2[] = []
     for (let i = 0; i < n; i++) {
@@ -86,8 +86,8 @@ describe("step: sliding on ice", () => {
         }
         // On normal floor it stops.
         expect(trail(state, TICK_RATE)).toEqual([])
-        expect(state.player.pos).toEqual(vec2(7, 1))
-        expect(state.player.moveProgress).toBe(1)
+        expect(state.players[0].character.pos).toEqual(vec2(7, 1))
+        expect(state.players[0].character.moveProgress).toBe(1)
     })
 
     it("stops on the ice before a wall, free to go any way from there", () => {
@@ -111,7 +111,7 @@ describe("step: sliding on ice", () => {
     it("can start a new slide back the way it came after stopping", () => {
         const state = rink(["#######", "#  ~~~#", "#####.#"], vec2(2, 1))
         trail(state, PLAYER_TICKS * 4, { held: [east] })
-        expect(state.player.pos).toEqual(vec2(5, 1))
+        expect(state.players[0].character.pos).toEqual(vec2(5, 1))
         // West slides back over the ice and stops on the floor at (2, 1).
         trail(state, 1, { held: [west] })
         expect(trail(state, PLAYER_TICKS * 4)).toEqual([vec2(3, 1), vec2(2, 1)])
@@ -137,13 +137,13 @@ describe("step: sliding on ice", () => {
     it("eats the dots it slides over", () => {
         const state = rink(["#######", "# :~: #", "#####.#"], vec2(1, 1))
         trail(state, 1, { held: [east] })
-        expect(state.score).toBe(DOT_POINTS)
-        expect(state.eatenAt).toEqual(vec2(2, 1))
+        expect(state.players[0].score).toBe(DOT_POINTS)
+        expect(state.players[0].eatenAt).toEqual(vec2(2, 1))
         trail(state, PLAYER_TICKS)
-        expect(state.eatenAt).toBeNull()
+        expect(state.players[0].eatenAt).toBeNull()
         trail(state, PLAYER_TICKS)
-        expect(state.eatenAt).toEqual(vec2(4, 1))
-        expect(state.score).toBe(2 * DOT_POINTS)
+        expect(state.players[0].eatenAt).toEqual(vec2(4, 1))
+        expect(state.players[0].score).toBe(2 * DOT_POINTS)
         expect(state.cells[1][2]).toBe(Cell.none)
         expect(state.cells[1][4]).toBe(Cell.none)
     })
@@ -176,10 +176,10 @@ describe("step: sliding on ice", () => {
             vec2(4, 2),
             vec2(5, 2),
         ])
-        expect(state.bufferedStep).toEqual(north)
+        expect(state.players[0].bufferedStep).toEqual(north)
         // The slide is over: the tap turns the player north.
         expect(trail(state, PLAYER_TICKS)).toEqual([vec2(5, 1)])
-        expect(state.bufferedStep).toEqual(none)
+        expect(state.players[0].bufferedStep).toEqual(none)
     })
 
     it("lets a newer tap replace one made earlier in the slide", () => {
@@ -188,7 +188,7 @@ describe("step: sliding on ice", () => {
         stepOnce(state, { pressed: north })
         stepOnce(state, { pressed: south })
         trail(state, PLAYER_TICKS * 4)
-        expect(state.player.pos).toEqual(vec2(5, 3))
+        expect(state.players[0].character.pos).toEqual(vec2(5, 3))
     })
 
     it("doesn't reverse a slide on a tap the other way", () => {
@@ -303,9 +303,9 @@ describe("step: collisions while sliding", () => {
         const state = rink(lane, vec2(3, 1), [
             makeEnemy(4, 1, AiType.random, { x: 5, y: 1 }),
         ])
-        state.player.lastPos = vec2(2, 1)
+        state.players[0].character.lastPos = vec2(2, 1)
         expect(stepOnce(state, { held: [west] })).toBeNull()
-        expect(state.player.pos).toEqual(vec2(4, 1))
+        expect(state.players[0].character.pos).toEqual(vec2(4, 1))
         expect(state.enemies[0].pos).toEqual(vec2(3, 1))
         // A cell apart, closing 0.1 cells a tick to CATCH_DISTANCE.
         expect(ticksUntilCaught(state)).toBe(4)
@@ -315,9 +315,9 @@ describe("step: collisions while sliding", () => {
         const state = rink(lane, vec2(2, 1), [
             makeEnemy(4, 1, AiType.random, { x: 5, y: 1 }),
         ])
-        state.player.lastPos = vec2(1, 1)
+        state.players[0].character.lastPos = vec2(1, 1)
         expect(stepOnce(state)).toBeNull()
-        expect(state.player.pos).toEqual(vec2(3, 1))
+        expect(state.players[0].character.pos).toEqual(vec2(3, 1))
         expect(state.enemies[0].pos).toEqual(vec2(3, 1))
         expect(ticksUntilCaught(state)).toBe(14)
     })
@@ -344,9 +344,9 @@ describe("step: collisions while sliding", () => {
         const state = rink(lane, vec2(3, 1), [
             makeEnemy(2, 1, AiType.random, { x: 1, y: 1 }),
         ])
-        state.player.lastPos = vec2(2, 1)
+        state.players[0].character.lastPos = vec2(2, 1)
         expect(stepOnce(state)).toBeNull()
-        expect(state.player.pos).toEqual(vec2(4, 1))
+        expect(state.players[0].character.pos).toEqual(vec2(4, 1))
         expect(state.enemies[0].pos).toEqual(vec2(3, 1))
     })
 })
@@ -366,7 +366,7 @@ describe("createGameState: ice", () => {
     it("starts the player off ice, so nobody starts sliding", () => {
         for (const level of levels) {
             const state = createGameState(level)
-            for (const c of [state.player, ...state.enemies]) {
+            for (const c of [state.players[0].character, ...state.enemies]) {
                 expect(state.ice[c.pos.y][c.pos.x]).toBe(false)
             }
         }

@@ -51,8 +51,8 @@ function boarState(
     lives = 1
 ): GameState {
     const state = makeState(map, player, enemies, { breath: boar, lives })
-    state.breather.energy = boar.maxEnergy
-    state.player.moveProgress = 1
+    state.players[0].breather.energy = boar.maxEnergy
+    state.players[0].character.moveProgress = 1
     return state
 }
 
@@ -63,8 +63,8 @@ describe("the Boar's wall-break breath", () => {
         const state = boarState(rooms, { x: 2, y: 1 })
         tick(state, { breath: true })
         expect(state.cells[1][3]).toBe(Cell.none)
-        expect(state.breather.energy).toBe(25)
-        expect(state.breather.cooldown).toBeCloseTo(1)
+        expect(state.players[0].breather.energy).toBe(25)
+        expect(state.players[0].breather.cooldown).toBeCloseTo(1)
         expect(state.tiles).toEqual([
             { pos: vec2(3, 1), effect: BROKEN_WALL, left: 10 },
         ])
@@ -74,9 +74,9 @@ describe("the Boar's wall-break breath", () => {
         const state = boarState(rooms, { x: 2, y: 1 })
         tick(state, { breath: true })
         tick(state, { held: east })
-        expect(state.player.pos).toEqual(vec2(3, 1))
+        expect(state.players[0].character.pos).toEqual(vec2(3, 1))
         run(state, TICK_RATE, { held: east })
-        expect(state.player.pos).toEqual(vec2(5, 1))
+        expect(state.players[0].character.pos).toEqual(vec2(5, 1))
     })
 
     it("lets enemies through the opening", () => {
@@ -105,10 +105,10 @@ describe("the Boar's wall-break breath", () => {
         const state = boarState(rooms, { x: 2, y: 1 })
         tick(state, { breath: true })
         tick(state, { held: east })
-        expect(state.player.pos).toEqual(vec2(3, 1))
+        expect(state.players[0].character.pos).toEqual(vec2(3, 1))
         run(state, OPEN_TICKS)
         expect(state.cells[1][3]).toBe(Cell.wall)
-        expect(state.player.pos).toEqual(vec2(2, 1))
+        expect(state.players[0].character.pos).toEqual(vec2(2, 1))
     })
 
     it("pushes an enemy standing in it out when it grows back", () => {
@@ -136,22 +136,22 @@ describe("the Boar's wall-break breath", () => {
         const state = boarState(map, { x: 3, y: 1 })
         // South of the player is a wall: it doesn't move but turns to it.
         tick(state, { pressed: south, held: south })
-        expect(state.player.pos).toEqual(vec2(3, 1))
-        expect(state.breather.facing).toEqual(south)
+        expect(state.players[0].character.pos).toEqual(vec2(3, 1))
+        expect(state.players[0].breather.facing).toEqual(south)
         tick(state, { held: south, breath: true })
         expect(state.cells[2][3]).toBe(Cell.none)
-        expect(state.breather.energy).toBe(25)
+        expect(state.players[0].breather.energy).toBe(25)
     })
 
     it("refuses an outer wall, spending nothing", () => {
         const state = boarState(rooms, { x: 2, y: 1 })
         tick(state, { pressed: north })
-        expect(state.breather.facing).toEqual(north)
+        expect(state.players[0].breather.facing).toEqual(north)
         tick(state, { breath: true })
         expect(state.cells[0][2]).toBe(Cell.wall)
         expect(state.tiles).toEqual([])
-        expect(state.breather.energy).toBe(100)
-        expect(state.breather.cooldown).toBe(0)
+        expect(state.players[0].breather.energy).toBe(100)
+        expect(state.players[0].breather.cooldown).toBe(0)
     })
 
     it("refuses an outer wall beside a wrap tunnel", () => {
@@ -160,35 +160,35 @@ describe("the Boar's wall-break breath", () => {
         const { map } = textMap(["#######", "       ", "#######", "#.#####"])
         const state = boarState(map, { x: 0, y: 1 })
         tick(state, { pressed: north })
-        expect(state.breather.facing).toEqual(north)
+        expect(state.players[0].breather.facing).toEqual(north)
         tick(state, { breath: true })
         expect(state.cells[0][0]).toBe(Cell.wall)
-        expect(state.breather.energy).toBe(100)
+        expect(state.players[0].breather.energy).toBe(100)
         // The far edge's border wall holds too.
         tick(state, { pressed: south })
         tick(state, { breath: true })
         expect(state.cells[2][0]).toBe(Cell.wall)
-        expect(state.breather.energy).toBe(100)
+        expect(state.players[0].breather.energy).toBe(100)
     })
 
     it("refuses empty floor in front, spending nothing", () => {
         const state = boarState(rooms, { x: 1, y: 1 })
         tick(state, { breath: true })
         expect(state.tiles).toEqual([])
-        expect(state.breather.energy).toBe(100)
-        expect(state.breather.cooldown).toBe(0)
+        expect(state.players[0].breather.energy).toBe(100)
+        expect(state.players[0].breather.cooldown).toBe(0)
     })
 
     it("needs 75 energy", () => {
         const state = boarState(rooms, { x: 2, y: 1 })
-        state.breather.energy = 74
+        state.players[0].breather.energy = 74
         tick(state, { breath: true })
         expect(state.cells[1][3]).toBe(Cell.wall)
-        expect(state.breather.energy).toBe(74)
-        state.breather.energy = 75
+        expect(state.players[0].breather.energy).toBe(74)
+        state.players[0].breather.energy = 75
         tick(state, { breath: true })
         expect(state.cells[1][3]).toBe(Cell.none)
-        expect(state.breather.energy).toBe(0)
+        expect(state.players[0].breather.energy).toBe(0)
     })
 
     it("leaves the opened cell without a dot", () => {
@@ -209,8 +209,8 @@ describe("the Boar's wall-break breath", () => {
             enemies: [],
         })
         const game = createGameState(level, "boar")
-        expect(game.player.speed).toBe(3.5)
+        expect(game.players[0].character.speed).toBe(3.5)
         run(game, TICK_RATE * 3, { held: east })
-        expect(game.player.pos).toEqual(vec2(1 + 11, 1))
+        expect(game.players[0].character.pos).toEqual(vec2(1 + 11, 1))
     })
 })

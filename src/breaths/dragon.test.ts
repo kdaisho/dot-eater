@@ -54,7 +54,7 @@ function dragonState(
     map = long
 ) {
     const state = makeState(map, player, enemies, { breath: dragon })
-    state.breather.energy = dragon.maxEnergy
+    state.players[0].breather.energy = dragon.maxEnergy
     return state
 }
 
@@ -67,8 +67,10 @@ describe("dragon fire breath", () => {
         expect(inPlay(first)).toBe(false)
         expect(inPlay(behind)).toBe(true)
         expect(behind.pos).toEqual(vec2(4, 1))
-        expect(state.score).toBe(DEFEAT_POINTS)
-        expect(state.breather.energy).toBe(dragon.maxEnergy - dragon.cost)
+        expect(state.players[0].score).toBe(DEFEAT_POINTS)
+        expect(state.players[0].breather.energy).toBe(
+            dragon.maxEnergy - dragon.cost
+        )
         // The fire stopped at the enemy: x 2 and 3 burn, not beyond.
         expect(burning(state)).toEqual([2, 3])
     })
@@ -77,7 +79,9 @@ describe("dragon fire breath", () => {
         const state = dragonState({ x: 1, y: 1 })
         tick(state, { breath: true })
         expect(burning(state)).toEqual([2, 3, 4, 5, 6])
-        expect(state.breather.energy).toBe(dragon.maxEnergy - dragon.cost)
+        expect(state.players[0].breather.energy).toBe(
+            dragon.maxEnergy - dragon.cost
+        )
     })
 
     it("counts an enemy on the player's own cell as the first hit", () => {
@@ -89,7 +93,7 @@ describe("dragon fire breath", () => {
         expect(tick(state, { breath: true })).toBeNull()
         expect(inPlay(onPlayer)).toBe(false)
         expect(inPlay(ahead)).toBe(true)
-        expect(state.score).toBe(DEFEAT_POINTS)
+        expect(state.players[0].score).toBe(DEFEAT_POINTS)
         // The fire never left the player's cell.
         expect(burning(state)).toEqual([])
     })
@@ -105,7 +109,7 @@ describe("dragon fire breath", () => {
         const state = dragonState({ x: 1, y: 1 }, [beyond], map)
         tick(state, { breath: true })
         expect(inPlay(beyond)).toBe(true)
-        expect(state.score).toBe(0)
+        expect(state.players[0].score).toBe(0)
         expect(burning(state)).toEqual([2])
     })
 
@@ -113,8 +117,8 @@ describe("dragon fire breath", () => {
         const state = dragonState({ x: 8, y: 1 })
         tick(state, { breath: true })
         expect(burning(state)).toEqual([])
-        expect(state.breather.energy).toBe(dragon.maxEnergy)
-        expect(state.breather.cooldown).toBe(0)
+        expect(state.players[0].breather.energy).toBe(dragon.maxEnergy)
+        expect(state.players[0].breather.cooldown).toBe(0)
     })
 
     it("wraps through a tunnel", () => {
@@ -126,23 +130,23 @@ describe("dragon fire breath", () => {
         ])
         const enemy = makeEnemy(7, 1)
         const state = dragonState({ x: 1, y: 1 }, [enemy], map)
-        state.breather.facing = west
+        state.players[0].breather.facing = west
         tick(state, { breath: true })
         expect(inPlay(enemy)).toBe(false)
-        expect(state.score).toBe(DEFEAT_POINTS)
+        expect(state.players[0].score).toBe(DEFEAT_POINTS)
         expect(burning(state)).toEqual([0, 8, 7])
     })
 
     it("does nothing and spends nothing without enough energy", () => {
         const enemy = makeEnemy(3, 1)
         const state = dragonState({ x: 1, y: 1 }, [enemy])
-        state.breather.energy = dragon.cost - 5
+        state.players[0].breather.energy = dragon.cost - 5
         tick(state, { breath: true })
         expect(inPlay(enemy)).toBe(true)
-        expect(state.score).toBe(0)
+        expect(state.players[0].score).toBe(0)
         expect(burning(state)).toEqual([])
-        expect(state.breather.energy).toBe(dragon.cost - 5)
-        expect(state.breather.cooldown).toBe(0)
+        expect(state.players[0].breather.energy).toBe(dragon.cost - 5)
+        expect(state.players[0].breather.cooldown).toBe(0)
     })
 
     it("leaves burning cells that block enemies for 2 s, then don't", () => {
@@ -172,7 +176,7 @@ describe("dragon fire breath", () => {
         for (let i = 0; i < MOVE * 4; i++) {
             expect(tick(state, { held: east })).toBeNull()
         }
-        expect(state.player.pos.x).toBeGreaterThanOrEqual(5)
+        expect(state.players[0].character.pos.x).toBeGreaterThanOrEqual(5)
         expect(chaser.pos.x).toBeGreaterThanOrEqual(7)
     })
 })

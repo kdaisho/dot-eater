@@ -74,7 +74,7 @@ const FOG_REACH = Math.SQRT1_2
 // The player is drawn as the playing character's emoji (ANIMALS in
 // roster.ts), as are the HUD's lives.
 function playerSprite(state: GameState): string {
-    return ANIMALS[state.breather.breath.animal].emoji
+    return ANIMALS[state.players[0].breather.breath.animal].emoji
 }
 
 // Enemies look like what they do: every enemy of one AI type shares a
@@ -219,7 +219,13 @@ function createFog(
     rows: number,
     radius: number
 ): Fog {
-    const player = glidePos(state.player, alpha, cols, rows, state.playerRate)
+    const player = glidePos(
+        state.players[0].character,
+        alpha,
+        cols,
+        rows,
+        state.players[0].rate
+    )
     const wrap = fogWrap(state.cells)
     return {
         player,
@@ -280,8 +286,13 @@ function drawCells(
     const wall = cell * WALL_SCALE
     const dot = Math.max(1, cell * DOT_SCALE)
     const eaten =
-        state.eatenAt && eatenDotVisible(state.player, alpha, state.playerRate)
-            ? state.eatenAt
+        state.players[0].eatenAt &&
+        eatenDotVisible(
+            state.players[0].character,
+            alpha,
+            state.players[0].rate
+        )
+            ? state.players[0].eatenAt
             : null
     // Whole pixels, so neighbouring filled cells meet without a seam.
     const fillCell = (x: number, y: number, color: string) => {
@@ -418,11 +429,11 @@ function drawCharacters(
     // between ticks. The player glides at its current rate (playerRate), as
     // the ticks move it. A Splitter's half is drawn smaller (HALF_SCALE), its
     // disc and badges too.
-    for (const character of [state.player, ...state.enemies]) {
-        const isPlayer = character === state.player
+    for (const character of [state.players[0].character, ...state.enemies]) {
+        const isPlayer = character === state.players[0].character
         if (!isPlayer && !enemyVisible(character)) continue
         const held = !isPlayer && hasStatus(character, "holds")
-        const rate = isPlayer ? state.playerRate : 1
+        const rate = isPlayer ? state.players[0].rate : 1
         const pos = glidePos(character, held ? 0 : alpha, cols, rows, rate)
         if (fog && !isPlayer && !fog.visible(pos)) continue
         const sprite = isPlayer

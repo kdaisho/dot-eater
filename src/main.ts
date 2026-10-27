@@ -9,7 +9,7 @@ import {
     type EndChoice,
     type Screen,
 } from "./flow"
-import type { GameState } from "./game"
+import { totalScore, type GameState } from "./game"
 import { InputState, KeyboardSource } from "./input"
 import { loadLastPick, saveLastPick } from "./lastPick"
 import { levels } from "./levels"
@@ -132,7 +132,7 @@ function render(alpha: number) {
     renderer.draw(
         game,
         lastAlpha,
-        { score: game.score, lives: game.lives, energy: energyHud(game) },
+        { score: totalScore(game), lives: game.lives, energy: energyHud(game) },
         rules
     )
 }
@@ -173,7 +173,7 @@ const END_LABELS = { retry: "Retry", stageSelect: "Stage select" } as const
 
 function endView(game: GameState, choice: EndChoice): EndScreenView {
     return {
-        score: game.score,
+        score: totalScore(game),
         items: END_CHOICES.map((c) => ({
             label: END_LABELS[c],
             selected: c === choice,

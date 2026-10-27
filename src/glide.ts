@@ -22,7 +22,7 @@ export type Glider = Pick<
 // part of the next tick that has already passed, for smooth frames between
 // ticks. A resting character (progress 1: idle, blocked or waiting to move)
 // is drawn at pos. `rate` is a factor on its speed for this glide, as the
-// game applies it (the player's GameState.playerRate, e.g. a faster slide),
+// game applies it (the player's Player.rate, e.g. a faster slide),
 // so frames between ticks keep up with the ticks.
 export function glideT(character: Glider, alpha: number, rate = 1): number {
     const { moveProgress, speed } = character
@@ -38,7 +38,7 @@ export function glideT(character: Glider, alpha: number, rate = 1): number {
 export const EAT_AT = 0.5
 
 // Whether to still draw the dot eaten on the player's latest move
-// (GameState.eatenAt, the player's pos): true while the player's glide
+// (Player.eatenAt, the player's pos): true while the player's glide
 // towards it hasn't reached EAT_AT. `rate` as for glideT.
 export function eatenDotVisible(
     player: Character,
