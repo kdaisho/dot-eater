@@ -6,6 +6,7 @@ import {
     PLAYER_SPEED,
 } from "./constants"
 import type { ActiveStatus } from "./breath"
+import type { SplitterPart } from "./splitter"
 import { vec2, type Vec2 } from "./vec2"
 
 export type Character = {
@@ -32,7 +33,12 @@ export type Character = {
     // Seconds until a defeated enemy is back at its spawn; 0 while it is in
     // play. While above 0 the enemy is out of the game: it doesn't move or
     // catch, and is only drawn (blinking) near the end (see enemyVisible).
+    // Infinity (GONE in splitter.ts) is out of play with no timer: a
+    // Splitter's half that is gone, or its spare slot before a split.
     respawnIn: number
+    // Splitters only: which of the Splitter's two enemy slots this is, and
+    // whether it is whole or a half (see splitter.ts).
+    part?: SplitterPart
 }
 
 export function createCharacter(

@@ -10,6 +10,12 @@ import type { Character } from "./character"
 import type { GameState } from "./game"
 import { loopPos, type Cells } from "./level"
 import type { AnimalId } from "./roster"
+import {
+    halfDefeated,
+    isSplitterHalf,
+    isWholeSplitter,
+    splitSplitter,
+} from "./splitter"
 import { allDirections, directions, samePos, vec2, type Vec2 } from "./vec2"
 
 // The breath system. Pure, no DOM: time comes in as `dt`, the breath press
@@ -22,7 +28,8 @@ import { allDirections, directions, samePos, vec2, type Vec2 } from "./vec2"
 // decides what happens to them, using only the generic effects below:
 //
 // - defeat an enemy: it scores DEFEAT_POINTS and comes back alone at its
-//   spawn after RESPAWN_DELAY, blinking for the last RESPAWN_BLINK seconds;
+//   spawn after RESPAWN_DELAY, blinking for the last RESPAWN_BLINK seconds
+//   (a whole Splitter splits in two instead; see splitter.ts);
 // - put a timed status on an enemy (EnemyStatus: e.g. frozen);
 // - put a timed effect on a cell (TileEffect: blocks enemies, ice, an opened
 //   wall);
@@ -392,18 +399,27 @@ export function addStatus(
 // blink before it is back is drawn there. Statuses are dropped and a
 // patroller will start its route again. Defeating an enemy already out of
 // play does nothing.
+//
+// A Splitter (see splitter.ts) scores the same, but a whole one splits into
+// two halves instead of leaving play, and a defeated half doesn't come back
+// by itself: the Splitter does, whole, once both halves are gone.
 export function defeatEnemy(state: GameState, enemy: Character) {
     if (!inPlay(enemy)) return
     const i = state.enemies.indexOf(enemy)
     if (i < 0) return
-    const spawn = state.spawns.enemies[i]
     state.score += DEFEAT_POINTS
+    if (isWholeSplitter(enemy)) {
+        splitSplitter(state, i)
+        return
+    }
+    const spawn = state.spawns.enemies[i]
     enemy.respawnIn = RESPAWN_DELAY
     enemy.statuses = []
     enemy.pos = vec2(spawn.x, spawn.y)
     enemy.lastPos = vec2(spawn.x, spawn.y)
     enemy.moveProgress = 0
     enemy.routeIndex = 0
+    if (isSplitterHalf(enemy)) halfDefeated(state, i)
 }
 
 // Whether to draw an enemy: always while in play; while defeated, only in

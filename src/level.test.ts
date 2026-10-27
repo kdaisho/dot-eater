@@ -114,6 +114,34 @@ describe("parseLevel", () => {
         })
     })
 
+    it("parses splitters, up to 4 enemy slots with each splitter as 2", () => {
+        const level = parseLevel({
+            ...valid,
+            enemies: [{ ai: "splitter", speed: 1.5 }],
+        })
+        expect(level.enemies).toEqual([
+            { pos: vec2(3, 1), ai: AiType.splitter, speed: 1.5 },
+        ])
+        expect(
+            problemsOf({
+                ...valid,
+                map: ["#######", "#PEEE.#", "#.....#", "#######"],
+                enemies: [
+                    { ai: "splitter" },
+                    { ai: "chase" },
+                    { ai: "random" },
+                ],
+            })
+        ).toEqual([])
+        expect(
+            problemsOf({
+                ...valid,
+                map: ["#######", "#PEE..#", "#.....#", "#######"],
+                enemies: [{ ai: "splitter" }, { ai: "splitter" }],
+            })
+        ).toEqual([])
+    })
+
     it("parses ice: ~ is empty ice and : is ice with a dot", () => {
         const level = parseLevel({
             ...valid,
@@ -299,7 +327,7 @@ describe("parseLevel", () => {
                 enemies: [{ ai: "smart" }],
             } as unknown as LevelData
             expect(problemsOf(data)).toEqual([
-                'enemies[0].ai must be one of random, chase, ambusher, patroller, phantom, got "smart"',
+                'enemies[0].ai must be one of random, chase, ambusher, patroller, phantom, splitter, got "smart"',
             ])
         })
 
@@ -412,7 +440,40 @@ describe("parseLevel", () => {
                         { ai: "random" },
                     ],
                 })
-            ).toEqual(["at most 4 enemies are supported, got 5"])
+            ).toEqual([
+                "at most 4 enemies are supported (a splitter counts as 2), got 5",
+            ])
+        })
+
+        it("more enemies than there are enemy ids, a splitter counting as 2", () => {
+            const map = ["#######", "#PEEE.#", "#.E...#", "#######"]
+            expect(
+                problemsOf({
+                    ...valid,
+                    map,
+                    enemies: [
+                        { ai: "random" },
+                        { ai: "splitter" },
+                        { ai: "random" },
+                        { ai: "random" },
+                    ],
+                })
+            ).toEqual([
+                "at most 4 enemies are supported (a splitter counts as 2), got 5",
+            ])
+            expect(
+                problemsOf({
+                    ...valid,
+                    map: ["#######", "#PEEE.#", "#.....#", "#######"],
+                    enemies: [
+                        { ai: "splitter" },
+                        { ai: "random" },
+                        { ai: "splitter" },
+                    ],
+                })
+            ).toEqual([
+                "at most 4 enemies are supported (a splitter counts as 2), got 5",
+            ])
         })
 
         it("a patroller without a route", () => {

@@ -12,6 +12,7 @@ import { eatenDotVisible, glidePos, wrapCopies } from "./glide"
 import { computeLayout, type Layout } from "./layout"
 import type { LevelRules } from "./level"
 import { ANIMALS } from "./roster"
+import { isSplitterHalf } from "./splitter"
 import { vec2, type Vec2 } from "./vec2"
 
 // What the HUD strip above the maze shows. Fields left out aren't drawn.
@@ -78,7 +79,12 @@ const ENEMY_SPRITES: Record<AiType, string> = {
     [AiType.ambusher]: "🦊",
     [AiType.patroller]: "🤖",
     [AiType.phantom]: "👻",
+    [AiType.splitter]: "🦠",
 }
+
+// A Splitter's half (see splitter.ts) is drawn at this fraction of the usual
+// sprite size.
+export const HALF_SCALE = 0.65
 
 // A status's badge emoji is this size, as a fraction of the sprite's.
 const BADGE_SCALE = 0.5
@@ -333,7 +339,6 @@ function drawCharacters(
     rows: number,
     fog: Fog | null
 ) {
-    ctx.font = `${Math.round(cell * SPRITE_SCALE)}px sans-serif`
     ctx.textAlign = "center"
     ctx.textBaseline = "middle"
     // Later characters are drawn on top of earlier ones. In fog, enemies
@@ -344,8 +349,8 @@ function drawCharacters(
     // (e.g. frozen mid-glide) gets no frame alpha: its progress doesn't move
     // on, so it stays exactly where it is drawn instead of creeping forward
     // between ticks. The player glides at its current rate (playerRate), as
-    // the ticks move it.
-    const size = cell * SPRITE_SCALE
+    // the ticks move it. A Splitter's half is drawn smaller (HALF_SCALE), its
+    // disc and badges too.
     for (const character of [state.player, ...state.enemies]) {
         const isPlayer = character === state.player
         if (!isPlayer && !enemyVisible(character)) continue
@@ -359,7 +364,12 @@ function drawCharacters(
         const looks = character.statuses.flatMap((s) =>
             s.status.look ? [s.status.look] : []
         )
+        const size =
+            cell *
+            SPRITE_SCALE *
+            (!isPlayer && isSplitterHalf(character) ? HALF_SCALE : 1)
         for (const p of wrapCopies(pos, cols, rows)) {
+            ctx.font = `${Math.round(size)}px sans-serif`
             const x = (p.x + 0.5) * cell
             const y = (p.y + 0.5) * cell
             for (const look of looks) {
@@ -380,7 +390,6 @@ function drawCharacters(
                     y - size / 2
                 )
             })
-            ctx.font = `${Math.round(size)}px sans-serif`
         }
     }
 }

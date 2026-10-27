@@ -22,6 +22,9 @@ export const AiType = {
     patroller: 3,
     // Slow, but passes through walls.
     phantom: 4,
+    // Chases; a defeating breath splits it into two faster halves (see
+    // splitter.ts). Takes two enemy slots.
+    splitter: 5,
 } as const
 export type AiType = (typeof AiType)[keyof typeof AiType]
 
@@ -54,6 +57,8 @@ export const PLAYER_SPEED = 4
 export const ENEMY_SPEED = 2
 // Phantoms pass through walls, so they get a slower default to stay fair.
 export const PHANTOM_SPEED = 1.5
+// A Splitter's halves are faster than the whole (see splitter.ts).
+export const SPLITTER_HALF_SPEED = 2.5
 
 // How many cells ahead of the player's heading an ambusher aims.
 export const AMBUSH_AHEAD = 4

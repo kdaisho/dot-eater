@@ -265,6 +265,20 @@ describe("enemyMove (chase)", () => {
     })
 })
 
+describe("enemyMove (splitter)", () => {
+    it("chases, whole or a half, step for step like a chaser", () => {
+        const cells = cellsFrom(junction)
+        const chaser = makeEnemy(4, 7, AiType.chase, { x: 3, y: 7 })
+        const splitter = makeEnemy(4, 7, AiType.splitter, { x: 3, y: 7 })
+        for (let i = 0; i < 10; i++) {
+            enemyMove(cells, chaser, vec2(2, 7), fixedRandom(0))
+            enemyMove(cells, splitter, vec2(2, 7), fixedRandom(0))
+            expect(splitter.pos).toEqual(chaser.pos)
+        }
+        expect(splitter.pos).toEqual(vec2(2, 7))
+    })
+})
+
 describe("enemyMove in a dead end", () => {
     // AIs that keep to the no-reverse rule of candidateMoves.
     for (const [name, ai] of [

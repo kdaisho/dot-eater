@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { afterEach, describe, expect, it, vi } from "vite-plus/test"
-import { addStatus, addTileEffect } from "./breath"
+import { addStatus, addTileEffect, defeatEnemy } from "./breath"
 import {
     AiType,
     Cell,
@@ -10,7 +10,8 @@ import {
 } from "./constants"
 import { createCharacter } from "./character"
 import { createGameState, movePlayer } from "./game"
-import { createRenderer } from "./render"
+import { createRenderer, HALF_SCALE } from "./render"
+import { createSplitter } from "./splitter"
 import { makeEnemy, makeState, OLD_LEVEL, textMap } from "./test/helpers"
 import { vec2 } from "./vec2"
 
@@ -19,17 +20,23 @@ import { vec2 } from "./vec2"
 vi.mock("canvas-confetti", () => ({ default: vi.fn() }))
 
 // happy-dom has no 2D canvas, so record the calls on a stub context: every
-// method call is logged, with the fillStyle set at the time, and property
-// writes are accepted.
+// method call is logged, with the fillStyle and font set at the time, and
+// property writes are accepted.
 function stubContext() {
-    const calls: { name: string; args: unknown[]; fillStyle?: unknown }[] = []
+    const calls: {
+        name: string
+        args: unknown[]
+        fillStyle?: unknown
+        font?: unknown
+    }[] = []
     let fillStyle: unknown
+    let font: unknown
     const ctx = new Proxy(
         {},
         {
             get(_target, name) {
                 return (...args: unknown[]) => {
-                    calls.push({ name: String(name), args, fillStyle })
+                    calls.push({ name: String(name), args, fillStyle, font })
                     if (name === "createRadialGradient") {
                         return { addColorStop() {} }
                     }
@@ -37,6 +44,7 @@ function stubContext() {
             },
             set(_target, name, value) {
                 if (name === "fillStyle") fillStyle = value
+                if (name === "font") font = value
                 return true
             },
         }
@@ -108,6 +116,41 @@ describe("createRenderer", () => {
             makeEnemy(5, 1, AiType.random, undefined, CharacterId.enemy1)
         )
         expect(drawEnemies(enemies).at(-1)).toBe("👺")
+    })
+
+    it("draws a Splitter's halves smaller than the whole one", () => {
+        const [whole] = createSplitter(
+            [CharacterId.enemy1, CharacterId.enemy2],
+            vec2(1, 1)
+        )
+        const [main, spare] = createSplitter(
+            [CharacterId.enemy3, CharacterId.enemy4],
+            vec2(3, 1)
+        )
+        const state = makeState(
+            [
+                [1, 1, 1, 1, 1, 1, 1],
+                [1, 2, 2, 2, 2, 2, 1],
+                [1, 0, 1, 1, 1, 1, 1],
+            ],
+            { x: 1, y: 2 },
+            [whole, main, spare]
+        )
+        defeatEnemy(state, main)
+        const { renderer, calls } = setup()
+        renderer.draw(state, 0)
+        const sizes = calls
+            .filter((c) => c.name === "fillText" && c.args[0] === "🦠")
+            .map((c) => parseInt(String(c.font)))
+        const player = calls.find(
+            (c) => c.name === "fillText" && c.args[0] === "🐉"
+        )!
+        const full = parseInt(String(player.font))
+        expect(sizes).toEqual([
+            full,
+            Math.round(full * HALF_SCALE),
+            Math.round(full * HALF_SCALE),
+        ])
     })
 
     it("draws enemies of one AI type with the same sprite", () => {
