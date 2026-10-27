@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test"
 import { inFootprint } from "./boss"
-import type { BreathDef, BreathHit } from "./breath"
+import type { BreathDef, BreathHit, TileEffect } from "./breath"
 import { BREATHS } from "./breaths"
 import { BURNING } from "./breaths/dragon"
 import {
@@ -313,6 +313,41 @@ describe("the boss moving", () => {
             expect(inFootprint(state.boss!.pos, burning)).toBe(false)
         }
         expect(state.lives).toBe(3)
+    })
+
+    it("isn't where a regrowing wall pushes the player", () => {
+        // The player stands in an opened wall at (5, 1), come from (4, 1).
+        // The boss treats the opened wall as a wall, so it parks on
+        // (3, 1), its footprint over (4, 1), and waits.
+        const open: TileEffect = { name: "test.open", opensWall: true }
+        const { map } = textMap([
+            "########",
+            "#    ###",
+            "#    ###",
+            "########",
+            "#.######",
+        ])
+        const state = makeState(map, { x: 5, y: 1 }, [], {
+            boss: makeBoss(1, 1),
+            lives: 2,
+        })
+        state.cells[1][5] = Cell.none
+        state.player.lastPos = vec2(4, 1)
+        state.tiles.push({ pos: vec2(5, 1), effect: open, left: 5 })
+        for (let i = 0; i < TICK_RATE * 4; i++) {
+            expect(tick(state)).toBeNull()
+        }
+        expect(state.boss!.pos).toEqual(vec2(3, 1))
+        while (state.tiles.length > 0) {
+            expect(tick(state)).toBeNull()
+        }
+        // Not back to (4, 1), under the boss, but to the nearest open cell
+        // clear of it. (The boss sets off after the player on that tick:
+        // a fair chase from there.)
+        expect(state.cells[1][5]).toBe(Cell.wall)
+        expect(state.player.pos).toEqual(vec2(2, 1))
+        expect(state.boss!.lastPos).toEqual(vec2(3, 1))
+        expect(state.lives).toBe(2)
     })
 })
 

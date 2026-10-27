@@ -609,32 +609,42 @@ export function tickEffects(state: GameState, dt: number) {
 
 // Put the wall at `pos` back, and move anyone standing in it out: back to
 // the cell they came from if that is open, else to the nearest open cell
-// (direction order on ties). They arrive there at rest, not gliding.
+// (direction order on ties). They arrive there at rest, not gliding. Cells
+// under a boss in play don't count as open: it treats an opened wall as a
+// wall, so it often waits right where they came from, and landing there
+// would be a catch they did nothing to earn.
 function regrowWall(state: GameState, pos: Vec2) {
     state.cells[pos.y][pos.x] = Cell.wall
+    const boss = state.boss && !state.boss.defeated ? state.boss : null
+    const open = (p: Vec2) =>
+        state.cells[p.y][p.x] !== Cell.wall &&
+        !(boss && inFootprint(boss.pos, p))
     for (const c of [state.player, ...state.enemies]) {
         if (!samePos(c.pos, pos)) continue
         const back =
-            !samePos(c.lastPos, pos) &&
-            state.cells[c.lastPos.y][c.lastPos.x] !== Cell.wall
+            !samePos(c.lastPos, pos) && open(c.lastPos)
                 ? c.lastPos
-                : nearestOpen(state.cells, pos)
+                : nearestOpen(state.cells, pos, open)
         if (!back) continue
         c.pos = vec2(back.x, back.y)
         c.lastPos = vec2(back.x, back.y)
     }
 }
 
-// The nearest cell to `from` that isn't a wall (breadth-first, through
-// walls too, since `from` is one), or null if there is none.
-function nearestOpen(cells: Cells, from: Vec2): Vec2 | null {
+// The nearest cell to `from` that is `open` (breadth-first, through every
+// cell, since `from` is a wall), or null if there is none.
+function nearestOpen(
+    cells: Cells,
+    from: Vec2,
+    open: (p: Vec2) => boolean
+): Vec2 | null {
     const seen = new Set([key(from)])
     const queue = [from]
     for (let head = 0; head < queue.length; head++) {
         for (const d of allDirections.map((dir) => directions[dir])) {
             const q = add(cells, queue[head], d)
             if (seen.has(key(q))) continue
-            if (cells[q.y][q.x] !== Cell.wall) return q
+            if (open(q)) return q
             seen.add(key(q))
             queue.push(q)
         }
