@@ -18,26 +18,27 @@ Last updated: 2026-10-27. Read `CLAUDE.md` first for project conventions.
 
 ## Code map
 
-| Module                                    | What it does                                                                                                                                         |
-| ----------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `main.ts`                                 | Entry and wiring: loop, input, screen machine, renderer, overlays; the only place with listeners and timers                                          |
-| `loop.ts`                                 | Fixed-timestep loop (`createLoop`), clock and frame scheduler injected                                                                               |
-| `flow.ts`                                 | Screen state machine (`Screen`, `update`, `startLevel`); only `playing` steps the game; game screens carry `animal`                                  |
-| `progress.ts`, `lastPick.ts`              | Saved progress (unlocks, bests, `recordClear`); the last character pick. Storage injected, every access in try/catch                                 |
-| `stars.ts`                                | Star rating (`rateClear`), clear-time and par formatting                                                                                             |
-| `game.ts`                                 | `GameState`, `createGameState(level, animals, mode)`, `step`, collisions, catch rules per mode (`resolveCatch`, `takeOut`, `bringBack`), `settle`    |
-| `breath.ts`                               | Breath engine: `BreathDef`, `resolveShape`, `breathe`, statuses, tile effects, `defeatEnemy`, `pushEnemy`, `tickEffects`, `enemyBlocks`, `energyHud` |
-| `breaths/`                                | One `BreathDef` per animal plus `<animal>.test.ts`; `index.ts` maps `AnimalId` → `BREATHS`                                                           |
-| `roster.ts`                               | `AnimalId`, `ANIMALS` (name, emoji, card text), `ANIMAL_IDS`, `DEFAULT_ANIMAL`, `isAnimalId`                                                         |
-| `splitter.ts`                             | Splitter slots (main + spare), `splitSplitter`/`spread`, `halfDefeated`, `resetSplitter`, `GONE`                                                     |
-| `boss.ts`                                 | The 2×2 boss (`GameState.boss`): `createBoss`, `bossFits`/`bossReach`/`bossMove`, `damageBoss`, `resetBoss`, footprint and collision helpers         |
-| `ai.ts`, `path.ts`                        | Enemy AI (random, chase, ambusher, patroller, phantom, splitter), `blockedView`/`goalView`; BFS `distanceMap`, `openNeighbours`                      |
-| `ice.ts`, `fog.ts`                        | Sliding (`slideStep`, `slideReach`, `slideDistances`); fog distance and light centres                                                                |
-| `level.ts`, `levels/`                     | `LevelData` format, `parseLevel` validation; `levels/index.ts` lists stages 1–5                                                                      |
-| `input.ts`                                | Actions, `InputState`/`PlayerInput` (`ignoreHeld`), `KeyboardSource`                                                                                 |
-| `render.ts`, `glide.ts`, `layout.ts`      | Canvas renderer (maze, ice, fog, breath looks, HUD energy meter), glide maths, layout/DPR                                                            |
-| `ui.ts`                                   | DOM overlays per screen (title, stage select, character select, pause, end screens), confetti                                                        |
-| `constants.ts`, `character.ts`, `vec2.ts` | Cells, AI types, ids, tick rate, speeds, points, lives; the `Character` record                                                                       |
+| Module                                    | What it does                                                                                                                                              |
+| ----------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `main.ts`                                 | Entry and wiring: loop, input, screen machine, renderer, overlays; the only place with listeners and timers                                               |
+| `loop.ts`                                 | Fixed-timestep loop (`createLoop`), clock and frame scheduler injected                                                                                    |
+| `flow.ts`                                 | Screen state machine (`Screen`, `update`, `startLevel`); only `playing` steps the game; game screens carry `animal`                                       |
+| `progress.ts`, `lastPick.ts`              | Saved progress (unlocks, bests, `recordClear`); the last character pick. Storage injected, every access in try/catch                                      |
+| `stars.ts`                                | Star rating (`rateClear`), clear-time and par formatting                                                                                                  |
+| `game.ts`                                 | `GameState`, `createGameState(level, animals, mode)`, `step`, collisions, catch rules per mode (`resolveCatch`, `takeOut`, `bringBack`), `settle`         |
+| `versus.ts`                               | Versus rules: stuns (`stun`, `opponentsStruck`, `STUN_IMMUNITY_SECONDS`), `loseDots`, round and match results (`roundWinner`, `matchWinner`, `tallyText`) |
+| `breath.ts`                               | Breath engine: `BreathDef`, `resolveShape`, `breathe`, statuses, tile effects, `defeatEnemy`, `pushEnemy`, `tickEffects`, `enemyBlocks`, `energyHud`      |
+| `breaths/`                                | One `BreathDef` per animal plus `<animal>.test.ts`; `index.ts` maps `AnimalId` → `BREATHS`                                                                |
+| `roster.ts`                               | `AnimalId`, `ANIMALS` (name, emoji, card text), `ANIMAL_IDS`, `DEFAULT_ANIMAL`, `isAnimalId`                                                              |
+| `splitter.ts`                             | Splitter slots (main + spare), `splitSplitter`/`spread`, `halfDefeated`, `resetSplitter`, `GONE`                                                          |
+| `boss.ts`                                 | The 2×2 boss (`GameState.boss`): `createBoss`, `bossFits`/`bossReach`/`bossMove`, `damageBoss`, `resetBoss`, footprint and collision helpers              |
+| `ai.ts`, `path.ts`                        | Enemy AI (random, chase, ambusher, patroller, phantom, splitter), `blockedView`/`goalView`; BFS `distanceMap`, `openNeighbours`                           |
+| `ice.ts`, `fog.ts`                        | Sliding (`slideStep`, `slideReach`, `slideDistances`); fog distance and light centres                                                                     |
+| `level.ts`, `levels/`                     | `LevelData` format, `parseLevel` validation; `levels/index.ts` lists stages 1–5                                                                           |
+| `input.ts`                                | Actions, `InputState`/`PlayerInput` (`ignoreHeld`), `KeyboardSource`                                                                                      |
+| `render.ts`, `glide.ts`, `layout.ts`      | Canvas renderer (maze, ice, fog, breath looks, HUD energy meter), glide maths, layout/DPR                                                                 |
+| `ui.ts`                                   | DOM overlays per screen (title, stage select, character select, pause, end screens), confetti                                                             |
+| `constants.ts`, `character.ts`, `vec2.ts` | Cells, AI types, ids, tick rate, speeds, points, lives; the `Character` record                                                                            |
 
 ## Open questions and follow-ups
 

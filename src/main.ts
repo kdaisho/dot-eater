@@ -331,8 +331,8 @@ const MATCH_LABELS = { retry: "Rematch", stageSelect: "Stage select" } as const
 
 const END_LABELS = { retry: "Retry", stageSelect: "Stage select" } as const
 
-// The mode select's labels, one per mode (MODE_CHOICES says which are
-// offered).
+// The mode select's labels, one per mode; the title offers them all, in
+// MODE_CHOICES order.
 const MODE_LABELS: Record<Mode, string> = {
     solo: "1 player",
     coop: "Co-op",

@@ -89,7 +89,8 @@ export type GameState = {
     // Lives left, shared by the players. In solo it counts the one being
     // played: a collision costs one and losing the last ends the game. In
     // co-op it is a pool of respawns: each catch spends one, and a player
-    // caught with none left is out for good (see resolveCatch).
+    // caught with none left is out for good (see resolveCatch). Versus has
+    // no lives and ignores it: a catch costs dots instead.
     lives: number
     // Where everyone starts, and goes back to after losing a life (copied
     // from the level).
@@ -109,7 +110,9 @@ export type Player = {
     // Points so far: DOT_POINTS per dot eaten, plus what its breaths earn
     // (see totalScore for the whole game's).
     score: number
-    // Dots eaten so far, for the end screens' per-player breakdown.
+    // Dots eaten so far, for the end screens' per-player breakdown. In
+    // versus a catch also lowers it (CATCH_DOTS, see versus.ts), and it
+    // decides each round.
     dots: number
     // The cell of the dot eaten on the player's latest move, or null if that
     // move ate nothing (or the player hasn't moved since the start or a
