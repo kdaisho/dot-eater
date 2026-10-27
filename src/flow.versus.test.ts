@@ -157,6 +157,33 @@ describe("a versus round's end", () => {
     it("follows player 1 only", () => {
         const result = waitOut(finishRound(playing(), 0))
         expect(update(result, input([[], ["confirm"]]), deps())).toBe(result)
+        expect(update(result, input([[], ["down"]]), deps())).toBe(result)
+    })
+
+    it("selects Next round on entry", () => {
+        expect(finishRound(playing(), 0)).toMatchObject({ choice: "nextRound" })
+    })
+
+    it("quits the match for stage select, on the same stage and mode", () => {
+        let s = waitOut(finishRound(playing(), 0))
+        s = update(s, input([["down"]]), deps())
+        expect(s).toMatchObject({ kind: "roundResult", choice: "quit" })
+        // The cursor stops at the end.
+        expect(update(s, input([["down"]]), deps())).toBe(s)
+        expect(update(s, confirm, deps())).toEqual({
+            kind: "stageSelect",
+            mode: "versus",
+            selected: 0,
+        })
+    })
+
+    it("moves the cursor before END_CONFIRM_DELAY, but ignores confirm", () => {
+        const result = finishRound(playing(), 0)
+        const moved = update(result, input([["down"]]), deps())
+        expect(moved).toMatchObject({ choice: "quit" })
+        expect(update(moved, confirm, deps())).toBe(moved)
+        const back = update(moved, input([["up"]]), deps())
+        expect(back).toMatchObject({ choice: "nextRound" })
     })
 
     it("replays an exact tie, which doesn't count", () => {

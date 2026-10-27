@@ -113,6 +113,7 @@ describe("main in versus", () => {
         finishRound(3, 1)
         expect(screen()).toBe("round-result")
         expect(heading()).toBe("Round 1: 1P wins!")
+        expect(menu()).toEqual(["Next round", "Quit"])
         // The HUD under it still shows the round as it was played.
         expect(hud()).toMatchObject({ round: "Round 1 · 0–0" })
         pressAndTick("Space")

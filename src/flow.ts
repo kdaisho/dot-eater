@@ -65,14 +65,15 @@ import { matchWinner, roundResult, type RoundResult } from "./versus"
 //
 // Versus (see versus.ts) is a best-of-3 match on one stage. Its game
 // screens carry `match`, the rounds finished so far. A cleared round goes
-// from `ending` to roundResult, and confirm there plays the next round on a
-// fresh copy of the stage with the same characters; the round that decides
-// the match goes to matchResult instead, whose menu is END_CHOICES (Retry
-// is a rematch: a new match from round 1). A versus game is never lost, so
-// it never reaches stageClear or gameOver. Both screens ignore confirm for
+// from `ending` to roundResult, whose menu is ROUND_CHOICES: Next round
+// plays it on a fresh copy of the stage with the same characters, Quit
+// drops the match for stage select. The round that decides the match goes
+// to matchResult instead, whose menu is END_CHOICES (Retry is a rematch: a
+// new match from round 1). A versus game is never lost, so it never
+// reaches stageClear or gameOver. Both screens ignore confirm for
 // END_CONFIRM_DELAY, like the end screens, and follow player 1.
 //
-//   playing -> ending -> roundResult -> playing (next round)
+//   playing -> ending -> roundResult -> playing (next round) / stageSelect
 //                    \-> matchResult -> playing (rematch) / stageSelect
 //
 // The clear time is the game's tick count (GameState.ticks), which only the
@@ -83,6 +84,12 @@ import { matchWinner, roundResult, type RoundResult } from "./versus"
 // so Space retries (once END_CONFIRM_DELAY has passed).
 export const END_CHOICES = ["retry", "stageSelect"] as const
 export type EndChoice = (typeof END_CHOICES)[number]
+
+// What a versus round's result offers, in menu order: the next round
+// (selected on entry, so Space plays on), or quitting the match for stage
+// select, still in versus.
+export const ROUND_CHOICES = ["nextRound", "quit"] as const
+export type RoundChoice = (typeof ROUND_CHOICES)[number]
 
 // How a game is played (see Mode in game.ts, whose rules it decides).
 export type { Mode }
@@ -169,6 +176,7 @@ export type Screen =
           game: GameState
           // The rounds so far, this one last.
           match: Match
+          choice: RoundChoice
           shown?: ShownFor
       }
     | {
@@ -480,7 +488,17 @@ function versusRoundEnd(screen: Extract<Screen, { kind: "ending" }>): Screen {
     const shown = { seconds: 0 }
     const winner = matchWinner(match)
     if (winner === null) {
-        return { kind: "roundResult", mode, level, animals, game, match, shown }
+        const choice = ROUND_CHOICES[0]
+        return {
+            kind: "roundResult",
+            mode,
+            level,
+            animals,
+            game,
+            match,
+            choice,
+            shown,
+        }
     }
     return {
         kind: "matchResult",
@@ -504,17 +522,24 @@ function confirmReady(shown: ShownFor | undefined, dt: number): boolean {
     return shown.seconds >= END_CONFIRM_DELAY - 1e-9
 }
 
-// Confirm plays the next round of the match: a fresh copy of the same
-// stage, with the same characters.
+// Next round plays the next round of the match: a fresh copy of the same
+// stage, with the same characters. Quit drops the match and goes to stage
+// select, still in versus.
 function updateRoundResult(
     screen: Extract<Screen, { kind: "roundResult" }>,
     input: TickInput,
     deps: FlowDeps
 ): Screen {
     const ready = confirmReady(screen.shown, deps.dt)
-    if (!ready || !input.wasPressed("confirm")) return screen
-    const { level, animals, mode, match } = screen
-    return startLevel(deps.levels, level, animals, mode, match)
+    if (ready && input.wasPressed("confirm")) {
+        const { level, animals, mode, match } = screen
+        return screen.choice === "nextRound"
+            ? startLevel(deps.levels, level, animals, mode, match)
+            : { kind: "stageSelect", mode, selected: level }
+    }
+    const index = ROUND_CHOICES.indexOf(screen.choice)
+    const next = moveCursor(index, ROUND_CHOICES.length, input)
+    return next === index ? screen : { ...screen, choice: ROUND_CHOICES[next] }
 }
 
 // Like the end screens: Retry is a rematch (a new match, same stage and

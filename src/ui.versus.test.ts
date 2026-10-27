@@ -20,13 +20,19 @@ const items = () =>
     [...(overlay()?.querySelectorAll("li") ?? [])].map((li) => li.textContent)
 
 describe("showRoundResult", () => {
-    it("shows the winner, each player's dots and score, and the tally", () => {
+    const menu = [
+        { label: "Next round", selected: true },
+        { label: "Quit", selected: false },
+    ]
+
+    it("shows the winner, each player's dots and score, the tally and the menu", () => {
         showRoundResult({
             round: 1,
             winner: 1,
             dots: [12, 15],
             scores: [170, 150],
             wins: [0, 1],
+            items: menu,
         })
         expect(overlay()?.dataset.screen).toBe("round-result")
         expect(title()).toBe("Round 1: 2P wins!")
@@ -34,9 +40,11 @@ describe("showRoundResult", () => {
             "Dots 1P 12 · 2P 15",
             "Score 1P 170 · 2P 150",
             "Rounds 0–1",
-            "Press Space for the next round",
         ])
-        expect(items()).toEqual([])
+        expect(items()).toEqual(["Next round", "Quit"])
+        expect(overlay()?.querySelector("li.selected")?.textContent).toBe(
+            "Next round"
+        )
     })
 
     it("says a draw is played again", () => {
@@ -46,6 +54,7 @@ describe("showRoundResult", () => {
             dots: [10, 10],
             scores: [100, 100],
             wins: [1, 0],
+            items: menu,
         })
         expect(title()).toBe("Round 2: a draw")
         expect(lines()).toContain("A draw doesn't count: play it again")

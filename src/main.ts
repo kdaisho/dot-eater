@@ -2,6 +2,7 @@ import { energyHud } from "./breath"
 import { MAX_FRAME_MS, TICK_MS } from "./constants"
 import {
     END_CHOICES,
+    ROUND_CHOICES,
     gameOf,
     initialScreen,
     MODE_CHOICES,
@@ -303,6 +304,10 @@ function showOverlay(s: Screen) {
                 dots: last.dots,
                 scores: last.scores,
                 wins: roundWins(s.match),
+                items: ROUND_CHOICES.map((c) => ({
+                    label: ROUND_LABELS[c],
+                    selected: c === s.choice,
+                })),
             })
         }
         case "matchResult":
@@ -317,6 +322,9 @@ function showOverlay(s: Screen) {
             })
     }
 }
+
+// The round result's menu: Quit drops the match for stage select.
+const ROUND_LABELS = { nextRound: "Next round", quit: "Quit" } as const
 
 // The match result's menu: Retry plays a new match.
 const MATCH_LABELS = { retry: "Rematch", stageSelect: "Stage select" } as const

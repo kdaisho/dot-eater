@@ -221,10 +221,12 @@ export type RoundResultView = {
     scores: readonly number[]
     // Each player's round wins so far, this round included.
     wins: readonly number[]
+    // The menu (Next round / Quit), in order; exactly one item is selected.
+    items: readonly MenuItem[]
 }
 
 // A versus round is over: who won it (or that it is replayed), each
-// player's dots and score, and the tally. Confirm plays the next round.
+// player's dots and score, the tally, and the menu.
 export function showRoundResult(view: RoundResultView) {
     const { round, winner } = view
     show({
@@ -238,8 +240,8 @@ export function showRoundResult(view: RoundResultView) {
             perPlayer("Score", view.scores),
             ...(winner === null ? ["A draw doesn't count: play it again"] : []),
             `Rounds ${view.wins.join("–")}`,
-            "Press Space for the next round",
         ],
+        items: view.items,
     })
 }
 
