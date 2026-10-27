@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 import { afterEach, describe, expect, it, vi } from "vite-plus/test"
-import { addStatus, addTileEffect, defeatEnemy } from "./breath"
+import { addStatus, addTileEffect, defeatEnemy, type BreathDef } from "./breath"
+import { BREATHS } from "./breaths"
 import {
     AiType,
     Cell,
@@ -11,7 +12,13 @@ import {
 } from "./constants"
 import { createCharacter } from "./character"
 import { createGameState, movePlayer } from "./game"
-import { BOSS_SCALE, BOSS_SPRITE, createRenderer, HALF_SCALE } from "./render"
+import {
+    BOSS_SCALE,
+    BOSS_SPRITE,
+    createRenderer,
+    HALF_SCALE,
+    PLAYER_COLORS,
+} from "./render"
 import { createSplitter } from "./splitter"
 import {
     makeBoss,
@@ -811,6 +818,185 @@ describe("createRenderer", () => {
             const lit = setup()
             lit.renderer.draw(state, 0, {}, { fog: { radius: 2 } })
             expect(lit.texts()).toEqual([BOSS_SPRITE, "🐉"])
+        })
+    })
+})
+
+describe("createRenderer with two players", () => {
+    afterEach(() => {
+        vi.restoreAllMocks()
+    })
+
+    // Two players in a corridor of dots, player 1 at (1, 1) and player 2 at
+    // (5, 1).
+    function pair(breaths?: BreathDef[]) {
+        return makeState(
+            [
+                [1, 1, 1, 1, 1, 1, 1],
+                [1, 2, 2, 2, 2, 2, 1],
+                [1, 1, 1, 1, 1, 1, 1],
+            ],
+            [
+                { x: 1, y: 1 },
+                { x: 5, y: 1 },
+            ],
+            [],
+            breaths ? { breath: breaths } : {}
+        )
+    }
+
+    it("draws both players, each with its number in its colour", () => {
+        const { calls, renderer, texts } = setup()
+        renderer.draw(pair([BREATHS.owl, BREATHS.boar]), 0)
+        expect(texts()).toEqual(["🦉", "1", "🐗", "2"])
+        const labels = calls.filter(
+            (c) =>
+                c.name === "fillText" &&
+                (c.args[0] === "1" || c.args[0] === "2")
+        )
+        expect(labels.map((c) => c.fillStyle)).toEqual([...PLAYER_COLORS])
+        // A ring round each.
+        expect(calls.filter((c) => c.name === "stroke")).toHaveLength(2)
+    })
+
+    it("tells two players of the same character apart", () => {
+        const { renderer, texts } = setup()
+        renderer.draw(pair([BREATHS.penguin, BREATHS.penguin]), 0)
+        expect(texts()).toEqual(["🐧", "1", "🐧", "2"])
+    })
+
+    it("draws no marker with one player", () => {
+        const { calls, renderer, texts } = setup()
+        const state = createGameState(OLD_LEVEL)
+        state.enemies = []
+        renderer.draw(state, 0)
+        expect(texts()).toEqual(["🐉"])
+        expect(calls.some((c) => c.name === "stroke")).toBe(false)
+    })
+
+    it("draws each player's score and meter, and the shared lives", () => {
+        const { calls, renderer, texts } = setup()
+        const meter = { energy: 50, max: 100, cost: 50, ready: true }
+        renderer.draw(pair(), 0, {
+            lives: 2,
+            players: [
+                { score: 30, energy: meter },
+                { score: 10, energy: { ...meter, ready: false } },
+            ],
+        })
+        expect(texts().slice(0, 3)).toEqual(["1P 30", "2P 10", "❤️❤️"])
+        expect(calls.filter((c) => c.name === "strokeRect")).toHaveLength(2)
+        const scores = calls.filter(
+            (c) => c.name === "fillText" && String(c.args[0]).includes("P ")
+        )
+        expect(scores.map((c) => c.fillStyle)).toEqual([...PLAYER_COLORS])
+        // Player 1's meter is ready, player 2's isn't.
+        const fills = calls
+            .filter((c) => c.name === "fillRect")
+            .map((c) => c.fillStyle)
+        expect(fills).toContain("#f59e0b")
+        expect(fills).toContain("#9ca3af")
+    })
+
+    it("keeps drawing each player's eaten dot until its glide reaches it", () => {
+        const { calls, canvas, renderer } = setup()
+        const state = pair()
+        movePlayer(state, vec2(-1, 0), state.players[1])
+        state.players[1].character.moveProgress = 0
+        renderer.draw(state, 0)
+        const cell = parseFloat(canvas.style.width) / 7
+        const dotAt = (x: number) =>
+            calls.some((c) => {
+                if (c.name !== "fillRect") return false
+                const [left, , w, h] = c.args as number[]
+                return (
+                    w === h && w < cell / 2 && left + w / 2 === (x + 0.5) * cell
+                )
+            })
+        expect(state.cells[1][4]).toBe(Cell.none)
+        expect(dotAt(4)).toBe(true)
+    })
+
+    describe("fog", () => {
+        const corridor = [
+            Array(13).fill(1),
+            [1, ...Array(11).fill(2), 1],
+            Array(13).fill(1),
+        ] as const
+
+        it("lights up round both players", () => {
+            const { renderer, texts } = setup()
+            const state = makeState(
+                corridor,
+                [
+                    { x: 1, y: 1 },
+                    { x: 11, y: 1 },
+                ],
+                [
+                    makeEnemy(
+                        3,
+                        1,
+                        AiType.random,
+                        undefined,
+                        CharacterId.enemy1
+                    ),
+                    makeEnemy(
+                        6,
+                        1,
+                        AiType.chase,
+                        undefined,
+                        CharacterId.enemy2
+                    ),
+                    makeEnemy(
+                        10,
+                        1,
+                        AiType.ambusher,
+                        undefined,
+                        CharacterId.enemy3
+                    ),
+                ]
+            )
+            renderer.draw(state, 0, {}, { fog: { radius: 2 } })
+            // The chaser in the middle is out of both lights.
+            expect(texts()).toEqual(["🐉", "1", "🐉", "2", "👺", "🦊"])
+        })
+
+        it("draws the darkness on a layer with a light per player", () => {
+            const { calls, canvas, renderer } = setup()
+            // The layer is a canvas of its own, with its own stub context.
+            const layerCanvas = document.createElement("canvas")
+            const layer = stubContext()
+            vi.spyOn(layerCanvas, "getContext").mockReturnValue(
+                layer.ctx as never
+            )
+            vi.spyOn(document, "createElement").mockReturnValue(layerCanvas)
+            const state = makeState(corridor, [
+                { x: 1, y: 1 },
+                { x: 11, y: 1 },
+            ])
+            renderer.draw(state, 0, {}, { fog: { radius: 2 } })
+            const cell = parseFloat(canvas.style.width) / 13
+            expect(calls.some((c) => c.name === "createRadialGradient")).toBe(
+                false
+            )
+            const lights = layer.calls.filter(
+                (c) => c.name === "createRadialGradient"
+            )
+            expect(lights.map((c) => c.args[0])).toEqual([
+                1.5 * cell,
+                11.5 * cell,
+            ])
+            const images = calls.filter((c) => c.name === "drawImage")
+            expect(images).toHaveLength(1)
+            expect(images[0].args[0]).toBe(layerCanvas)
+            expect(images[0].args.slice(1)).toEqual([0, 0, 13 * cell, 3 * cell])
+        })
+
+        it("draws one player's darkness straight onto the map", () => {
+            const { calls, renderer } = setup()
+            const state = makeState(corridor, { x: 1, y: 1 })
+            renderer.draw(state, 0, {}, { fog: { radius: 2 } })
+            expect(calls.some((c) => c.name === "drawImage")).toBe(false)
         })
     })
 })
