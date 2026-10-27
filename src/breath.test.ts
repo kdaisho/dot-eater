@@ -12,10 +12,12 @@ import {
     type TileEffect,
 } from "./breath"
 import { BREATHS } from "./breaths"
+import { createCharacter } from "./character"
 import {
     AiType,
     BLINK_RATE,
     Cell,
+    CharacterId,
     DEFEAT_POINTS,
     RESPAWN_BLINK,
     RESPAWN_DELAY,
@@ -221,11 +223,13 @@ describe("enemyVisible", () => {
 
 describe("pushEnemy", () => {
     const { map } = textMap(["#####", "     ", "## ##"])
+    // A player out of the way, in the top-left corner.
+    const player = createCharacter(CharacterId.player, vec2(0, 0))
 
     it("pushes up to the distance, through a tunnel", () => {
         const cells = cellsFrom(map)
         const enemy = makeEnemy(1, 1)
-        expect(pushEnemy(cells, enemy, west, 3)).toBe(3)
+        expect(pushEnemy(cells, enemy, west, 3, player)).toBe(3)
         expect(enemy.pos).toEqual(vec2(3, 1))
         // It glides in over its last cell, as if it had just moved there.
         expect(enemy.lastPos).toEqual(vec2(4, 1))
@@ -235,13 +239,32 @@ describe("pushEnemy", () => {
     it("stops before a wall", () => {
         const cells = cellsFrom(map)
         const enemy = makeEnemy(2, 1)
-        expect(pushEnemy(cells, enemy, south, 3)).toBe(1)
+        expect(pushEnemy(cells, enemy, south, 3, player)).toBe(1)
         expect(enemy.pos).toEqual(vec2(2, 2))
         const stuck = makeEnemy(1, 1)
         stuck.moveProgress = 0.5
-        expect(pushEnemy(cells, stuck, south, 3)).toBe(0)
+        expect(pushEnemy(cells, stuck, south, 3, player)).toBe(0)
         expect(stuck.pos).toEqual(vec2(1, 1))
         expect(stuck.moveProgress).toBe(0.5)
+    })
+
+    it("lands at rest when its glide would start where the player is", () => {
+        const cells = cellsFrom(map)
+        // On the player's cell, and on the cell the player glides in from.
+        const walker = createCharacter(CharacterId.player, vec2(2, 1))
+        walker.lastPos = vec2(1, 1)
+        for (const x of [2, 1]) {
+            const enemy = makeEnemy(x, 1)
+            expect(pushEnemy(cells, enemy, east, 1, walker)).toBe(1)
+            expect(enemy.pos).toEqual(vec2(x + 1, 1))
+            expect(enemy.lastPos).toEqual(vec2(x + 1, 1))
+            expect(enemy.moveProgress).toBe(0)
+        }
+        // Pushed 2 cells, it glides in from a cell clear of the player.
+        const enemy = makeEnemy(2, 1)
+        expect(pushEnemy(cells, enemy, east, 2, walker)).toBe(2)
+        expect(enemy.lastPos).toEqual(vec2(3, 1))
+        expect(enemy.moveProgress).toBe(0)
     })
 })
 

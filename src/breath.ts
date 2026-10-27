@@ -240,7 +240,7 @@ export function breathe(state: GameState): boolean {
             }
         },
         push: (enemy, step, distance) =>
-            pushEnemy(state.cells, enemy, step, distance),
+            pushEnemy(state.cells, enemy, step, distance, state.player),
     }
     const fired = breath.fire(hit) !== false
     if (iceAdded) rebuildIce(state)
@@ -422,13 +422,18 @@ export function enemyVisible(enemy: Character): boolean {
 // tunnels, stopping before a wall (but not before a cell that blocks
 // enemies: one pushed into it leaves by the shortest way). It then glides
 // in over its last cell (as if it had just moved there) and so carries on
-// sliding if it lands on ice.
+// sliding if it lands on ice. Unless that glide would start where `player`
+// is drawn this tick (its cell, or the one it glides in from, e.g. a 1-cell
+// push off the player's cell): then it is drawn on its new cell from the
+// start, so the push can't catch the player on its own tick, and still has
+// a whole move to go before it moves on (it doesn't slide).
 // Returns how many cells it moved.
 export function pushEnemy(
     cells: Cells,
     enemy: Character,
     step: Vec2,
-    distance: number
+    distance: number,
+    player: Character
 ): number {
     if (!inPlay(enemy)) return 0
     let from = enemy.pos
@@ -441,7 +446,9 @@ export function pushEnemy(
         to = next
     }
     if (moved === 0) return 0
-    enemy.lastPos = vec2(from.x, from.y)
+    const onPlayer = samePos(from, player.pos) || samePos(from, player.lastPos)
+    const start = onPlayer ? to : from
+    enemy.lastPos = vec2(start.x, start.y)
     enemy.pos = vec2(to.x, to.y)
     enemy.moveProgress = 0
     return moved
