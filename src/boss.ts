@@ -8,7 +8,7 @@ import {
 } from "./constants"
 import type { BlockMap } from "./breath"
 import type { GameState, Player } from "./game"
-import { distanceMap } from "./path"
+import { distanceMap, type DistanceMap } from "./path"
 import { allDirections, directions, samePos, vec2, type Vec2 } from "./vec2"
 
 // The boss (stage 5, "Boss lair"): one big enemy, 2x2 cells, with health.
@@ -22,8 +22,9 @@ import { allDirections, directions, samePos, vec2, type Vec2 } from "./vec2"
 //   its cost times BOSS_DAMAGE_PER_ENERGY (see breathe in breath.ts, which
 //   also stops lines and cones at its body). At 0 health it is defeated for
 //   good: BOSS_DEFEAT_POINTS, and it is no longer drawn, moved or caught by.
-// - Moving: it chases the nearest player (bossTarget) at its own speed, but only where all four
-//   of its cells fit (see bossMove), so 1-wide corridors are safe from it.
+// - Moving: it chases the player it can get nearest (bossTarget) at its
+//   own speed, but only where all four of its cells fit (see bossMove), so
+//   1-wide corridors are safe from it.
 //   Tile effects that block enemies block it too.
 // - Catching: touching it catches the player like an enemy (see caught in
 //   game.ts), anywhere on its footprint.
@@ -190,21 +191,40 @@ export function bossReach(
 }
 
 // Which of `targets` (the players' cells, player 1 first) the boss goes
-// after: the one nearest its footprint by path (the player's path distance
-// to the closest of its four cells), the first on ties. With one player
+// after: the one it can get nearest, as bossMove moves it. That is, the
+// smallest score bossMove could reach for the player (the player's path
+// distance to the boss's footprint, over the positions the boss can get to
+// on the floor `blocked` leaves it), then on ties the player nearest its
+// footprint now, then the first. So a player in a 1-wide corridor the boss
+// can't enter doesn't draw it from one it can run down. With one player
 // that is always player 1, without searching.
-export function bossTarget(state: GameState, targets: readonly Vec2[]): number {
+export function bossTarget(
+    state: GameState,
+    targets: readonly Vec2[],
+    blocked: BlockMap | null = null
+): number {
     const boss = state.boss
     if (!boss || targets.length <= 1) return 0
-    const away = targets.map((t) => {
-        const dist = distanceMap(state.cells, t)
-        return Math.min(...footprint(boss.pos).map((c) => dist[c.y][c.x]))
+    const reach = bossReach(boss.pos, bossFloor(state, blocked))
+    const rank = targets.map((t) => {
+        const fromPlayer = distanceMap(state.cells, t)
+        let best = Infinity
+        for (const r of reach) best = Math.min(best, away(fromPlayer, r.pos))
+        return { best, now: away(fromPlayer, boss.pos) }
     })
     let best = 0
-    for (let i = 1; i < away.length; i++) {
-        if (away[i] < away[best]) best = i
+    for (let i = 1; i < rank.length; i++) {
+        const a = rank[i]
+        const b = rank[best]
+        if (a.best < b.best || (a.best === b.best && a.now < b.now)) best = i
     }
     return best
+}
+
+// How far the boss's footprint at `pos` is from the player whose path
+// distances are `fromPlayer`: the nearest of its four cells.
+function away(fromPlayer: DistanceMap, pos: Vec2): number {
+    return Math.min(...footprint(pos).map((c) => fromPlayer[c.y][c.x]))
 }
 
 // The boss's next top-left position, or null to stay put. `target` is the
@@ -239,13 +259,11 @@ export function bossMove(
         return escape ? escape.first : null
     }
     const fromPlayer = distanceMap(state.cells, target)
-    const away = (p: Vec2) =>
-        Math.min(...footprint(p).map((c) => fromPlayer[c.y][c.x]))
     let best: { first: Vec2; score: number } | null = null
     for (const r of bossReach(boss.pos, floor)) {
         // Found in order of distance, so a later one only wins on a
         // strictly better score.
-        const score = away(r.pos)
+        const score = away(fromPlayer, r.pos)
         if (best === null || score < best.score) {
             best = { first: r.first, score }
         }

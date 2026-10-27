@@ -462,7 +462,7 @@ export function step(
     })
     const { boss } = state
     if (boss && !boss.defeated && advance(boss, dt)) {
-        const target = from.players[bossTarget(state, from.players)]
+        const target = from.players[bossTarget(state, from.players, blocked)]
         const next = bossMove(state, target, blocked)
         if (next) {
             boss.lastPos = vec2(boss.pos.x, boss.pos.y)

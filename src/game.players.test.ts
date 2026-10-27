@@ -527,6 +527,40 @@ describe("the boss with two players", () => {
         expect(bossTarget(state, [targets[0]])).toBe(0)
     })
 
+    // Player 1 is down a 1-wide corridor the boss can't enter, nearer its
+    // footprint by path than player 2 in the open room: it goes for player
+    // 2, rather than parking at the corridor's mouth.
+    it("targets the player it can reach over a nearer one it can't", () => {
+        const room = textMap([
+            "############",
+            "#          #",
+            "#          #",
+            "#.##########",
+            "# ##########",
+            "############",
+        ]).map
+        const boss = makeBoss(3, 1)
+        const state = makeState(
+            room,
+            [
+                { x: 1, y: 4 },
+                { x: 10, y: 1 },
+            ],
+            [],
+            { boss }
+        )
+        const targets = state.players.map((p) => p.character.pos)
+        expect(bossTarget(state, targets)).toBe(1)
+        const lives = state.lives
+        for (let i = 0; i < TICK_RATE * 8 && state.lives === lives; i++) {
+            step(state, TICK, [IDLE, IDLE], fixedRandom(0))
+            if (state.lives === lives) {
+                expect(boss.pos.x).toBeGreaterThanOrEqual(3)
+            }
+        }
+        expect(state.lives).toBe(lives - 1)
+    })
+
     it("moves towards the nearer player through step", () => {
         const boss = makeBoss(5, 1)
         const state = makeState(
