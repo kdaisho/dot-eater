@@ -224,10 +224,11 @@ export function p2Move(move: MoveInput): MoveInput[] {
 // A random source that always returns the same value.
 export const fixedRandom = (value: number) => () => value
 
-// Step one tick at a time holding `held` (nothing by default; enemies use
-// fixedRandom(0)) until the player is caught, i.e. the game is lost or a
-// life is lost, and return how many ticks that took. Fails after `max`
-// ticks, or if the game ends another way.
+// Step one tick at a time with player 1 holding `held` (nothing by
+// default; enemies use fixedRandom(0)) until a player is caught, i.e. the
+// game is lost, a life is lost or (in a 2-player mode) a player in play is
+// taken out, out for good included, and return how many ticks that took.
+// Fails after `max` ticks, or if the game ends another way.
 export function ticksUntilCaught(
     state: GameState,
     held: Vec2 = vec2(0, 0),
@@ -239,8 +240,10 @@ export function ticksUntilCaught(
         pressed: vec2(0, 0),
     }
     for (let i = 1; i <= max; i++) {
+        const wasIn = state.players.map((p) => !p.out)
         const outcome = step(state, 1 / TICK_RATE, move, fixedRandom(0))
-        if (outcome === "dead" || state.lives < lives) return i
+        const takenOut = state.players.some((p, j) => wasIn[j] && p.out)
+        if (outcome === "dead" || state.lives < lives || takenOut) return i
         if (outcome) throw new Error(`Ended without a catch: ${outcome}`)
     }
     throw new Error(`Not caught within ${max} ticks`)

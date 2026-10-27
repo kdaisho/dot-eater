@@ -33,6 +33,7 @@ import {
     makeState,
     testBreath,
     textMap,
+    ticksUntilCaught,
 } from "./test/helpers"
 import { vec2, type Vec2 } from "./vec2"
 
@@ -613,6 +614,29 @@ describe("coming back onto an occupied spawn", () => {
         boss.defeated = true
         step(state, TICK, [IDLE, IDLE], fixedRandom(0))
         expect(state.players[0].out).toBe(false)
+    })
+})
+
+describe("ticksUntilCaught in co-op", () => {
+    // Regression: it only noticed a lost game or a lost life, so a catch
+    // with the pool empty (out for good, lives unchanged, game going on)
+    // went unseen.
+    it("notices a player going out for good with the pool empty", () => {
+        const chaser = makeEnemy(3, 1, AiType.chase)
+        chaser.moveProgress = 1
+        const state = coop([chaser], { lives: 0 })
+        expect(ticksUntilCaught(state)).toBeGreaterThan(0)
+        expect(outForGood(state.players[0])).toBe(true)
+        expect(state.players[1].out).toBe(false)
+        expect(state.lives).toBe(0)
+    })
+
+    it("notices a player going out with a life to come back on", () => {
+        const chaser = makeEnemy(3, 1, AiType.chase)
+        chaser.moveProgress = 1
+        const state = coop([chaser])
+        expect(ticksUntilCaught(state)).toBeGreaterThan(0)
+        expect(state.players[0].respawnIn).toBe(PLAYER_RESPAWN_DELAY)
     })
 })
 
