@@ -6,6 +6,7 @@ import {
     initialScreen,
     MODE_CHOICES,
     pauseIfPlaying,
+    playerCount,
     recordsProgress,
     update,
     type EndChoice,
@@ -14,7 +15,12 @@ import {
     type TickInput,
 } from "./flow"
 import { totalScore, type GameState } from "./game"
-import { browserPadList, GamepadSource, type PadChange } from "./gamepad"
+import {
+    browserPadList,
+    GamepadSource,
+    type PadAssignment,
+    type PadChange,
+} from "./gamepad"
 import {
     InputState,
     KeyboardSource,
@@ -84,7 +90,8 @@ const tickInput: TickInput = {
 }
 
 // Gamepads: in one-player play every pad drives player 1, alongside the
-// keyboard. A pad in use lost mid-game pauses it, like leaving the window;
+// keyboard; in a 2-player mode the first pad connected drives player 1 and
+// the second player 2 (see padAssignment). A pad in use lost mid-game pauses it, like leaving the window;
 // an idle pad going to sleep doesn't. Set up before the loop, whose frames
 // poll it. (Toasts and auto-pause only run on events, after startup.)
 const TOAST_MS = 2000
@@ -104,7 +111,7 @@ const pads = new GamepadSource(
     globalThis,
     onPadChange
 )
-pads.setAssignment("shared")
+pads.setAssignment(padAssignment(screen))
 let padPollFailed = false
 
 // The loop ticks on every screen; menus and pause poll their input per tick
@@ -151,8 +158,19 @@ function tick(dt: number) {
     if (next !== screen) enter(screen, next)
 }
 
+// How pads map to players on a screen. The title, where the mode is still
+// being chosen, shares every pad with player 1, so any pad can pick the
+// mode (and go back to 1 player). From stage select on, a 2-player mode
+// gives each pad its own player, so player 2's pad picks its character.
+function padAssignment(screen: Screen): PadAssignment {
+    return screen.kind !== "title" && playerCount(screen.mode) > 1
+        ? "perPad"
+        : "shared"
+}
+
 function enter(prev: Screen, next: Screen) {
     screen = next
+    pads.setAssignment(padAssignment(next))
     // Play started from a menu (character select or Retry): a direction
     // still held from the menu waits for a fresh press. Resuming from pause
     // keeps held directions, so holding through a pause carries on moving.
