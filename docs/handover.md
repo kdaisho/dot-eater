@@ -7,13 +7,13 @@ Last updated: 2026-10-27. Read `CLAUDE.md` first for project conventions.
 - **Organize code & tooling** (#2–#12), **Engine foundations** (#14–#21), **Characters & breaths** (#37–#43) and **Stages** (#23–#34, #44, #46) are done and live.
 - **Stages** finished with KDA-207 Stage 5 "Boss lair" (https://github.com/kdaisho/dot-eater/pull/46, merge `1a09e73`): a 2×2 boss 🐙 with health, plus a Splitter and a chaser. All five stages are live, unlocked in order.
 - `main` is at `1a09e73`: 850 tests passing, Pages deploy green. No open PRs, no feature branches, no worktrees.
-- Nothing is in progress. Open Linear issues: Controllers & local 2-player (KDA-210, 211, 221, 222), Polish (KDA-212–215), the idea backlog (KDA-223–227) and KDA-245, all in Backlog.
+- Nothing is in progress. Next: Controllers & local 2-player (user's choice). Open Linear issues: Controllers & local 2-player (KDA-210, 211, 221, 222), Polish (KDA-212–215), the idea backlog (KDA-223–227) and KDA-245, all in Backlog.
 
 ### Start here (new session)
 
 1. Read this file and `CLAUDE.md`.
-2. Ask the user which milestone is next. Recommend **Controllers & local 2-player**, starting with KDA-211 (two players in the game state and input), since the engine already keeps breath state per player in anticipation of it. The other option is **Polish** (KDA-212–215).
-3. Read that milestone's issues in Linear, settle their product questions with the user (ask with a recommendation), and write the answers into the issues and into "Decisions already made".
+2. The next milestone is **Controllers & local 2-player** (the user's choice, 2026-10-27): KDA-211 two players in the game state and input, KDA-210 gamepads, KDA-221 co-op, KDA-222 versus. Start with KDA-211, which the others build on. Polish (KDA-212–215) comes after.
+3. Read those issues in Linear, settle their product questions with the user (ask with a recommendation), and write the answers into the issues and into "Decisions already made".
 4. Plan, delegate to agents in worktrees, verify, review, and offer a playable preview before asking to merge (see "How we work").
 
 ## Code map
