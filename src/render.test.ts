@@ -6,17 +6,19 @@ import {
     AiType,
     Cell,
     CharacterId,
+    PLAYER_RESPAWN_DELAY,
     RESPAWN_BLINK,
     RESPAWN_DELAY,
     SPRITE_SCALE,
 } from "./constants"
 import { createCharacter } from "./character"
-import { createGameState, movePlayer } from "./game"
+import { createGameState, movePlayer, takeOut } from "./game"
 import {
     BOSS_SCALE,
     BOSS_SPRITE,
     createRenderer,
     HALF_SCALE,
+    outLabel,
     PLAYER_COLORS,
 } from "./render"
 import { createSplitter } from "./splitter"
@@ -1041,5 +1043,101 @@ describe("createRenderer with two players", () => {
             renderer.draw(state, 0, {}, { fog: { radius: 2 } })
             expect(calls.some((c) => c.name === "drawImage")).toBe(false)
         })
+    })
+})
+
+describe("createRenderer with a player out of play", () => {
+    afterEach(() => {
+        vi.restoreAllMocks()
+    })
+
+    const corridor = [
+        Array(13).fill(1),
+        [1, ...Array(11).fill(2), 1],
+        Array(13).fill(1),
+    ] as const
+
+    function pair() {
+        return makeState(
+            corridor,
+            [
+                { x: 1, y: 1 },
+                { x: 11, y: 1 },
+            ],
+            [],
+            { breath: [BREATHS.owl, BREATHS.boar], mode: "coop" }
+        )
+    }
+
+    it("doesn't draw it", () => {
+        const { renderer, texts } = setup()
+        const state = pair()
+        takeOut(state.players[0], PLAYER_RESPAWN_DELAY)
+        renderer.draw(state, 0)
+        expect(texts()).toEqual(["🐗", "2"])
+    })
+
+    it("shows its countdown, or that it is out for good, in place of its meter", () => {
+        const { calls, renderer, texts } = setup()
+        const meter = { energy: 50, max: 100, cost: 50, ready: true }
+        renderer.draw(pair(), 0, {
+            lives: 1,
+            players: [
+                { score: 30, energy: meter, out: { respawnIn: 2.5 } },
+                { score: 10, energy: meter, out: { respawnIn: null } },
+            ],
+        })
+        expect(texts().slice(0, 5)).toEqual([
+            "1P 30",
+            "back in 3",
+            "2P 10",
+            "OUT",
+            "❤️",
+        ])
+        expect(calls.filter((c) => c.name === "strokeRect")).toHaveLength(0)
+        // Each label fits its meter's slot.
+        const labels = calls.filter(
+            (c) =>
+                c.name === "fillText" &&
+                (c.args[0] === "back in 3" || c.args[0] === "OUT")
+        )
+        expect(labels).toHaveLength(2)
+        for (const c of labels) expect(c.args[3]).toBeGreaterThan(0)
+    })
+
+    it("counts down in whole seconds, rounding up", () => {
+        expect(outLabel({ respawnIn: 3 })).toBe("back in 3")
+        expect(outLabel({ respawnIn: 2.01 })).toBe("back in 3")
+        expect(outLabel({ respawnIn: 2 })).toBe("back in 2")
+        expect(outLabel({ respawnIn: 0.2 })).toBe("back in 1")
+        // Due, waiting for its spawn to be clear.
+        expect(outLabel({ respawnIn: 0 })).toBe("back soon")
+        expect(outLabel({ respawnIn: null })).toBe("OUT")
+    })
+
+    it("lights the fog round the players in play only", () => {
+        const { canvas, calls, renderer } = setup()
+        const state = pair()
+        takeOut(state.players[0], PLAYER_RESPAWN_DELAY)
+        renderer.draw(state, 0, {}, { fog: { radius: 2 } })
+        const cell = parseFloat(canvas.style.width) / 13
+        const lights = calls.filter((c) => c.name === "createRadialGradient")
+        expect(lights.map((c) => c.args[0])).toEqual([11.5 * cell])
+    })
+
+    it("keeps the light where they went out while nobody is in play", () => {
+        const { calls, renderer } = setup()
+        const layerCanvas = document.createElement("canvas")
+        const layer = stubContext()
+        vi.spyOn(layerCanvas, "getContext").mockReturnValue(layer.ctx as never)
+        vi.spyOn(document, "createElement").mockReturnValue(layerCanvas)
+        const state = pair()
+        takeOut(state.players[0], PLAYER_RESPAWN_DELAY)
+        takeOut(state.players[1], PLAYER_RESPAWN_DELAY)
+        renderer.draw(state, 0, {}, { fog: { radius: 2 } })
+        expect(calls.some((c) => c.name === "createRadialGradient")).toBe(false)
+        expect(
+            layer.calls.filter((c) => c.name === "createRadialGradient")
+        ).toHaveLength(2)
     })
 })

@@ -25,7 +25,7 @@ Last updated: 2026-10-27. Read `CLAUDE.md` first for project conventions.
 | `flow.ts`                                 | Screen state machine (`Screen`, `update`, `startLevel`); only `playing` steps the game; game screens carry `animal`                                  |
 | `progress.ts`, `lastPick.ts`              | Saved progress (unlocks, bests, `recordClear`); the last character pick. Storage injected, every access in try/catch                                 |
 | `stars.ts`                                | Star rating (`rateClear`), clear-time and par formatting                                                                                             |
-| `game.ts`                                 | `GameState`, `createGameState(level, animal)`, `step(state, dt, move, random)`, collisions, sliding, facing, `playerRate`, respawn, `settle`         |
+| `game.ts`                                 | `GameState`, `createGameState(level, animals, mode)`, `step`, collisions, catch rules per mode (`resolveCatch`, `takeOut`, `bringBack`), `settle`    |
 | `breath.ts`                               | Breath engine: `BreathDef`, `resolveShape`, `breathe`, statuses, tile effects, `defeatEnemy`, `pushEnemy`, `tickEffects`, `enemyBlocks`, `energyHud` |
 | `breaths/`                                | One `BreathDef` per animal plus `<animal>.test.ts`; `index.ts` maps `AnimalId` → `BREATHS`                                                           |
 | `roster.ts`                               | `AnimalId`, `ANIMALS` (name, emoji, card text), `ANIMAL_IDS`, `DEFAULT_ANIMAL`, `isAnimalId`                                                         |

@@ -28,7 +28,14 @@ export type Hud = {
     players?: readonly PlayerHud[]
 }
 
-export type PlayerHud = { score: number; energy: EnergyHud }
+export type PlayerHud = {
+    score: number
+    energy: EnergyHud
+    // Set while the player is out of play (see takeOut in game.ts): the
+    // seconds until it is back, or null if it is out for good. Drawn in
+    // place of its meter.
+    out?: { respawnIn: number | null }
+}
 
 export type Renderer = {
     // Draw the game. `alpha` in [0, 1) is how far the loop is between the last
@@ -245,7 +252,11 @@ function createFog(
     rows: number,
     radius: number
 ): Fog {
-    const players = state.players.map((p) =>
+    // Players out of play give no light, unless nobody is in play: then
+    // the light stays where they went out.
+    const inPlay = state.players.filter((p) => !p.out)
+    const lit = inPlay.length > 0 ? inPlay : state.players
+    const players = lit.map((p) =>
         glidePos(p.character, alpha, cols, rows, p.rate)
     )
     const wrap = fogWrap(state.cells)
@@ -519,13 +530,20 @@ function drawCharacters(
     // with two players wears its marker (see PLAYER_COLORS). A Splitter's
     // half is drawn smaller (HALF_SCALE), its disc and badges too.
     const marked = state.players.length > 1
+    // A player out of play (see takeOut in game.ts) isn't drawn.
     const sprites = [
-        ...state.players.map((player, i) => ({
-            character: player.character,
-            sprite: playerSprite(player),
-            rate: player.rate,
-            marker: marked ? i : null,
-        })),
+        ...state.players.flatMap((player, i) =>
+            player.out
+                ? []
+                : [
+                      {
+                          character: player.character,
+                          sprite: playerSprite(player),
+                          rate: player.rate,
+                          marker: marked ? i : null,
+                      },
+                  ]
+        ),
         ...state.enemies.map((enemy) => ({
             character: enemy,
             sprite: ENEMY_SPRITES[enemy.ai],
@@ -652,13 +670,29 @@ function drawPlayersHud(
             height / 2
         )
         const meterLeft = left ? width * 0.2 : width * 0.8 - w
-        drawMeter(ctx, player.energy, meterLeft, w, height, color)
+        if (player.out) {
+            ctx.textAlign = "center"
+            // Squeezed into the meter's width, so it never runs into the
+            // score on a narrow screen.
+            ctx.fillText(outLabel(player.out), meterLeft + w / 2, height / 2, w)
+        } else {
+            drawMeter(ctx, player.energy, meterLeft, w, height, color)
+        }
     })
     if (hud.lives !== undefined) {
         ctx.fillStyle = COLORS.text
         ctx.textAlign = "center"
         ctx.fillText(LIFE.repeat(Math.max(0, hud.lives)), width / 2, height / 2)
     }
+}
+
+// What an out player's HUD slot shows: the whole seconds left until it is
+// back (rounded up, so it counts 3, 2, 1), "back soon" once it is due but
+// waiting for its spawn to be clear, or that it is out for good.
+export function outLabel(out: { respawnIn: number | null }): string {
+    if (out.respawnIn === null) return "OUT"
+    if (out.respawnIn <= 0) return "back soon"
+    return `back in ${Math.max(1, Math.ceil(out.respawnIn - 1e-9))}`
 }
 
 // The shared lives of a 2-player game, which aren't any one character's.

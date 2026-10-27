@@ -1,6 +1,13 @@
 // @vitest-environment happy-dom
 import { describe, expect, it, vi } from "vite-plus/test"
-import { createGameState, step, type GameState, type Outcome } from "./game"
+import {
+    bringBack,
+    createGameState,
+    step,
+    takeOut,
+    type GameState,
+    type Outcome,
+} from "./game"
 import { LAST_PICK_KEY } from "./lastPick"
 import { levels } from "./levels"
 import { emptyProgress, PROGRESS_KEY, serializeProgress } from "./progress"
@@ -65,7 +72,7 @@ const cardOf = (player: 1 | 2) =>
     overlay()?.querySelector<HTMLElement>(`li.card.p${player}`)?.dataset.animal
 
 describe("main with two players", () => {
-    it("picks 2 players, picks a character each and plays together", async () => {
+    it("picks co-op, picks a character each and plays together", async () => {
         vi.useFakeTimers()
         const saved = serializeProgress(emptyProgress())
         localStorage.setItem(PROGRESS_KEY, saved)
@@ -78,10 +85,10 @@ describe("main with two players", () => {
             [...(overlay()?.querySelectorAll("li") ?? [])].map(
                 (li) => li.textContent
             )
-        ).toEqual(["1 player", "2 players"])
+        ).toEqual(["1 player", "Co-op"])
         expect(selectedItem()).toBe("1 player")
         pressAndTick("ArrowDown")
-        expect(selectedItem()).toBe("2 players")
+        expect(selectedItem()).toBe("Co-op")
         pressAndTick("Space")
         expect(screen()).toBe("stage-select")
         pressAndTick("Space")
@@ -106,6 +113,7 @@ describe("main with two players", () => {
         expect(vi.mocked(createGameState).mock.lastCall).toEqual([
             levels[0],
             ["dragon", "owl"],
+            "coop",
         ])
         // The saved 1-player pick is left alone, player 1's included.
         expect(localStorage.getItem(LAST_PICK_KEY)).toBeNull()
@@ -129,24 +137,43 @@ describe("main with two players", () => {
             lives: game.lives,
             players: [{ score: 0 }, { score: 0 }],
         })
+        expect(drawn.last?.[2]).not.toHaveProperty("players.0.out")
+
+        // A player out of play shows when it is back instead of its meter.
+        takeOut(game.players[1], 2.5)
+        vi.advanceTimersByTime(100)
+        expect(drawn.last?.[2]).toMatchObject({
+            players: [{ score: 0 }, { score: 0, out: { respawnIn: 2.5 } }],
+        })
+        expect(drawn.last?.[2]).not.toHaveProperty("players.0.out")
+        bringBack(game, game.players[1])
 
         // Player 2 can pause, and resume.
         pressAndTick("KeyQ")
         expect(screen()).toBe("pause")
+        expect(
+            [...(overlay()?.querySelectorAll(".overlay-line") ?? [])].map(
+                (p) => p.textContent
+            )
+        ).toEqual(["1P: P, Esc or Space to resume", "2P: Q or E to resume"])
         pressAndTick("KeyE")
         expect(screen()).toBe("playing")
 
-        // A win shows both scores and saves nothing.
+        // A win shows the combined score, each player's share and dots,
+        // and saves nothing.
         game.players[0].score = 30
+        game.players[0].dots = 3
         game.players[1].score = 20
+        game.players[1].dots = 2
         const setItem = vi.spyOn(localStorage, "setItem")
         nextOutcome = "won"
         vi.advanceTimersByTime(1000)
         expect(screen()).toBe("stage-clear")
         const lines = [...(overlay()?.querySelectorAll(".overlay-line") ?? [])]
-        expect(lines.slice(0, 2).map((p) => p.textContent)).toEqual([
+        expect(lines.slice(0, 3).map((p) => p.textContent)).toEqual([
             "Score 50",
-            "1P 30 · 2P 20",
+            "1P 30 · 3 dots",
+            "2P 20 · 2 dots",
         ])
         expect(setItem).not.toHaveBeenCalledWith(
             PROGRESS_KEY,
@@ -160,6 +187,20 @@ describe("main with two players", () => {
         expect(vi.mocked(createGameState).mock.lastCall?.[1]).toEqual([
             "dragon",
             "owl",
+        ])
+
+        // Game over shows the same breakdown.
+        const again = drawn.last?.[0] as GameState
+        again.players[0].score = 10
+        again.players[0].dots = 1
+        nextOutcome = "dead"
+        vi.advanceTimersByTime(1000)
+        expect(screen()).toBe("game-over")
+        const over = [...(overlay()?.querySelectorAll(".overlay-line") ?? [])]
+        expect(over.map((p) => p.textContent)).toEqual([
+            "Score 10",
+            "1P 10 · 1 dot",
+            "2P 0 · 0 dots",
         ])
     })
 })

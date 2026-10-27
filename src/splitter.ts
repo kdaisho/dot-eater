@@ -134,7 +134,10 @@ export function splitSplitter(state: GameState, i: number) {
 function spread(state: GameState, halves: readonly Character[]) {
     const { cells } = state
     const at = vec2(halves[0].pos.x, halves[0].pos.y)
-    const maps = state.players.map((p) => distanceMap(cells, p.character.pos))
+    // Players out of play (see takeOut in game.ts) aren't on the board.
+    const maps = state.players
+        .filter((p) => !p.out)
+        .map((p) => distanceMap(cells, p.character.pos))
     // With two players, a cell is as far as the nearer of them.
     const fromPlayer = (v: Vec2) => Math.min(...maps.map((m) => m[v.y][v.x]))
     const { free, next } = freeCells(state, at)
@@ -150,10 +153,12 @@ function spread(state: GameState, halves: readonly Character[]) {
     })
 }
 
-// Whether `cell` is any player's cell or the one it is gliding out of.
+// Whether `cell` is the cell of any player in play or the one it is gliding
+// out of.
 function playerCell(state: GameState, cell: Vec2): boolean {
     return state.players.some(
-        ({ character: c }) => samePos(cell, c.pos) || samePos(cell, c.lastPos)
+        ({ character: c, out }) =>
+            !out && (samePos(cell, c.pos) || samePos(cell, c.lastPos))
     )
 }
 

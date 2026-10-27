@@ -236,6 +236,15 @@ describe("showPause", () => {
         expectSingle()
         expect(overlay()?.dataset.screen).toBe("pause")
         expect(title()).toBe("Paused")
+        expect(lines()).toEqual(["Press P, Esc or Space to resume"])
+    })
+
+    it("gives player 2's keys too with two players", () => {
+        showPause(2)
+        expect(lines()).toEqual([
+            "1P: P, Esc or Space to resume",
+            "2P: Q or E to resume",
+        ])
     })
 })
 
@@ -349,12 +358,12 @@ describe("two players", () => {
     it("shows the title's mode select", () => {
         showTitle([
             { label: "1 player", selected: false },
-            { label: "2 players", selected: true },
+            { label: "Co-op", selected: true },
         ])
         expect(title()).toBe("Dot Eater")
         expect(lines()).toEqual(["↑ ↓ to choose, Space to start"])
-        expect(items()).toEqual(["1 player", "2 players"])
-        expect(selected()).toEqual(["2 players"])
+        expect(items()).toEqual(["1 player", "Co-op"])
+        expect(selected()).toEqual(["Co-op"])
     })
 
     describe("character select", () => {
@@ -409,6 +418,19 @@ describe("two players", () => {
         expect(lines()).toEqual(["Score 50", "1P 30 · 2P 20"])
         showStageClear({ ...clearView(0, 50), playerScores: [30, 20] })
         expect(lines().slice(0, 2)).toEqual(["Score 50", "1P 30 · 2P 20"])
+    })
+
+    it("gives each player a line with its dots when given", () => {
+        const players = { playerScores: [30, 20], playerDots: [3, 1] }
+        showStageClear({ ...clearView(0, 50), ...players })
+        expect(lines().slice(0, 4)).toEqual([
+            "Score 50",
+            "1P 30 · 3 dots",
+            "2P 20 · 1 dot",
+            expect.stringMatching(/^Time /),
+        ])
+        showGameOver({ ...endView(0, 50), ...players })
+        expect(lines()).toEqual(["Score 50", "1P 30 · 3 dots", "2P 20 · 1 dot"])
     })
 })
 

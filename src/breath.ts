@@ -558,9 +558,15 @@ function placeTile(
     return true
 }
 
-// Every player's character, player 1 first.
+// The players in play (not taken out; see takeOut in game.ts), player 1
+// first. Out players are off the board: nothing a breath does looks at them.
+export function playersInPlay(state: GameState): Player[] {
+    return state.players.filter((p) => !p.out)
+}
+
+// The character of every player in play, player 1 first.
 export function playerCharacters(state: GameState): Character[] {
-    return state.players.map((p) => p.character)
+    return playersInPlay(state).map((p) => p.character)
 }
 
 // Whether a player, an enemy in play or the boss (on any of its cells)
@@ -648,7 +654,10 @@ function regrowWall(state: GameState, pos: Vec2) {
     const open = (p: Vec2) =>
         state.cells[p.y][p.x] !== Cell.wall &&
         !(boss && inFootprint(boss.pos, p))
-    for (const c of [...playerCharacters(state), ...state.enemies]) {
+    // Players out of play too, so none is left inside the wall (enemies
+    // may go after where an out player stands).
+    const players = state.players.map((p) => p.character)
+    for (const c of [...players, ...state.enemies]) {
         if (!samePos(c.pos, pos)) continue
         const back =
             !samePos(c.lastPos, pos) && open(c.lastPos)
