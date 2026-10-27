@@ -101,6 +101,41 @@ body * {
     opacity: 1;
 }
 
+/* 2-player character select: each player's cursor in its marker colour
+   (PLAYER_COLORS in render.ts, lightened for the dark backdrop). */
+.overlay-cards .card.p1,
+.overlay-cards .card.p2 {
+    opacity: 1;
+}
+
+.overlay-cards .card.p1 {
+    border-color: #60a5fa;
+}
+
+.overlay-cards .card.p2 {
+    border-color: #f87171;
+}
+
+.overlay-cards .card.p1.p2 {
+    border-color: #60a5fa #f87171 #f87171 #60a5fa;
+}
+
+.overlay-cards .card-players {
+    display: flex;
+    font-size: 14px;
+    font-weight: bold;
+    gap: 8px;
+    justify-content: center;
+}
+
+.overlay-cards .card-player.p1 {
+    color: #60a5fa;
+}
+
+.overlay-cards .card-player.p2 {
+    color: #f87171;
+}
+
 .overlay-cards .card-emoji {
     font-size: 48px;
     line-height: 56px;
