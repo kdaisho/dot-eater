@@ -46,6 +46,9 @@ export type EndScreenView = {
     score: number
     // With two players, each one's share of it, player 1 first.
     playerScores?: readonly number[]
+    // With two players, the dots each one ate, player 1 first. Given with
+    // playerScores, each player gets a line of its own with both.
+    playerDots?: readonly number[]
     // The menu, in order; exactly one item is selected.
     items: readonly MenuItem[]
 }
@@ -183,12 +186,27 @@ export function showGameOver(view: EndScreenView) {
     show({ id: "game-over", title: "💀 Game over", ...endScreen(view) })
 }
 
-function endScreen({ score, playerScores = [], items }: EndScreenView) {
+// The score, then with two players each one's share: on one line, or a
+// line each with the dots it ate when playerDots are given.
+function endScreen({
+    score,
+    playerScores = [],
+    playerDots,
+    items,
+}: EndScreenView) {
     const shares =
-        playerScores.length > 1
-            ? [playerScores.map((s, i) => `${i + 1}P ${s}`).join(" · ")]
-            : []
+        playerScores.length < 2
+            ? []
+            : playerDots
+              ? playerScores.map(
+                    (s, i) => `${i + 1}P ${s} · ${dotCount(playerDots[i] ?? 0)}`
+                )
+              : [playerScores.map((s, i) => `${i + 1}P ${s}`).join(" · ")]
     return { lines: [`Score ${score}`, ...shares], items }
+}
+
+function dotCount(n: number): string {
+    return n === 1 ? "1 dot" : `${n} dots`
 }
 
 export function hideOverlay() {

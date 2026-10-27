@@ -286,7 +286,10 @@ function endView(game: GameState, choice: EndChoice): EndScreenView {
     return {
         score: totalScore(game),
         ...(game.players.length > 1
-            ? { playerScores: game.players.map((p) => p.score) }
+            ? {
+                  playerScores: game.players.map((p) => p.score),
+                  playerDots: game.players.map((p) => p.dots),
+              }
             : {}),
         items: END_CHOICES.map((c) => ({
             label: END_LABELS[c],

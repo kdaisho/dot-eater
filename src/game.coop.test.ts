@@ -483,3 +483,16 @@ describe("solo rules", () => {
         expect(state.players[1].character.pos).toEqual(P2)
     })
 })
+
+describe("dots eaten", () => {
+    it("are counted for the player who ate them", () => {
+        const map = textMap(["#######", "#.....#", "#######", "#.#####"]).map
+        const state = makeState(map, [vec2(1, 1), vec2(5, 1)], [], {
+            lives: START_LIVES,
+            mode: "coop",
+        })
+        run(state, [hold(east), hold(west)], MOVE * 2)
+        expect(state.players.map((p) => p.dots)).toEqual([2, 1])
+        expect(state.players.map((p) => p.score)).toEqual([20, 10])
+    })
+})

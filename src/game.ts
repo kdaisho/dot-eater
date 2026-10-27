@@ -104,6 +104,8 @@ export type Player = {
     // Points so far: DOT_POINTS per dot eaten, plus what its breaths earn
     // (see totalScore for the whole game's).
     score: number
+    // Dots eaten so far, for the end screens' per-player breakdown.
+    dots: number
     // The cell of the dot eaten on the player's latest move, or null if that
     // move ate nothing (or the player hasn't moved since the start or a
     // respawn). The dot is gone from `cells` and scored at once, but the
@@ -246,6 +248,7 @@ export function newPlayer(character: Character, breath: BreathDef): Player {
         breather: createBreather(breath),
         bufferedStep: vec2(0, 0),
         score: 0,
+        dots: 0,
         eatenAt: null,
         rate: 1,
         out: false,
@@ -384,6 +387,7 @@ export function movePlayer(
     if (value === Cell.dot) {
         cells[target.y][target.x] = Cell.none
         who.score += DOT_POINTS
+        who.dots++
         gainEnergy(who.breather)
         ate = true
     }

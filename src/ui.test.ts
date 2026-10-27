@@ -410,6 +410,19 @@ describe("two players", () => {
         showStageClear({ ...clearView(0, 50), playerScores: [30, 20] })
         expect(lines().slice(0, 2)).toEqual(["Score 50", "1P 30 · 2P 20"])
     })
+
+    it("gives each player a line with its dots when given", () => {
+        const players = { playerScores: [30, 20], playerDots: [3, 1] }
+        showStageClear({ ...clearView(0, 50), ...players })
+        expect(lines().slice(0, 4)).toEqual([
+            "Score 50",
+            "1P 30 · 3 dots",
+            "2P 20 · 1 dot",
+            expect.stringMatching(/^Time /),
+        ])
+        showGameOver({ ...endView(0, 50), ...players })
+        expect(lines()).toEqual(["Score 50", "1P 30 · 3 dots", "2P 20 · 1 dot"])
+    })
 })
 
 describe("toast", () => {

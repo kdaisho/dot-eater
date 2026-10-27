@@ -21,7 +21,7 @@ Settled decisions, grouped by topic. "Product decision" or "with the user" means
 - **Character select (2 players):** each player moves its own cursor and confirms (`ready`); the game starts once both have. Both may pick the same character. Back from a confirmed player takes the confirmation back, otherwise it goes to stage select. Menus other than character select follow player 1; during a 2-player game either player pauses and resumes.
 - **Gamepads** (with the user): in 1-player every pad drives player 1 (`"shared"`); in a 2-player mode pads take players in connection order, pad 1 player 1 and pad 2 player 2 (`"perPad"`). `padAssignment` in `main.ts` switches on each screen change: the title always shares, so any pad picks the mode; from stage select on the mode decides, so player 2's pad picks its character.
 - **Progress** (with the user): 2-player games don't record clears, bests or stars (`recordsProgress`) or the last character pick, and can play any stage unlocked in 1-player.
-- **Looks:** with two players each sprite gets a ring and its number in `PLAYER_COLORS` (blue, red); the HUD shows each player's score and meter in those colours with the shared lives (hearts) between; the end screens add each player's share of the score. Fog lights up round both players.
+- **Looks:** with two players each sprite gets a ring and its number in `PLAYER_COLORS` (blue, red); the HUD shows each player's score and meter in those colours with the shared lives (hearts) between; the end screens (stage clear and game over) show the combined score, then a line per player with its share and the dots it ate (`Player.dots`). Fog lights up round both players.
 
 ## Breaths
 
