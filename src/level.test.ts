@@ -107,12 +107,27 @@ describe("parseLevel", () => {
                 [1, 1, 1, 1, 1],
             ],
             ice: Array.from({ length: 4 }, () => Array(5).fill(false)),
-            playerSpawns: [vec2(1, 1)],
+            playerSpawns: [vec2(1, 1), vec2(1, 1)],
             playerSpeed: 4,
             enemies: [{ pos: vec2(3, 1), ai: AiType.chase, speed: 2.5 }],
             boss: null,
             rules: {},
         })
+    })
+
+    // The dot is for 1-player games; createGameState clears it when there
+    // is a player 2.
+    it("starts player 2 on Q, which holds a dot", () => {
+        const level = parseLevel({
+            ...valid,
+            map: ["#####", "#PQE#", "#. .#", "#####"],
+        })
+        expect(level.playerSpawns).toEqual([vec2(1, 1), vec2(2, 1)])
+        expect(level.cells[1][2]).toBe(Cell.dot)
+    })
+
+    it("starts player 2 on player 1's spawn when there is no Q", () => {
+        expect(parseLevel(valid).playerSpawns).toEqual([vec2(1, 1), vec2(1, 1)])
     })
 
     it("parses splitters, up to 4 enemy slots with each splitter as 2", () => {
@@ -412,6 +427,36 @@ describe("parseLevel", () => {
             expect(problemsOf({ ...valid, map: rows })).toEqual([
                 'map must have exactly one "P" (player 1 spawn), found 2',
             ])
+        })
+
+        it("more than one player 2 spawn", () => {
+            const rows = ["#####", "#PQE#", "#.Q.#", "#####"]
+            expect(problemsOf({ ...valid, map: rows })).toEqual([
+                'map may have at most one "Q" (player 2 spawn), found 2',
+            ])
+        })
+
+        it("dots player 2 can't reach from its spawn", () => {
+            const rows = ["######", "#P.#Q#", "#.E# #", "######"]
+            expect(problemsOf({ ...valid, map: rows })).toEqual([
+                // Q's own dot, which player 1 can't reach either.
+                "dot at (4, 1) can't be reached from the player spawn",
+                "dot at (2, 1) can't be reached from player 2's spawn",
+                "dot at (1, 2) can't be reached from player 2's spawn",
+                "dot at (2, 2) can't be reached from player 2's spawn",
+            ])
+        })
+
+        // As for player 1 (below): stepping down from Q stops on the ice
+        // at (4, 2), and once player 2 slides off sideways it can't get
+        // back up.
+        it("a slide that strands player 2", () => {
+            const rows = ["#########", "#P.##Q###", "#.~~~~:~#", "#########"]
+            expect(problemsOf({ ...valid, map: rows, enemies: [] })).toEqual(
+                expect.arrayContaining([
+                    "sliding can strand the player at (4, 2), with no way back to player 2's spawn",
+                ])
+            )
         })
 
         it("more E spawns than listed enemies", () => {

@@ -1,10 +1,17 @@
 import { createBoss, type Boss } from "../boss"
-import { createBreather, type BreathDef } from "../breath"
+import type { BreathDef } from "../breath"
 import { BREATHS } from "../breaths"
 import { AiType, Cell, CharacterId, TICK_RATE } from "../constants"
 import { DEFAULT_ANIMAL } from "../roster"
 import { createCharacter, type Character } from "../character"
-import { drawnPos, step, type GameState } from "../game"
+import {
+    drawnPos,
+    IDLE,
+    newPlayer,
+    step,
+    type GameState,
+    type MoveInput,
+} from "../game"
 import type { IceMap } from "../ice"
 import { parseLevel, type Cells, type Level, type LevelData } from "../level"
 import { vec2, type Vec2 } from "../vec2"
@@ -81,15 +88,19 @@ export function makePatroller(
     return enemy
 }
 
-// Like createGameState, the player's start cell never holds a dot, and the
-// spawns are where the characters start. The player is on their last life
-// unless `lives` says otherwise, so any collision ends the game. There is no
-// ice unless `ice` says where (see textMap). The player has the default
-// character's breath unless `breath` says otherwise, with an empty meter.
-// There is no boss unless `boss` gives one (see makeBoss).
+type Cell2 = { x: number; y: number }
+
+// Like createGameState, the players' start cells never hold a dot, and the
+// spawns are where the characters start. `player` is player 1's start, or
+// every player's (player 1 first) for a 2-player game. The players are on
+// their last life unless `lives` says otherwise, so any collision ends the
+// game. There is no ice unless `ice` says where (see textMap). Every player
+// has the default character's breath unless `breath` says otherwise (one
+// breath for all, or one per player), with an empty meter. There is no boss
+// unless `boss` gives one (see makeBoss).
 export function makeState(
     map: MapLiteral,
-    player: { x: number; y: number },
+    player: Cell2 | readonly Cell2[],
     enemies: Character[] = [],
     {
         lives = 1,
@@ -99,32 +110,35 @@ export function makeState(
     }: {
         lives?: number
         ice?: IceMap
-        breath?: BreathDef
+        breath?: BreathDef | readonly BreathDef[]
         boss?: Boss | null
     } = {}
 ): GameState {
+    const starts = "x" in player ? [player] : player
     const cells = cellsFrom(map)
-    if (cells[player.y][player.x] === Cell.dot) {
-        cells[player.y][player.x] = Cell.none
+    for (const { x, y } of starts) {
+        if (cells[y][x] === Cell.dot) cells[y][x] = Cell.none
     }
     const floorIce = ice ?? cells.map((row) => row.map(() => false))
+    const breathOf = (i: number) =>
+        "fire" in breath ? breath : (breath[i] ?? breath[0])
     return {
         cells,
         ice: floorIce,
         floorIce,
         tiles: [],
-        player: createCharacter(CharacterId.player, vec2(player.x, player.y)),
-        breather: createBreather(breath),
+        players: starts.map(({ x, y }, i) =>
+            newPlayer(
+                createCharacter(CharacterId.player, vec2(x, y)),
+                breathOf(i)
+            )
+        ),
         enemies,
         boss,
-        bufferedStep: vec2(0, 0),
-        score: 0,
         ticks: 0,
         lives,
-        eatenAt: null,
-        playerRate: 1,
         spawns: {
-            player: vec2(player.x, player.y),
+            players: starts.map(({ x, y }) => vec2(x, y)),
             enemies: enemies.map((e) => vec2(e.pos.x, e.pos.y)),
         },
     }
@@ -179,12 +193,27 @@ export function testBreath(overrides: Partial<BreathDef> = {}): BreathDef {
 }
 
 // A deep copy of `state`, for comparing before and after. The breath
-// definition holds functions, which structuredClone can't copy; it is fixed
-// data, so the copy shares it.
+// definitions hold functions, which structuredClone can't copy; they are
+// fixed data, so the copy shares them.
 export function cloneState(state: GameState): GameState {
-    const { breath, ...breather } = state.breather
-    const copy = structuredClone({ ...state, breather })
-    return { ...copy, breather: { ...copy.breather, breath } }
+    const breaths = state.players.map((p) => p.breather.breath)
+    const players = state.players.map((p) => {
+        const { breath: _, ...breather } = p.breather
+        return { ...p, breather }
+    })
+    const copy = structuredClone({ ...state, players })
+    return {
+        ...copy,
+        players: copy.players.map((p, i) => ({
+            ...p,
+            breather: { ...p.breather, breath: breaths[i] },
+        })),
+    }
+}
+
+// Player 2's input for one tick of a 2-player step, with player 1 idle.
+export function p2Move(move: MoveInput): MoveInput[] {
+    return [IDLE, move]
 }
 
 // A random source that always returns the same value.

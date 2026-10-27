@@ -345,6 +345,73 @@ describe("celebrate", () => {
     })
 })
 
+describe("two players", () => {
+    it("shows the title's mode select", () => {
+        showTitle([
+            { label: "1 player", selected: false },
+            { label: "2 players", selected: true },
+        ])
+        expect(title()).toBe("Dot Eater")
+        expect(lines()).toEqual(["↑ ↓ to choose, Space to start"])
+        expect(items()).toEqual(["1 player", "2 players"])
+        expect(selected()).toEqual(["2 players"])
+    })
+
+    describe("character select", () => {
+        const animals = ANIMAL_IDS.map((id) => ANIMALS[id])
+        const card = (id: AnimalId) =>
+            overlay()?.querySelector<HTMLElement>(`li[data-animal="${id}"]`)
+        const tags = (id: AnimalId) =>
+            [...(card(id)?.querySelectorAll(".card-player") ?? [])].map(
+                (tag) => tag.textContent
+            )
+
+        it("marks each player's card, and who has confirmed", () => {
+            showCharacterSelect(
+                animals,
+                [AnimalId.owl, AnimalId.boar],
+                [true, false]
+            )
+            expect(title()).toBe("Pick your characters")
+            expect(lines()).toEqual([
+                "1P: ← → to choose, Space to confirm",
+                "2P: A D to choose, E to confirm",
+                "Esc or Q to go back",
+            ])
+            expect(tags(AnimalId.owl)).toEqual(["1P ✓"])
+            expect(tags(AnimalId.boar)).toEqual(["2P"])
+            expect(tags(AnimalId.dragon)).toEqual([])
+            expect(card(AnimalId.owl)?.classList.contains("p1")).toBe(true)
+            expect(card(AnimalId.boar)?.classList.contains("p2")).toBe(true)
+            // Player 1's card is the selected one.
+            expect(card(AnimalId.owl)?.classList.contains("selected")).toBe(
+                true
+            )
+        })
+
+        it("shows both players on one card when they pick the same", () => {
+            showCharacterSelect(animals, [AnimalId.skunk, AnimalId.skunk])
+            expect(tags(AnimalId.skunk)).toEqual(["1P", "2P"])
+            const skunk = card(AnimalId.skunk)
+            expect(skunk?.classList.contains("p1")).toBe(true)
+            expect(skunk?.classList.contains("p2")).toBe(true)
+        })
+
+        it("marks no players with one", () => {
+            showCharacterSelect(animals, [AnimalId.skunk])
+            expect(overlay()?.querySelector(".card-players")).toBeNull()
+            expect(title()).toBe("Pick a character")
+        })
+    })
+
+    it("shows each player's score on the end screens", () => {
+        showGameOver({ ...endView(0, 50), playerScores: [30, 20] })
+        expect(lines()).toEqual(["Score 50", "1P 30 · 2P 20"])
+        showStageClear({ ...clearView(0, 50), playerScores: [30, 20] })
+        expect(lines().slice(0, 2)).toEqual(["Score 50", "1P 30 · 2P 20"])
+    })
+})
+
 describe("toast", () => {
     const toasts = () => [...document.querySelectorAll("#toast")]
 

@@ -58,7 +58,7 @@ const corridor = [
 
 // Make every character ready to move on the next tick.
 function ready(state: GameState) {
-    state.player.moveProgress = 1
+    state.players[0].character.moveProgress = 1
     for (const enemy of state.enemies) enemy.moveProgress = 1
 }
 
@@ -112,40 +112,40 @@ describe("movePlayer", () => {
     it("is blocked by walls", () => {
         const state = makeState(map, { x: 1, y: 1 })
         expect(movePlayer(state, vec2(0, 1))).toBe(false)
-        expect(state.player.pos).toEqual(vec2(1, 1))
-        expect(state.player.lastPos).toEqual(vec2(1, 1))
+        expect(state.players[0].character.pos).toEqual(vec2(1, 1))
+        expect(state.players[0].character.lastPos).toEqual(vec2(1, 1))
     })
 
     it("moves into empty cells and records where it came from", () => {
         const state = makeState(map, { x: 1, y: 1 })
         expect(movePlayer(state, vec2(0, -1))).toBe(true)
-        expect(state.player.pos).toEqual(vec2(1, 0))
-        expect(state.player.lastPos).toEqual(vec2(1, 1))
+        expect(state.players[0].character.pos).toEqual(vec2(1, 0))
+        expect(state.players[0].character.lastPos).toEqual(vec2(1, 1))
     })
 
     it("does not move on a zero step", () => {
         const state = makeState(map, { x: 1, y: 1 })
         expect(movePlayer(state, none)).toBe(false)
-        expect(state.player.pos).toEqual(vec2(1, 1))
+        expect(state.players[0].character.pos).toEqual(vec2(1, 1))
     })
 
     it("eats dots", () => {
         const state = makeState(map, { x: 1, y: 1 })
         movePlayer(state, vec2(1, 0))
-        expect(state.player.pos).toEqual(vec2(2, 1))
+        expect(state.players[0].character.pos).toEqual(vec2(2, 1))
         expect(state.cells[1][2]).toBe(Cell.none)
     })
 
     it("wraps around the edges", () => {
         const state = makeState(map, { x: 0, y: 1 })
         movePlayer(state, vec2(-1, 0))
-        expect(state.player.pos).toEqual(vec2(2, 1))
+        expect(state.players[0].character.pos).toEqual(vec2(2, 1))
         expect(state.cells[1][2]).toBe(Cell.none)
 
         const vertical = makeState(map, { x: 1, y: 0 })
         vertical.cells[2][1] = Cell.none
         movePlayer(vertical, vec2(0, -1))
-        expect(vertical.player.pos).toEqual(vec2(1, 2))
+        expect(vertical.players[0].character.pos).toEqual(vec2(1, 2))
     })
 })
 
@@ -182,9 +182,9 @@ describe("checkEnd", () => {
         const enemy = makeEnemy(1, 1, AiType.random, { x: 2, y: 1 })
         enemy.moveProgress = 0.3
         const state = makeState(map, { x: 1, y: 1 }, [enemy])
-        expect(gap(drawn(state, enemy), state.player.pos)).toBeGreaterThan(
-            CATCH_DISTANCE
-        )
+        expect(
+            gap(drawn(state, enemy), state.players[0].character.pos)
+        ).toBeGreaterThan(CATCH_DISTANCE)
         expect(checkEnd(state)).toBeNull()
     })
 })
@@ -194,11 +194,11 @@ describe("step: speeds", () => {
         const state = makeState(corridor, { x: 0, y: 1 })
         const ticksPerCell = TICK_RATE / PLAYER_SPEED
         run(state, ticksPerCell - 1, east)
-        expect(state.player.pos).toEqual(vec2(0, 1))
+        expect(state.players[0].character.pos).toEqual(vec2(0, 1))
         run(state, 1, east)
-        expect(state.player.pos).toEqual(vec2(1, 1))
+        expect(state.players[0].character.pos).toEqual(vec2(1, 1))
         run(state, ticksPerCell * 2, east)
-        expect(state.player.pos).toEqual(vec2(3, 1))
+        expect(state.players[0].character.pos).toEqual(vec2(3, 1))
         expect(state.cells[1][3]).toBe(Cell.none)
     })
 
@@ -234,13 +234,13 @@ describe("step: speeds", () => {
             ],
             { x: 0, y: 1 }
         )
-        state.player.speed = 7
+        state.players[0].character.speed = 7
         let moves = 0
-        let last = state.player.pos
+        let last = state.players[0].character.pos
         for (let i = 0; i < TICK_RATE * 60; i++) {
             run(state, 1, east)
-            if (state.player.pos !== last) moves++
-            last = state.player.pos
+            if (state.players[0].character.pos !== last) moves++
+            last = state.players[0].character.pos
         }
         expect(Math.abs(moves - 7 * 60)).toBeLessThanOrEqual(1)
     })
@@ -249,20 +249,20 @@ describe("step: speeds", () => {
         const state = makeState(corridor, { x: 0, y: 1 })
         run(state, TICK_RATE) // ready long ago, nothing held
         run(state, 1, east)
-        expect(state.player.pos).toEqual(vec2(1, 1))
-        expect(state.player.moveProgress).toBe(0)
+        expect(state.players[0].character.pos).toEqual(vec2(1, 1))
+        expect(state.players[0].character.moveProgress).toBe(0)
         // The next move still takes a whole 1/speed seconds.
         run(state, TICK_RATE / PLAYER_SPEED - 1, east)
-        expect(state.player.pos).toEqual(vec2(1, 1))
+        expect(state.players[0].character.pos).toEqual(vec2(1, 1))
         run(state, 1, east)
-        expect(state.player.pos).toEqual(vec2(2, 1))
+        expect(state.players[0].character.pos).toEqual(vec2(2, 1))
     })
 
     it("moves at most one cell per tick, however fast", () => {
         const state = makeState(corridor, { x: 0, y: 1 })
-        state.player.speed = TICK_RATE * 10
+        state.players[0].character.speed = TICK_RATE * 10
         run(state, 3, east)
-        expect(state.player.pos).toEqual(vec2(3, 1))
+        expect(state.players[0].character.pos).toEqual(vec2(3, 1))
     })
 
     it("does not depend on the random source for the player", () => {
@@ -270,7 +270,7 @@ describe("step: speeds", () => {
         const b = makeState(corridor, { x: 0, y: 1 })
         run(a, 30, east, fixedRandom(0))
         run(b, 30, east, fixedRandom(0.99))
-        expect(a.player.pos).toEqual(b.player.pos)
+        expect(a.players[0].character.pos).toEqual(b.players[0].character.pos)
     })
 })
 
@@ -287,25 +287,25 @@ describe("step: tap buffer", () => {
     it("uses a direction tapped mid-move at the next move opportunity", () => {
         const state = makeState(junction, { x: 1, y: 1 })
         run(state, ticksPerCell, east)
-        expect(state.player.pos).toEqual(vec2(2, 1))
+        expect(state.players[0].character.pos).toEqual(vec2(2, 1))
         // Partway to the next move, tap north while still holding east.
         run(state, 5, east)
         tap(state, north, east)
         run(state, ticksPerCell - 7, east)
-        expect(state.player.pos).toEqual(vec2(2, 1))
+        expect(state.players[0].character.pos).toEqual(vec2(2, 1))
         run(state, 1, east)
-        expect(state.player.pos).toEqual(vec2(2, 0))
-        expect(state.bufferedStep).toEqual(none)
+        expect(state.players[0].character.pos).toEqual(vec2(2, 0))
+        expect(state.players[0].bufferedStep).toEqual(none)
     })
 
     it("uses a tap made mid-move with nothing held, once", () => {
         const state = makeState(junction, { x: 1, y: 1 })
         tap(state, east)
-        expect(state.player.pos).toEqual(vec2(1, 1))
+        expect(state.players[0].character.pos).toEqual(vec2(1, 1))
         run(state, ticksPerCell - 1)
-        expect(state.player.pos).toEqual(vec2(2, 1))
+        expect(state.players[0].character.pos).toEqual(vec2(2, 1))
         run(state, TICK_RATE)
-        expect(state.player.pos).toEqual(vec2(2, 1))
+        expect(state.players[0].character.pos).toEqual(vec2(2, 1))
     })
 
     it("falls back to the held direction when the buffered turn is blocked", () => {
@@ -313,7 +313,7 @@ describe("step: tap buffer", () => {
         run(state, 1, east)
         tap(state, north, east) // north of (0, 1) is a wall
         run(state, ticksPerCell - 2, east)
-        expect(state.player.pos).toEqual(vec2(1, 1))
+        expect(state.players[0].character.pos).toEqual(vec2(1, 1))
     })
 
     it("clears the buffer after one move opportunity", () => {
@@ -321,20 +321,20 @@ describe("step: tap buffer", () => {
         run(state, 1, east)
         tap(state, north, east)
         run(state, ticksPerCell - 2, east)
-        expect(state.player.pos).toEqual(vec2(1, 1))
-        expect(state.bufferedStep).toEqual(none)
+        expect(state.players[0].character.pos).toEqual(vec2(1, 1))
+        expect(state.players[0].bufferedStep).toEqual(none)
         // The north turn at (2, 1) is open, but the tap is long gone.
         run(state, ticksPerCell * 2, east)
-        expect(state.player.pos).toEqual(vec2(3, 1))
+        expect(state.players[0].character.pos).toEqual(vec2(3, 1))
     })
 
     it("clears the buffer even when no move is possible", () => {
         const state = makeState(junction, { x: 1, y: 1 })
         run(state, ticksPerCell) // ready, nothing held
         tap(state, north) // a wall
-        expect(state.player.pos).toEqual(vec2(1, 1))
-        expect(state.bufferedStep).toEqual(none)
-        expect(state.player.moveProgress).toBe(1)
+        expect(state.players[0].character.pos).toEqual(vec2(1, 1))
+        expect(state.players[0].bufferedStep).toEqual(none)
+        expect(state.players[0].character.moveProgress).toBe(1)
     })
 })
 
@@ -356,7 +356,7 @@ describe("step: player movement", () => {
         const ticksPerCell = TICK_RATE / PLAYER_SPEED
         ready(state)
         run(state, 1, east)
-        expect(state.player.pos).toEqual(vec2(2, 1))
+        expect(state.players[0].character.pos).toEqual(vec2(2, 1))
         step(
             state,
             TICK,
@@ -372,35 +372,35 @@ describe("step: player movement", () => {
             )
         }
         // East to (3, 1) and (4, 1), then south down the side passage.
-        expect(state.player.pos).toEqual(vec2(4, 2))
+        expect(state.players[0].character.pos).toEqual(vec2(4, 2))
     })
 
     it("stays put with no direction held, then moves on the first tick one is", () => {
         const state = makeState(corridor, { x: 0, y: 1 })
         run(state, TICK_RATE)
-        expect(state.player.pos).toEqual(vec2(0, 1))
+        expect(state.players[0].character.pos).toEqual(vec2(0, 1))
         run(state, 1, east)
-        expect(state.player.pos).toEqual(vec2(1, 1))
+        expect(state.players[0].character.pos).toEqual(vec2(1, 1))
     })
 
     it("stops at a wall and turns on the first tick a free direction is held", () => {
         const state = makeState(map, { x: 1, y: 1 })
         run(state, TICK_RATE, vec2(0, 1)) // south is a wall
-        expect(state.player.pos).toEqual(vec2(1, 1))
+        expect(state.players[0].character.pos).toEqual(vec2(1, 1))
         run(state, 1, north)
-        expect(state.player.pos).toEqual(vec2(1, 0))
+        expect(state.players[0].character.pos).toEqual(vec2(1, 0))
     })
 
     it("keeps its pace when the held direction changes mid-move", () => {
         const state = makeState(corridor, { x: 4, y: 1 })
         ready(state)
         run(state, 1, east)
-        expect(state.player.pos).toEqual(vec2(5, 1))
+        expect(state.players[0].character.pos).toEqual(vec2(5, 1))
         // Reversing straight away still waits for the next whole cell.
         run(state, TICK_RATE / PLAYER_SPEED - 1, west)
-        expect(state.player.pos).toEqual(vec2(5, 1))
+        expect(state.players[0].character.pos).toEqual(vec2(5, 1))
         run(state, 1, west)
-        expect(state.player.pos).toEqual(vec2(4, 1))
+        expect(state.players[0].character.pos).toEqual(vec2(4, 1))
     })
 
     it("wins on the tick the last dot is eaten", () => {
@@ -425,12 +425,12 @@ describe("step: simultaneous moves", () => {
         ready(state)
         // The swap happens at once, but the sprites are still a cell apart.
         expect(run(state, 1, east)).toBeNull()
-        expect(state.player.pos).toEqual(vec2(2, 1))
+        expect(state.players[0].character.pos).toEqual(vec2(2, 1))
         expect(state.enemies[0].pos).toEqual(vec2(1, 1))
         expect(run(state, SWAP_TICKS - 2, east)).toBeNull()
         expect(run(state, 1, east)).toBe("dead")
         // Caught mid-way, with both sprites between the two cells.
-        const player = drawn(state, state.player)
+        const player = drawn(state, state.players[0].character)
         const enemy = drawn(state, state.enemies[0])
         expect(player.x).toBeGreaterThan(1)
         expect(enemy.x).toBeLessThan(2)
@@ -448,7 +448,7 @@ describe("step: simultaneous moves", () => {
         expect(ticksUntilCaught(state, east)).toBe(SWAP_TICKS)
         expect(state.enemies[0].pos).toEqual(vec2(4, 1))
         expect(state.enemies[1].pos).toEqual(vec2(1, 1))
-        expect(state.player.pos).toEqual(vec2(2, 1))
+        expect(state.players[0].character.pos).toEqual(vec2(2, 1))
     })
 
     it("catches both stepping into the same cell once the sprites meet", () => {
@@ -458,7 +458,7 @@ describe("step: simultaneous moves", () => {
         ready(state)
         // Two cells apart after the move tick, closing 0.1 cells a tick.
         expect(ticksUntilCaught(state, east)).toBe(15)
-        expect(state.player.pos).toEqual(vec2(2, 1))
+        expect(state.players[0].character.pos).toEqual(vec2(2, 1))
         expect(state.enemies[0].pos).toEqual(vec2(2, 1))
     })
 
@@ -468,7 +468,7 @@ describe("step: simultaneous moves", () => {
         ])
         ready(state)
         expect(run(state, 1, east)).toBeNull()
-        expect(state.player.pos).toEqual(vec2(3, 1))
+        expect(state.players[0].character.pos).toEqual(vec2(3, 1))
         expect(state.enemies[0].pos).toEqual(vec2(2, 1))
         // The faster player keeps its lead.
         expect(run(state, TICK_RATE / 2, east)).toBeNull()
@@ -480,12 +480,12 @@ describe("step: simultaneous moves", () => {
         ])
         ready(state)
         expect(run(state, 1, east)).toBeNull()
-        expect(state.player.pos).toEqual(vec2(2, 1))
+        expect(state.players[0].character.pos).toEqual(vec2(2, 1))
         expect(state.enemies[0].pos).toEqual(vec2(3, 1))
         // The player gains (PLAYER_SPEED - ENEMY_SPEED) / TICK_RATE = 1/30 of
         // a cell a tick on the enemy ahead and runs into it 0.4 cells later.
         expect(ticksUntilCaught(state, east)).toBe(12)
-        expect(state.player.pos).toEqual(vec2(2, 1))
+        expect(state.players[0].character.pos).toEqual(vec2(2, 1))
     })
 
     // Regression: collisions were on logical cells, so this was caught on the
@@ -501,16 +501,16 @@ describe("step: simultaneous moves", () => {
         expect(run(state, STEP_IN_TICKS - 2)).toBeNull()
         expect(run(state, 1)).toBe("dead")
         expect(
-            gap(drawn(state, state.enemies[0]), state.player.pos)
+            gap(drawn(state, state.enemies[0]), state.players[0].character.pos)
         ).toBeCloseTo(CATCH_DISTANCE)
     })
 
     it("catches the player walking into an enemy that stays put once the sprites touch", () => {
         const state = makeState(corridor, { x: 1, y: 1 }, [makeEnemy(2, 1)])
-        state.player.moveProgress = 1
+        state.players[0].character.moveProgress = 1
         // The enemy waits out its grace period (moveProgress 0) on (2, 1).
         expect(run(state, 1, east)).toBeNull()
-        expect(state.player.pos).toEqual(vec2(2, 1))
+        expect(state.players[0].character.pos).toEqual(vec2(2, 1))
         // 0.4 cells at PLAYER_SPEED / TICK_RATE (1/15) a tick.
         expect(ticksUntilCaught(state, east)).toBe(6)
         expect(state.enemies[0].pos).toEqual(vec2(2, 1))
@@ -563,10 +563,10 @@ describe("step: collisions on drawn positions", () => {
 
     it("catches across a wrap tunnel when the player is the one crossing", () => {
         const state = makeState(corridor, { x: 0, y: 1 }, [makeEnemy(8, 1)])
-        state.player.moveProgress = 1
+        state.players[0].character.moveProgress = 1
         // The player steps west through the tunnel into the enemy's cell.
         expect(ticksUntilCaught(state, west)).toBe(7)
-        expect(state.player.pos).toEqual(vec2(8, 1))
+        expect(state.players[0].character.pos).toEqual(vec2(8, 1))
     })
 
     it("catches fast characters that pass through each other between ticks", () => {
@@ -576,14 +576,14 @@ describe("step: collisions on drawn positions", () => {
         const state = makeState(corridor, { x: 2, y: 1 }, [
             makeEnemy(5, 1, AiType.random, { x: 6, y: 1 }),
         ])
-        state.player.speed = TICK_RATE
+        state.players[0].character.speed = TICK_RATE
         state.enemies[0].speed = TICK_RATE
         ready(state)
         expect(run(state, 2, east)).toBeNull()
-        expect(drawn(state, state.player)).toEqual(vec2(3, 1))
+        expect(drawn(state, state.players[0].character)).toEqual(vec2(3, 1))
         expect(drawn(state, state.enemies[0])).toEqual(vec2(4, 1))
         expect(run(state, 1, east)).toBe("dead")
-        expect(drawn(state, state.player)).toEqual(vec2(4, 1))
+        expect(drawn(state, state.players[0].character)).toEqual(vec2(4, 1))
         expect(drawn(state, state.enemies[0])).toEqual(vec2(3, 1))
     })
 
@@ -603,7 +603,9 @@ describe("step: collisions on drawn positions", () => {
         const state = makeState(map, { x: 3, y: 2 }, [enemy])
         expect(run(state, 1)).toBe("dead")
         expect(enemy.pos).toEqual(vec2(3, 1))
-        expect(gap(drawn(state, enemy), state.player.pos)).toBeCloseTo(0.9)
+        expect(
+            gap(drawn(state, enemy), state.players[0].character.pos)
+        ).toBeCloseTo(0.9)
     })
 
     it("catches a fast enemy turning back in the player's cell within a tick", () => {
@@ -631,8 +633,8 @@ describe("step: collisions on drawn positions", () => {
         const chaser = makeEnemy(3, 2, AiType.chase, { x: 4, y: 2 })
         chaser.moveProgress = 1
         const state = makeState(map, { x: 3, y: 2 }, [chaser])
-        state.player.lastPos = vec2(2, 2)
-        state.player.moveProgress = 0.3
+        state.players[0].character.lastPos = vec2(2, 2)
+        state.players[0].character.moveProgress = 0.3
         expect(run(state, 1)).toBeNull()
         expect(chaser.pos).toEqual(vec2(2, 2))
     })
@@ -647,11 +649,11 @@ describe("step: the tick that ends the game", () => {
             makeEnemy(2, 1, AiType.random, { x: 1, y: 1 }),
             makeEnemy(6, 1, AiType.random, { x: 7, y: 1 }, CharacterId.enemy2),
         ])
-        state.player.moveProgress = 1
+        state.players[0].character.moveProgress = 1
         state.enemies[0].moveProgress = 0.5
         state.enemies[1].moveProgress = 1
         expect(run(state, 1, east)).toBe("dead")
-        expect(state.player.pos).toEqual(vec2(3, 1))
+        expect(state.players[0].character.pos).toEqual(vec2(3, 1))
         expect(state.enemies[0].pos).toEqual(vec2(2, 1))
         expect(state.enemies[1].pos).toEqual(vec2(5, 1))
     })
@@ -673,7 +675,7 @@ describe("step: enemies", () => {
         )
         ready(state)
         run(state, 1, west)
-        expect(state.player.pos).toEqual(vec2(4, 1))
+        expect(state.players[0].character.pos).toEqual(vec2(4, 1))
         expect(state.enemies[0].pos).toEqual(vec2(1, 1))
     })
 
@@ -712,10 +714,10 @@ describe("step: new enemy types", () => {
         const state = makeState(ring, { x: 2, y: 1 }, [
             makeEnemy(4, 3, AiType.ambusher),
         ])
-        state.player.lastPos = vec2(1, 1)
+        state.players[0].character.lastPos = vec2(1, 1)
         ready(state)
         run(state, 1, west)
-        expect(state.player.pos).toEqual(vec2(1, 1))
+        expect(state.players[0].character.pos).toEqual(vec2(1, 1))
         expect(state.enemies[0].pos).toEqual(vec2(5, 3))
     })
 
@@ -765,9 +767,9 @@ describe("createGameState", () => {
 
     it("builds the old hard-coded map's state from its level", () => {
         const state = createGameState(OLD_LEVEL)
-        expect(state.player.id).toBe(CharacterId.player)
-        expect(state.player.pos).toEqual(OLD_PLAYER_START)
-        expect(state.player.speed).toBe(PLAYER_SPEED)
+        expect(state.players[0].character.id).toBe(CharacterId.player)
+        expect(state.players[0].character.pos).toEqual(OLD_PLAYER_START)
+        expect(state.players[0].character.speed).toBe(PLAYER_SPEED)
         expect(state.enemies.map((e) => e.id)).toEqual([
             CharacterId.enemy1,
             CharacterId.enemy2,
@@ -817,7 +819,7 @@ describe("createGameState", () => {
             [1, 0, 2, 2, 1],
             [1, 1, 1, 1, 1],
         ])
-        expect(state.player.pos).toEqual(vec2(1, 1))
+        expect(state.players[0].character.pos).toEqual(vec2(1, 1))
         expect(state.enemies).toHaveLength(1)
         expect(state.enemies[0].id).toBe(CharacterId.enemy1)
         expect(state.enemies[0].pos).toEqual(vec2(3, 1))
@@ -826,19 +828,21 @@ describe("createGameState", () => {
 
     it("starts with no score and full lives", () => {
         const state = createGameState(OLD_LEVEL)
-        expect(state.score).toBe(0)
+        expect(state.players[0].score).toBe(0)
         expect(state.lives).toBe(START_LIVES)
     })
 
     it("has the player ready to move at once and the enemies wait", () => {
         const state = createGameState(OLD_LEVEL)
-        expect(state.player.moveProgress).toBe(1)
+        expect(state.players[0].character.moveProgress).toBe(1)
         expect(state.enemies.map((e) => e.moveProgress)).toEqual([0, 0])
-        const start = state.player.pos
+        const start = state.players[0].character.pos
         const enemies = state.enemies.map((e) => e.pos)
         // The old level's player starts with open cells to the west and east.
         step(state, TICK, { held: [east], pressed: east }, fixedRandom(0))
-        expect(state.player.pos).toEqual(vec2(start.x + 1, start.y))
+        expect(state.players[0].character.pos).toEqual(
+            vec2(start.x + 1, start.y)
+        )
         expect(state.enemies.map((e) => e.pos)).toEqual(enemies)
     })
 
@@ -851,7 +855,7 @@ describe("createGameState", () => {
             enemies: [{ ai: "chase", speed: 3 }, { ai: "random" }],
         })
         const state = createGameState(level)
-        expect(state.player.speed).toBe(6)
+        expect(state.players[0].character.speed).toBe(6)
         expect(state.enemies.map((e) => e.speed)).toEqual([3, ENEMY_SPEED])
     })
 
@@ -905,7 +909,7 @@ describe("createGameState", () => {
             enemies: [{ ai: "chase" }],
         })
         const state = createGameState(level)
-        expect(state.player.speed).toBe(PLAYER_SPEED)
+        expect(state.players[0].character.speed).toBe(PLAYER_SPEED)
         expect(state.enemies[0].speed).toBe(ENEMY_SPEED)
     })
 
@@ -913,13 +917,13 @@ describe("createGameState", () => {
         const a = createGameState(OLD_LEVEL)
         a.cells[0][0] = Cell.none
         a.cells[1][1] = Cell.none
-        a.player.pos.x = 99
+        a.players[0].character.pos.x = 99
         a.enemies[0].pos.x = 99
         const b = createGameState(OLD_LEVEL)
         expect(b.cells[0][0]).toBe(Cell.wall)
         expect(b.cells[1][1]).toBe(Cell.dot)
         // Literals, so a shared (aliased) level spawn would be caught.
-        expect(b.player.pos).toEqual(vec2(4, 1))
+        expect(b.players[0].character.pos).toEqual(vec2(4, 1))
         expect(b.enemies[0].pos).toEqual(vec2(1, 4))
     })
 })
@@ -927,11 +931,11 @@ describe("createGameState", () => {
 describe("score", () => {
     it("scores DOT_POINTS per dot eaten", () => {
         const state = makeState(corridor, { x: 0, y: 1 })
-        expect(state.score).toBe(0)
+        expect(state.players[0].score).toBe(0)
         movePlayer(state, east)
-        expect(state.score).toBe(DOT_POINTS)
+        expect(state.players[0].score).toBe(DOT_POINTS)
         movePlayer(state, east)
-        expect(state.score).toBe(2 * DOT_POINTS)
+        expect(state.players[0].score).toBe(2 * DOT_POINTS)
     })
 
     it("scores nothing for empty cells or walls", () => {
@@ -939,15 +943,15 @@ describe("score", () => {
         expect(movePlayer(state, vec2(0, 1))).toBe(false) // wall
         expect(movePlayer(state, north)).toBe(true) // empty
         expect(movePlayer(state, vec2(0, 1))).toBe(true) // the empty start
-        expect(state.score).toBe(0)
+        expect(state.players[0].score).toBe(0)
     })
 
     it("scores the dots eaten while stepping", () => {
         const state = makeState(corridor, { x: 0, y: 1 })
         ready(state)
         run(state, 2 * (TICK_RATE / PLAYER_SPEED) + 1, east)
-        expect(state.player.pos).toEqual(vec2(3, 1))
-        expect(state.score).toBe(3 * DOT_POINTS)
+        expect(state.players[0].character.pos).toEqual(vec2(3, 1))
+        expect(state.players[0].score).toBe(3 * DOT_POINTS)
     })
 })
 
@@ -972,11 +976,11 @@ describe("step: lives", () => {
         expect(run(state, 1, east)).toBeNull()
         expect(state.lives).toBe(2)
         expect(state.cells[1][2]).toBe(Cell.none)
-        expect(state.score).toBe(DOT_POINTS)
+        expect(state.players[0].score).toBe(DOT_POINTS)
         // Back at the spawns, as at the start of a game.
-        expect(state.player.pos).toEqual(vec2(1, 1))
-        expect(state.player.lastPos).toEqual(vec2(1, 1))
-        expect(state.player.moveProgress).toBe(1)
+        expect(state.players[0].character.pos).toEqual(vec2(1, 1))
+        expect(state.players[0].character.lastPos).toEqual(vec2(1, 1))
+        expect(state.players[0].character.moveProgress).toBe(1)
         expect(state.enemies[0].pos).toEqual(vec2(2, 1))
         expect(state.enemies[0].lastPos).toEqual(vec2(2, 1))
         expect(state.enemies[0].moveProgress).toBe(0)
@@ -986,7 +990,7 @@ describe("step: lives", () => {
         const state = swap(2)
         expect(ticksUntilCaught(state)).toBe(STEP_IN_TICKS)
         expect(state.lives).toBe(1)
-        expect(state.player.pos).toEqual(vec2(1, 1))
+        expect(state.players[0].character.pos).toEqual(vec2(1, 1))
         expect(state.enemies[0].pos).toEqual(vec2(2, 1))
     })
 
@@ -994,15 +998,15 @@ describe("step: lives", () => {
         const state = swap(2)
         // Mid-move: the tap is buffered, but the player can't move yet
         // (13/15 of the way to its next move on the catch tick).
-        state.player.moveProgress = 0
+        state.players[0].character.moveProgress = 0
         run(state, STEP_IN_TICKS - 1)
         expect(state.lives).toBe(2)
         expect(tap(state, west)).toBeNull()
         expect(state.lives).toBe(1)
-        expect(state.bufferedStep).toEqual(none)
+        expect(state.players[0].bufferedStep).toEqual(none)
         // The respawned player is ready but doesn't take the old tap.
         run(state, 1)
-        expect(state.player.pos).toEqual(vec2(1, 1))
+        expect(state.players[0].character.pos).toEqual(vec2(1, 1))
     })
 
     it("respawns at the level's spawns", () => {
@@ -1021,10 +1025,10 @@ describe("step: lives", () => {
         }
         expect(outcome).toBeNull()
         expect(state.lives).toBe(START_LIVES - 1)
-        expect(state.player.pos).toEqual(vec2(1, 1))
+        expect(state.players[0].character.pos).toEqual(vec2(1, 1))
         expect(state.enemies[0].pos).toEqual(vec2(5, 1))
         // The player ate (2, 1) and (3, 1) on the way; they stay eaten.
-        expect(state.score).toBe(2 * DOT_POINTS)
+        expect(state.players[0].score).toBe(2 * DOT_POINTS)
         expect(state.cells[1]).toEqual([1, 0, 0, 0, 2, 2, 1])
     })
 
@@ -1034,7 +1038,7 @@ describe("step: lives", () => {
         expect(state.lives).toBe(1)
         // The player is ready at once; the enemy waits out its grace period.
         expect(run(state, 1, west)).toBeNull()
-        expect(state.player.pos).toEqual(vec2(0, 1))
+        expect(state.players[0].character.pos).toEqual(vec2(0, 1))
         expect(state.enemies[0].pos).toEqual(vec2(2, 1))
     })
 
@@ -1044,7 +1048,7 @@ describe("step: lives", () => {
         expect(run(state, 1, east)).toBe("dead")
         expect(state.lives).toBe(0)
         // No respawn: the final positions stay as they were.
-        expect(state.player.pos).toEqual(vec2(2, 1))
+        expect(state.players[0].character.pos).toEqual(vec2(2, 1))
         expect(state.enemies[0].pos).toEqual(vec2(1, 1))
     })
 
@@ -1079,7 +1083,7 @@ describe("step: caught on the tick the last dot is eaten", () => {
             [makeEnemy(1, 1, AiType.random, { x: 2, y: 1 })],
             { lives }
         )
-        state.player.moveProgress = 1
+        state.players[0].character.moveProgress = 1
         state.enemies[0].moveProgress = 0.5
         // It respawns away from the player.
         state.spawns.enemies = [vec2(5, 1)]
@@ -1090,8 +1094,8 @@ describe("step: caught on the tick the last dot is eaten", () => {
         const state = caughtOnLastDot(2)
         expect(run(state, 1, east)).toBe("won")
         expect(state.lives).toBe(2)
-        expect(state.score).toBe(DOT_POINTS)
-        expect(state.player.pos).toEqual(vec2(2, 1))
+        expect(state.players[0].score).toBe(DOT_POINTS)
+        expect(state.players[0].character.pos).toEqual(vec2(2, 1))
     })
 
     it("is a win that costs no life, on the last life too", () => {
@@ -1105,30 +1109,30 @@ describe("step: caught on the tick the last dot is eaten", () => {
         state.cells[1][5] = Cell.dot
         expect(run(state, 1, east)).toBeNull()
         expect(state.lives).toBe(1)
-        expect(state.player.pos).toEqual(vec2(1, 1))
+        expect(state.players[0].character.pos).toEqual(vec2(1, 1))
         expect(state.enemies[0].pos).toEqual(vec2(5, 1))
     })
 })
 
 describe("eatenAt", () => {
     it("starts as null", () => {
-        expect(createGameState(OLD_LEVEL).eatenAt).toBeNull()
+        expect(createGameState(OLD_LEVEL).players[0].eatenAt).toBeNull()
     })
 
     it("records the dot eaten on the player's latest move", () => {
         const state = makeState(corridor, { x: 1, y: 1 })
         movePlayer(state, east)
-        expect(state.eatenAt).toEqual(vec2(2, 1))
+        expect(state.players[0].eatenAt).toEqual(vec2(2, 1))
         movePlayer(state, east)
-        expect(state.eatenAt).toEqual(vec2(3, 1))
+        expect(state.players[0].eatenAt).toEqual(vec2(3, 1))
     })
 
     it("is cleared by a move that eats nothing", () => {
         const state = makeState(corridor, { x: 1, y: 1 })
         movePlayer(state, east)
         movePlayer(state, west)
-        expect(state.player.pos).toEqual(vec2(1, 1))
-        expect(state.eatenAt).toBeNull()
+        expect(state.players[0].character.pos).toEqual(vec2(1, 1))
+        expect(state.players[0].eatenAt).toBeNull()
     })
 
     it("is kept when the player doesn't move", () => {
@@ -1136,14 +1140,14 @@ describe("eatenAt", () => {
         movePlayer(state, east)
         expect(movePlayer(state, north)).toBe(false)
         expect(movePlayer(state, none)).toBe(false)
-        expect(state.eatenAt).toEqual(vec2(2, 1))
+        expect(state.players[0].eatenAt).toEqual(vec2(2, 1))
     })
 
     it("is set by stepping onto a dot", () => {
         const state = makeState(corridor, { x: 1, y: 1 })
         ready(state)
         run(state, 1, east)
-        expect(state.eatenAt).toEqual(vec2(2, 1))
+        expect(state.players[0].eatenAt).toEqual(vec2(2, 1))
     })
 
     it("is cleared when a life is lost and everyone respawns", () => {
@@ -1156,11 +1160,11 @@ describe("eatenAt", () => {
         )
         ready(state)
         expect(run(state, 1, east)).toBeNull()
-        expect(state.eatenAt).toEqual(vec2(2, 1))
+        expect(state.players[0].eatenAt).toEqual(vec2(2, 1))
         expect(run(state, SWAP_TICKS - 1, east)).toBeNull()
         expect(state.lives).toBe(1)
-        expect(state.score).toBe(DOT_POINTS)
-        expect(state.eatenAt).toBeNull()
+        expect(state.players[0].score).toBe(DOT_POINTS)
+        expect(state.players[0].eatenAt).toBeNull()
     })
 })
 
@@ -1174,7 +1178,7 @@ describe("settle", () => {
             { lives: 2 }
         )
         movePlayer(state, east)
-        state.player.moveProgress = 0
+        state.players[0].character.moveProgress = 0
         state.enemies[0].moveProgress = 0.5
         return state
     }
@@ -1182,7 +1186,9 @@ describe("settle", () => {
     it("raises everyone's progress by speed * dt", () => {
         const state = ended()
         expect(settle(state, 0.1)).toBe(false)
-        expect(state.player.moveProgress).toBeCloseTo(0.1 * PLAYER_SPEED)
+        expect(state.players[0].character.moveProgress).toBeCloseTo(
+            0.1 * PLAYER_SPEED
+        )
         expect(state.enemies[0].moveProgress).toBeCloseTo(
             0.5 + 0.1 * ENEMY_SPEED
         )
@@ -1194,9 +1200,9 @@ describe("settle", () => {
         while (!settle(state, TICK)) ticks++
         // One cell's glide at the player's speed.
         expect(ticks).toBe(TICK_RATE / PLAYER_SPEED)
-        expect(state.player.moveProgress).toBe(1)
+        expect(state.players[0].character.moveProgress).toBe(1)
         for (let i = 0; i < TICK_RATE; i++) settle(state, TICK)
-        expect(state.player.moveProgress).toBe(1)
+        expect(state.players[0].character.moveProgress).toBe(1)
         expect(state.enemies[0].moveProgress).toBe(1)
     })
 
@@ -1213,11 +1219,19 @@ describe("settle", () => {
         for (let i = 0; i < TICK_RATE; i++) settle(state, TICK)
         expect(state).toEqual({
             ...before,
-            player: { ...before.player, moveProgress: 1 },
+            players: [
+                {
+                    ...before.players[0],
+                    character: {
+                        ...before.players[0].character,
+                        moveProgress: 1,
+                    },
+                },
+            ],
             enemies: [{ ...before.enemies[0], moveProgress: 1 }],
         })
-        expect(state.score).toBe(DOT_POINTS)
-        expect(state.eatenAt).toEqual(vec2(2, 1))
+        expect(state.players[0].score).toBe(DOT_POINTS)
+        expect(state.players[0].eatenAt).toEqual(vec2(2, 1))
     })
 })
 
@@ -1247,7 +1261,7 @@ describe("ticks (the clear time)", () => {
     it("isn't counted by settle", () => {
         const state = createGameState(OLD_LEVEL)
         run(state, 4)
-        state.player.moveProgress = 0
+        state.players[0].character.moveProgress = 0
         settle(state, TICK)
         settle(state, TICK)
         expect(state.ticks).toBe(4)

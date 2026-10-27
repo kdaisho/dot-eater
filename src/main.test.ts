@@ -5,7 +5,13 @@ import { createBoss } from "./boss"
 import { END_CONFIRM_DELAY } from "./flow"
 import { energyHud } from "./breath"
 import { DOT_POINTS, START_LIVES, TICK_MS, TICK_RATE } from "./constants"
-import { createGameState, step, type GameState, type Outcome } from "./game"
+import {
+    createGameState,
+    step,
+    type GameState,
+    type MoveInput,
+    type Outcome,
+} from "./game"
 import { LAST_PICK_KEY } from "./lastPick"
 import { levels } from "./levels"
 import {
@@ -124,9 +130,15 @@ const moves = (from = 0) =>
     vi
         .mocked(step)
         .mock.calls.slice(from)
-        .map((c) => c[2])
+        .map((c) => firstMove(c[2]))
 // The held directions passed to the latest game step, newest first.
-const lastHeld = () => vi.mocked(step).mock.lastCall?.[2].held
+const lastHeld = () => {
+    const call = vi.mocked(step).mock.lastCall
+    return call && firstMove(call[2]).held
+}
+// Player 1's input in a step's moves.
+const firstMove = (m: MoveInput | readonly MoveInput[]) =>
+    "held" in m ? m : m[0]
 const isZero = (v: { x: number; y: number }) => v.x === 0 && v.y === 0
 
 // Every keydown listener added to the window, to catch listeners piling up.
@@ -586,8 +598,8 @@ describe("main", () => {
         const game = drawnGame()
         // The player has just moved onto the last dot: a whole glide to go,
         // 1 / speed seconds.
-        game.player.moveProgress = 0
-        const glideMs = 1000 / game.player.speed
+        game.players[0].character.moveProgress = 0
+        const glideMs = 1000 / game.players[0].character.speed
         nextOutcome = "won"
         vi.advanceTimersByTime(FRAMES_MS)
         const ended = steps()
@@ -603,14 +615,14 @@ describe("main", () => {
         vi.advanceTimersByTime(FRAMES_MS)
         expect(screen()).toBe("playing")
         expect(vi.mocked(confetti)).not.toHaveBeenCalled()
-        expect(game.player.moveProgress).toBeGreaterThan(0)
-        expect(game.player.moveProgress).toBeLessThan(1)
+        expect(game.players[0].character.moveProgress).toBeGreaterThan(0)
+        expect(game.players[0].character.moveProgress).toBeLessThan(1)
         // The picture keeps moving between ticks.
         expect(new Set(drawn.alphas).size).toBeGreaterThan(1)
 
         vi.advanceTimersByTime(glideMs)
         expect(screen()).toBe("stage-clear")
-        expect(game.player.moveProgress).toBe(1)
+        expect(game.players[0].character.moveProgress).toBe(1)
         expect(selectedItem()).toBe("Retry")
         expect(steps()).toBe(ended)
         expect(starts()).toBe(starting)
@@ -622,11 +634,11 @@ describe("main", () => {
         vi.advanceTimersByTime(1000)
         vi.mocked(confetti).mockClear()
         const game = drawnGame()
-        game.player.moveProgress = 0
+        game.players[0].character.moveProgress = 0
         nextOutcome = "dead"
         vi.advanceTimersByTime(FRAMES_MS)
         expect(screen()).toBe("playing")
-        vi.advanceTimersByTime(1000 / game.player.speed)
+        vi.advanceTimersByTime(1000 / game.players[0].character.speed)
         expect(screen()).toBe("game-over")
         vi.advanceTimersByTime(1000)
         expect(vi.mocked(confetti)).not.toHaveBeenCalled()
@@ -742,7 +754,7 @@ describe("main", () => {
 
     it("draws the game's score and lives in the HUD", () => {
         const game = drawnGame()
-        game.score = 7 * DOT_POINTS
+        game.players[0].score = 7 * DOT_POINTS
         game.lives = 2
         vi.advanceTimersByTime(FRAMES_MS)
         expect(drawn.last?.[2]).toEqual({
@@ -754,7 +766,7 @@ describe("main", () => {
 
     it("draws the game's energy meter in the HUD", () => {
         const game = drawnGame()
-        game.breather.energy = 60
+        game.players[0].breather.energy = 60
         vi.advanceTimersByTime(FRAMES_MS)
         expect(drawn.last?.[2]).toMatchObject({
             energy: { energy: 60, max: 100, cost: 50, ready: true },
@@ -806,7 +818,7 @@ describe("main", () => {
     it.each(["dead", "won"] as const)(
         "shows the final score on the end screen (%s), and retries from 0",
         (outcome) => {
-            drawnGame().score = 12 * DOT_POINTS
+            drawnGame().players[0].score = 12 * DOT_POINTS
             gameOver(outcome)
             expect(overlayLines()[0]).toBe(`Score ${12 * DOT_POINTS}`)
             pressAndTick("Space")

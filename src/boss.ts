@@ -7,8 +7,8 @@ import {
     Cell,
 } from "./constants"
 import type { BlockMap } from "./breath"
-import type { GameState } from "./game"
-import { distanceMap } from "./path"
+import type { GameState, Player } from "./game"
+import { distanceMap, type DistanceMap } from "./path"
 import { allDirections, directions, samePos, vec2, type Vec2 } from "./vec2"
 
 // The boss (stage 5, "Boss lair"): one big enemy, 2x2 cells, with health.
@@ -22,8 +22,9 @@ import { allDirections, directions, samePos, vec2, type Vec2 } from "./vec2"
 //   its cost times BOSS_DAMAGE_PER_ENERGY (see breathe in breath.ts, which
 //   also stops lines and cones at its body). At 0 health it is defeated for
 //   good: BOSS_DEFEAT_POINTS, and it is no longer drawn, moved or caught by.
-// - Moving: it chases the player at its own speed, but only where all four
-//   of its cells fit (see bossMove), so 1-wide corridors are safe from it.
+// - Moving: it chases the player it can get nearest (bossTarget) at its
+//   own speed, but only where all four of its cells fit (see bossMove), so
+//   1-wide corridors are safe from it.
 //   Tile effects that block enemies block it too.
 // - Catching: touching it catches the player like an enemy (see caught in
 //   game.ts), anywhere on its footprint.
@@ -91,8 +92,13 @@ export function bossDamage(cost: number): number {
 }
 
 // Take `damage` off the boss's health and flash it. At 0 it is defeated:
-// BOSS_DEFEAT_POINTS, once. A defeated boss takes no more damage.
-export function damageBoss(state: GameState, damage: number) {
+// BOSS_DEFEAT_POINTS, once, to the player whose breath did it (`by`, player
+// 1 unless given). A defeated boss takes no more damage.
+export function damageBoss(
+    state: GameState,
+    damage: number,
+    by: Player = state.players[0]
+) {
     const boss = state.boss
     if (!boss || boss.defeated) return
     boss.health = Math.max(0, boss.health - damage)
@@ -103,7 +109,7 @@ export function damageBoss(state: GameState, damage: number) {
         boss.health = 0
         boss.defeated = true
         boss.flash = 0
-        state.score += BOSS_DEFEAT_POINTS
+        by.score += BOSS_DEFEAT_POINTS
     }
 }
 
@@ -184,8 +190,48 @@ export function bossReach(
     return found
 }
 
+// Which of `targets` (the players' cells, player 1 first) the boss goes
+// after: the one it can get nearest, as bossMove moves it. That is, the
+// smallest score bossMove could reach for the player (the player's path
+// distance to the boss's footprint, over the positions the boss can get to
+// on the floor `blocked` leaves it), then on ties the player nearest its
+// footprint now, then the first. So a player in a 1-wide corridor the boss
+// can't enter doesn't draw it from one it can run down. With one player
+// that is always player 1, without searching. `fromPlayers` are each
+// target's path distances, if the caller has them (for bossMove too).
+export function bossTarget(
+    state: GameState,
+    targets: readonly Vec2[],
+    blocked: BlockMap | null = null,
+    fromPlayers?: readonly DistanceMap[]
+): number {
+    const boss = state.boss
+    if (!boss || targets.length <= 1) return 0
+    const reach = bossReach(boss.pos, bossFloor(state, blocked))
+    const rank = targets.map((t, i) => {
+        const fromPlayer = fromPlayers?.[i] ?? distanceMap(state.cells, t)
+        let best = Infinity
+        for (const r of reach) best = Math.min(best, away(fromPlayer, r.pos))
+        return { best, now: away(fromPlayer, boss.pos) }
+    })
+    let best = 0
+    for (let i = 1; i < rank.length; i++) {
+        const a = rank[i]
+        const b = rank[best]
+        if (a.best < b.best || (a.best === b.best && a.now < b.now)) best = i
+    }
+    return best
+}
+
+// How far the boss's footprint at `pos` is from the player whose path
+// distances are `fromPlayer`: the nearest of its four cells.
+function away(fromPlayer: DistanceMap, pos: Vec2): number {
+    return Math.min(...footprint(pos).map((c) => fromPlayer[c.y][c.x]))
+}
+
 // The boss's next top-left position, or null to stay put. `target` is the
-// player's cell; `blocked` the cells tile effects block (see enemyBlocks in
+// player's cell, `fromPlayer` its path distances (searched here unless
+// given); `blocked` the cells tile effects block (see enemyBlocks in
 // breath.ts), or null for none.
 //
 // It heads for the reachable position whose footprint is nearest the player
@@ -203,7 +249,8 @@ export function bossReach(
 export function bossMove(
     state: GameState,
     target: Vec2,
-    blocked: BlockMap | null
+    blocked: BlockMap | null,
+    fromPlayer?: DistanceMap
 ): Vec2 | null {
     const boss = state.boss
     if (!boss || boss.defeated) return null
@@ -215,14 +262,12 @@ export function bossMove(
         )
         return escape ? escape.first : null
     }
-    const fromPlayer = distanceMap(state.cells, target)
-    const away = (p: Vec2) =>
-        Math.min(...footprint(p).map((c) => fromPlayer[c.y][c.x]))
+    fromPlayer ??= distanceMap(state.cells, target)
     let best: { first: Vec2; score: number } | null = null
     for (const r of bossReach(boss.pos, floor)) {
         // Found in order of distance, so a later one only wins on a
         // strictly better score.
-        const score = away(r.pos)
+        const score = away(fromPlayer, r.pos)
         if (best === null || score < best.score) {
             best = { first: r.first, score }
         }

@@ -9,7 +9,13 @@ import {
     PLAYER_SPEED,
     START_LIVES,
 } from "./constants"
-import { blockedView, enemyMove, type Random } from "./ai"
+import {
+    blockedView,
+    enemyMove,
+    nearestTarget,
+    targetPaths,
+    type Random,
+} from "./ai"
 import {
     breathe,
     createBreather,
@@ -20,11 +26,13 @@ import {
     START_FACING,
     tickEffects,
     type ActiveTile,
+    type BreathDef,
     type Breather,
 } from "./breath"
 import { BREATHS } from "./breaths"
 import {
     bossMove,
+    bossTarget,
     createBoss,
     resetBoss,
     squareDistance,
@@ -35,6 +43,7 @@ import { glidePos, wrapDelta, type Glider } from "./glide"
 import { slideStep, type IceMap } from "./ice"
 import { hasDots, loopPos, type Cells, type Level } from "./level"
 import { levels } from "./levels"
+import { distanceMap } from "./path"
 import { DEFAULT_ANIMAL, type AnimalId } from "./roster"
 import { createSplitter, resetSplitter } from "./splitter"
 import { samePos, vec2, type Vec2 } from "./vec2"
@@ -51,30 +60,39 @@ export type GameState = {
     floorIce: IceMap
     // Timed effects on cells from breaths (see TileEffect in breath.ts).
     tiles: ActiveTile[]
-    player: Character
-    // The playing character's breath, facing and energy (see breath.ts).
-    breather: Breather
+    // One or two players, player 1 first. Each has its own character,
+    // breath, energy, score and tap buffer. Players pass through each other.
+    players: Player[]
     enemies: Character[]
     // The level's boss (see boss.ts), or null on a level without one. Not
     // an enemy: it has no enemy slot, and breath hooks never see it.
     boss: Boss | null
-    // The direction most recently newly pressed (not just held); zero for
-    // none. It is tried first at the player's next move opportunity and then
-    // cleared, so a quick tap made mid-move isn't lost.
-    bufferedStep: Vec2
-    // Points so far: DOT_POINTS per dot eaten.
-    score: number
     // Ticks stepped so far: the clear time, in ticks (TICK_RATE per second).
     // Only `step` counts, and it only runs during play (see flow.ts), so
     // pauses and the ending outro don't add to it. A lost life doesn't reset
     // it.
     ticks: number
-    // Lives left, counting the one being played. A collision costs one;
-    // losing the last ends the game.
+    // Lives left, counting the one being played, shared by the players. A
+    // collision costs one; losing the last ends the game (see resolveCatch).
     lives: number
     // Where everyone starts, and goes back to after losing a life (copied
     // from the level).
     spawns: Spawns
+}
+
+// One player: its character on the board, plus everything else that is its
+// own.
+export type Player = {
+    character: Character
+    // Its breath, facing and energy (see breath.ts).
+    breather: Breather
+    // The direction most recently newly pressed (not just held); zero for
+    // none. It is tried first at the player's next move opportunity and then
+    // cleared, so a quick tap made mid-move isn't lost.
+    bufferedStep: Vec2
+    // Points so far: DOT_POINTS per dot eaten, plus what its breaths earn
+    // (see totalScore for the whole game's).
+    score: number
     // The cell of the dot eaten on the player's latest move, or null if that
     // move ate nothing (or the player hasn't moved since the start or a
     // respawn). The dot is gone from `cells` and scored at once, but the
@@ -85,16 +103,17 @@ export type GameState = {
     // (lastPos -> pos): its breath's slideSpeedScale if that move was a
     // slide step (see movePlayerTick), else 1. The renderer reads it too, so
     // frames between ticks glide at the same rate (see glideT).
-    playerRate: number
+    rate: number
 }
 
 export type Spawns = {
-    player: Vec2
+    // In the same order as GameState.players.
+    players: readonly Vec2[]
     // In the same order as GameState.enemies.
     enemies: readonly Vec2[]
 }
 
-// The player's movement input for one tick.
+// One player's movement input for one tick.
 export type MoveInput = {
     // The directions being held, most recently pressed first (empty for
     // none). The player keeps moving the newest way that is open, so holding
@@ -108,32 +127,36 @@ export type MoveInput = {
     breath?: boolean
 }
 
+// No input: nothing held or pressed.
+export const IDLE: MoveInput = { held: [], pressed: vec2(0, 0) }
+
 // Tolerance for moveProgress reaching 1, so floating-point sums of speed * dt
 // still land on the intended tick.
 const EPSILON = 1e-9
 
-// A new game of `level`, played as `animal`, whose breath and stats come
-// from BREATHS (src/breaths/).
+// A new game of `level`, played as `animals`, one per player (one animal on
+// its own for a 1-player game), whose breaths and stats come from BREATHS
+// (src/breaths/). Player i starts on the level's spawn i.
 export function createGameState(
     level: Level = levels[0],
-    animal: AnimalId = DEFAULT_ANIMAL
+    animals: AnimalId | readonly AnimalId[] = DEFAULT_ANIMAL
 ): GameState {
+    const picks = typeof animals === "string" ? [animals] : animals
+    if (picks.length === 0 || picks.length > level.playerSpawns.length) {
+        throw new Error(
+            `Can't start "${level.name}" with ${picks.length} players`
+        )
+    }
     // Copy everything out of the level, which is shared between games.
-    // Speeds the level leaves out fall back to the defaults: createCharacter's
-    // for enemies, PLAYER_SPEED for the player, which the character's
-    // speedScale scales.
-    const breath = BREATHS[animal]
-    const spawn = level.playerSpawns[0]
-    const player = createCharacter(
-        CharacterId.player,
-        vec2(spawn.x, spawn.y),
-        undefined,
-        (level.playerSpeed ?? PLAYER_SPEED) * breath.speedScale
+    const players = picks.map((animal, i) =>
+        createPlayer(level, animal, level.playerSpawns[i])
     )
-    // The player can move on the first tick; enemies start from 0, which
-    // gives the player a short grace period before they move.
-    player.moveProgress = 1
     const cells = level.cells.map((row) => [...row])
+    // Like player 1's, the other players' spawns start empty. The level
+    // keeps a dot on them for the games without those players.
+    for (const { character: c } of players.slice(1)) {
+        cells[c.pos.y][c.pos.x] = Cell.none
+    }
     // One enemy slot each, two for a Splitter (see splitter.ts), all with
     // the spawn of the level's enemy they come from.
     const enemies: Character[] = []
@@ -163,35 +186,73 @@ export function createGameState(
         ice,
         floorIce: ice,
         tiles: [],
-        player,
-        breather: createBreather(breath),
+        players,
         enemies,
         boss: level.boss ? createBoss(level.boss.pos, level.boss.speed) : null,
-        bufferedStep: vec2(0, 0),
-        score: 0,
         ticks: 0,
         lives: START_LIVES,
-        eatenAt: null,
-        playerRate: 1,
         spawns: {
-            player: vec2(spawn.x, spawn.y),
+            players: players.map(({ character: c }) => vec2(c.pos.x, c.pos.y)),
             enemies: enemySpawns,
         },
     }
 }
 
+// A player of `level` as `animal`, on `spawn`. Speeds the level leaves out
+// fall back to the defaults: PLAYER_SPEED for the player (createCharacter's
+// for enemies), which the character's speedScale scales.
+function createPlayer(level: Level, animal: AnimalId, spawn: Vec2): Player {
+    const breath = BREATHS[animal]
+    const character = createCharacter(
+        CharacterId.player,
+        vec2(spawn.x, spawn.y),
+        undefined,
+        (level.playerSpeed ?? PLAYER_SPEED) * breath.speedScale
+    )
+    // The player can move on the first tick; enemies start from 0, which
+    // gives the players a short grace period before they move.
+    character.moveProgress = 1
+    return newPlayer(character, breath)
+}
+
+// A player for `character` breathing `breath`, with an empty meter, no
+// score and nothing buffered.
+export function newPlayer(character: Character, breath: BreathDef): Player {
+    return {
+        character,
+        breather: createBreather(breath),
+        bufferedStep: vec2(0, 0),
+        score: 0,
+        eatenAt: null,
+        rate: 1,
+    }
+}
+
+// The whole game's score: every player's added up.
+export function totalScore(state: GameState): number {
+    return state.players.reduce((sum, p) => sum + p.score, 0)
+}
+
 // Put everyone back where they started, as at the start of a game: the
-// player ready to move, the enemies waiting out the grace period again, no
-// tap buffered, the player facing right again. Every enemy is back in play
+// players ready to move, the enemies waiting out the grace period again, no
+// tap buffered, the players facing right again. Every enemy is back in play
 // with no statuses, including one that was defeated and waiting to respawn,
 // and a Splitter is whole again (see resetSplitter). The boss is back at its
 // spawn too, keeping its damage (see resetBoss); a defeated one stays gone.
-// Dots, score, energy, the breath cooldown and tile effects are left alone.
+// Dots, scores, energy, the breath cooldowns and tile effects are left alone.
 function respawn(state: GameState) {
-    const { player, enemies, spawns } = state
-    player.pos = vec2(spawns.player.x, spawns.player.y)
-    player.lastPos = vec2(spawns.player.x, spawns.player.y)
-    player.moveProgress = 1
+    const { enemies, spawns } = state
+    state.players.forEach((player, i) => {
+        const spawn = spawns.players[i]
+        const { character } = player
+        character.pos = vec2(spawn.x, spawn.y)
+        character.lastPos = vec2(spawn.x, spawn.y)
+        character.moveProgress = 1
+        player.breather.facing = vec2(START_FACING.x, START_FACING.y)
+        player.bufferedStep = vec2(0, 0)
+        player.eatenAt = null
+        player.rate = 1
+    })
     enemies.forEach((enemy, i) => {
         const spawn = spawns.enemies[i]
         enemy.pos = vec2(spawn.x, spawn.y)
@@ -204,21 +265,23 @@ function respawn(state: GameState) {
         resetSplitter(enemy)
     })
     if (state.boss) resetBoss(state.boss)
-    state.breather.facing = vec2(START_FACING.x, START_FACING.y)
-    state.bufferedStep = vec2(0, 0)
-    state.eatenAt = null
-    state.playerRate = 1
 }
 
-// Try to move the player one step, eating (and scoring) any dot there and
-// recording it in eatenAt (cleared when the step eats nothing), and filling
-// the energy meter. The player then faces that way. Returns true if the
-// player moved; false if a wall or a solid enemy (see EnemyStatus) blocked
-// the step or the step was zero. It doesn't know about sliding: that is up
-// to the caller (movePlayerTick).
-export function movePlayer(state: GameState, step: Vec2): boolean {
+// Try to move `who` (player 1 unless given) one step, eating (and scoring)
+// any dot there and recording it in its eatenAt (cleared when the step eats
+// nothing), and filling its energy meter. The player then faces that way.
+// Returns true if the player moved; false if a wall or a solid enemy (see
+// EnemyStatus) blocked the step or the step was zero. Other players never
+// block it: players pass through each other. It doesn't know about sliding:
+// that is up to the caller (movePlayerTick).
+export function movePlayer(
+    state: GameState,
+    step: Vec2,
+    who: Player = state.players[0]
+): boolean {
     if (isZero(step)) return false
-    const { cells, player } = state
+    const { cells } = state
+    const player = who.character
     const target = loopPos(
         cells,
         vec2(player.pos.x + step.x, player.pos.y + step.y)
@@ -242,14 +305,14 @@ export function movePlayer(state: GameState, step: Vec2): boolean {
     if (solidAt(state, target)) return false
     if (value === Cell.dot) {
         cells[target.y][target.x] = Cell.none
-        state.score += DOT_POINTS
-        gainEnergy(state.breather)
+        who.score += DOT_POINTS
+        gainEnergy(who.breather)
         ate = true
     }
     player.lastPos = vec2(player.pos.x, player.pos.y)
     player.pos = target
-    state.breather.facing = vec2(step.x, step.y)
-    state.eatenAt = ate ? vec2(target.x, target.y) : null
+    who.breather.facing = vec2(step.x, step.y)
+    who.eatenAt = ate ? vec2(target.x, target.y) : null
     return true
 }
 
@@ -287,72 +350,91 @@ function wait(character: Glider) {
 // Advance the game by one fixed tick of `dt` seconds.
 //
 // Every character gains speed * dt of progress and moves one cell once it has
-// a whole cell's worth. A character that can't move (the player holds no
+// a whole cell's worth. A character that can't move (a player holds no
 // direction or walks into a wall, an enemy is boxed in) stays ready and moves
 // on the first tick it can. All moves in a tick happen together: enemies aim
-// at where the player stood at the start of the tick, and collisions are
+// at where the players stood at the start of the tick, and collisions are
 // checked once, after everyone has moved, on where the characters are drawn
 // over the tick (see collides, and checkEnd for what a collision costs).
 // Callers stop stepping once a step returns an outcome (see flow.ts), so
 // nothing changes after the game ends.
 //
+// Players move in order, player 1 first (so on a dot both step onto in the
+// same tick, player 1 eats it), and pass through each other. Each enemy, and
+// the boss, goes after the nearest player (see nearestTarget and
+// bossTarget).
+//
 // On ice (see ice.ts), a sliding character's move is its slide step, taken
 // at its normal move opportunity: input and AI are ignored until the slide
-// ends. Phantoms float over ice and never slide. The player's breath may
-// speed its slides up (slideSpeedScale; see GameState.playerRate).
+// ends. Phantoms float over ice and never slide. A player's breath may
+// speed its slides up (slideSpeedScale; see Player.rate).
 //
 // Breaths (see breath.ts): their timers count down first, so anything that
 // runs out (a status, a tile effect, a defeated enemy's wait) is over before
-// anyone moves. A breath press fires after the player's move, from the cell
-// it is moving into and along its new facing, and before the enemies move,
-// so it hits them where they stood at the start of the tick. Enemies out of
-// play don't move or catch; held ones (e.g. frozen) don't move; harmless
+// anyone moves. A breath press fires after the players' moves, from the cell
+// the player is moving into and along its new facing, and before the
+// enemies move, so it hits them where they stood at the start of the tick.
+// Player 1's breath fires first. Breaths don't affect players. Enemies out
+// of play don't move or catch; held ones (e.g. frozen) don't move; harmless
 // ones don't catch; and enemies keep out of cells a tile effect blocks.
 //
-// A boss (see boss.ts) moves with the enemies, after the breath, and keeps
+// A boss (see boss.ts) moves with the enemies, after the breaths, and keeps
 // out of blocked cells too; a defeated one doesn't move or catch. Once the
-// dots are gone with the boss still about, the energy meter refills by
+// dots are gone with the boss still about, every energy meter refills by
 // itself (BOSS_TRICKLE per second), so the boss can always be finished.
 //
-// `move` is the player's input this tick (see MoveInput and movePlayerTick),
-// and `random` drives the enemy AI, so a tick is deterministic.
+// `moves` is each player's input this tick, player 1 first (see MoveInput
+// and movePlayerTick); a single MoveInput is player 1's, with the others
+// idle. `random` drives the enemy AI, so a tick is deterministic.
 export function step(
     state: GameState,
     dt: number,
-    move: MoveInput,
+    moves: MoveInput | readonly MoveInput[],
     random: Random
 ): Outcome | null {
-    const { cells, player, enemies } = state
+    const { cells, players, enemies } = state
+    const inputs = "held" in moves ? [moves] : moves
     state.ticks++
     tickEffects(state, dt)
     trickle(state, dt)
     const from = positions(state)
-    // Taken once, before anyone moves, so the player's progress and its
-    // drawn path for collisions use the same rate all tick.
-    const rate = state.playerRate
-    let start = tickStarts(state, dt, rate)
-    // Where the player came from on its latest move before this tick, for
+    let start = tickStarts(state, dt)
+    // Where each player came from on its latest move before this tick, for
     // the heading an ambusher aims along.
-    const playerLast = vec2(player.lastPos.x, player.lastPos.y)
+    const lasts = players.map(({ character: c }) =>
+        vec2(c.lastPos.x, c.lastPos.y)
+    )
 
-    if (!isZero(move.pressed)) state.bufferedStep = move.pressed
-    if (advance(player, dt * rate)) {
-        if (movePlayerTick(state, move.held)) spend(player)
-        else wait(player)
-    }
-    if (move.breath && breathe(state)) {
+    players.forEach((player, i) => {
+        const move = inputs[i] ?? IDLE
+        if (!isZero(move.pressed)) player.bufferedStep = move.pressed
+        // The rate was taken in tickStarts too, before anyone moved, so its
+        // progress and its drawn path for collisions agree.
+        if (advance(player.character, dt * player.rate)) {
+            if (movePlayerTick(state, player, move.held)) {
+                spend(player.character)
+            } else {
+                wait(player.character)
+            }
+        }
+    })
+    let breathed = false
+    players.forEach((player, i) => {
+        if (inputs[i]?.breath && breathe(state, player)) breathed = true
+    })
+    if (breathed) {
         // The breath comes before the enemies move, but it may have moved
         // some (pushed or defeated) or held them: trace each enemy from
         // where it is after the breath, not along a sweep across the jump.
-        const after = tickStarts(state, dt, rate)
-        start = {
-            characters: [start.characters[0], ...after.characters.slice(1)],
-            boss: after.boss,
-        }
+        const after = tickStarts(state, dt)
+        start = { ...after, players: start.players }
     }
     const blocked = enemyBlocks(state)
     // Cells as enemies see them, so blocked cells also end slides.
     const enemyCells = blocked ? blockedView(cells, blocked) : cells
+    // Each player's distances, searched once a tick at most, for every
+    // enemy that aims at the nearest player.
+    const paths = targetPaths(cells, from.players, enemyCells)
     enemies.forEach((enemy, i) => {
         if (!inPlay(enemy) || hasStatus(enemy, "holds")) return
         if (!advance(enemy, dt)) return
@@ -373,23 +455,38 @@ export function step(
             )
             reachWaypoint(enemy)
         } else {
+            const target = nearestTarget(
+                cells,
+                enemy,
+                from.players,
+                enemyCells,
+                paths
+            )
             enemyMove(
                 cells,
                 enemy,
-                from[0],
+                from.players[target],
                 random,
-                playerLast,
+                lasts[target],
                 state.ice,
                 blocked,
                 enemyCells
             )
         }
-        if (samePos(enemy.pos, from[i + 1])) wait(enemy)
+        if (samePos(enemy.pos, from.enemies[i])) wait(enemy)
         else spend(enemy)
     })
     const { boss } = state
     if (boss && !boss.defeated && advance(boss, dt)) {
-        const next = bossMove(state, from[0], blocked)
+        // Each player's distances, shared by the choice and the move.
+        const fromPlayers = from.players.map((p) => distanceMap(cells, p))
+        const target = bossTarget(state, from.players, blocked, fromPlayers)
+        const next = bossMove(
+            state,
+            from.players[target],
+            blocked,
+            fromPlayers[target]
+        )
         if (next) {
             boss.lastPos = vec2(boss.pos.x, boss.pos.y)
             boss.pos = next
@@ -403,36 +500,40 @@ export function step(
 }
 
 // On a boss level, once every dot is eaten and the boss is still about,
-// there is no other way to fill the energy meter: it refills by itself at
-// BOSS_TRICKLE per second, up to the breath's maxEnergy.
+// there is no other way to fill the energy meters: they refill by
+// themselves at BOSS_TRICKLE per second, up to each breath's maxEnergy.
 function trickle(state: GameState, dt: number) {
-    const { boss, breather } = state
+    const { boss } = state
     if (!boss || boss.defeated || hasDots(state.cells)) return
-    breather.energy = Math.min(
-        breather.breath.maxEnergy,
-        breather.energy + BOSS_TRICKLE * dt
-    )
+    for (const { breather } of state.players) {
+        breather.energy = Math.min(
+            breather.breath.maxEnergy,
+            breather.energy + BOSS_TRICKLE * dt
+        )
+    }
 }
 
 // Finish the glides in progress after the game has ended, for the short
 // outro before the end screen (see flow.ts). Every character's moveProgress
 // rises by speed * dt, capped at 1 (progress already at or past 1 is left
 // alone). Nobody moves and nothing else changes (cells, score, lives,
-// positions). Returns true once the player's glide is complete, i.e. the
-// player is drawn on its cell.
+// positions). Returns true once every player's glide is complete, i.e. the
+// players are drawn on their cells.
 export function settle(state: GameState, dt: number): boolean {
-    const rate = state.playerRate
     const boss = state.boss ? [state.boss] : []
-    for (const character of [state.player, ...state.enemies, ...boss]) {
-        if (character.moveProgress >= 1) continue
-        const scale = character === state.player ? rate : 1
-        const progress = character.moveProgress + character.speed * dt * scale
-        character.moveProgress = progress >= 1 - EPSILON ? 1 : progress
+    const gliders = [
+        ...state.players.map((p) => ({ c: p.character, rate: p.rate })),
+        ...[...state.enemies, ...boss].map((c) => ({ c, rate: 1 })),
+    ]
+    for (const { c, rate } of gliders) {
+        if (c.moveProgress >= 1) continue
+        const progress = c.moveProgress + c.speed * dt * rate
+        c.moveProgress = progress >= 1 - EPSILON ? 1 : progress
     }
-    return state.player.moveProgress >= 1 - EPSILON
+    return state.players.every((p) => p.character.moveProgress >= 1 - EPSILON)
 }
 
-// The player's move opportunity: try the buffered direction first, then each
+// A player's move opportunity: try the buffered direction first, then each
 // held direction, newest first, until one is open. The buffer is cleared
 // either way, so it never outlives one opportunity. Returns true if the
 // player moved.
@@ -447,27 +548,32 @@ export function settle(state: GameState, dt: number): boolean {
 // during a slide is used at the first opportunity after it ends (a newer tap
 // replaces it, as always). A solid enemy ahead ends a slide as a wall would,
 // so the player is then free to move. The glide of a slide step (and only of
-// a slide step) runs at the breath's slideSpeedScale (GameState.playerRate).
-function movePlayerTick(state: GameState, held: readonly Vec2[]): boolean {
-    const { cells, player } = state
-    const slide = slideStep(cells, state.ice, player.pos, player.lastPos)
+// a slide step) runs at the breath's slideSpeedScale (Player.rate).
+function movePlayerTick(
+    state: GameState,
+    player: Player,
+    held: readonly Vec2[]
+): boolean {
+    const { cells } = state
+    const { character } = player
+    const slide = slideStep(cells, state.ice, character.pos, character.lastPos)
     if (slide) {
-        const ahead = vec2(player.pos.x + slide.x, player.pos.y + slide.y)
+        const ahead = vec2(character.pos.x + slide.x, character.pos.y + slide.y)
         if (!solidAt(state, loopPos(cells, ahead))) {
-            if (!movePlayer(state, slide)) return false
-            state.playerRate = state.breather.breath.slideSpeedScale ?? 1
+            if (!movePlayer(state, slide, player)) return false
+            player.rate = player.breather.breath.slideSpeedScale ?? 1
             return true
         }
     }
-    const buffered = state.bufferedStep
-    state.bufferedStep = vec2(0, 0)
+    const buffered = player.bufferedStep
+    player.bufferedStep = vec2(0, 0)
     const moved =
-        movePlayer(state, buffered) ||
-        held.some((direction) => movePlayer(state, direction))
-    if (moved) state.playerRate = 1
+        movePlayer(state, buffered, player) ||
+        held.some((direction) => movePlayer(state, direction, player))
+    if (moved) player.rate = 1
     const tried = isZero(buffered) ? held[0] : buffered
     if (!moved && tried && !isZero(tried)) {
-        state.breather.facing = vec2(tried.x, tried.y)
+        player.breather.facing = vec2(tried.x, tried.y)
     }
     return moved
 }
@@ -476,17 +582,13 @@ function isZero(v: Vec2): boolean {
     return v.x === 0 && v.y === 0
 }
 
-// Where every character stands: the player first, then the enemies in order.
-function positions(state: GameState): Vec2[] {
-    return [state.player, ...state.enemies].map((c) => vec2(c.pos.x, c.pos.y))
-}
-
-// Where every character is drawn now (see drawnPos), in the same order as
-// positions.
-function drawnPositions(state: GameState): Vec2[] {
-    const cols = state.cells[0].length
-    const rows = state.cells.length
-    return [state.player, ...state.enemies].map((c) => drawnPos(c, cols, rows))
+// Where every character stands.
+function positions(state: GameState): { players: Vec2[]; enemies: Vec2[] } {
+    const at = (c: Character) => vec2(c.pos.x, c.pos.y)
+    return {
+        players: state.players.map((p) => at(p.character)),
+        enemies: state.enemies.map(at),
+    }
 }
 
 // Where a character is for collisions: where it is drawn at a tick boundary,
@@ -513,37 +615,36 @@ export type TickStart = {
 
 // Everyone's TickStart for a tick (see tickStarts).
 export type TickStarts = {
-    // The player's, then the enemies', in the same order as positions.
-    characters: TickStart[]
+    // In the same order as GameState.players.
+    players: TickStart[]
+    // In the same order as GameState.enemies.
+    enemies: TickStart[]
     // The boss's (of its top-left cell), or null if there is no boss.
     boss: TickStart | null
 }
 
 // Everyone's TickStart for a tick of `dt` seconds, taken before anyone
-// moves. `rate` scales the player's speed (see GameState.playerRate); the
-// default leaves it alone.
-function tickStarts(state: GameState, dt: number, rate = 1): TickStarts {
+// moves. Each player's speed is scaled by its rate (see Player.rate).
+function tickStarts(state: GameState, dt: number): TickStarts {
     const cols = state.cells[0].length
     const rows = state.cells.length
-    const { boss } = state
-    const bossStart: TickStart | null = boss
-        ? {
-              drawn: drawnPos(boss, cols, rows),
-              cell: vec2(boss.pos.x, boss.pos.y),
-              arrive: arriveTime(boss, dt),
-          }
-        : null
-    const characters = [state.player, ...state.enemies].map((c) => ({
+    const startOf = (c: Glider, arrive: number): TickStart => ({
         drawn: drawnPos(c, cols, rows),
         cell: vec2(c.pos.x, c.pos.y),
+        arrive,
+    })
+    const { boss } = state
+    return {
+        players: state.players.map((p) =>
+            startOf(p.character, arriveTime(p.character, dt * p.rate))
+        ),
         // A held enemy's progress doesn't move on this tick, so it stays
         // where it is drawn.
-        arrive:
-            c !== state.player && hasStatus(c, "holds")
-                ? Infinity
-                : arriveTime(c, c === state.player ? dt * rate : dt),
-    }))
-    return { characters, boss: bossStart }
+        enemies: state.enemies.map((e) =>
+            startOf(e, hasStatus(e, "holds") ? Infinity : arriveTime(e, dt))
+        ),
+        boss: boss ? startOf(boss, arriveTime(boss, dt)) : null,
+    }
 }
 
 // When in a tick of `dt` seconds a character's glide reaches its cell: the
@@ -679,21 +780,38 @@ function collides(
 // everyone's TickStart, taken at the start of the tick (see tickStarts). The
 // default is a tick of no time, so only where they are drawn now counts.
 //
-// - Caught on the last life: lives drop to 0 and the game is lost ("dead").
-// - Caught with lives left: one life is lost and everyone respawns at once
-//   (see respawn), keeping the dots and score. That is no outcome; the game
-//   goes on, and callers can watch `lives` if they need to notice it.
-// - No dots left (and, on a boss level, the boss defeated): won, checked
-//   first. Eating the last dot, or defeating the boss when that comes last,
-//   clears the stage even if the player is caught on that same tick, and
-//   costs no life.
+// No dots left (and, on a boss level, the boss defeated) is won, checked
+// first: eating the last dot (whichever player eats it), or defeating the
+// boss when that comes last, clears the stage even if a player is caught
+// on that same tick, and costs no life. Otherwise any player caught this
+// tick goes to resolveCatch.
 export function checkEnd(
     state: GameState,
     start: TickStarts = tickStarts(state, 0)
 ): Outcome | null {
     const bossLeft = state.boss !== null && !state.boss.defeated
     if (!hasDots(state.cells) && !bossLeft) return "won"
-    if (!caught(state, start)) return null
+    const caughtPlayers = state.players.filter((_, i) =>
+        caught(state, start, i)
+    )
+    return caughtPlayers.length > 0 ? resolveCatch(state, caughtPlayers) : null
+}
+
+// What catching `caught` (one or more players, caught on the same tick)
+// costs. This is the one place that decides it, so the 2-player modes
+// (KDA-221 co-op, KDA-222 versus) can give it their own rules.
+//
+// For now every game plays by the 1-player rule, with the lives shared:
+// - caught on the last life: lives drop to 0 and the game is lost ("dead");
+// - caught with lives left: one life is lost, however many players were
+//   caught, and everyone respawns at once (see respawn), keeping the dots
+//   and scores. That is no outcome; the game goes on, and callers can watch
+//   `lives` if they need to notice it.
+export function resolveCatch(
+    state: GameState,
+    caught: readonly Player[]
+): Outcome | null {
+    if (caught.length === 0) return null
     if (state.lives <= 1) {
         state.lives = 0
         return "dead"
@@ -703,30 +821,24 @@ export function checkEnd(
     return null
 }
 
-// Whether any enemy, or the boss, collides with the player this tick (see
-// collides). `start` is everyone's TickStart for the tick (see tickStarts).
-// Enemies out of play and harmless ones (see EnemyStatus) don't catch, nor
-// does a defeated boss.
+// Whether any enemy, or the boss, collides with player `index` this tick
+// (see collides). `start` is everyone's TickStart for the tick (see
+// tickStarts). Enemies out of play and harmless ones (see EnemyStatus)
+// don't catch, nor does a defeated boss. Players never catch each other.
 //
 // Boss levels have no tunnels. The wrap-aware offsets in collides may still
 // take a far-off player the short way round the map, but on a map without
 // tunnels that leaves it at least a cell from the boss's square, so it never
 // makes a catch.
-function caught(state: GameState, start: TickStarts): boolean {
+function caught(state: GameState, start: TickStarts, index: number): boolean {
     const cols = state.cells[0].length
     const rows = state.cells.length
-    const [player, ...enemies] = drawnPositions(state)
-    const byEnemy = enemies.some((enemy, i) => {
-        const e = state.enemies[i]
+    const player = drawnPos(state.players[index].character, cols, rows)
+    const from = start.players[index]
+    const byEnemy = state.enemies.some((e, i) => {
         if (!inPlay(e) || hasStatus(e, "harmless")) return false
-        return collides(
-            start.characters[0],
-            player,
-            start.characters[i + 1],
-            enemy,
-            cols,
-            rows
-        )
+        const enemy = drawnPos(e, cols, rows)
+        return collides(from, player, start.enemies[i], enemy, cols, rows)
     })
     if (byEnemy) return true
     const { boss } = state
@@ -734,7 +846,7 @@ function caught(state: GameState, start: TickStarts): boolean {
     return collides(
         start.boss,
         drawnPos(boss, cols, rows),
-        start.characters[0],
+        from,
         player,
         cols,
         rows,

@@ -4,14 +4,29 @@ import {
     END_CHOICES,
     gameOf,
     initialScreen,
+    MODE_CHOICES,
     pauseIfPlaying,
+    playerCount,
+    recordsProgress,
     update,
     type EndChoice,
+    type Mode,
     type Screen,
+    type TickInput,
 } from "./flow"
-import type { GameState } from "./game"
-import { browserPadList, GamepadSource, type PadChange } from "./gamepad"
-import { InputState, KeyboardSource } from "./input"
+import { totalScore, type GameState } from "./game"
+import {
+    browserPadList,
+    GamepadSource,
+    type PadAssignment,
+    type PadChange,
+} from "./gamepad"
+import {
+    InputState,
+    KeyboardSource,
+    PLAYER_1_KEYS,
+    PLAYER_2_KEYS,
+} from "./input"
 import { loadLastPick, saveLastPick } from "./lastPick"
 import { levels } from "./levels"
 import { createLoop } from "./loop"
@@ -21,7 +36,7 @@ import {
     stageSlots,
     type Progress,
 } from "./progress"
-import { createRenderer } from "./render"
+import { createRenderer, type Hud } from "./render"
 import { ANIMAL_IDS, ANIMALS, type AnimalId } from "./roster"
 import {
     burst,
@@ -60,18 +75,23 @@ const renderer = createRenderer(canvas)
 addEventListener("resize", () => renderer.resize())
 
 const input = new InputState()
-const player1 = input.player(0)
-const tickInput = {
-    wasPressed: player1.wasPressed.bind(player1),
-    move: () => ({
-        held: player1.heldSteps(),
-        pressed: player1.pressedStep(),
-        breath: player1.wasPressed("breath"),
-    }),
+// Each player's input, by index (player 1 is 0): flow asks for player 2's
+// only in a 2-player mode.
+const tickInput: TickInput = {
+    wasPressed: (action, player = 0) => input.player(player).wasPressed(action),
+    move: (player = 0) => {
+        const p = input.player(player)
+        return {
+            held: p.heldSteps(),
+            pressed: p.pressedStep(),
+            breath: p.wasPressed("breath"),
+        }
+    },
 }
 
 // Gamepads: in one-player play every pad drives player 1, alongside the
-// keyboard. A pad in use lost mid-game pauses it, like leaving the window;
+// keyboard; in a 2-player mode the first pad connected drives player 1 and
+// the second player 2 (see padAssignment). A pad in use lost mid-game pauses it, like leaving the window;
 // an idle pad going to sleep doesn't. Set up before the loop, whose frames
 // poll it. (Toasts and auto-pause only run on events, after startup.)
 const TOAST_MS = 2000
@@ -91,7 +111,7 @@ const pads = new GamepadSource(
     globalThis,
     onPadChange
 )
-pads.setAssignment("shared")
+pads.setAssignment(padAssignment(screen))
 let padPollFailed = false
 
 // The loop ticks on every screen; menus and pause poll their input per tick
@@ -138,19 +158,42 @@ function tick(dt: number) {
     if (next !== screen) enter(screen, next)
 }
 
+// How pads map to players on a screen. The title, where the mode is still
+// being chosen, shares every pad with player 1, so any pad can pick the
+// mode (and go back to 1 player). From stage select on, a 2-player mode
+// gives each pad its own player, so player 2's pad picks its character.
+function padAssignment(screen: Screen): PadAssignment {
+    return screen.kind !== "title" && playerCount(screen.mode) > 1
+        ? "perPad"
+        : "shared"
+}
+
 function enter(prev: Screen, next: Screen) {
     screen = next
+    pads.setAssignment(padAssignment(next))
     // Play started from a menu (character select or Retry): a direction
     // still held from the menu waits for a fresh press. Resuming from pause
     // keeps held directions, so holding through a pause carries on moving.
     if (next.kind === "playing" && prev.kind !== "paused") input.ignoreHeld()
-    if (next.kind === "playing" && prev.kind === "characterSelect") {
-        lastAnimal = next.animal
+    // Only 1-player games remember the pick: 2-player games leave saved
+    // data alone.
+    if (
+        next.kind === "playing" &&
+        prev.kind === "characterSelect" &&
+        playerCount(next.mode) === 1
+    ) {
+        lastAnimal = next.animals[0]
         saveLastPick(storage, lastAnimal)
     }
     if (next.kind === "stageClear" && prev.kind === "ending") {
-        const { stars, ticks } = next.rating
-        progress = recordClear(progress, storage, next.level, { stars, ticks })
+        // 2-player games leave saved progress alone.
+        if (recordsProgress(next.mode)) {
+            const { stars, ticks } = next.rating
+            progress = recordClear(progress, storage, next.level, {
+                stars,
+                ticks,
+            })
+        }
         celebrate(10)
     }
     showOverlay(next)
@@ -169,18 +212,36 @@ function render(alpha: number) {
     }
     // Every screen with a game also says which level it is.
     const rules = "level" in screen ? levels[screen.level]?.rules : undefined
-    renderer.draw(
-        game,
-        lastAlpha,
-        { score: game.score, lives: game.lives, energy: energyHud(game) },
-        rules
-    )
+    renderer.draw(game, lastAlpha, hudOf(game), rules)
+}
+
+// The HUD: with one player its score and meter; with two, each one's.
+function hudOf(game: GameState): Hud {
+    if (game.players.length === 1) {
+        return {
+            score: totalScore(game),
+            lives: game.lives,
+            energy: energyHud(game),
+        }
+    }
+    return {
+        lives: game.lives,
+        players: game.players.map((p, i) => ({
+            score: p.score,
+            energy: energyHud(game, i),
+        })),
+    }
 }
 
 function showOverlay(s: Screen) {
     switch (s.kind) {
         case "title":
-            return showTitle()
+            return showTitle(
+                MODE_CHOICES.map((mode) => ({
+                    label: MODE_LABELS[mode],
+                    selected: mode === s.mode,
+                }))
+            )
         case "stageSelect":
             return showStageSelect(
                 stageSlots(
@@ -192,7 +253,8 @@ function showOverlay(s: Screen) {
         case "characterSelect":
             return showCharacterSelect(
                 ANIMAL_IDS.map((id) => ANIMALS[id]),
-                s.picks[0]
+                s.picks,
+                s.ready
             )
         case "playing":
         case "ending":
@@ -211,9 +273,20 @@ function showOverlay(s: Screen) {
 
 const END_LABELS = { retry: "Retry", stageSelect: "Stage select" } as const
 
+// The mode select's labels. Until KDA-221 and KDA-222 give co-op and versus
+// their own rules, the one 2-player entry (coop) is just "2 players".
+const MODE_LABELS: Record<Mode, string> = {
+    solo: "1 player",
+    coop: "2 players",
+    versus: "Versus",
+}
+
 function endView(game: GameState, choice: EndChoice): EndScreenView {
     return {
-        score: game.score,
+        score: totalScore(game),
+        ...(game.players.length > 1
+            ? { playerScores: game.players.map((p) => p.score) }
+            : {}),
         items: END_CHOICES.map((c) => ({
             label: END_LABELS[c],
             selected: c === choice,
@@ -232,7 +305,7 @@ document.addEventListener("visibilitychange", () => {
     if (document.hidden) autoPause()
 })
 
-new KeyboardSource().attach(input)
+new KeyboardSource([PLAYER_1_KEYS, PLAYER_2_KEYS]).attach(input)
 pads.attach(input)
 // The (empty) toast live region goes in at once, so screen readers already
 // watch it when the first toast shows.

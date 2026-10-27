@@ -12,7 +12,7 @@ import { allDirections, directions, samePos, vec2, type Vec2 } from "./vec2"
 // - A character that has just moved onto ice keeps going the same way: its
 //   following moves are slide steps. Sliding uses the character's normal move
 //   opportunities, so it slides at its normal speed (the player's times its
-//   breath's slideSpeedScale, e.g. the Penguin's; see GameState.playerRate).
+//   breath's slideSpeedScale, e.g. the Penguin's; see Player.rate).
 // - While sliding, steering is ignored: the player's held and tapped
 //   directions, and enemy AI.
 // - The slide ends on reaching normal floor, or on ice when the next cell

@@ -223,7 +223,7 @@ export const PLAYER_1_KEYS: KeyMap = {
     Space: "confirm",
 }
 
-// Defined for two-player play; not attached yet.
+// Player 2, for 2-player play (main attaches both maps).
 export const PLAYER_2_KEYS: KeyMap = {
     KeyW: "up",
     KeyS: "down",

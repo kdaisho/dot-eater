@@ -108,8 +108,9 @@ export function splitSplitter(state: GameState, i: number) {
 
 // Send the two halves, both on the Splitter's cell, to two different open
 // neighbouring cells, so they don't start as one stacked sprite: the two
-// farthest from the player by path (direction order on ties), never the
-// player's cell or the one it is gliding out of (lastPos). So the player who
+// farthest from the player (the nearer one, with two) by path (direction
+// order on ties), never a player's cell or the one it is gliding out of
+// (lastPos). So the player who
 // just breathed gets a moment's room where the maze allows it (in a corridor
 // one half still comes its way). Each half glides out from the Splitter's
 // cell as if it had just moved there, so the no-reverse rule keeps them
@@ -131,13 +132,13 @@ export function splitSplitter(state: GameState, i: number) {
 // with no progress, so they wait a whole move before coming after the
 // player.
 function spread(state: GameState, halves: readonly Character[]) {
-    const { cells, player } = state
+    const { cells } = state
     const at = vec2(halves[0].pos.x, halves[0].pos.y)
-    const fromPlayer = distanceMap(cells, player.pos)
+    const maps = state.players.map((p) => distanceMap(cells, p.character.pos))
+    // With two players, a cell is as far as the nearer of them.
+    const fromPlayer = (v: Vec2) => Math.min(...maps.map((m) => m[v.y][v.x]))
     const { free, next } = freeCells(state, at)
-    const targets = free.sort(
-        (a, b) => fromPlayer[b.y][b.x] - fromPlayer[a.y][a.x] || 0
-    )
+    const targets = free.sort((a, b) => fromPlayer(b) - fromPlayer(a) || 0)
     if (targets.length === 0) return
     const glide = next && !playerCell(state, at)
     halves.forEach((half, k) => {
@@ -149,9 +150,11 @@ function spread(state: GameState, halves: readonly Character[]) {
     })
 }
 
+// Whether `cell` is any player's cell or the one it is gliding out of.
 function playerCell(state: GameState, cell: Vec2): boolean {
-    const { player } = state
-    return samePos(cell, player.pos) || samePos(cell, player.lastPos)
+    return state.players.some(
+        ({ character: c }) => samePos(cell, c.pos) || samePos(cell, c.lastPos)
+    )
 }
 
 // The open cells nearest `at` by path that aren't the player's (see

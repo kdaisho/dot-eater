@@ -1,6 +1,6 @@
 import { footprint } from "./boss"
 import { enemyVisible, hasStatus, type EnergyHud, type Look } from "./breath"
-import { AiType, Cell, SPRITE_SCALE } from "./constants"
+import { AiType, Cell, CharacterId, SPRITE_SCALE } from "./constants"
 import {
     fogDistance,
     fogWrap,
@@ -8,7 +8,7 @@ import {
     lightCentres,
     type FogWrap,
 } from "./fog"
-import type { GameState } from "./game"
+import type { GameState, Player } from "./game"
 import { eatenDotVisible, glidePos, wrapCopies } from "./glide"
 import { computeLayout, type Layout } from "./layout"
 import type { LevelRules } from "./level"
@@ -22,7 +22,13 @@ export type Hud = {
     lives?: number
     // The energy meter, in the middle (see energyHud in breath.ts).
     energy?: EnergyHud
+    // With two players, each one's score and meter, player 1 first: drawn
+    // in place of `score` and `energy`, player 1 on the left and player 2
+    // on the right, in their marker colours, with the shared lives between.
+    players?: readonly PlayerHud[]
 }
+
+export type PlayerHud = { score: number; energy: EnergyHud }
 
 export type Renderer = {
     // Draw the game. `alpha` in [0, 1) is how far the loop is between the last
@@ -71,11 +77,19 @@ const FOG_SOFT_EDGE = 1.5
 // player nears rather than popping in.
 const FOG_REACH = Math.SQRT1_2
 
-// The player is drawn as the playing character's emoji (ANIMALS in
-// roster.ts), as are the HUD's lives.
-function playerSprite(state: GameState): string {
-    return ANIMALS[state.breather.breath.animal].emoji
+// Each player is drawn as its character's emoji (ANIMALS in roster.ts), as
+// are the HUD's lives (player 1's).
+function playerSprite(player: Player): string {
+    return ANIMALS[player.breather.breath.animal].emoji
 }
+
+// With two players, each one's sprite has a ring and a small number in its
+// colour, so two players of the same character can be told apart; their
+// HUD scores and meters use the same colours.
+export const PLAYER_COLORS = ["#2563eb", "#dc2626"] as const
+// The ring's width and the number's size, as fractions of the sprite's.
+const RING_WIDTH = 0.08
+const LABEL_SCALE = 0.4
 
 // Enemies look like what they do: every enemy of one AI type shares a
 // sprite. A Record over AiType, so a new AI type without a sprite is a type
@@ -128,6 +142,17 @@ export function createRenderer(
     let last:
         | { state: GameState; alpha: number; hud: Hud; rules: LevelRules }
         | undefined
+    // With two players, the fog's darkness is drawn on a canvas of its own
+    // first (see drawDarkness); made, with its context, when first needed
+    // and kept from frame to frame.
+    let layer: Layer | undefined
+    const darknessLayer = (): Layer => {
+        if (!layer) {
+            const layerCanvas = canvas.ownerDocument.createElement("canvas")
+            layer = { canvas: layerCanvas, ctx: layerCanvas.getContext("2d") }
+        }
+        return layer
+    }
 
     function fit() {
         layout = computeLayout(
@@ -165,7 +190,7 @@ export function createRenderer(
         ctx.fillStyle = COLORS.background
         ctx.fillRect(0, 0, width, height)
 
-        drawHud(ctx, hud, playerSprite(state), width, hudHeight)
+        drawHud(ctx, hud, playerSprite(state.players[0]), width, hudHeight)
 
         ctx.save()
         ctx.translate(0, hudHeight)
@@ -179,7 +204,7 @@ export function createRenderer(
         drawCells(ctx, state, alpha, cell, fog)
         drawBoss(ctx, state, alpha, cell, cols, rows, fog)
         drawCharacters(ctx, state, alpha, cell, cols, rows, fog)
-        if (fog) drawDarkness(ctx, fog, cell, cols, rows)
+        if (fog) drawDarkness(ctx, fog, cell, cols, rows, darknessLayer, dpr)
         ctx.restore()
     }
 
@@ -202,10 +227,11 @@ export function createRenderer(
     }
 }
 
-// The fog for one frame: the light is centred on where the player is drawn
-// (mid-glide), and anything wholly outside `radius` cells of it is hidden.
+// The fog for one frame: the light is centred on where each player is
+// drawn (mid-glide), and anything wholly outside `radius` cells of every
+// player is hidden.
 type Fog = {
-    player: Vec2
+    players: Vec2[]
     radius: number
     wrap: FogWrap
     // Whether something centred at `p` (cell units) reaches into the light.
@@ -219,31 +245,51 @@ function createFog(
     rows: number,
     radius: number
 ): Fog {
-    const player = glidePos(state.player, alpha, cols, rows, state.playerRate)
+    const players = state.players.map((p) =>
+        glidePos(p.character, alpha, cols, rows, p.rate)
+    )
     const wrap = fogWrap(state.cells)
     return {
-        player,
+        players,
         radius,
         wrap,
         visible: (p) =>
-            fogDistance(p, player, cols, rows, wrap) <= radius + FOG_REACH,
+            players.some(
+                (player) =>
+                    fogDistance(p, player, cols, rows, wrap) <=
+                    radius + FOG_REACH
+            ),
     }
 }
 
-// Darken the map outside the light: per light centre (the player and its
-// copies across tunnels), a radial gradient over the part of the map nearest
-// that centre, clear in the middle and fading to full darkness at the radius.
-// The gradient's last colour carries on beyond it, so the rest is dark.
+// Darken the map outside the light. With one player: per light centre (the
+// player and its copies across tunnels), a radial gradient over the part of
+// the map nearest that centre, clear in the middle and fading to full
+// darkness at the radius. The gradient's last colour carries on beyond it,
+// so the rest is dark.
+//
+// With two players the lights overlap, so the darkness is drawn on a layer
+// of its own (`layer`, sized here when the map's size changes) and
+// composited once: the layer is filled
+// dark, every light centre of every player clears its circle out of it
+// (destination-out, fading at the soft edge), and the layer goes over the
+// map. Without a 2D context for the layer, only `visible` hides things.
 function drawDarkness(
     ctx: CanvasRenderingContext2D,
     fog: Fog,
     cell: number,
     cols: number,
-    rows: number
+    rows: number,
+    layer: () => Layer,
+    dpr: number
 ) {
     const outer = fog.radius * cell
     const inner = Math.max(0, fog.radius - FOG_SOFT_EDGE) * cell
-    for (const c of lightCentres(fog.player, cols, rows, fog.wrap)) {
+    if (fog.players.length > 1) {
+        drawSharedDarkness(ctx, fog, cell, cols, rows, layer(), dpr)
+        return
+    }
+    for (const c of lightCentres(fog.players[0], cols, rows, fog.wrap)) {
         const band = lightBand(c, cols, rows, fog.wrap)
         if (!band) continue
         const x = (c.x + 0.5) * cell
@@ -264,7 +310,58 @@ function drawDarkness(
     }
 }
 
-// Ice floor, walls and dots, plus the dot the player has just eaten while its
+// The canvas the 2-player darkness is drawn on, and its 2D context (null if
+// it has none).
+type Layer = {
+    canvas: HTMLCanvasElement
+    ctx: CanvasRenderingContext2D | null
+}
+
+function drawSharedDarkness(
+    ctx: CanvasRenderingContext2D,
+    fog: Fog,
+    cell: number,
+    cols: number,
+    rows: number,
+    layer: Layer,
+    dpr: number
+) {
+    const width = cols * cell
+    const height = rows * cell
+    const dark = layer.ctx
+    if (!dark) return
+    // Resizing a canvas reallocates it, so only when the size changes.
+    const pixelWidth = Math.ceil(width * dpr)
+    const pixelHeight = Math.ceil(height * dpr)
+    if (layer.canvas.width !== pixelWidth) layer.canvas.width = pixelWidth
+    if (layer.canvas.height !== pixelHeight) layer.canvas.height = pixelHeight
+    const outer = fog.radius * cell
+    const inner = Math.max(0, fog.radius - FOG_SOFT_EDGE) * cell
+    // Last frame's darkness is still there: start from a clear layer.
+    dark.setTransform(1, 0, 0, 1, 0, 0)
+    dark.globalCompositeOperation = "source-over"
+    dark.clearRect(0, 0, pixelWidth, pixelHeight)
+    dark.setTransform(dpr, 0, 0, dpr, 0, 0)
+    dark.globalCompositeOperation = "source-over"
+    dark.fillStyle = `rgb(${COLORS.fog})`
+    dark.fillRect(0, 0, width, height)
+    dark.globalCompositeOperation = "destination-out"
+    for (const player of fog.players) {
+        for (const c of lightCentres(player, cols, rows, fog.wrap)) {
+            const x = (c.x + 0.5) * cell
+            const y = (c.y + 0.5) * cell
+            const light = dark.createRadialGradient(x, y, inner, x, y, outer)
+            light.addColorStop(0, "rgba(0, 0, 0, 1)")
+            light.addColorStop(1, "rgba(0, 0, 0, 0)")
+            dark.fillStyle = light
+            dark.fillRect(x - outer, y - outer, outer * 2, outer * 2)
+        }
+    }
+    dark.globalCompositeOperation = "source-over"
+    ctx.drawImage(layer.canvas, 0, 0, width, height)
+}
+
+// Ice floor, walls and dots, plus the dot each player has just eaten while its
 // glide hasn't reached it yet (see eatenDotVisible). Ice fills its whole
 // cell, so a patch reads as one surface, with any dot drawn on top. Tile
 // effects from breaths are drawn by their Look: the colour over the floor
@@ -279,10 +376,12 @@ function drawCells(
 ) {
     const wall = cell * WALL_SCALE
     const dot = Math.max(1, cell * DOT_SCALE)
-    const eaten =
-        state.eatenAt && eatenDotVisible(state.player, alpha, state.playerRate)
-            ? state.eatenAt
-            : null
+    // Each player's eaten dot, while it is still to be drawn.
+    const eaten = state.players.flatMap((p) =>
+        p.eatenAt && eatenDotVisible(p.character, alpha, p.rate)
+            ? [p.eatenAt]
+            : []
+    )
     // Whole pixels, so neighbouring filled cells meet without a seam.
     const fillCell = (x: number, y: number, color: string) => {
         const left = Math.round(x * cell)
@@ -310,7 +409,7 @@ function drawCells(
                 ctx.fillRect(cx - wall / 2, cy - wall / 2, wall, wall)
             } else if (
                 value === Cell.dot ||
-                (eaten && eaten.x === x && eaten.y === y)
+                eaten.some((e) => e.x === x && e.y === y)
             ) {
                 ctx.fillStyle = COLORS.dot
                 ctx.fillRect(cx - dot / 2, cy - dot / 2, dot, dot)
@@ -408,26 +507,38 @@ function drawCharacters(
 ) {
     ctx.textAlign = "center"
     ctx.textBaseline = "middle"
-    // Later characters are drawn on top of earlier ones. In fog, enemies
-    // outside the light are hidden; the player is always in it. A defeated
-    // enemy is hidden until it blinks before coming back (enemyVisible).
-    // Statuses are drawn by their Look: the colour as a disc behind the
-    // sprite, the emoji as a small badge at its top right. A held enemy
-    // (e.g. frozen mid-glide) gets no frame alpha: its progress doesn't move
-    // on, so it stays exactly where it is drawn instead of creeping forward
-    // between ticks. The player glides at its current rate (playerRate), as
-    // the ticks move it. A Splitter's half is drawn smaller (HALF_SCALE), its
-    // disc and badges too.
-    for (const character of [state.player, ...state.enemies]) {
-        const isPlayer = character === state.player
+    // Later characters are drawn on top of earlier ones: the players (player
+    // 1 first), then the enemies. In fog, enemies outside the light are
+    // hidden; the players are always in it. A defeated enemy is hidden until
+    // it blinks before coming back (enemyVisible). Statuses are drawn by
+    // their Look: the colour as a disc behind the sprite, the emoji as a
+    // small badge at its top right. A held enemy (e.g. frozen mid-glide) gets
+    // no frame alpha: its progress doesn't move on, so it stays exactly where
+    // it is drawn instead of creeping forward between ticks. Each player
+    // glides at its current rate (Player.rate), as the ticks move it, and
+    // with two players wears its marker (see PLAYER_COLORS). A Splitter's
+    // half is drawn smaller (HALF_SCALE), its disc and badges too.
+    const marked = state.players.length > 1
+    const sprites = [
+        ...state.players.map((player, i) => ({
+            character: player.character,
+            sprite: playerSprite(player),
+            rate: player.rate,
+            marker: marked ? i : null,
+        })),
+        ...state.enemies.map((enemy) => ({
+            character: enemy,
+            sprite: ENEMY_SPRITES[enemy.ai],
+            rate: 1,
+            marker: null,
+        })),
+    ]
+    for (const { character, sprite, rate, marker } of sprites) {
+        const isPlayer = character.id === CharacterId.player
         if (!isPlayer && !enemyVisible(character)) continue
         const held = !isPlayer && hasStatus(character, "holds")
-        const rate = isPlayer ? state.playerRate : 1
         const pos = glidePos(character, held ? 0 : alpha, cols, rows, rate)
         if (fog && !isPlayer && !fog.visible(pos)) continue
-        const sprite = isPlayer
-            ? playerSprite(state)
-            : ENEMY_SPRITES[character.ai]
         const looks = character.statuses.flatMap((s) =>
             s.status.look ? [s.status.look] : []
         )
@@ -447,6 +558,7 @@ function drawCharacters(
                 ctx.fill()
             }
             ctx.fillText(sprite, x, y)
+            if (marker !== null) drawMarker(ctx, marker, x, y, size)
             const badges = looks.filter((look) => look.emoji)
             if (badges.length === 0) continue
             ctx.font = `${Math.round(size * BADGE_SCALE)}px sans-serif`
@@ -461,8 +573,30 @@ function drawCharacters(
     }
 }
 
+// Player `index`'s marker on its sprite centred at (x, y): a ring round it
+// and its number at the bottom left, both in its colour.
+function drawMarker(
+    ctx: CanvasRenderingContext2D,
+    index: number,
+    x: number,
+    y: number,
+    size: number
+) {
+    const color = PLAYER_COLORS[index]
+    ctx.strokeStyle = color
+    ctx.lineWidth = Math.max(1, size * RING_WIDTH)
+    ctx.beginPath()
+    ctx.arc(x, y, size / 2 + ctx.lineWidth / 2, 0, Math.PI * 2)
+    ctx.stroke()
+    ctx.fillStyle = color
+    ctx.font = `bold ${Math.round(size * LABEL_SCALE)}px sans-serif`
+    ctx.fillText(String(index + 1), x - size / 2, y + size / 2)
+}
+
 // Score on the left, lives (as the player's emoji) on the right, the energy
-// meter in the middle.
+// meter in the middle. With two players (hud.players): player 1's score and
+// meter on the left, player 2's on the right, each in its marker colour,
+// and the shared lives (as hearts) in the middle.
 function drawHud(
     ctx: CanvasRenderingContext2D,
     hud: Hud,
@@ -474,6 +608,10 @@ function drawHud(
     ctx.fillStyle = COLORS.text
     ctx.font = `${Math.round(height * 0.6)}px monospace`
     ctx.textBaseline = "middle"
+    if (hud.players && hud.players.length > 1) {
+        drawPlayersHud(ctx, hud, width, height, pad)
+        return
+    }
     if (hud.score !== undefined) {
         ctx.textAlign = "left"
         ctx.fillText(`Score ${hud.score}`, pad, height / 2)
@@ -486,31 +624,68 @@ function drawHud(
             height / 2
         )
     }
-    if (hud.energy) drawMeter(ctx, hud.energy, width, height)
+    if (hud.energy) {
+        drawMeter(ctx, hud.energy, (width - width / 4) / 2, width / 4, height)
+    }
 }
 
-// The energy meter: a framed bar a quarter of the HUD wide, centred, filled
-// up to the energy, with a mark at every multiple of the breath's cost (so
-// the player sees how many breaths it holds). The fill is bright while a
-// breath is ready and grey otherwise.
+// The HUD's share of each player's meter, as a fraction of its width.
+const PLAYER_METER = 0.15
+
+function drawPlayersHud(
+    ctx: CanvasRenderingContext2D,
+    hud: Hud,
+    width: number,
+    height: number,
+    pad: number
+) {
+    const players = hud.players ?? []
+    const w = width * PLAYER_METER
+    players.slice(0, 2).forEach((player, i) => {
+        const color = PLAYER_COLORS[i]
+        const left = i === 0
+        ctx.fillStyle = color
+        ctx.textAlign = left ? "left" : "right"
+        ctx.fillText(
+            `${i + 1}P ${player.score}`,
+            left ? pad : width - pad,
+            height / 2
+        )
+        const meterLeft = left ? width * 0.2 : width * 0.8 - w
+        drawMeter(ctx, player.energy, meterLeft, w, height, color)
+    })
+    if (hud.lives !== undefined) {
+        ctx.fillStyle = COLORS.text
+        ctx.textAlign = "center"
+        ctx.fillText(LIFE.repeat(Math.max(0, hud.lives)), width / 2, height / 2)
+    }
+}
+
+// The shared lives of a 2-player game, which aren't any one character's.
+const LIFE = "❤️"
+
+// The energy meter: a framed bar `w` wide from `left`, filled up to the
+// energy, with a mark at every multiple of the breath's cost (so the player
+// sees how many breaths it holds). The fill is bright while a breath is
+// ready and grey otherwise. `frame` colours the frame (and the marks).
 function drawMeter(
     ctx: CanvasRenderingContext2D,
     meter: EnergyHud,
-    width: number,
-    height: number
+    left: number,
+    w: number,
+    height: number,
+    frame: string = COLORS.meter
 ) {
-    const w = width / 4
     const h = height * 0.4
-    const left = (width - w) / 2
     const top = (height - h) / 2
     const fraction = meter.max > 0 ? Math.min(1, meter.energy / meter.max) : 0
     ctx.fillStyle = meter.ready ? COLORS.meterReady : COLORS.meterCharging
     ctx.fillRect(left, top, w * fraction, h)
-    ctx.strokeStyle = COLORS.meter
+    ctx.strokeStyle = frame
     ctx.lineWidth = 1
     ctx.strokeRect(left, top, w, h)
     if (meter.cost <= 0) return
-    ctx.fillStyle = COLORS.meter
+    ctx.fillStyle = frame
     for (let e = meter.cost; e < meter.max; e += meter.cost) {
         ctx.fillRect(left + (w * e) / meter.max - 0.5, top, 1, h)
     }

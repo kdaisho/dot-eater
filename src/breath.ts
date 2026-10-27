@@ -8,7 +8,7 @@ import {
 } from "./constants"
 import { bossDamage, damageBoss, inFootprint, tickBoss } from "./boss"
 import type { Character } from "./character"
-import type { GameState } from "./game"
+import type { GameState, Player } from "./game"
 import { loopPos, type Cells } from "./level"
 import type { AnimalId } from "./roster"
 import {
@@ -164,7 +164,7 @@ export type BreathDef = {
     maxEnergy: number
     speedScale: number
     // A further factor on the player's speed on its slide steps on ice
-    // (level or breath ice; see GameState.playerRate). Leave it out for 1.
+    // (level or breath ice; see Player.rate). Leave it out for 1.
     slideSpeedScale?: number
     // What the breath does once its cost is paid. Return false (before
     // changing anything) to refuse, e.g. when there is nothing to hit; then
@@ -172,8 +172,7 @@ export type BreathDef = {
     fire(hit: BreathHit): boolean | void
 }
 
-// The playing character's breath state. Per player (2-player will have one
-// each), kept on GameState.breather.
+// A player's breath state: one per player (Player.breather in game.ts).
 export type Breather = {
     breath: BreathDef
     // The unit step the player faces: its latest move, or the way it last
@@ -216,9 +215,10 @@ export function canBreathe(breather: Breather): boolean {
     )
 }
 
-// Breathe, if allowed: resolve the shape from the player's cell along its
-// facing, run the breath's hook, and pay (cost and cooldown) unless the hook
-// refused. Returns true if the breath happened.
+// Breathe as `who` (player 1 unless given), if allowed: resolve the shape
+// from its cell along its facing, run the breath's hook, and pay (cost and
+// cooldown) unless the hook refused. What it defeats scores for `who`.
+// Breaths don't affect players. Returns true if the breath happened.
 //
 // A boss in the way (see boss.ts) stops a line or a cone like a wall would,
 // except that its cells are covered: the big body takes the breath. If any
@@ -227,11 +227,14 @@ export function canBreathe(breather: Breather): boolean {
 // however many of its cells are struck, and the breath counts as fired
 // even if the hook refused (e.g. the Boar with no wall to break): it hit
 // something.
-export function breathe(state: GameState): boolean {
-    const breather = state.breather
+export function breathe(
+    state: GameState,
+    who: Player = state.players[0]
+): boolean {
+    const breather = who.breather
     if (!canBreathe(breather)) return false
     const { breath, facing } = breather
-    const origin = vec2(state.player.pos.x, state.player.pos.y)
+    const origin = vec2(who.character.pos.x, who.character.pos.y)
     const boss = state.boss && !state.boss.defeated ? state.boss : null
     const body = boss ? (p: Vec2) => inFootprint(boss.pos, p) : undefined
     const reach = resolveShape(state.cells, origin, facing, breath.shape, body)
@@ -255,7 +258,7 @@ export function breathe(state: GameState): boolean {
         cells: reach.cells,
         wall: reach.wall,
         enemies,
-        defeat: (enemy) => defeatEnemy(state, enemy),
+        defeat: (enemy) => defeatEnemy(state, enemy, who),
         addStatus,
         addTile: (pos, effect, seconds) => {
             if (placeTile(state, pos, effect, seconds) && effect.ice) {
@@ -263,13 +266,19 @@ export function breathe(state: GameState): boolean {
             }
         },
         push: (enemy, step, distance) =>
-            pushEnemy(state.cells, enemy, step, distance, state.player),
+            pushEnemy(
+                state.cells,
+                enemy,
+                step,
+                distance,
+                playerCharacters(state)
+            ),
     }
     const bossHit = body !== undefined && struck.some(body)
     const fired = breath.fire(hit) !== false
     if (iceAdded) rebuildIce(state)
     if (!fired && !bossHit) return false
-    if (bossHit) damageBoss(state, bossDamage(breath.cost))
+    if (bossHit) damageBoss(state, bossDamage(breath.cost), who)
     breather.energy -= breath.cost
     breather.cooldown = breath.cooldown
     return true
@@ -425,7 +434,8 @@ export function addStatus(
     else enemy.statuses.push({ status, left: seconds })
 }
 
-// Take `enemy` out of play: DEFEAT_POINTS, then back at its spawn after
+// Take `enemy` out of play: DEFEAT_POINTS for `by` (the player whose breath
+// did it, player 1 unless given), then back at its spawn after
 // RESPAWN_DELAY (see tickEffects). It waits at its spawn meanwhile, so the
 // blink before it is back is drawn there. Statuses are dropped and a
 // patroller will start its route again. Defeating an enemy already out of
@@ -434,11 +444,15 @@ export function addStatus(
 // A Splitter (see splitter.ts) scores the same, but a whole one splits into
 // two halves instead of leaving play, and a defeated half doesn't come back
 // by itself: the Splitter does, whole, once both halves are gone.
-export function defeatEnemy(state: GameState, enemy: Character) {
+export function defeatEnemy(
+    state: GameState,
+    enemy: Character,
+    by: Player = state.players[0]
+) {
     if (!inPlay(enemy)) return
     const i = state.enemies.indexOf(enemy)
     if (i < 0) return
-    state.score += DEFEAT_POINTS
+    by.score += DEFEAT_POINTS
     if (isWholeSplitter(enemy)) {
         splitSplitter(state, i)
         return
@@ -469,18 +483,18 @@ export function enemyVisible(enemy: Character): boolean {
 // tunnels, stopping before a wall (but not before a cell that blocks
 // enemies: one pushed into it leaves by the shortest way). It then glides
 // in over its last cell (as if it had just moved there) and so carries on
-// sliding if it lands on ice. Unless that glide would start where `player`
-// is drawn this tick (its cell, or the one it glides in from, e.g. a 1-cell
-// push off the player's cell): then it is drawn on its new cell from the
-// start, so the push can't catch the player on its own tick, and still has
-// a whole move to go before it moves on (it doesn't slide).
+// sliding if it lands on ice. Unless that glide would start where one of
+// `players` is drawn this tick (its cell, or the one it glides in from, e.g.
+// a 1-cell push off the player's cell): then it is drawn on its new cell
+// from the start, so the push can't catch a player on its own tick, and
+// still has a whole move to go before it moves on (it doesn't slide).
 // Returns how many cells it moved.
 export function pushEnemy(
     cells: Cells,
     enemy: Character,
     step: Vec2,
     distance: number,
-    player: Character
+    players: readonly Character[]
 ): number {
     if (!inPlay(enemy)) return 0
     let from = enemy.pos
@@ -493,7 +507,9 @@ export function pushEnemy(
         to = next
     }
     if (moved === 0) return 0
-    const onPlayer = samePos(from, player.pos) || samePos(from, player.lastPos)
+    const onPlayer = players.some(
+        (p) => samePos(from, p.pos) || samePos(from, p.lastPos)
+    )
     const start = onPlayer ? to : from
     enemy.lastPos = vec2(start.x, start.y)
     enemy.pos = vec2(to.x, to.y)
@@ -542,13 +558,18 @@ function placeTile(
     return true
 }
 
-// Whether the player, an enemy in play or the boss (on any of its cells)
+// Every player's character, player 1 first.
+export function playerCharacters(state: GameState): Character[] {
+    return state.players.map((p) => p.character)
+}
+
+// Whether a player, an enemy in play or the boss (on any of its cells)
 // stands on `cell`.
 function occupied(state: GameState, cell: Vec2): boolean {
     const { boss } = state
     if (boss && !boss.defeated && inFootprint(boss.pos, cell)) return true
-    return [state.player, ...state.enemies.filter(inPlay)].some((c) =>
-        samePos(c.pos, cell)
+    return [...playerCharacters(state), ...state.enemies.filter(inPlay)].some(
+        (c) => samePos(c.pos, cell)
     )
 }
 
@@ -578,12 +599,13 @@ export function enemyBlocks(state: GameState): BlockMap | null {
 // ---- Timers ----
 
 // Count every breath timer down by `dt` seconds, at the start of a tick:
-// the cooldown, enemy statuses, defeated enemies (back at their spawn when
-// theirs runs out), the boss's hit flash and tile effects (an opened wall
-// grows back).
+// every player's cooldown, enemy statuses, defeated enemies (back at their
+// spawn when theirs runs out), the boss's hit flash and tile effects (an
+// opened wall grows back).
 export function tickEffects(state: GameState, dt: number) {
-    const breather = state.breather
-    breather.cooldown = Math.max(0, breather.cooldown - dt)
+    for (const { breather } of state.players) {
+        breather.cooldown = Math.max(0, breather.cooldown - dt)
+    }
     if (state.boss) tickBoss(state.boss, dt)
     for (const enemy of state.enemies) {
         if (!inPlay(enemy)) {
@@ -626,7 +648,7 @@ function regrowWall(state: GameState, pos: Vec2) {
     const open = (p: Vec2) =>
         state.cells[p.y][p.x] !== Cell.wall &&
         !(boss && inFootprint(boss.pos, p))
-    for (const c of [state.player, ...state.enemies]) {
+    for (const c of [...playerCharacters(state), ...state.enemies]) {
         if (!samePos(c.pos, pos)) continue
         const back =
             !samePos(c.lastPos, pos) && open(c.lastPos)
@@ -671,8 +693,9 @@ export type EnergyHud = {
     ready: boolean
 }
 
-export function energyHud(state: GameState): EnergyHud {
-    const b = state.breather
+// Player `index`'s meter (player 1's unless given).
+export function energyHud(state: GameState, index = 0): EnergyHud {
+    const b = state.players[index].breather
     return {
         energy: b.energy,
         max: b.breath.maxEnergy,

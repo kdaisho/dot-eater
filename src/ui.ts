@@ -44,6 +44,8 @@ export type MenuItem = { label: string; selected: boolean; locked?: boolean }
 export type EndScreenView = {
     // The final score.
     score: number
+    // With two players, each one's share of it, player 1 first.
+    playerScores?: readonly number[]
     // The menu, in order; exactly one item is selected.
     items: readonly MenuItem[]
 }
@@ -60,14 +62,25 @@ type Overlay = {
     cards?: readonly Card[]
 }
 
-// A character select card: emoji and name, the breath, the stat.
-type Card = { animal: AnimalInfo; selected: boolean }
+// A character select card: emoji and name, the breath, the stat. With two
+// players, `players` are the ones whose cursor is on it.
+type Card = {
+    animal: AnimalInfo
+    selected: boolean
+    players?: readonly { index: number; ready: boolean }[]
+}
 
-export function showTitle() {
+// The title, with the mode select's menu when `modes` are given.
+export function showTitle(modes: readonly MenuItem[] = []) {
     show({
         id: "title",
         title: "Dot Eater",
-        lines: ["Press Space to start"],
+        lines: [
+            modes.length > 0
+                ? "↑ ↓ to choose, Space to start"
+                : "Press Space to start",
+        ],
+        items: modes,
     })
 }
 
@@ -104,18 +117,37 @@ function slotLabel(slot: StageSlot): string {
 }
 
 // Character select: one card per character, in the order given, with the
-// cursor's card marked.
+// cursor's card marked. `selected` is player 1's pick, or every player's
+// (player 1 first). With two players each card also shows whose cursor is
+// on it ("1P", "2P", with a ✓ once that player has confirmed; `ready`),
+// and player 1's card is the selected one.
 export function showCharacterSelect(
     animals: readonly AnimalInfo[],
-    selected: AnimalId
+    selected: AnimalId | readonly AnimalId[],
+    ready: readonly boolean[] = []
 ) {
+    const picks = typeof selected === "string" ? [selected] : selected
+    const two = picks.length > 1
     show({
         id: "character-select",
-        title: "Pick a character",
-        lines: ["← → to choose, Space to play, Esc to go back"],
+        title: two ? "Pick your characters" : "Pick a character",
+        lines: two
+            ? [
+                  "1P: ← → to choose, Space to confirm",
+                  "2P: A D to choose, E to confirm",
+                  "Esc or Q to go back",
+              ]
+            : ["← → to choose, Space to play, Esc to go back"],
         cards: animals.map((animal) => ({
             animal,
-            selected: animal.id === selected,
+            selected: animal.id === picks[0],
+            players: two
+                ? picks.flatMap((pick, i) =>
+                      pick === animal.id
+                          ? [{ index: i, ready: !!ready[i] }]
+                          : []
+                  )
+                : [],
         })),
     })
 }
@@ -151,8 +183,12 @@ export function showGameOver(view: EndScreenView) {
     show({ id: "game-over", title: "💀 Game over", ...endScreen(view) })
 }
 
-function endScreen({ score, items }: EndScreenView) {
-    return { lines: [`Score ${score}`], items }
+function endScreen({ score, playerScores = [], items }: EndScreenView) {
+    const shares =
+        playerScores.length > 1
+            ? [playerScores.map((s, i) => `${i + 1}P ${s}`).join(" · ")]
+            : []
+    return { lines: [`Score ${score}`, ...shares], items }
 }
 
 export function hideOverlay() {
@@ -215,13 +251,25 @@ function show({ id, title, lines = [], items = [], cards = [] }: Overlay) {
 function cardRow(cards: readonly Card[]): HTMLElement {
     const row = document.createElement("ul")
     row.className = "overlay-cards"
-    for (const { animal, selected } of cards) {
+    for (const { animal, selected, players = [] } of cards) {
         const li = document.createElement("li")
         li.className = "card"
         li.dataset.animal = animal.id
         if (selected) {
             li.classList.add("selected")
             li.setAttribute("aria-current", "true")
+        }
+        if (players.length > 0) {
+            const tags = document.createElement("div")
+            tags.className = "card-players"
+            for (const { index, ready } of players) {
+                li.classList.add(`p${index + 1}`)
+                const tag = document.createElement("span")
+                tag.className = `card-player p${index + 1}`
+                tag.textContent = `${index + 1}P${ready ? " ✓" : ""}`
+                tags.appendChild(tag)
+            }
+            li.appendChild(tags)
         }
         const parts = [
             ["card-emoji", animal.emoji],

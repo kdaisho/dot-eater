@@ -32,12 +32,24 @@ function padEvent(type: string, index = 0) {
 
 const A = 0
 const START = 9
+const UP = 12
+const DOWN = 13
+const RIGHT = 15
 
 // Hold the buttons for a few frames, then let go for a few.
 function tap(...buttons: number[]) {
     pads = [pad(buttons)]
     vi.advanceTimersByTime(100)
     pads = [pad()]
+    vi.advanceTimersByTime(100)
+}
+
+// With two pads listed, hold the buttons on pad `index` for a few frames,
+// then let go for a few.
+function tapPad(index: number, ...buttons: number[]) {
+    pads = [pad(index === 0 ? buttons : []), pad(index === 1 ? buttons : [], 1)]
+    vi.advanceTimersByTime(100)
+    pads = [pad(), pad([], 1)]
     vi.advanceTimersByTime(100)
 }
 
@@ -56,6 +68,13 @@ function connect() {
 
 const screen = () =>
     document.querySelector<HTMLElement>("#overlay")?.dataset.screen ?? "playing"
+const overlay = () => document.querySelector<HTMLElement>("#overlay")
+const selectedItem = () => overlay()?.querySelector("li.selected")?.textContent
+// The card a player's cursor is on (player 1's is the selected one).
+const selectedCard = () =>
+    overlay()?.querySelector<HTMLElement>("li.card.selected")?.dataset.animal
+const cardOf = (player: 1 | 2) =>
+    overlay()?.querySelector<HTMLElement>(`li.card.p${player}`)?.dataset.animal
 // The toast's text, or undefined while it is hidden (empty).
 const toast = () => document.querySelector("#toast")?.textContent || undefined
 
@@ -93,6 +112,82 @@ describe("main with a gamepad", () => {
         expect(toast()).toBe("Controller disconnected")
         expect(screen()).toBe("title")
         connect()
+    })
+
+    // In 1-player any pad drives player 1; in a 2-player mode pads take
+    // players in connection order from stage select on. The title shares
+    // them, so any pad picks the mode.
+    describe("with two pads", () => {
+        it("lets either pad drive player 1 in 1-player", () => {
+            pads = [pad(), pad([], 1)]
+            padEvent("gamepadconnected", 1)
+            vi.advanceTimersByTime(100)
+            expect(selectedItem()).toBe("1 player")
+            tapPad(1, DOWN)
+            expect(selectedItem()).toBe("2 players")
+            tapPad(0, UP)
+            expect(selectedItem()).toBe("1 player")
+            tapPad(1, A)
+            expect(screen()).toBe("stage-select")
+            tapPad(0, A)
+            expect(screen()).toBe("character-select")
+            const first = selectedCard()
+            tapPad(1, RIGHT)
+            expect(selectedCard()).not.toBe(first)
+            tapPad(1, START)
+            expect(screen()).toBe("stage-select")
+            tapPad(0, START)
+            expect(screen()).toBe("title")
+        })
+
+        it("gives pad 1 to player 1 and pad 2 to player 2 in 2-player", () => {
+            tapPad(1, DOWN)
+            expect(selectedItem()).toBe("2 players")
+            tapPad(0, A)
+            expect(screen()).toBe("stage-select")
+            // Stage select follows player 1, and pad 2 is player 2's now.
+            tapPad(1, A)
+            expect(screen()).toBe("stage-select")
+            tapPad(0, A)
+            expect(screen()).toBe("character-select")
+            const p1 = cardOf(1)
+            const p2 = cardOf(2)
+            tapPad(1, RIGHT)
+            expect(cardOf(1)).toBe(p1)
+            expect(cardOf(2)).not.toBe(p2)
+            tapPad(0, RIGHT)
+            expect(cardOf(1)).not.toBe(p1)
+            tapPad(1, A)
+            expect(
+                overlay()?.querySelector("li.card.p2 .card-player.p2")
+                    ?.textContent
+            ).toBe("2P ✓")
+            expect(screen()).toBe("character-select")
+            // Player 1 isn't ready, so its back leaves character select.
+            tapPad(0, START)
+            expect(screen()).toBe("stage-select")
+        })
+
+        it("shares the pads again on the title and in 1-player", () => {
+            tapPad(0, START)
+            expect(screen()).toBe("title")
+            tapPad(1, UP)
+            expect(selectedItem()).toBe("1 player")
+            tapPad(1, A)
+            expect(screen()).toBe("stage-select")
+            tapPad(1, A)
+            expect(screen()).toBe("character-select")
+            const first = selectedCard()
+            tapPad(1, RIGHT)
+            expect(selectedCard()).not.toBe(first)
+            tapPad(1, START)
+            tapPad(0, START)
+            expect(screen()).toBe("title")
+            // The tests below use one pad.
+            pads = [pad()]
+            padEvent("gamepaddisconnected", 1)
+            vi.advanceTimersByTime(20)
+        })
     })
 
     it("plays through the menus with A", () => {

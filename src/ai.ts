@@ -11,7 +11,7 @@ import {
     type IceMap,
     type MoveState,
 } from "./ice"
-import { distanceMap, openNeighbours } from "./path"
+import { distanceMap, openNeighbours, type DistanceMap } from "./path"
 import { allDirections, directions, samePos, vec2, type Vec2 } from "./vec2"
 
 export type Random = () => number
@@ -23,6 +23,84 @@ export function candidateMoves(cells: Cells, enemy: Character): Vec2[] {
     const open = openNeighbours(cells, enemy.pos)
     const forward = open.filter((v) => !samePos(v, enemy.lastPos))
     return forward.length > 0 ? forward : open
+}
+
+// Which of `targets` (the players' cells, player 1 first) `enemy` goes
+// after: the nearest by maze distance from where it stands (wrap tunnels
+// included), the first on ties. Distances are measured over `view`, the
+// cells as enemies see them (blockedView; `cells` when nothing is blocked),
+// so a player cut off by a blocking tile, or standing on one, counts as
+// unreachable. An unreachable player counts as infinitely far; if none can
+// be reached on `view`, distances are measured over `cells` instead, and if
+// none can be reached there either it is player 1. A phantom, which drifts
+// through walls, measures straight across instead (Manhattan, as
+// phantomStep moves). AIs that don't aim at a player (random, patroller)
+// get player 1, as does every enemy with one player, without searching.
+//
+// `paths` are the distances from each target (see targetPaths); a caller
+// aiming several enemies at the same targets can share them.
+export function nearestTarget(
+    cells: Cells,
+    enemy: Character,
+    targets: readonly Vec2[],
+    view: Cells = cells,
+    paths: TargetPaths = targetPaths(cells, targets, view)
+): number {
+    if (targets.length <= 1) return 0
+    if (enemy.ai === AiType.random || enemy.ai === AiType.patroller) return 0
+    if (enemy.ai === AiType.phantom) {
+        return nearestBy(
+            targets,
+            (p) => Math.abs(p.x - enemy.pos.x) + Math.abs(p.y - enemy.pos.y)
+        )
+    }
+    // Moves are symmetric, so a target's distance to the enemy is the
+    // enemy's to it. (An enemy on a blocked cell is a wall of `view`, so it
+    // measures over `cells`; it heads out of the patch whoever it targets.)
+    const { x, y } = enemy.pos
+    const seen = (i: number) => paths.view(i)[y][x]
+    const indices = targets.map((_, i) => i)
+    if (view !== cells && indices.every((i) => seen(i) === Infinity)) {
+        return nearestBy(indices, (i) => paths.cells(i)[y][x])
+    }
+    return nearestBy(indices, seen)
+}
+
+// Path distances from each of `targets`, over `view` and over `cells` (see
+// nearestTarget), each searched the first time it is asked for and then
+// kept. A target on a wall of `view` (a blocked cell) reaches nothing there.
+export type TargetPaths = {
+    view: (i: number) => DistanceMap
+    cells: (i: number) => DistanceMap
+}
+
+export function targetPaths(
+    cells: Cells,
+    targets: readonly Vec2[],
+    view: Cells = cells
+): TargetPaths {
+    const from = (over: Cells) => {
+        const maps: DistanceMap[] = []
+        return (i: number) => {
+            const t = targets[i]
+            maps[i] ??=
+                over[t.y][t.x] === Cell.wall
+                    ? over.map((row) => row.map(() => Infinity))
+                    : distanceMap(over, t)
+            return maps[i]
+        }
+    }
+    const overView = from(view)
+    return { view: overView, cells: view === cells ? overView : from(cells) }
+}
+
+// The index of the first of `targets` with the smallest `away`.
+function nearestBy<T>(targets: readonly T[], away: (t: T) => number) {
+    let best = 0
+    for (let i = 1; i < targets.length; i++) {
+        if (away(targets[i]) < away(targets[best])) best = i
+    }
+    return best
 }
 
 // Move one enemy according to its AI. `target` is the player's position and
