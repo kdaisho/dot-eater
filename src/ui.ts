@@ -240,3 +240,20 @@ function cardRow(cards: readonly Card[]): HTMLElement {
     }
     return row
 }
+
+// A small note at the bottom of the screen (e.g. "Controller connected").
+// It doesn't block play or replace the overlay; a new toast replaces the
+// last. The caller hides it (main.ts owns the timer).
+export function showToast(text: string) {
+    hideToast()
+    const toast = document.createElement("div")
+    toast.id = "toast"
+    toast.className = "toast"
+    toast.setAttribute("role", "status")
+    toast.textContent = text
+    document.body.appendChild(toast)
+}
+
+export function hideToast() {
+    document.getElementById("toast")?.remove()
+}

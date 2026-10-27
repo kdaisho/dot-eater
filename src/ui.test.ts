@@ -4,12 +4,14 @@ import { afterEach, describe, expect, it, vi } from "vite-plus/test"
 import {
     celebrate,
     hideOverlay,
+    hideToast,
     showCharacterSelect,
     showGameOver,
     showPause,
     showStageClear,
     showStageSelect,
     showTitle,
+    showToast,
 } from "./ui"
 import type { StageSlot } from "./progress"
 import { ANIMAL_IDS, AnimalId, ANIMALS } from "./roster"
@@ -340,5 +342,37 @@ describe("celebrate", () => {
             vi.runAllTimers()
             expect(origins()).toEqual(sweep)
         }
+    })
+})
+
+describe("toast", () => {
+    const toasts = () => [...document.querySelectorAll("#toast")]
+
+    it("shows a status note without touching the overlay", () => {
+        showPause()
+        showToast("Controller connected")
+        expect(toasts().map((t) => t.textContent)).toEqual([
+            "Controller connected",
+        ])
+        expect(toasts()[0]?.getAttribute("role")).toBe("status")
+        expect(title()).toBe("Paused")
+    })
+
+    it("replaces the previous toast", () => {
+        showToast("Controller connected")
+        showToast("Controller disconnected")
+        expect(toasts().map((t) => t.textContent)).toEqual([
+            "Controller disconnected",
+        ])
+    })
+
+    it("hides, and survives overlays coming and going", () => {
+        showToast("Controller connected")
+        showTitle()
+        hideOverlay()
+        expect(toasts()).toHaveLength(1)
+        hideToast()
+        expect(toasts()).toHaveLength(0)
+        hideToast()
     })
 })
