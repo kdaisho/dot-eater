@@ -1,13 +1,15 @@
 // @vitest-environment happy-dom
 import { describe, expect, it, vi } from "vite-plus/test"
 import { createGameState, step, type GameState, type Outcome } from "./game"
+import { LAST_PICK_KEY } from "./lastPick"
 import { levels } from "./levels"
 import { emptyProgress, PROGRESS_KEY, serializeProgress } from "./progress"
 import { vec2 } from "./vec2"
 
 // main in a 2-player game, end to end through the keyboard: the title's mode
 // select, two players picking with their own keys, both moving, either
-// pausing, and a win that leaves saved progress alone. (A separate file,
+// pausing, and a win that leaves saved progress alone. The saved
+// 1-player pick is left alone too. (A separate file,
 // since main is imported once per module graph.)
 
 vi.mock("canvas-confetti", () => ({ default: vi.fn() }))
@@ -105,6 +107,8 @@ describe("main with two players", () => {
             levels[0],
             ["dragon", "owl"],
         ])
+        // The saved 1-player pick is left alone, player 1's included.
+        expect(localStorage.getItem(LAST_PICK_KEY)).toBeNull()
 
         // Both players' keys reach the game, one input each.
         keydown("ArrowLeft")

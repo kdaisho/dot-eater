@@ -175,7 +175,13 @@ function enter(prev: Screen, next: Screen) {
     // still held from the menu waits for a fresh press. Resuming from pause
     // keeps held directions, so holding through a pause carries on moving.
     if (next.kind === "playing" && prev.kind !== "paused") input.ignoreHeld()
-    if (next.kind === "playing" && prev.kind === "characterSelect") {
+    // Only 1-player games remember the pick: 2-player games leave saved
+    // data alone.
+    if (
+        next.kind === "playing" &&
+        prev.kind === "characterSelect" &&
+        playerCount(next.mode) === 1
+    ) {
         lastAnimal = next.animals[0]
         saveLastPick(storage, lastAnimal)
     }
