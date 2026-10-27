@@ -992,6 +992,49 @@ describe("createRenderer with two players", () => {
             expect(images[0].args.slice(1)).toEqual([0, 0, 13 * cell, 3 * cell])
         })
 
+        // Resizing a canvas reallocates it: the layer is sized, and its
+        // context taken, once, and again only when the size changes.
+        it("reuses the layer from frame to frame", () => {
+            const { renderer, view } = setup()
+            const layerCanvas = document.createElement("canvas")
+            const layer = stubContext()
+            const getContext = vi
+                .spyOn(layerCanvas, "getContext")
+                .mockReturnValue(layer.ctx as never)
+            vi.spyOn(document, "createElement").mockReturnValue(layerCanvas)
+            const widths: number[] = []
+            const proto = Object.getPrototypeOf(layerCanvas)
+            const width = Object.getOwnPropertyDescriptor(proto, "width")!
+            Object.defineProperty(layerCanvas, "width", {
+                configurable: true,
+                get: () => width.get!.call(layerCanvas),
+                set: (w: number) => {
+                    widths.push(w)
+                    width.set!.call(layerCanvas, w)
+                },
+            })
+            const state = makeState(corridor, [
+                { x: 1, y: 1 },
+                { x: 11, y: 1 },
+            ])
+            for (let i = 0; i < 3; i++) {
+                renderer.draw(state, 0, {}, { fog: { radius: 2 } })
+            }
+            expect(getContext).toHaveBeenCalledTimes(1)
+            expect(widths).toHaveLength(1)
+            // Each frame starts from a clear layer.
+            expect(
+                layer.calls.filter((c) => c.name === "clearRect")
+            ).toHaveLength(3)
+            // A smaller window shrinks the map, and the layer with it.
+            view.innerWidth = 500
+            renderer.resize()
+            renderer.draw(state, 0, {}, { fog: { radius: 2 } })
+            expect(widths).toHaveLength(2)
+            expect(widths[1]).toBeLessThan(widths[0])
+            expect(getContext).toHaveBeenCalledTimes(1)
+        })
+
         it("draws one player's darkness straight onto the map", () => {
             const { calls, renderer } = setup()
             const state = makeState(corridor, { x: 1, y: 1 })

@@ -143,10 +143,16 @@ export function createRenderer(
         | { state: GameState; alpha: number; hud: Hud; rules: LevelRules }
         | undefined
     // With two players, the fog's darkness is drawn on a canvas of its own
-    // first (see drawDarkness); made when first needed.
-    let layer: HTMLCanvasElement | undefined
-    const darknessLayer = () =>
-        (layer ??= canvas.ownerDocument.createElement("canvas"))
+    // first (see drawDarkness); made, with its context, when first needed
+    // and kept from frame to frame.
+    let layer: Layer | undefined
+    const darknessLayer = (): Layer => {
+        if (!layer) {
+            const layerCanvas = canvas.ownerDocument.createElement("canvas")
+            layer = { canvas: layerCanvas, ctx: layerCanvas.getContext("2d") }
+        }
+        return layer
+    }
 
     function fit() {
         layout = computeLayout(
@@ -263,7 +269,8 @@ function createFog(
 // so the rest is dark.
 //
 // With two players the lights overlap, so the darkness is drawn on a layer
-// of its own (`layer`, sized here) and composited once: the layer is filled
+// of its own (`layer`, sized here when the map's size changes) and
+// composited once: the layer is filled
 // dark, every light centre of every player clears its circle out of it
 // (destination-out, fading at the soft edge), and the layer goes over the
 // map. Without a 2D context for the layer, only `visible` hides things.
@@ -273,7 +280,7 @@ function drawDarkness(
     cell: number,
     cols: number,
     rows: number,
-    layer: () => HTMLCanvasElement,
+    layer: () => Layer,
     dpr: number
 ) {
     const outer = fog.radius * cell
@@ -303,23 +310,37 @@ function drawDarkness(
     }
 }
 
+// The canvas the 2-player darkness is drawn on, and its 2D context (null if
+// it has none).
+type Layer = {
+    canvas: HTMLCanvasElement
+    ctx: CanvasRenderingContext2D | null
+}
+
 function drawSharedDarkness(
     ctx: CanvasRenderingContext2D,
     fog: Fog,
     cell: number,
     cols: number,
     rows: number,
-    layer: HTMLCanvasElement,
+    layer: Layer,
     dpr: number
 ) {
     const width = cols * cell
     const height = rows * cell
-    layer.width = Math.ceil(width * dpr)
-    layer.height = Math.ceil(height * dpr)
-    const dark = layer.getContext("2d")
+    const dark = layer.ctx
     if (!dark) return
+    // Resizing a canvas reallocates it, so only when the size changes.
+    const pixelWidth = Math.ceil(width * dpr)
+    const pixelHeight = Math.ceil(height * dpr)
+    if (layer.canvas.width !== pixelWidth) layer.canvas.width = pixelWidth
+    if (layer.canvas.height !== pixelHeight) layer.canvas.height = pixelHeight
     const outer = fog.radius * cell
     const inner = Math.max(0, fog.radius - FOG_SOFT_EDGE) * cell
+    // Last frame's darkness is still there: start from a clear layer.
+    dark.setTransform(1, 0, 0, 1, 0, 0)
+    dark.globalCompositeOperation = "source-over"
+    dark.clearRect(0, 0, pixelWidth, pixelHeight)
     dark.setTransform(dpr, 0, 0, dpr, 0, 0)
     dark.globalCompositeOperation = "source-over"
     dark.fillStyle = `rgb(${COLORS.fog})`
@@ -337,7 +358,7 @@ function drawSharedDarkness(
         }
     }
     dark.globalCompositeOperation = "source-over"
-    ctx.drawImage(layer, 0, 0, width, height)
+    ctx.drawImage(layer.canvas, 0, 0, width, height)
 }
 
 // Ice floor, walls and dots, plus the dot each player has just eaten while its
