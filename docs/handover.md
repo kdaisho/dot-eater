@@ -12,7 +12,7 @@ Last updated: 2026-10-27. Read `CLAUDE.md` first for project conventions.
 ### Start here (new session)
 
 1. Read this file and `CLAUDE.md`, then KDA-207 in Linear.
-2. Settle KDA-207's open product questions with the user (see "Open questions"; ask with a recommendation). Write the answers into KDA-207 and into "Decisions already made".
+2. KDA-207's product questions are settled (see "Decisions already made" and the KDA-207 description).
 3. Plan KDA-207. It probably splits into an engine part (a 2×2 boss with health) and a level part (the stage map, minions, par). Run the parts in parallel only if a contract keeps them in separate files.
 4. Offer the user a playable preview before asking to merge (see "How we work").
 
@@ -54,7 +54,6 @@ The breath contract every breath follows (and the boss must respect) is in `docs
 
 ## Open questions and follow-ups
 
-- **KDA-207 product questions (ask the user):** boss health and how damage shows; which breaths hurt it (suggest: those that defeat, i.e. the Dragon, plus maybe a smaller effect from the others); what freeze, push, stink and wall-break do to it; whether a defeated boss respawns or stays gone; boss movement (speed, AI); which minions; par time.
 - **Gameplay since the five breaths are tunable:** the user hasn't commented on ranges and sizes (Dragon/Owl 5, Penguin cone 3, Skunk 3×3). A frozen Penguin enemy is solid, so refreezing every 1 s can block a 1-wide corridor for long. Revisit after playtesting.
 - **Open with the user since Stages:** after a win, "Stage select" puts the cursor on the stage just played, not the newly unlocked one.
 - **Filed:** KDA-245 reject sealed-off open areas in `parseLevel` (a Boar could get sealed in after a wall regrows; no current stage has one). KDA-225 runtime shape check for untrusted level JSON.
@@ -71,6 +70,7 @@ The decisions KDA-207 touches. All others (movement, input, screens, progress, r
 - **Characters** (with the user): Dragon is the default; stars and par are the same for every character.
 - **Collisions** (product decision): on drawn positions, caught within `CATCH_DISTANCE` 0.6, any touch counts. Eating the last dot always wins, even if caught on that tick (product decision; KDA-207 changes this for the boss stage only).
 - **Stars:** 1 for clearing, +1 for no lives lost, +1 for beating `parTime`. Pars so far 60, 70, 80, 75 s.
+- **Boss lair** (KDA-207, with the user): boss health 12; any breath whose shape touches the 2×2 footprint does `cost ÷ 25` damage (Owl 1, Dragon/Penguin/Skunk 2, Boar 3, even where the Boar has no wall to break), applied by the engine with breath files unchanged. The boss can't be frozen or pushed, but fire and stink tiles still block it. It chases (1.5 cells/s) only where its 2×2 fits, so 1-wide corridors are safe; touching it catches. Once the dots run out with the boss alive, energy refills on its own (10/s). A lost life sends it to its spawn with its damage kept. Defeated: gone for good, +500, a big burst. Health shows as a bar above the sprite plus a white flash per hit. Minions: a Splitter and a chaser (4 slots with the boss). Win needs all dots and the boss defeated (a level `rules` flag). Defaults to tune at preview: par 90 s, sprite 🐙, trickle rate, boss speed.
 - **Code:** an unknown AI type throws. Breath looks come from data; `render.ts` has no per-breath code.
 
 ## How we work
