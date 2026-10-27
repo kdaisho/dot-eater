@@ -234,5 +234,8 @@ document.addEventListener("visibilitychange", () => {
 
 new KeyboardSource().attach(input)
 pads.attach(input)
+// The (empty) toast live region goes in at once, so screen readers already
+// watch it when the first toast shows.
+hideToast()
 showOverlay(screen)
 loop.start()

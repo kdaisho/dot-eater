@@ -56,7 +56,8 @@ function connect() {
 
 const screen = () =>
     document.querySelector<HTMLElement>("#overlay")?.dataset.screen ?? "playing"
-const toast = () => document.querySelector("#toast")?.textContent
+// The toast's text, or undefined while it is hidden (empty).
+const toast = () => document.querySelector("#toast")?.textContent || undefined
 
 describe("main with a gamepad", () => {
     beforeAll(async () => {
@@ -67,6 +68,14 @@ describe("main with a gamepad", () => {
         })
         document.body.innerHTML = '<canvas id="game"></canvas>'
         await import("./main")
+    })
+
+    // Regression: the region was only added with a toast's text in it,
+    // which screen readers don't announce.
+    it("puts the empty toast live region in place at startup", () => {
+        const region = document.querySelector("#toast")
+        expect(region?.getAttribute("role")).toBe("status")
+        expect(region?.textContent).toBe("")
     })
 
     it("shows a toast on connect that hides after about 2 s", () => {

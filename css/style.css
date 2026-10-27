@@ -159,3 +159,10 @@ body * {
     transform: translateX(-50%);
     z-index: 40;
 }
+
+/* Hidden: the live region stays in the page (not display: none, which
+   screen readers stop watching) but draws nothing. */
+.toast:empty {
+    background: none;
+    padding: 0;
+}

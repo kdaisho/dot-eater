@@ -370,9 +370,27 @@ describe("toast", () => {
         showToast("Controller connected")
         showTitle()
         hideOverlay()
+        expect(toasts().map((t) => t.textContent)).toEqual([
+            "Controller connected",
+        ])
+        hideToast()
+        expect(toasts().map((t) => t.textContent)).toEqual([""])
+        hideToast()
         expect(toasts()).toHaveLength(1)
+    })
+
+    // Regression: each toast was a new role="status" element added with its
+    // text already in it, which screen readers don't announce.
+    it("keeps one live region in the page and changes its text", () => {
         hideToast()
-        expect(toasts()).toHaveLength(0)
+        const region = toasts()[0]
+        expect(region?.getAttribute("role")).toBe("status")
+        expect(region?.textContent).toBe("")
+        showToast("Controller connected")
         hideToast()
+        showToast("Controller disconnected")
+        expect(toasts()).toEqual([region])
+        expect(region?.isConnected).toBe(true)
+        expect(region?.textContent).toBe("Controller disconnected")
     })
 })

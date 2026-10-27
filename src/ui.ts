@@ -244,16 +244,27 @@ function cardRow(cards: readonly Card[]): HTMLElement {
 // A small note at the bottom of the screen (e.g. "Controller connected").
 // It doesn't block play or replace the overlay; a new toast replaces the
 // last. The caller hides it (main.ts owns the timer).
+//
+// The toast is one status live region that stays in the page and only
+// changes its text: screen readers announce changes to a region they
+// already watch, not a region added with its text in place. Hidden, it is
+// empty (and drawn as nothing, see .toast:empty). Main calls hideToast at
+// startup to put the region in place before the first toast.
 export function showToast(text: string) {
-    hideToast()
+    toastRegion().textContent = text
+}
+
+export function hideToast() {
+    toastRegion().textContent = ""
+}
+
+function toastRegion(): HTMLElement {
+    const existing = document.getElementById("toast")
+    if (existing) return existing
     const toast = document.createElement("div")
     toast.id = "toast"
     toast.className = "toast"
     toast.setAttribute("role", "status")
-    toast.textContent = text
     document.body.appendChild(toast)
-}
-
-export function hideToast() {
-    document.getElementById("toast")?.remove()
+    return toast
 }
