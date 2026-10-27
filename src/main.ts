@@ -70,6 +70,28 @@ const tickInput = {
     }),
 }
 
+// Gamepads: in one-player play every pad drives player 1, alongside the
+// keyboard. A pad in use lost mid-game pauses it, like leaving the window;
+// an idle pad going to sleep doesn't. Set up before the loop, whose frames
+// poll it. (Toasts and auto-pause only run on events, after startup.)
+const TOAST_MS = 2000
+let toastTimer: ReturnType<typeof setTimeout> | undefined
+function onPadChange(change: PadChange) {
+    showToast(
+        change.kind === "connected"
+            ? "Controller connected"
+            : "Controller disconnected"
+    )
+    clearTimeout(toastTimer)
+    toastTimer = setTimeout(hideToast, TOAST_MS)
+    if (change.kind === "disconnected" && change.wasUsed) autoPause()
+}
+const pads = new GamepadSource(
+    browserPadList(navigator),
+    globalThis,
+    onPadChange
+)
+pads.setAssignment("shared")
 let padPollFailed = false
 
 // The loop ticks on every screen; menus and pause poll their input per tick
@@ -209,28 +231,6 @@ addEventListener("blur", autoPause)
 document.addEventListener("visibilitychange", () => {
     if (document.hidden) autoPause()
 })
-
-// Gamepads: in one-player play every pad drives player 1, alongside the
-// keyboard. A pad in use lost mid-game pauses it, like leaving the window;
-// an idle pad going to sleep doesn't.
-const TOAST_MS = 2000
-let toastTimer: ReturnType<typeof setTimeout> | undefined
-function onPadChange(change: PadChange) {
-    showToast(
-        change.kind === "connected"
-            ? "Controller connected"
-            : "Controller disconnected"
-    )
-    clearTimeout(toastTimer)
-    toastTimer = setTimeout(hideToast, TOAST_MS)
-    if (change.kind === "disconnected" && change.wasUsed) autoPause()
-}
-const pads = new GamepadSource(
-    browserPadList(navigator),
-    globalThis,
-    onPadChange
-)
-pads.setAssignment("shared")
 
 new KeyboardSource().attach(input)
 pads.attach(input)
