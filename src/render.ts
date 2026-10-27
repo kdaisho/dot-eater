@@ -672,7 +672,9 @@ function drawPlayersHud(
         const meterLeft = left ? width * 0.2 : width * 0.8 - w
         if (player.out) {
             ctx.textAlign = "center"
-            ctx.fillText(outLabel(player.out), meterLeft + w / 2, height / 2)
+            // Squeezed into the meter's width, so it never runs into the
+            // score on a narrow screen.
+            ctx.fillText(outLabel(player.out), meterLeft + w / 2, height / 2, w)
         } else {
             drawMeter(ctx, player.energy, meterLeft, w, height, color)
         }
@@ -685,9 +687,11 @@ function drawPlayersHud(
 }
 
 // What an out player's HUD slot shows: the whole seconds left until it is
-// back (rounded up, so it counts 3, 2, 1), or that it is out for good.
+// back (rounded up, so it counts 3, 2, 1), "back soon" once it is due but
+// waiting for its spawn to be clear, or that it is out for good.
 export function outLabel(out: { respawnIn: number | null }): string {
     if (out.respawnIn === null) return "OUT"
+    if (out.respawnIn <= 0) return "back soon"
     return `back in ${Math.max(1, Math.ceil(out.respawnIn - 1e-9))}`
 }
 

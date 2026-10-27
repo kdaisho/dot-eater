@@ -236,6 +236,15 @@ describe("showPause", () => {
         expectSingle()
         expect(overlay()?.dataset.screen).toBe("pause")
         expect(title()).toBe("Paused")
+        expect(lines()).toEqual(["Press P, Esc or Space to resume"])
+    })
+
+    it("gives player 2's keys too with two players", () => {
+        showPause(2)
+        expect(lines()).toEqual([
+            "1P: P, Esc or Space to resume",
+            "2P: Q or E to resume",
+        ])
     })
 })
 

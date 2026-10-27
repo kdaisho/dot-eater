@@ -261,7 +261,7 @@ function showOverlay(s: Screen) {
         case "ending":
             return hideOverlay()
         case "paused":
-            return showPause()
+            return showPause(s.game.players.length)
         case "stageClear":
             return showStageClear({
                 ...endView(s.game, s.choice),

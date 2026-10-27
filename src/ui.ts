@@ -155,11 +155,16 @@ export function showCharacterSelect(
     })
 }
 
-export function showPause() {
+// The pause screen. With two players either one resumes, so the hint
+// gives player 2's keys too.
+export function showPause(players = 1) {
     show({
         id: "pause",
         title: "Paused",
-        lines: ["Press P, Esc or Space to resume"],
+        lines:
+            players > 1
+                ? ["1P: P, Esc or Space to resume", "2P: Q or E to resume"]
+                : ["Press P, Esc or Space to resume"],
     })
 }
 

@@ -151,6 +151,11 @@ describe("main with two players", () => {
         // Player 2 can pause, and resume.
         pressAndTick("KeyQ")
         expect(screen()).toBe("pause")
+        expect(
+            [...(overlay()?.querySelectorAll(".overlay-line") ?? [])].map(
+                (p) => p.textContent
+            )
+        ).toEqual(["1P: P, Esc or Space to resume", "2P: Q or E to resume"])
         pressAndTick("KeyE")
         expect(screen()).toBe("playing")
 
