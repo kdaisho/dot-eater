@@ -135,8 +135,9 @@ export class GamepadSource implements InputSource {
             this.connect(pad.index)
             this.update(pad)
         }
-        // A pad gone from the list without a disconnect event.
-        for (const index of [...this.pads.keys()]) {
+        // A pad gone from the list without a disconnect event. (Deleting the
+        // current entry while iterating a Map is safe.)
+        for (const index of this.pads.keys()) {
             if (!seen.has(index)) this.disconnect(index)
         }
     }
