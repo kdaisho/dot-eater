@@ -507,10 +507,11 @@ function wait(character: Glider) {
 // enemies move, so it hits them where they stood at the start of the tick.
 // Player 1's breath fires first. Breaths don't affect players, except in
 // versus, where a breath stuns the other player (see versus.ts): a stunned
-// player ignores its input, finishes its glide and doesn't move on or
-// breathe, and its stun counts down with the breath timers. Enemies out
-// of play don't move or catch; held ones (e.g. frozen) don't move; harmless
-// ones don't catch; and enemies keep out of cells a tile effect blocks.
+// player ignores its input, finishes its glide (and, on ice, its slide) and
+// doesn't move on or breathe, and its stun counts down with the breath
+// timers. Enemies out of play don't move or catch; held ones (e.g. frozen)
+// don't move; harmless ones don't catch; and enemies keep out of cells a
+// tile effect blocks.
 //
 // A boss (see boss.ts) moves with the enemies, after the breaths, and keeps
 // out of blocked cells too; a defeated one doesn't move or catch. Once the
@@ -544,11 +545,13 @@ export function step(
     players.forEach((player, i) => {
         // A player out of play ignores its input altogether.
         if (player.out) return
-        // A stunned player (versus) ignores its input too, and only finishes
-        // the glide it is in.
+        // A stunned player (versus) ignores its input too: it finishes the
+        // glide it is in and, on ice, its slide (PM decision), but makes no
+        // move of its own.
         if (stunned(player)) {
             if (advance(player.character, dt * player.rate)) {
-                wait(player.character)
+                if (slideTick(state, player)) spend(player.character)
+                else wait(player.character)
             }
             return
         }
@@ -730,17 +733,8 @@ function movePlayerTick(
     player: Player,
     held: readonly Vec2[]
 ): boolean {
-    const { cells } = state
-    const { character } = player
-    const slide = slideStep(cells, state.ice, character.pos, character.lastPos)
-    if (slide) {
-        const ahead = vec2(character.pos.x + slide.x, character.pos.y + slide.y)
-        if (!solidAt(state, loopPos(cells, ahead))) {
-            if (!movePlayer(state, slide, player)) return false
-            player.rate = player.breather.breath.slideSpeedScale ?? 1
-            return true
-        }
-    }
+    const slid = slideTick(state, player)
+    if (slid !== null) return slid
     const buffered = player.bufferedStep
     player.bufferedStep = vec2(0, 0)
     const moved =
@@ -752,6 +746,21 @@ function movePlayerTick(
         player.breather.facing = vec2(tried.x, tried.y)
     }
     return moved
+}
+
+// Player's slide step, if it is sliding (see movePlayerTick): whether it
+// moved, or null if it isn't sliding (or a solid enemy ahead ended the
+// slide), so it is free to make a move of its own.
+function slideTick(state: GameState, player: Player): boolean | null {
+    const { cells } = state
+    const { character } = player
+    const slide = slideStep(cells, state.ice, character.pos, character.lastPos)
+    if (!slide) return null
+    const ahead = vec2(character.pos.x + slide.x, character.pos.y + slide.y)
+    if (solidAt(state, loopPos(cells, ahead))) return null
+    if (!movePlayer(state, slide, player)) return false
+    player.rate = player.breather.breath.slideSpeedScale ?? 1
+    return true
 }
 
 function isZero(v: Vec2): boolean {

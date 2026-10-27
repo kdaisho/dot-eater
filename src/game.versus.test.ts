@@ -279,6 +279,28 @@ describe("a stunned player", () => {
         expect(p2.pos).toEqual(vec2(3, 1))
     })
 
+    // Regression: a stunned player stopped dead mid-slide on the ice.
+    it("finishes its slide on ice, then stays put", () => {
+        // Ice from (3, 1) to (6, 1), floor either side.
+        const { map, ice } = textMap([
+            "############",
+            "#  ~~~~    #",
+            "############",
+            "#.##########",
+        ])
+        const state = makeState(map, [vec2(10, 1), vec2(4, 1)], [], {
+            mode: "versus",
+            ice,
+        })
+        const p2 = state.players[1]
+        // Sliding east: it just slid from (3, 1) onto (4, 1).
+        p2.character.lastPos = vec2(3, 1)
+        p2.stunnedFor = STUN_SECONDS
+        run(state, [IDLE, hold(west)], STUN_TICKS - 1)
+        expect(stunned(p2)).toBe(true)
+        expect(p2.character.pos).toEqual(vec2(7, 1))
+    })
+
     it("can't breathe", () => {
         const state = stunnedP2()
         const p2 = state.players[1]

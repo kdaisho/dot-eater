@@ -45,7 +45,7 @@ export function stunImmune(player: Player): boolean {
 }
 
 // Stun `player` for STUN_SECONDS: until it is over it doesn't move (a glide
-// in progress still finishes) or breathe, and its input is ignored. A
+// in progress still finishes, and so does a slide on ice) or breathe, and its input is ignored. A
 // player already stunned, immune, or out of play, is left alone. Anything
 // buffered is dropped.
 export function stun(player: Player) {
