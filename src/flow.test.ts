@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vite-plus/test"
 import { Cell, DOT_POINTS, START_LIVES, TICK_RATE } from "./constants"
 import {
     END_CHOICES,
+    END_CONFIRM_DELAY,
     gameOf,
     initialScreen,
     pauseIfPlaying,
@@ -389,6 +390,7 @@ describe("playing", () => {
                 animal: AnimalId.skunk,
                 game: screen.game,
                 choice: "retry",
+                shown: { seconds: 0 },
                 ...(kind === "stageClear"
                     ? { rating: rateClear(screen.game, second.parTime) }
                     : {}),
@@ -460,6 +462,7 @@ describe("ending", () => {
             game,
             choice: "retry",
             rating: rateClear(game, corridor.parTime),
+            shown: { seconds: 0 },
         })
         expect(game.player.moveProgress).toBe(1)
         expect(game.player.pos).toEqual(vec2(3, 1))
@@ -658,6 +661,49 @@ describe.each(["stageClear", "gameOver"] as const)("%s", (kind) => {
     it("ignores pause", () => {
         const screen = end(kind)
         expect(update(screen, tickInput(["pause"]), deps())).toBe(screen)
+    })
+
+    // Regression: breath and confirm share the pad's A button, so mashing
+    // breath while dying or clearing picked Retry the moment the end screen
+    // appeared.
+    describe("just after it appears", () => {
+        const d = deps({ dt: 1 / TICK_RATE })
+        const delayTicks = Math.round(END_CONFIRM_DELAY * TICK_RATE)
+        // The end screen as the outro leaves it.
+        const entered = () => {
+            const screen = update(
+                ending(kind === "stageClear" ? "won" : "dead", 1),
+                tickInput(),
+                d
+            )
+            expect(screen.kind).toBe(kind)
+            return screen
+        }
+
+        it("ignores confirm for END_CONFIRM_DELAY, then takes it", () => {
+            expect(END_CONFIRM_DELAY).toBe(0.5)
+            const screen = entered()
+            for (let i = 1; i < delayTicks; i++) {
+                // The same screen: no new object every tick.
+                expect(update(screen, tickInput(["confirm"]), d)).toBe(screen)
+            }
+            expect(update(screen, tickInput(["confirm"]), d).kind).toBe(
+                "playing"
+            )
+        })
+
+        it("moves the cursor meanwhile, keeping the delay's count", () => {
+            let screen = entered()
+            screen = update(screen, tickInput(["down"]), d)
+            expect(screen).toMatchObject({ kind, choice: "stageSelect" })
+            for (let i = 2; i < delayTicks; i++) {
+                expect(update(screen, tickInput(["confirm"]), d)).toBe(screen)
+            }
+            expect(update(screen, tickInput(["confirm"]), d)).toEqual({
+                kind: "stageSelect",
+                selected: 0,
+            })
+        })
     })
 })
 
