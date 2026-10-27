@@ -2,6 +2,7 @@
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vite-plus/test"
 import confetti from "canvas-confetti"
 import { createBoss } from "./boss"
+import { END_CONFIRM_DELAY } from "./flow"
 import { energyHud } from "./breath"
 import { DOT_POINTS, START_LIVES, TICK_MS, TICK_RATE } from "./constants"
 import {
@@ -113,10 +114,12 @@ function screen(): string {
 const selectedItem = () =>
     document.querySelector("#overlay li.selected")?.textContent
 
+// End the game, then wait out the end screen's confirm delay.
 function gameOver(outcome: Outcome = "dead") {
     nextOutcome = outcome
     vi.advanceTimersByTime(FRAMES_MS)
     expect(screen()).toBe(outcome === "won" ? "stage-clear" : "game-over")
+    vi.advanceTimersByTime(END_CONFIRM_DELAY * 1000)
 }
 
 const starts = () => vi.mocked(createGameState).mock.calls.length

@@ -304,6 +304,12 @@ describe("2-player play", () => {
             mode: "coop",
             animals: [AnimalId.boar, AnimalId.penguin],
         })
+        // The end screen ignores confirm for END_CONFIRM_DELAY.
+        expect(update(screen, input([["confirm"]]), d)).toBe(screen)
+        for (let i = 0; i < 60; i++) screen = update(screen, input(), d)
+        // Only player 1 drives the end screens.
+        expect(update(screen, input([[], ["confirm"]]), d)).toBe(screen)
+        expect(update(screen, input([[], ["down"]]), d)).toBe(screen)
         const retry = update(screen, input([["confirm"]]), d)
         expect(retry).toMatchObject({
             kind: "playing",

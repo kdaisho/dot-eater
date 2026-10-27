@@ -14,6 +14,7 @@ import {
     type TickInput,
 } from "./flow"
 import { totalScore, type GameState } from "./game"
+import { browserPadList, GamepadSource, type PadChange } from "./gamepad"
 import {
     InputState,
     KeyboardSource,
@@ -35,12 +36,14 @@ import {
     burst,
     celebrate,
     hideOverlay,
+    hideToast,
     showCharacterSelect,
     showGameOver,
     showPause,
     showStageClear,
     showStageSelect,
     showTitle,
+    showToast,
     type EndScreenView,
 } from "./ui"
 
@@ -80,6 +83,30 @@ const tickInput: TickInput = {
     },
 }
 
+// Gamepads: in one-player play every pad drives player 1, alongside the
+// keyboard. A pad in use lost mid-game pauses it, like leaving the window;
+// an idle pad going to sleep doesn't. Set up before the loop, whose frames
+// poll it. (Toasts and auto-pause only run on events, after startup.)
+const TOAST_MS = 2000
+let toastTimer: ReturnType<typeof setTimeout> | undefined
+function onPadChange(change: PadChange) {
+    showToast(
+        change.kind === "connected"
+            ? "Controller connected"
+            : "Controller disconnected"
+    )
+    clearTimeout(toastTimer)
+    toastTimer = setTimeout(hideToast, TOAST_MS)
+    if (change.kind === "disconnected" && change.wasUsed) autoPause()
+}
+const pads = new GamepadSource(
+    browserPadList(navigator),
+    globalThis,
+    onPadChange
+)
+pads.setAssignment("shared")
+let padPollFailed = false
+
 // The loop ticks on every screen; menus and pause poll their input per tick
 // like play does. Only `playing` steps the game.
 const loop = createLoop({
@@ -88,7 +115,20 @@ const loop = createLoop({
     stepMs: TICK_MS,
     maxFrameMs: MAX_FRAME_MS,
     now: () => performance.now(),
-    requestFrame: (callback) => requestAnimationFrame(callback),
+    // Pads are polled once per frame, before the frame's ticks read input.
+    // A throw from a bad pad entry must not stop the frame: the loop asks
+    // for the next frame from within this one.
+    requestFrame: (callback) =>
+        requestAnimationFrame(() => {
+            try {
+                pads.poll()
+            } catch (error) {
+                // Once, not every frame.
+                if (!padPollFailed) console.error(error)
+                padPollFailed = true
+            }
+            callback()
+        }),
     cancelFrame: (id) => cancelAnimationFrame(id),
 })
 
@@ -242,5 +282,9 @@ document.addEventListener("visibilitychange", () => {
 })
 
 new KeyboardSource([PLAYER_1_KEYS, PLAYER_2_KEYS]).attach(input)
+pads.attach(input)
+// The (empty) toast live region goes in at once, so screen readers already
+// watch it when the first toast shows.
+hideToast()
 showOverlay(screen)
 loop.start()

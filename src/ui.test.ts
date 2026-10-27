@@ -4,12 +4,14 @@ import { afterEach, describe, expect, it, vi } from "vite-plus/test"
 import {
     celebrate,
     hideOverlay,
+    hideToast,
     showCharacterSelect,
     showGameOver,
     showPause,
     showStageClear,
     showStageSelect,
     showTitle,
+    showToast,
 } from "./ui"
 import type { StageSlot } from "./progress"
 import { ANIMAL_IDS, AnimalId, ANIMALS } from "./roster"
@@ -407,5 +409,55 @@ describe("two players", () => {
         expect(lines()).toEqual(["Score 50", "1P 30 · 2P 20"])
         showStageClear({ ...clearView(0, 50), playerScores: [30, 20] })
         expect(lines().slice(0, 2)).toEqual(["Score 50", "1P 30 · 2P 20"])
+    })
+})
+
+describe("toast", () => {
+    const toasts = () => [...document.querySelectorAll("#toast")]
+
+    it("shows a status note without touching the overlay", () => {
+        showPause()
+        showToast("Controller connected")
+        expect(toasts().map((t) => t.textContent)).toEqual([
+            "Controller connected",
+        ])
+        expect(toasts()[0]?.getAttribute("role")).toBe("status")
+        expect(title()).toBe("Paused")
+    })
+
+    it("replaces the previous toast", () => {
+        showToast("Controller connected")
+        showToast("Controller disconnected")
+        expect(toasts().map((t) => t.textContent)).toEqual([
+            "Controller disconnected",
+        ])
+    })
+
+    it("hides, and survives overlays coming and going", () => {
+        showToast("Controller connected")
+        showTitle()
+        hideOverlay()
+        expect(toasts().map((t) => t.textContent)).toEqual([
+            "Controller connected",
+        ])
+        hideToast()
+        expect(toasts().map((t) => t.textContent)).toEqual([""])
+        hideToast()
+        expect(toasts()).toHaveLength(1)
+    })
+
+    // Regression: each toast was a new role="status" element added with its
+    // text already in it, which screen readers don't announce.
+    it("keeps one live region in the page and changes its text", () => {
+        hideToast()
+        const region = toasts()[0]
+        expect(region?.getAttribute("role")).toBe("status")
+        expect(region?.textContent).toBe("")
+        showToast("Controller connected")
+        hideToast()
+        showToast("Controller disconnected")
+        expect(toasts()).toEqual([region])
+        expect(region?.isConnected).toBe(true)
+        expect(region?.textContent).toBe("Controller disconnected")
     })
 })
