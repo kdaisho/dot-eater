@@ -110,6 +110,7 @@ describe("parseLevel", () => {
             playerSpawns: [vec2(1, 1)],
             playerSpeed: 4,
             enemies: [{ pos: vec2(3, 1), ai: AiType.chase, speed: 2.5 }],
+            boss: null,
             rules: {},
         })
     })
@@ -741,5 +742,171 @@ describe("parseLevel rules", () => {
         expect(problemsOf(withRules({ fog: 3 }))).toEqual([
             "rules.fog must be an object, got 3",
         ])
+    })
+})
+
+describe("parseLevel with a boss", () => {
+    // A room with the boss's footprint at (3, 2) to (4, 3).
+    const lair: LevelData = {
+        name: "lair",
+        parTime: 60,
+        map: ["#######", "#P....#", "#..B .#", "#.....#", "#E....#", "#######"],
+        enemies: [{ ai: "chase" }],
+    }
+    // `lair` with its map rows replaced by `map`.
+    const withMap = (map: readonly string[]): LevelData => ({ ...lair, map })
+    // Boss settings come from JSON-like data, so tests pass shapes the type
+    // forbids.
+    const withBoss = (boss: unknown): LevelData =>
+        ({ ...lair, boss }) as LevelData
+
+    it("parses the boss's spawn, on a dot, with no enemy slot", () => {
+        const level = parseLevel(lair)
+        expect(level.boss).toEqual({ pos: vec2(3, 2) })
+        expect(level.cells[2][3]).toBe(Cell.dot)
+        expect(level.cells[2][4]).toBe(Cell.none)
+        expect(level.enemies).toHaveLength(1)
+    })
+
+    it("has no boss without a B", () => {
+        expect(parseLevel(valid).boss).toBeNull()
+    })
+
+    it("takes the boss's speed from its settings", () => {
+        expect(parseLevel(withBoss({ speed: 2.5 })).boss).toEqual({
+            pos: vec2(3, 2),
+            speed: 2.5,
+        })
+        expect(parseLevel(withBoss({})).boss).toEqual({ pos: vec2(3, 2) })
+    })
+
+    it("rejects bad boss settings", () => {
+        expect(problemsOf(withBoss({ speed: 0 }))).toEqual([
+            "boss.speed must be a positive number, got 0",
+        ])
+        expect(problemsOf(withBoss({ speed: TICK_RATE + 1 }))).toEqual([
+            `boss.speed must be at most ${TICK_RATE} (one cell per tick), got ${TICK_RATE + 1}`,
+        ])
+        expect(problemsOf(withBoss({ health: 3 }))).toEqual([
+            'unknown boss setting "health"',
+        ])
+        expect(problemsOf(withBoss(2))).toEqual([
+            "boss must be an object, got 2",
+        ])
+    })
+
+    it("rejects boss settings without a boss", () => {
+        expect(problemsOf({ ...valid, boss: {} })).toEqual([
+            'boss settings are given but the map has no "B"',
+        ])
+    })
+
+    it("allows at most one boss", () => {
+        expect(
+            problemsOf(
+                withMap([
+                    "#######",
+                    "#P....#",
+                    "#B.B .#",
+                    "#.....#",
+                    "#E....#",
+                    "#######",
+                ])
+            )
+        ).toEqual(['map must have at most one "B", found 2'])
+    })
+
+    it("needs the boss's whole footprint on the map", () => {
+        expect(
+            problemsOf(
+                withMap([
+                    "#######",
+                    "#P....#",
+                    "#.....#",
+                    "#.....#",
+                    "#E...B#",
+                    "#######",
+                ])
+            )
+        ).toEqual([
+            'the boss at (5, 4) needs open floor ("." or space) at (6, 4), got "#"',
+            'the boss at (5, 4) needs open floor ("." or space) at (5, 5), got "#"',
+            'the boss at (5, 4) needs open floor ("." or space) at (6, 5), got "#"',
+        ])
+        // In the corner of the map itself.
+        const corner = problemsOf(
+            withMap([
+                "#######",
+                "#P....#",
+                "#.....#",
+                "#.....#",
+                "#E....#",
+                "######B",
+            ])
+        )
+        expect(corner).toContain(
+            "the boss at (6, 5) doesn't fit: its 2x2 footprint goes off the map"
+        )
+    })
+
+    it("needs open floor under the rest of its footprint", () => {
+        expect(
+            problemsOf(
+                withMap([
+                    "#######",
+                    "#P....#",
+                    "#..B#.#",
+                    "#..E..#",
+                    "#.....#",
+                    "#######",
+                ])
+            )
+        ).toEqual([
+            'the boss at (3, 2) needs open floor ("." or space) at (4, 2), got "#"',
+            'the boss at (3, 2) needs open floor ("." or space) at (3, 3), got "E"',
+        ])
+        expect(
+            problemsOf(
+                withMap([
+                    "#######",
+                    "#..B..#",
+                    "#..P..#",
+                    "#.....#",
+                    "#E....#",
+                    "#######",
+                ])
+            )
+        ).toEqual([
+            'the boss at (3, 1) needs open floor ("." or space) at (3, 2), got "P"',
+        ])
+    })
+
+    it("rejects tunnels and ice on a boss level", () => {
+        expect(
+            problemsOf(
+                withMap([
+                    "#######",
+                    "#P....#",
+                    "...B ..",
+                    "#.....#",
+                    "#E....#",
+                    "#######",
+                ])
+            )
+        ).toEqual([
+            "a level with a boss can't have wrap tunnels, but the edge is open at (0, 2), (6, 2)",
+        ])
+        expect(
+            problemsOf(
+                withMap([
+                    "#######",
+                    "#P..~.#",
+                    "#..B .#",
+                    "#.....#",
+                    "#E....#",
+                    "#######",
+                ])
+            )
+        ).toEqual(["a level with a boss can't have ice"])
     })
 })

@@ -6,6 +6,7 @@ import {
     RESPAWN_BLINK,
     RESPAWN_DELAY,
 } from "./constants"
+import { bossDamage, damageBoss, inFootprint, tickBoss } from "./boss"
 import type { Character } from "./character"
 import type { GameState } from "./game"
 import { loopPos, type Cells } from "./level"
@@ -38,6 +39,10 @@ import { allDirections, directions, samePos, vec2, type Vec2 } from "./vec2"
 // Statuses and tile effects are data, including how they look (Look), so
 // game.ts, ai.ts and render.ts know only the generic flags and never a
 // particular breath.
+//
+// A boss (see boss.ts) is out of the hooks' reach: it isn't in
+// BreathHit.enemies. The engine damages it instead, by the breath's cost,
+// whenever the breath touches its footprint (see breathe).
 
 // How a status or tile effect is drawn. Both fields are optional; leave the
 // whole look out to draw nothing.
@@ -123,7 +128,8 @@ export type BreathHit = {
     // The player's cell and facing (a unit step) when it breathed.
     origin: Vec2
     facing: Vec2
-    // The cells the shape covers, nearest first. Never walls.
+    // The cells the shape covers, nearest first. Never walls. A line or a
+    // cone ends at a boss's body, its cells there included (see breathe).
     cells: readonly Vec2[]
     // The wall a line (or a cone's first cell) stopped at, if any.
     wall: Vec2 | null
@@ -213,12 +219,22 @@ export function canBreathe(breather: Breather): boolean {
 // Breathe, if allowed: resolve the shape from the player's cell along its
 // facing, run the breath's hook, and pay (cost and cooldown) unless the hook
 // refused. Returns true if the breath happened.
+//
+// A boss in the way (see boss.ts) stops a line or a cone like a wall would,
+// except that its cells are covered: the big body takes the breath. If any
+// of the cells the breath strikes (as for enemies: the origin too for a
+// line or a cone) is under the boss, it takes bossDamage(cost), once
+// however many of its cells are struck, and the breath counts as fired
+// even if the hook refused (e.g. the Boar with no wall to break): it hit
+// something.
 export function breathe(state: GameState): boolean {
     const breather = state.breather
     if (!canBreathe(breather)) return false
     const { breath, facing } = breather
     const origin = vec2(state.player.pos.x, state.player.pos.y)
-    const reach = resolveShape(state.cells, origin, facing, breath.shape)
+    const boss = state.boss && !state.boss.defeated ? state.boss : null
+    const body = boss ? (p: Vec2) => inFootprint(boss.pos, p) : undefined
+    const reach = resolveShape(state.cells, origin, facing, breath.shape, body)
     // Line and cone shapes start a cell ahead, but an enemy can stand on the
     // player's own cell while its sprite still glides in (collisions are on
     // drawn positions), so they hit enemies there too, first.
@@ -249,9 +265,11 @@ export function breathe(state: GameState): boolean {
         push: (enemy, step, distance) =>
             pushEnemy(state.cells, enemy, step, distance, state.player),
     }
+    const bossHit = body !== undefined && struck.some(body)
     const fired = breath.fire(hit) !== false
     if (iceAdded) rebuildIce(state)
-    if (!fired) return false
+    if (!fired && !bossHit) return false
+    if (bossHit) damageBoss(state, bossDamage(breath.cost))
     breather.energy -= breath.cost
     breather.cooldown = breath.cooldown
     return true
@@ -273,11 +291,16 @@ function add(cells: Cells, p: Vec2, d: Vec2): Vec2 {
 // The cells `shape` covers from `origin` facing `facing` (see BreathShape).
 // Each cell appears once, nearest first, even where a tunnel brings the
 // shape back round to cells it already covered.
+//
+// `body`, if given, marks the cells a big body (the boss) fills: a line or
+// a cone covers them but goes no further through them, so they cast
+// shadows like walls without being walls. Area and self shapes ignore it.
 export function resolveShape(
     cells: Cells,
     origin: Vec2,
     facing: Vec2,
-    shape: BreathShape
+    shape: BreathShape,
+    body: (p: Vec2) => boolean = () => false
 ): ShapeReach {
     const isWall = (p: Vec2) => cells[p.y][p.x] === Cell.wall
     switch (shape.kind) {
@@ -293,6 +316,7 @@ export function resolveShape(
                 if (seen.has(key(p))) break
                 seen.add(key(p))
                 result.push(p)
+                if (body(p)) break
             }
             return { cells: result, wall: null }
         }
@@ -327,7 +351,7 @@ export function resolveShape(
                         if (k === 1) wall = p
                         continue
                     }
-                    next.add(o)
+                    if (!body(p)) next.add(o)
                     if (seen.has(key(p))) continue
                     seen.add(key(p))
                     result.push(p)
@@ -511,8 +535,11 @@ function placeTile(
     return true
 }
 
-// Whether the player or an enemy in play stands on `cell`.
+// Whether the player, an enemy in play or the boss (on any of its cells)
+// stands on `cell`.
 function occupied(state: GameState, cell: Vec2): boolean {
+    const { boss } = state
+    if (boss && !boss.defeated && inFootprint(boss.pos, cell)) return true
     return [state.player, ...state.enemies.filter(inPlay)].some((c) =>
         samePos(c.pos, cell)
     )
@@ -545,10 +572,12 @@ export function enemyBlocks(state: GameState): BlockMap | null {
 
 // Count every breath timer down by `dt` seconds, at the start of a tick:
 // the cooldown, enemy statuses, defeated enemies (back at their spawn when
-// theirs runs out) and tile effects (an opened wall grows back).
+// theirs runs out), the boss's hit flash and tile effects (an opened wall
+// grows back).
 export function tickEffects(state: GameState, dt: number) {
     const breather = state.breather
     breather.cooldown = Math.max(0, breather.cooldown - dt)
+    if (state.boss) tickBoss(state.boss, dt)
     for (const enemy of state.enemies) {
         if (!inPlay(enemy)) {
             enemy.respawnIn -= dt

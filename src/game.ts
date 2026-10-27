@@ -1,5 +1,6 @@
 import {
     AiType,
+    BOSS_TRICKLE,
     CATCH_DISTANCE,
     Cell,
     CharacterId,
@@ -22,8 +23,15 @@ import {
     type Breather,
 } from "./breath"
 import { BREATHS } from "./breaths"
+import {
+    bossMove,
+    createBoss,
+    resetBoss,
+    squareDistance,
+    type Boss,
+} from "./boss"
 import { createCharacter, type Character } from "./character"
-import { glidePos, wrapDelta } from "./glide"
+import { glidePos, wrapDelta, type Glider } from "./glide"
 import { slideStep, type IceMap } from "./ice"
 import { hasDots, loopPos, type Cells, type Level } from "./level"
 import { levels } from "./levels"
@@ -47,6 +55,9 @@ export type GameState = {
     // The playing character's breath, facing and energy (see breath.ts).
     breather: Breather
     enemies: Character[]
+    // The level's boss (see boss.ts), or null on a level without one. Not
+    // an enemy: it has no enemy slot, and breath hooks never see it.
+    boss: Boss | null
     // The direction most recently newly pressed (not just held); zero for
     // none. It is tried first at the player's next move opportunity and then
     // cleared, so a quick tap made mid-move isn't lost.
@@ -155,6 +166,7 @@ export function createGameState(
         player,
         breather: createBreather(breath),
         enemies,
+        boss: level.boss ? createBoss(level.boss.pos, level.boss.speed) : null,
         bufferedStep: vec2(0, 0),
         score: 0,
         ticks: 0,
@@ -172,8 +184,9 @@ export function createGameState(
 // player ready to move, the enemies waiting out the grace period again, no
 // tap buffered, the player facing right again. Every enemy is back in play
 // with no statuses, including one that was defeated and waiting to respawn,
-// and a Splitter is whole again (see resetSplitter). Dots, score, energy,
-// the breath cooldown and tile effects are left alone.
+// and a Splitter is whole again (see resetSplitter). The boss is back at its
+// spawn too, keeping its damage (see resetBoss); a defeated one stays gone.
+// Dots, score, energy, the breath cooldown and tile effects are left alone.
 function respawn(state: GameState) {
     const { player, enemies, spawns } = state
     player.pos = vec2(spawns.player.x, spawns.player.y)
@@ -190,6 +203,7 @@ function respawn(state: GameState) {
         enemy.respawnIn = 0
         resetSplitter(enemy)
     })
+    if (state.boss) resetBoss(state.boss)
     state.breather.facing = vec2(START_FACING.x, START_FACING.y)
     state.bufferedStep = vec2(0, 0)
     state.eatenAt = null
@@ -250,7 +264,7 @@ function solidAt(state: GameState, cell: Vec2): boolean {
 // Add one tick's progress. Returns true if the character may move this tick.
 // A character already waiting at 1 gains nothing more, so waiting doesn't
 // bank time towards the move after next.
-function advance(character: Character, dt: number): boolean {
+function advance(character: Glider, dt: number): boolean {
     if (character.moveProgress < 1 - EPSILON) {
         character.moveProgress += character.speed * dt
     }
@@ -260,13 +274,13 @@ function advance(character: Character, dt: number): boolean {
 // After a move, start working towards the next one. Progress past 1 is kept,
 // so speeds that don't divide the tick rate still average out right (7
 // cells/s doesn't round down to a move every 9 ticks).
-function spend(character: Character) {
+function spend(character: Glider) {
     character.moveProgress = Math.max(character.moveProgress - 1, 0)
 }
 
 // Ready but not moving this tick: wait at exactly 1 for the first tick it
 // can, dropping any overflow.
-function wait(character: Character) {
+function wait(character: Glider) {
     character.moveProgress = 1
 }
 
@@ -295,6 +309,11 @@ function wait(character: Character) {
 // play don't move or catch; held ones (e.g. frozen) don't move; harmless
 // ones don't catch; and enemies keep out of cells a tile effect blocks.
 //
+// A boss (see boss.ts) moves with the enemies, after the breath, and keeps
+// out of blocked cells too; a defeated one doesn't move or catch. Once the
+// dots are gone with the boss still about, the energy meter refills by
+// itself (BOSS_TRICKLE per second), so the boss can always be finished.
+//
 // `move` is the player's input this tick (see MoveInput and movePlayerTick),
 // and `random` drives the enemy AI, so a tick is deterministic.
 export function step(
@@ -306,6 +325,7 @@ export function step(
     const { cells, player, enemies } = state
     state.ticks++
     tickEffects(state, dt)
+    trickle(state, dt)
     const from = positions(state)
     // Taken once, before anyone moves, so the player's progress and its
     // drawn path for collisions use the same rate all tick.
@@ -363,8 +383,31 @@ export function step(
         if (samePos(enemy.pos, from[i + 1])) wait(enemy)
         else spend(enemy)
     })
+    const { boss } = state
+    if (boss && !boss.defeated && advance(boss, dt)) {
+        const next = bossMove(state, from[0], blocked)
+        if (next) {
+            boss.lastPos = vec2(boss.pos.x, boss.pos.y)
+            boss.pos = next
+            spend(boss)
+        } else {
+            wait(boss)
+        }
+    }
 
     return checkEnd(state, start)
+}
+
+// On a boss level, once every dot is eaten and the boss is still about,
+// there is no other way to fill the energy meter: it refills by itself at
+// BOSS_TRICKLE per second, up to the breath's maxEnergy.
+function trickle(state: GameState, dt: number) {
+    const { boss, breather } = state
+    if (!boss || boss.defeated || hasDots(state.cells)) return
+    breather.energy = Math.min(
+        breather.breath.maxEnergy,
+        breather.energy + BOSS_TRICKLE * dt
+    )
 }
 
 // Finish the glides in progress after the game has ended, for the short
@@ -375,7 +418,8 @@ export function step(
 // player is drawn on its cell.
 export function settle(state: GameState, dt: number): boolean {
     const rate = state.playerRate
-    for (const character of [state.player, ...state.enemies]) {
+    const boss = state.boss ? [state.boss] : []
+    for (const character of [state.player, ...state.enemies, ...boss]) {
         if (character.moveProgress >= 1) continue
         const scale = character === state.player ? rate : 1
         const progress = character.moveProgress + character.speed * dt * scale
@@ -447,11 +491,7 @@ function drawnPositions(state: GameState): Vec2[] {
 // alpha, so collisions happen where the player sees the sprites touch, not
 // up to a cell earlier when a move starts. Near a tunnel it may be up to a
 // cell off the map; compare positions with wrapDelta.
-export function drawnPos(
-    character: Character,
-    cols: number,
-    rows: number
-): Vec2 {
+export function drawnPos(character: Glider, cols: number, rows: number): Vec2 {
     return glidePos(character, 0, cols, rows)
 }
 
@@ -468,12 +508,23 @@ export type TickStart = {
 }
 
 // Every character's TickStart for a tick of `dt` seconds, in the same order
-// as positions. Taken before anyone moves. `rate` scales the player's speed
-// (see GameState.playerRate); the default leaves it alone.
+// as positions, then the boss's (of its top-left cell) if there is one.
+// Taken before anyone moves. `rate` scales the player's speed (see
+// GameState.playerRate); the default leaves it alone.
 function tickStarts(state: GameState, dt: number, rate = 1): TickStart[] {
     const cols = state.cells[0].length
     const rows = state.cells.length
-    return [state.player, ...state.enemies].map((c) => ({
+    const { boss } = state
+    const bossStart: TickStart[] = boss
+        ? [
+              {
+                  drawn: drawnPos(boss, cols, rows),
+                  cell: vec2(boss.pos.x, boss.pos.y),
+                  arrive: arriveTime(boss, dt),
+              },
+          ]
+        : []
+    const starts = [state.player, ...state.enemies].map((c) => ({
         drawn: drawnPos(c, cols, rows),
         cell: vec2(c.pos.x, c.pos.y),
         // A held enemy's progress doesn't move on this tick, so it stays
@@ -483,6 +534,7 @@ function tickStarts(state: GameState, dt: number, rate = 1): TickStart[] {
                 ? Infinity
                 : arriveTime(c, c === state.player ? dt * rate : dt),
     }))
+    return [...starts, ...bossStart]
 }
 
 // When in a tick of `dt` seconds a character's glide reaches its cell: the
@@ -491,7 +543,7 @@ function tickStarts(state: GameState, dt: number, rate = 1): TickStart[] {
 // that is (1 - p) / (speed * dt). A character already at 1 (waiting to move)
 // is there from the start: 0. Reaching 1 within EPSILON of the end of the
 // tick counts as the end, as advance counts it as reached.
-function arriveTime(character: Character, dt: number): number {
+function arriveTime(character: Glider, dt: number): number {
     const { moveProgress, speed } = character
     if (moveProgress >= 1 - EPSILON) return 0
     const gain = speed * dt
@@ -581,13 +633,19 @@ function segmentDistance(p: Vec2, q: Vec2): number {
 //
 // This replaces checking for a shared cell or a swap of cells, which fired
 // as soon as a move started, with the sprites still up to a cell apart.
+//
+// `near` measures how close a piece of the relative motion comes to `a`:
+// by default to its centre (segmentDistance). For the boss, `a` is its
+// top-left cell and `near` is squareDistance, the closest approach to the
+// square its four cell centres span, so any touch on its footprint counts.
 function collides(
     a: TickStart,
     aEnd: Vec2,
     b: TickStart,
     bEnd: Vec2,
     cols: number,
-    rows: number
+    rows: number,
+    near: (p: Vec2, q: Vec2) => number = segmentDistance
 ): boolean {
     const pathA = drawnPath(a, aEnd, cols, rows)
     const pathB = drawnPath(b, bEnd, cols, rows)
@@ -603,7 +661,7 @@ function collides(
     for (let i = 1; i < times.length; i++) {
         const p = relativeAt(times[i - 1])
         const q = relativeAt(times[i])
-        if (segmentDistance(p, q) <= CATCH_DISTANCE + EPSILON) return true
+        if (near(p, q) <= CATCH_DISTANCE + EPSILON) return true
     }
     return false
 }
@@ -616,13 +674,16 @@ function collides(
 // - Caught with lives left: one life is lost and everyone respawns at once
 //   (see respawn), keeping the dots and score. That is no outcome; the game
 //   goes on, and callers can watch `lives` if they need to notice it.
-// - No dots left: won, checked first. Eating the last dot clears the stage
-//   even if the player is caught on that same tick, and costs no life.
+// - No dots left (and, on a boss level, the boss defeated): won, checked
+//   first. Eating the last dot, or defeating the boss when that comes last,
+//   clears the stage even if the player is caught on that same tick, and
+//   costs no life.
 export function checkEnd(
     state: GameState,
     start: readonly TickStart[] = tickStarts(state, 0)
 ): Outcome | null {
-    if (!hasDots(state.cells)) return "won"
+    const bossLeft = state.boss !== null && !state.boss.defeated
+    if (!hasDots(state.cells) && !bossLeft) return "won"
     if (!caught(state, start)) return null
     if (state.lives <= 1) {
         state.lives = 0
@@ -633,18 +694,36 @@ export function checkEnd(
     return null
 }
 
-// Whether any enemy collides with the player this tick (see collides).
-// `start` is everyone's TickStart for the tick. Enemies out of play and
-// harmless ones (see EnemyStatus) don't catch.
+// Whether any enemy, or the boss, collides with the player this tick (see
+// collides). `start` is everyone's TickStart for the tick (see tickStarts).
+// Enemies out of play and harmless ones (see EnemyStatus) don't catch, nor
+// does a defeated boss.
+//
+// Boss levels have no tunnels. The wrap-aware offsets in collides may still
+// take a far-off player the short way round the map, but on a map without
+// tunnels that leaves it at least a cell from the boss's square, so it never
+// makes a catch.
 function caught(state: GameState, start: readonly TickStart[]): boolean {
     const cols = state.cells[0].length
     const rows = state.cells.length
     const [player, ...enemies] = drawnPositions(state)
-    return enemies.some((enemy, i) => {
+    const byEnemy = enemies.some((enemy, i) => {
         const e = state.enemies[i]
         if (!inPlay(e) || hasStatus(e, "harmless")) return false
         return collides(start[0], player, start[i + 1], enemy, cols, rows)
     })
+    if (byEnemy) return true
+    const { boss } = state
+    if (!boss || boss.defeated) return false
+    return collides(
+        start[1 + state.enemies.length],
+        drawnPos(boss, cols, rows),
+        start[0],
+        player,
+        cols,
+        rows,
+        squareDistance
+    )
 }
 
 // Move a patroller on to its next waypoint if it stands on the current one.

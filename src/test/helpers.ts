@@ -1,3 +1,4 @@
+import { createBoss, type Boss } from "../boss"
 import { createBreather, type BreathDef } from "../breath"
 import { BREATHS } from "../breaths"
 import { AiType, Cell, CharacterId, TICK_RATE } from "../constants"
@@ -85,6 +86,7 @@ export function makePatroller(
 // unless `lives` says otherwise, so any collision ends the game. There is no
 // ice unless `ice` says where (see textMap). The player has the default
 // character's breath unless `breath` says otherwise, with an empty meter.
+// There is no boss unless `boss` gives one (see makeBoss).
 export function makeState(
     map: MapLiteral,
     player: { x: number; y: number },
@@ -93,7 +95,13 @@ export function makeState(
         lives = 1,
         ice,
         breath = BREATHS[DEFAULT_ANIMAL],
-    }: { lives?: number; ice?: IceMap; breath?: BreathDef } = {}
+        boss = null,
+    }: {
+        lives?: number
+        ice?: IceMap
+        breath?: BreathDef
+        boss?: Boss | null
+    } = {}
 ): GameState {
     const cells = cellsFrom(map)
     if (cells[player.y][player.x] === Cell.dot) {
@@ -108,6 +116,7 @@ export function makeState(
         player: createCharacter(CharacterId.player, vec2(player.x, player.y)),
         breather: createBreather(breath),
         enemies,
+        boss,
         bufferedStep: vec2(0, 0),
         score: 0,
         ticks: 0,
@@ -119,6 +128,15 @@ export function makeState(
             enemies: enemies.map((e) => vec2(e.pos.x, e.pos.y)),
         },
     }
+}
+
+// A boss with its footprint's top-left cell at (x, y), at rest there and
+// ready to move (unlike createBoss, which starts it with the grace period),
+// at `speed` cells/s (the default if left out).
+export function makeBoss(x: number, y: number, speed?: number): Boss {
+    const boss = createBoss(vec2(x, y), speed)
+    boss.moveProgress = 1
+    return boss
 }
 
 // A map and its ice from rows of level map characters ("#" wall, "." dot,

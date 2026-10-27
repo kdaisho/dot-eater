@@ -53,6 +53,12 @@ export type FogRule = {
     radius: number
 }
 
+// The level's boss (see boss.ts), whose spawn is the "B" in the map.
+export type BossData = {
+    // Cells per second. Omitted means BOSS_SPEED.
+    speed?: number
+}
+
 // Per-level special rules. Each is optional; a level without rules plays
 // normally.
 export type LevelRules = {
@@ -71,6 +77,9 @@ export type LevelData = {
     // One entry per `E` in the map, matched in reading order (left to right,
     // then top to bottom).
     enemies: readonly EnemyData[]
+    // Settings for the boss, if the map has a "B". Optional even then (the
+    // defaults apply); not allowed without one.
+    boss?: BossData
     rules?: LevelRules
 }
 
@@ -80,16 +89,21 @@ export type LevelData = {
 //   (space)  empty
 //   P        player 1 spawn (an empty cell)
 //   E        enemy spawn (the enemy starts on a dot)
+//   B        boss spawn: the top-left cell of its 2x2 footprint (a dot); the
+//            other three must be "." or space
 //   ~        ice (empty)
 //   :        ice with a dot
 // An open cell on the edge of the map is a wrap-around tunnel to the cell on
 // the opposite edge, which must also be open. Ice is a kind of floor:
 // anything that moves onto it keeps sliding (see ice.ts). Spawns are always
-// on normal floor.
+// on normal floor. A level with a boss has no tunnels and no ice: the boss
+// neither wraps nor slides. On a boss level, the stage is cleared once
+// every dot is eaten and the boss is defeated.
 const WALL = "#"
 const DOT = "."
 const EMPTY = " "
 const ENEMY = "E"
+const BOSS = "B"
 const ICE = "~"
 const ICE_DOT = ":"
 // One spawn character per player, in player order. A second player would add
@@ -100,6 +114,7 @@ const MAP_CHARS: ReadonlySet<string> = new Set([
     DOT,
     EMPTY,
     ENEMY,
+    BOSS,
     ICE,
     ICE_DOT,
     ...PLAYER_CHARS,
@@ -139,6 +154,9 @@ export type Level = {
     playerSpawns: readonly Readonly<Vec2>[]
     playerSpeed?: number
     enemies: readonly EnemySpawn[]
+    // The boss, or null for none: its spawn (the top-left cell of its
+    // footprint) and speed (see BossData).
+    boss: { pos: Readonly<Vec2>; speed?: number } | null
     rules: LevelRules
 }
 
@@ -182,6 +200,7 @@ export function parseLevel(data: LevelData): Level {
         checkSpeed(problems, `enemies[${i}].speed`, enemy.speed)
         problems.push(...routeShapeProblems(enemy, i))
     })
+    problems.push(...bossDataProblems(data.boss))
     problems.push(...rulesProblems(data.rules))
     // Split rows by code point, not UTF-16 unit, so a character outside the
     // BMP (e.g. an emoji) counts as one cell.
@@ -212,6 +231,7 @@ export function parseLevel(data: LevelData): Level {
     // Stage 2: build cells and collect spawns.
     const cells: Cells = []
     const enemyPositions: Vec2[] = []
+    const bossPositions: Vec2[] = []
     const playerPositions: Vec2[][] = PLAYER_CHARS.map(() => [])
     rows.forEach((row, y) => {
         cells.push(
@@ -229,6 +249,9 @@ export function parseLevel(data: LevelData): Level {
                         return Cell.dot
                     case ENEMY:
                         enemyPositions.push(vec2(x, y))
+                        return Cell.dot
+                    case BOSS:
+                        bossPositions.push(vec2(x, y))
                         return Cell.dot
                     default:
                         return Cell.none
@@ -270,6 +293,7 @@ export function parseLevel(data: LevelData): Level {
         )
     }
     problems.push(...tunnelProblems(cells))
+    problems.push(...bossProblems(rows, bossPositions, data.boss))
     data.enemies.forEach((enemy, i) => {
         enemy.route?.forEach(([x, y], j) => {
             const field = `enemies[${i}].route[${j}]`
@@ -338,8 +362,95 @@ export function parseLevel(data: LevelData): Level {
                     : { route: route.map(([x, y]) => vec2(x, y)) }),
             }
         }),
+        boss:
+            bossPositions.length === 0
+                ? null
+                : {
+                      pos: bossPositions[0],
+                      ...(data.boss?.speed === undefined
+                          ? {}
+                          : { speed: data.boss.speed }),
+                  },
         rules: copyRules(data.rules),
     }
+}
+
+const BOSS_KEYS: ReadonlySet<string> = new Set(["speed"])
+
+// Boss settings that need no map: an object with only known, valid
+// settings. Whether the map has a boss for them is checked once it is
+// known.
+function bossDataProblems(boss: BossData | undefined): string[] {
+    if (boss === undefined) return []
+    if (!isPlainObject(boss)) {
+        return [`boss must be an object, got ${JSON.stringify(boss)}`]
+    }
+    const problems: string[] = []
+    for (const key of Object.keys(boss)) {
+        if (!BOSS_KEYS.has(key)) {
+            problems.push(`unknown boss setting ${JSON.stringify(key)}`)
+        }
+    }
+    checkSpeed(problems, "boss.speed", boss.speed)
+    return problems
+}
+
+// The boss's spawn (`spawns`, every "B" in reading order) against the map
+// (`rows`, by character): at most one, with its whole 2x2 footprint on the
+// map and open floor, and boss settings only with a boss. A boss level has
+// no wrap tunnels and no ice, which the boss can't use.
+function bossProblems(
+    rows: readonly (readonly string[])[],
+    spawns: readonly Vec2[],
+    boss: BossData | undefined
+): string[] {
+    if (spawns.length === 0) {
+        return boss === undefined
+            ? []
+            : [`boss settings are given but the map has no "${BOSS}"`]
+    }
+    if (spawns.length > 1) {
+        return [`map must have at most one "${BOSS}", found ${spawns.length}`]
+    }
+    const problems: string[] = []
+    const [{ x, y }] = spawns
+    const height = rows.length
+    const width = rows[0].length
+    if (x + 1 >= width || y + 1 >= height) {
+        problems.push(
+            `the boss at (${x}, ${y}) doesn't fit: its 2x2 footprint goes off the map`
+        )
+    } else {
+        for (const [cx, cy] of [
+            [x + 1, y],
+            [x, y + 1],
+            [x + 1, y + 1],
+        ]) {
+            const ch = rows[cy][cx]
+            if (ch !== DOT && ch !== EMPTY) {
+                problems.push(
+                    `the boss at (${x}, ${y}) needs open floor ("${DOT}" or space) at (${cx}, ${cy}), got ${JSON.stringify(ch)}`
+                )
+            }
+        }
+    }
+    const tunnels = rows.flatMap((row, ry) =>
+        row.flatMap((ch, rx) =>
+            ch !== WALL &&
+            (rx === 0 || ry === 0 || rx === width - 1 || ry === height - 1)
+                ? [`(${rx}, ${ry})`]
+                : []
+        )
+    )
+    if (tunnels.length > 0) {
+        problems.push(
+            `a level with a boss can't have wrap tunnels, but the edge is open at ${tunnels.join(", ")}`
+        )
+    }
+    if (rows.some((row) => row.some((ch) => ch === ICE || ch === ICE_DOT))) {
+        problems.push(`a level with a boss can't have ice`)
+    }
+    return problems
 }
 
 const RULE_KEYS: ReadonlySet<string> = new Set(["fog"])
