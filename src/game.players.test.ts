@@ -9,9 +9,12 @@ import {
     DEFEAT_POINTS,
     DOT_POINTS,
     PLAYER_SPEED,
+    START_LIVES,
     TICK_RATE,
 } from "./constants"
+import { BREATHS } from "./breaths"
 import {
+    createGameState,
     IDLE,
     settle,
     step,
@@ -19,6 +22,7 @@ import {
     type GameState,
     type MoveInput,
 } from "./game"
+import { levels } from "./levels"
 import {
     cellsFrom,
     fixedRandom,
@@ -65,6 +69,42 @@ const corridor = textMap([
     "#.#########",
     "###########",
 ]).map
+
+describe("createGameState with two players", () => {
+    it("starts each on its own spawn as its own animal", () => {
+        const level = levels[0]
+        const state = createGameState(level, ["dragon", "boar"])
+        const [p1, p2] = state.players
+        expect(p1.character.pos).toEqual(level.playerSpawns[0])
+        expect(p2.character.pos).toEqual(level.playerSpawns[1])
+        expect(state.spawns.players).toEqual(level.playerSpawns)
+        expect(p1.breather.breath).toBe(BREATHS.dragon)
+        expect(p2.breather.breath).toBe(BREATHS.boar)
+        expect(p1.character.speed).toBe(PLAYER_SPEED)
+        expect(p2.character.speed).toBe(PLAYER_SPEED * BREATHS.boar.speedScale)
+        expect(p2.character.moveProgress).toBe(1)
+        expect(state.lives).toBe(START_LIVES)
+    })
+
+    it("lets both players pick the same animal", () => {
+        const state = createGameState(levels[0], ["owl", "owl"])
+        expect(state.players.map((p) => p.breather.breath.animal)).toEqual([
+            "owl",
+            "owl",
+        ])
+        expect(state.players[0].breather).not.toBe(state.players[1].breather)
+    })
+
+    it("starts one player from a single animal", () => {
+        expect(createGameState(levels[0], "skunk").players).toHaveLength(1)
+    })
+
+    it("refuses more players than the level has spawns", () => {
+        expect(() =>
+            createGameState(levels[0], ["owl", "owl", "owl"])
+        ).toThrow()
+    })
+})
 
 describe("two players", () => {
     it("move independently, each with its own input", () => {

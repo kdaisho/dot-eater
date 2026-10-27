@@ -88,6 +88,8 @@ export type LevelData = {
 //   .        dot
 //   (space)  empty
 //   P        player 1 spawn (an empty cell)
+//   Q        player 2 spawn (an empty cell). Optional: a level without one
+//            starts player 2 on player 1's spawn.
 //   E        enemy spawn (the enemy starts on a dot)
 //   B        boss spawn: the top-left cell of its 2x2 footprint (a dot); the
 //            other three must be "." or space
@@ -106,9 +108,9 @@ const ENEMY = "E"
 const BOSS = "B"
 const ICE = "~"
 const ICE_DOT = ":"
-// One spawn character per player, in player order. A second player would add
-// its own character (e.g. "Q") here.
-export const PLAYER_CHARS: readonly string[] = ["P"]
+// One spawn character per player, in player order. Only player 1's is
+// required (see Level.playerSpawns).
+export const PLAYER_CHARS: readonly string[] = ["P", "Q"]
 const MAP_CHARS: ReadonlySet<string> = new Set([
     WALL,
     DOT,
@@ -150,7 +152,8 @@ export type Level = {
     // Where the floor is ice, [y][x] like the cells. Shared like the cells;
     // nothing changes it during a game.
     ice: IceMap
-    // Indexed by player, in PLAYER_CHARS order.
+    // Indexed by player, in PLAYER_CHARS order: one per player, always. A
+    // spawn the map leaves out (only "Q" may be) is player 1's.
     playerSpawns: readonly Readonly<Vec2>[]
     playerSpeed?: number
     enemies: readonly EnemySpawn[]
@@ -264,7 +267,11 @@ export function parseLevel(data: LevelData): Level {
     )
     PLAYER_CHARS.forEach((ch, i) => {
         const count = playerPositions[i].length
-        if (count !== 1) {
+        if (i > 0 && count > 1) {
+            problems.push(
+                `map may have at most one "${ch}" (player ${i + 1} spawn), found ${count}`
+            )
+        } else if (i === 0 && count !== 1) {
             problems.push(
                 `map must have exactly one "${ch}" (player ${i + 1} spawn), found ${count}`
             )
@@ -306,30 +313,14 @@ export function parseLevel(data: LevelData): Level {
     })
     if (problems.length > 0) throw fail()
 
-    // Stage 3: every dot must be reachable from player 1's spawn, sliding
-    // included, and no slide may strand the player.
-    const playerSpawns = playerPositions.map(([pos]) => pos)
-    const reach = slideReach(cells, ice, playerSpawns[0])
-    cells.forEach((row, y) =>
-        row.forEach((cell, x) => {
-            if (cell === Cell.dot && !reach.visited[y][x]) {
-                problems.push(
-                    `dot at (${x}, ${y}) can't be reached from the player spawn`
-                )
-            }
-        })
-    )
-    // One problem per cell, however many ways the player can get stuck
-    // there, in reading order.
-    const stranded = new Set(reach.stuck.map((s) => `${s.pos.x},${s.pos.y}`))
-    cells.forEach((row, y) =>
-        row.forEach((_, x) => {
-            if (!stranded.has(`${x},${y}`)) return
-            problems.push(
-                `sliding can strand the player at (${x}, ${y}), with no way back to the spawn`
-            )
-        })
-    )
+    // Stage 3: every dot must be reachable from every player's spawn,
+    // sliding included, and no slide may strand a player.
+    const [first] = playerPositions[0]
+    const playerSpawns = playerPositions.map(([pos]) => pos ?? first)
+    playerSpawns.forEach((spawn, i) => {
+        if (i > 0 && samePos(spawn, first)) return
+        problems.push(...spawnProblems(cells, ice, spawn, i))
+    })
     // Each patroller must be able to walk its whole route from its spawn,
     // sliding included (see routeProblems).
     data.enemies.forEach((enemy, i) => {
@@ -527,6 +518,42 @@ function checkSpeed(
             `${field} must be at most ${TICK_RATE} (one cell per tick), got ${speed}`
         )
     }
+}
+
+// Every dot must be reachable from player `index`'s `spawn`, sliding
+// included, and no slide may strand the player there with no way back to
+// it (see slideReach). Player 1's problems read as they always have.
+function spawnProblems(
+    cells: Cells,
+    ice: IceMap,
+    spawn: Vec2,
+    index: number
+): string[] {
+    const problems: string[] = []
+    const from =
+        index === 0 ? "the player spawn" : `player ${index + 1}'s spawn`
+    const reach = slideReach(cells, ice, spawn)
+    cells.forEach((row, y) =>
+        row.forEach((cell, x) => {
+            if (cell === Cell.dot && !reach.visited[y][x]) {
+                problems.push(
+                    `dot at (${x}, ${y}) can't be reached from ${from}`
+                )
+            }
+        })
+    )
+    // One problem per cell, however many ways the player can get stuck
+    // there, in reading order.
+    const stranded = new Set(reach.stuck.map((s) => `${s.pos.x},${s.pos.y}`))
+    cells.forEach((row, y) =>
+        row.forEach((_, x) => {
+            if (!stranded.has(`${x},${y}`)) return
+            problems.push(
+                `sliding can strand the player at (${x}, ${y}), with no way back to ${index === 0 ? "the spawn" : from}`
+            )
+        })
+    )
+    return problems
 }
 
 // Whether a patroller starting free at `spawn` walks its whole route:

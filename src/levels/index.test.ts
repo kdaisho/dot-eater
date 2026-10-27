@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vite-plus/test"
 import { AiType, Cell } from "../constants"
 import { parseLevel, type Cells } from "../level"
+import { slideReach } from "../ice"
 import { distanceMap, openNeighbours } from "../path"
 import { vec2 } from "../vec2"
 import { levels } from "./index"
@@ -18,6 +19,41 @@ describe("levels", () => {
             expect(level.name.trim()).not.toBe("")
             expect(level.width).toBeGreaterThan(0)
             expect(level.height).toBeGreaterThan(0)
+        }
+    )
+
+    // 2-player games start player 2 on the "Q" each stage has beside the
+    // "P", on normal floor (spawns never are ice).
+    it.each(levels.map((level, i) => [i + 1, level] as const))(
+        "stage %i has a player 2 spawn of its own, next to player 1's",
+        (_n, level) => {
+            const [p1, p2] = level.playerSpawns
+            expect(level.playerSpawns).toHaveLength(2)
+            expect(p2).not.toEqual(p1)
+            expect(Math.abs(p2.x - p1.x) + Math.abs(p2.y - p1.y)).toBe(1)
+            expect(level.cells[p2.y][p2.x]).toBe(Cell.none)
+            expect(level.ice[p2.y][p2.x]).toBe(false)
+        }
+    )
+
+    // Fairness for player 2, sliding included, as parseLevel checks for
+    // every spawn: every dot can be eaten from its spawn, and no slide
+    // strands it with no way back there.
+    it.each(levels.map((level, i) => [i + 1, level] as const))(
+        "stage %i lets player 2 eat every dot from its spawn",
+        (_n, level) => {
+            const reach = slideReach(
+                level.cells.map((row) => [...row]),
+                level.ice,
+                level.playerSpawns[1]
+            )
+            level.cells.forEach((row, y) =>
+                row.forEach((cell, x) => {
+                    if (cell === Cell.dot)
+                        expect(reach.visited[y][x]).toBe(true)
+                })
+            )
+            expect(reach.stuck).toEqual([])
         }
     )
 })
