@@ -304,8 +304,12 @@ function updateStageSelect(
 
 // Each player's left/right move its own cursor over ANIMAL_IDS, stopping at
 // either end, until it confirms; confirm marks its pick ready, and the
-// stage starts once every player is ready. Back takes a confirmation back,
-// or returns to stage select on the same stage. // order, player 1 first, so player 1's back wins a tick where both act.
+// stage starts once every player is ready. Back takes that player's
+// confirmation back or, if it hasn't confirmed, returns to stage select on
+// the same stage. A player pressing both confirm and back on one tick
+// confirms. Players are handled in order, player 1 first, so on a tick
+// where both act, player 1's back to stage select wins over anything
+// player 2 does.
 function updateCharacterSelect(
     screen: Extract<Screen, { kind: "characterSelect" }>,
     input: TickInput,
