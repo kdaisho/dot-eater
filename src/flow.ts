@@ -53,9 +53,20 @@ import { rateClear, type ClearRating } from "./stars"
 // the clear's star rating, worked out once on entry.
 
 // What an end screen offers, in menu order. The first is selected on entry,
-// so Space retries straight away, as it always has.
+// so Space retries (once END_CONFIRM_DELAY has passed).
 export const END_CHOICES = ["retry", "stageSelect"] as const
 export type EndChoice = (typeof END_CHOICES)[number]
+
+// How long (seconds) an end screen ignores confirm after it appears, so
+// mashing breath (the same button as confirm on a pad) while dying or
+// clearing doesn't pick Retry before the player sees the screen. The cursor
+// moves meanwhile.
+export const END_CONFIRM_DELAY = 0.5
+
+// How long an end screen has been up, in seconds of ticks. A mutable box,
+// like the game, so it carries over when the cursor moves (the copy shares
+// it) without a new screen every tick. Left out, confirm works at once.
+export type ShownFor = { seconds: number }
 
 export type Screen =
     | { kind: "title" }
@@ -83,6 +94,7 @@ export type Screen =
           game: GameState
           choice: EndChoice
           rating: ClearRating
+          shown?: ShownFor
       }
     | {
           kind: "gameOver"
@@ -90,6 +102,7 @@ export type Screen =
           animal: AnimalId
           game: GameState
           choice: EndChoice
+          shown?: ShownFor
       }
 
 export type ScreenKind = Screen["kind"]
@@ -242,11 +255,12 @@ function endScreen(
 ): Screen {
     const { level, animal, game } = screen
     const choice = END_CHOICES[0]
+    const shown = { seconds: 0 }
     if (screen.outcome !== "won") {
-        return { kind: "gameOver", level, animal, game, choice }
+        return { kind: "gameOver", level, animal, game, choice, shown }
     }
     const rating = rateClear(game, levels[level].parTime)
-    return { kind: "stageClear", level, animal, game, choice, rating }
+    return { kind: "stageClear", level, animal, game, choice, rating, shown }
 }
 
 function updateEnd(
@@ -254,7 +268,11 @@ function updateEnd(
     input: TickInput,
     deps: FlowDeps
 ): Screen {
-    if (input.wasPressed("confirm")) {
+    const { shown } = screen
+    if (shown) shown.seconds += deps.dt
+    // The epsilon absorbs float drift from summing dt.
+    const ready = !shown || shown.seconds >= END_CONFIRM_DELAY - 1e-9
+    if (ready && input.wasPressed("confirm")) {
         return screen.choice === "retry"
             ? startLevel(deps.levels, screen.level, screen.animal)
             : { kind: "stageSelect", selected: screen.level }
