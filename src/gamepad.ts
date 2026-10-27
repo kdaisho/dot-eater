@@ -13,8 +13,10 @@ export type Pad = {
     readonly index: number
     // False for a pad the browser still lists after it disconnected.
     readonly connected?: boolean
-    readonly buttons: readonly PadButton[]
-    readonly axes: readonly number[]
+    // Optional (and button slots nullable) so a malformed entry, as some
+    // drivers or extensions produce, reads as holding nothing.
+    readonly buttons?: readonly (PadButton | null | undefined)[]
+    readonly axes?: readonly number[]
 }
 
 // navigator.getGamepads, or a fake. Empty slots are null.
@@ -65,12 +67,12 @@ export function stickAction(x: number, y: number): Action | undefined {
 // (or two buttons) hold one action independently.
 export function padControls(pad: Pad): Map<string, readonly Action[]> {
     const held = new Map<string, readonly Action[]>()
-    pad.buttons.forEach((button, i) => {
+    pad.buttons?.forEach((button, i) => {
         const actions = PAD_BUTTONS[i]
         if (button?.pressed && actions)
             held.set(`pad:${pad.index}:${i}`, actions)
     })
-    const stick = stickAction(pad.axes[0] ?? 0, pad.axes[1] ?? 0)
+    const stick = stickAction(pad.axes?.[0] ?? 0, pad.axes?.[1] ?? 0)
     if (stick) held.set(`pad:${pad.index}:stick`, [stick])
     return held
 }

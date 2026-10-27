@@ -71,6 +71,14 @@ describe("padControls", () => {
         expect(padControls(pad(0, [1, 2, 3, 16])).size).toBe(0)
     })
 
+    // Regression: a malformed pad entry threw, stopping the frame loop.
+    it("reads a pad missing buttons or axes as holding nothing", () => {
+        expect(padControls({ index: 0 }).size).toBe(0)
+        expect(padControls({ index: 0, buttons: [null], axes: [] }).size).toBe(
+            0
+        )
+    })
+
     it("adds the stick as one control", () => {
         expect(Object.fromEntries(padControls(pad(2, [], -1, 0)))).toEqual({
             "pad:2:stick": ["left"],

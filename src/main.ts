@@ -70,6 +70,8 @@ const tickInput = {
     }),
 }
 
+let padPollFailed = false
+
 // The loop ticks on every screen; menus and pause poll their input per tick
 // like play does. Only `playing` steps the game.
 const loop = createLoop({
@@ -79,9 +81,17 @@ const loop = createLoop({
     maxFrameMs: MAX_FRAME_MS,
     now: () => performance.now(),
     // Pads are polled once per frame, before the frame's ticks read input.
+    // A throw from a bad pad entry must not stop the frame: the loop asks
+    // for the next frame from within this one.
     requestFrame: (callback) =>
         requestAnimationFrame(() => {
-            pads.poll()
+            try {
+                pads.poll()
+            } catch (error) {
+                // Once, not every frame.
+                if (!padPollFailed) console.error(error)
+                padPollFailed = true
+            }
             callback()
         }),
     cancelFrame: (id) => cancelAnimationFrame(id),

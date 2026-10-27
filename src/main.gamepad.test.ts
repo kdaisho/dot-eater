@@ -133,4 +133,25 @@ describe("main with a gamepad", () => {
         vi.advanceTimersByTime(1100)
         expect(toast()).toBeUndefined()
     })
+
+    // Regression: a throw from polling broke the frame chain for good.
+    it("keeps running when polling the pads throws", () => {
+        const error = vi.spyOn(console, "error").mockImplementation(() => {})
+        connect()
+        expect(screen()).toBe("pause")
+        const bad = {
+            get index(): number {
+                throw new Error("bad pad")
+            },
+        }
+        pads = [bad as unknown as Pad]
+        vi.advanceTimersByTime(100)
+        // Logged once, not every frame.
+        expect(error).toHaveBeenCalledTimes(1)
+        pads = [pad()]
+        vi.advanceTimersByTime(100)
+        tap(START)
+        expect(screen()).toBe("playing")
+        error.mockRestore()
+    })
 })
