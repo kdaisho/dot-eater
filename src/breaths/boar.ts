@@ -1,17 +1,46 @@
-import type { BreathDef } from "../breath"
+import type { BreathDef, TileEffect } from "../breath"
+import type { Cells } from "../level"
 import { AnimalId } from "../roster"
+import type { Vec2 } from "../vec2"
+
+// Seconds a broken wall stays open before it grows back.
+const OPEN_SECONDS = 10
+
+// A broken wall: open floor (no dot) drawn as brown rubble until it grows
+// back, pushing anyone inside out (opensWall in breath.ts).
+export const BROKEN_WALL: TileEffect = {
+    name: "boar.broken",
+    opensWall: true,
+    look: { color: "rgba(139, 90, 43, 0.6)" },
+}
+
+// Whether `pos` is on the map's border row or column. Those walls are the
+// outer wall and never break: opening one would make a new wrap tunnel,
+// possibly into a wall on the opposite edge.
+export function isOuterWall(cells: Cells, pos: Vec2): boolean {
+    return (
+        pos.x === 0 ||
+        pos.y === 0 ||
+        pos.x === cells[0].length - 1 ||
+        pos.y === cells.length - 1
+    )
+}
 
 // Boar 🐗, wall-break breath (KDA-220): breaks the wall in front; it grows
-// back after 10 s, pushing out anything inside; outer walls hold. Stat:
-// costly breath, slower movement (3.5 cells/s at the default 4).
+// back after 10 s, pushing out anything inside; outer walls hold. Refused
+// (nothing spent) when there is no wall in front or it is an outer wall.
+// Stat: costly breath, slower movement (3.5 cells/s at the default 4).
 export const boar: BreathDef = {
     animal: AnimalId.boar,
     shape: { kind: "line", range: 1 },
     cost: 75,
     cooldown: 1,
-    duration: 10,
+    duration: OPEN_SECONDS,
     maxEnergy: 100,
     speedScale: 0.875,
-    // The effect lands in KDA-220. Until then the breath only spends energy.
-    fire() {},
+    fire(hit) {
+        const { wall } = hit
+        if (!wall || isOuterWall(hit.state.cells, wall)) return false
+        hit.addTile(wall, BROKEN_WALL, OPEN_SECONDS)
+    },
 }
