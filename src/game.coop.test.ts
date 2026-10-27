@@ -522,17 +522,66 @@ describe("coming back onto an occupied spawn", () => {
         expect(state.lives).toBe(START_LIVES)
     })
 
-    it("waits for an enemy gliding off it to be out of reach", () => {
-        const guard = post(2, 1)
-        guard.lastPos = vec2(1, 1)
+    it("waits for an enemy gliding off it to be RESPAWN_CLEAR_DISTANCE away", () => {
+        // Gliding from (2, 1) to (3, 1): drawn 1.3 cells from the spawn,
+        // then 1.6.
+        const guard = post(3, 1)
+        guard.lastPos = vec2(2, 1)
         guard.moveProgress = 0.3
         const state = coop([guard])
         takeOut(state.players[0], 0)
         step(state, TICK, [IDLE, IDLE], fixedRandom(0))
         expect(state.players[0].out).toBe(true)
-        guard.moveProgress = 0.7
+        guard.moveProgress = 0.6
         step(state, TICK, [IDLE, IDLE], fixedRandom(0))
         expect(state.players[0].out).toBe(false)
+    })
+
+    it("waits for an enemy whose move ends next to it", () => {
+        // Gliding from (3, 1) to (2, 1): drawn 2 cells away, but its
+        // move ends next to the spawn.
+        const guard = post(2, 1)
+        guard.lastPos = vec2(3, 1)
+        guard.moveProgress = 0
+        const state = coop([guard])
+        takeOut(state.players[0], 0)
+        step(state, TICK, [IDLE, IDLE], fixedRandom(0))
+        expect(state.players[0].out).toBe(true)
+    })
+
+    // Regression: the spawn counted as clear with an enemy just out of
+    // catching reach gliding onto it, so the player was caught a tick
+    // after it came back.
+    it("isn't caught right after coming back by an enemy gliding in", () => {
+        const map = textMap([
+            "#########",
+            "#       #",
+            "#       #",
+            "#       #",
+            "#########",
+            "#.#######",
+        ]).map
+        // Gliding from (5, 2) into player 1's spawn, drawn 0.65 from it.
+        const chaser = makeEnemy(4, 2, AiType.chase, { x: 5, y: 2 })
+        chaser.moveProgress = 0.35
+        const state = makeState(map, [vec2(4, 2), vec2(7, 3)], [chaser], {
+            lives: START_LIVES,
+            mode: "coop",
+        })
+        state.spawns = { ...state.spawns, enemies: [vec2(7, 1)] }
+        const p1 = state.players[0]
+        // Due back this tick, holding up.
+        takeOut(p1, TICK)
+        const north = vec2(0, -1)
+        let back = -1
+        for (let i = 0; i < TICK_RATE * 2 && back < 0; i++) {
+            step(state, TICK, [hold(north), IDLE], fixedRandom(0))
+            if (!p1.out) back = i
+        }
+        expect(back).toBeGreaterThan(0)
+        run(state, [hold(north), IDLE], 2)
+        expect(p1.out).toBe(false)
+        expect(state.lives).toBe(START_LIVES)
     })
 
     it("isn't held up by a harmless enemy", () => {

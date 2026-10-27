@@ -8,6 +8,7 @@ import {
     ENEMY_IDS,
     PLAYER_RESPAWN_DELAY,
     PLAYER_SPEED,
+    RESPAWN_CLEAR_DISTANCE,
     START_LIVES,
 } from "./constants"
 import {
@@ -38,6 +39,7 @@ import {
     bossMove,
     bossTarget,
     createBoss,
+    footprint,
     resetBoss,
     squareDistance,
     type Boss,
@@ -328,10 +330,10 @@ export function outForGood(player: Player): boolean {
 
 // Count down every out player's wait by `dt` seconds, at the start of a
 // tick, and bring back each one whose wait is over (see bringBack). One
-// that is due waits on (at 0) while its spawn isn't clear: while it would be
-// caught there at once, standing still, by an enemy or the boss as they are
-// drawn now (see spawnClear). It comes back on the first tick its spawn is
-// clear, before anyone moves, so it may move on that same tick.
+// that is due waits on (at 0) while its spawn isn't clear: while an enemy
+// or the boss is near it (see spawnClear). It comes back on the first tick
+// its spawn is clear, before anyone moves, so it may move on that same
+// tick.
 function tickPlayersOut(state: GameState, dt: number) {
     state.players.forEach((player, i) => {
         if (!player.out || player.respawnIn === null) return
@@ -342,12 +344,37 @@ function tickPlayersOut(state: GameState, dt: number) {
     })
 }
 
-// Whether player `index` could stand on its spawn now without being caught
-// at once by an enemy or the boss, as they are drawn now (see caughtBy).
+// Whether player `index` may come back on its spawn now: no enemy in play
+// (harmless ones aside) and no undefeated boss is drawn within
+// RESPAWN_CLEAR_DISTANCE of it (the boss by its footprint's square), or is
+// in a move that ends on it or next to it. So nothing gliding in can catch
+// it on the tick it is back or the next; checking only for a catch at once
+// let an enemy just out of reach catch it a tick later.
 function spawnClear(state: GameState, index: number): boolean {
     const spawn = state.spawns.players[index]
-    const here: TickStart = { drawn: spawn, cell: spawn, arrive: 0 }
-    return !caughtBy(state, tickStarts(state, 0), here, spawn)
+    const cols = state.cells[0].length
+    const rows = state.cells.length
+    // `spawn` relative to `at`, the short way round.
+    const offset = (at: Vec2) =>
+        vec2(wrapDelta(spawn.x - at.x, cols), wrapDelta(spawn.y - at.y, rows))
+    const nextTo = (cell: Vec2) => {
+        const { x, y } = offset(cell)
+        return Math.abs(x) + Math.abs(y) <= 1
+    }
+    const near = (d: number) => d < RESPAWN_CLEAR_DISTANCE - EPSILON
+    const byEnemy = state.enemies.some((e) => {
+        if (!inPlay(e) || hasStatus(e, "harmless")) return false
+        const { x, y } = offset(drawnPos(e, cols, rows))
+        return near(Math.hypot(x, y)) || nextTo(e.pos)
+    })
+    if (byEnemy) return false
+    const { boss } = state
+    if (!boss || boss.defeated) return true
+    const fromBoss = offset(drawnPos(boss, cols, rows))
+    return !(
+        near(squareDistance(fromBoss, fromBoss)) ||
+        footprint(boss.pos).some(nextTo)
+    )
 }
 
 // Try to move `who` (player 1 unless given) one step, eating (and scoring)

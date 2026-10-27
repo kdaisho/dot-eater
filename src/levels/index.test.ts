@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vite-plus/test"
-import { AiType, Cell, PLAYER_RESPAWN_DELAY, TICK_RATE } from "../constants"
+import {
+    AiType,
+    Cell,
+    PLAYER_RESPAWN_DELAY,
+    RESPAWN_CLEAR_DISTANCE,
+    TICK_RATE,
+} from "../constants"
 import { footprint } from "../boss"
 import { wrapDelta } from "../glide"
 import { DEFAULT_ANIMAL } from "../roster"
@@ -41,10 +47,10 @@ describe("levels", () => {
 
     // While nobody is in play in a 2-player game, the enemies and the boss
     // head back to their own spawns, and a player waiting to come back
-    // needs its spawn clear of them (see tickPlayersOut in game.ts). So no
-    // enemy or boss spawn may be near a player spawn: SPAWN_GAP cells keeps
-    // a chaser circling its spawn, a cell off it, out of the way.
-    const SPAWN_GAP = 3
+    // needs its spawn clear of them (see spawnClear in game.ts). So no
+    // enemy or boss spawn may be near a player spawn: SPAWN_GAP keeps a
+    // chaser circling its spawn, a cell off it, out of the way.
+    const SPAWN_GAP = RESPAWN_CLEAR_DISTANCE + 1
     it.each(levels.map((level, i) => [i + 1, level] as const))(
         "stage %i has no enemy or boss spawn near a player spawn",
         (_n, level) => {
