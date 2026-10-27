@@ -20,6 +20,8 @@ import {
     HALF_SCALE,
     outLabel,
     PLAYER_COLORS,
+    STUN_BADGE,
+    stunLabel,
 } from "./render"
 import { createSplitter } from "./splitter"
 import {
@@ -1131,5 +1133,63 @@ describe("createRenderer with a player out of play", () => {
         expect(
             layer.calls.filter((c) => c.name === "createRadialGradient")
         ).toHaveLength(2)
+    })
+})
+
+describe("createRenderer in versus", () => {
+    afterEach(() => {
+        vi.restoreAllMocks()
+    })
+
+    function pair() {
+        return makeState(
+            [
+                [1, 1, 1, 1, 1, 1, 1],
+                [1, 2, 2, 2, 2, 2, 1],
+                [1, 1, 1, 1, 1, 1, 1],
+            ],
+            [
+                { x: 1, y: 1 },
+                { x: 5, y: 1 },
+            ],
+            [],
+            { breath: [BREATHS.owl, BREATHS.boar], mode: "versus" }
+        )
+    }
+
+    it("draws each player's dots, a stun in place of its meter, and the round tally", () => {
+        const { calls, renderer, texts } = setup()
+        const meter = { energy: 50, max: 100, cost: 50, ready: true }
+        renderer.draw(pair(), 0, {
+            round: "Round 2 · 1–0",
+            players: [
+                { score: 30, dots: 3, energy: meter, stunned: 1.2 },
+                { score: 60, dots: 6, energy: meter },
+            ],
+        })
+        expect(texts().slice(0, 4)).toEqual([
+            "1P ●3",
+            `${STUN_BADGE} 2`,
+            "2P ●6",
+            "Round 2 · 1–0",
+        ])
+        // No hearts: versus has no lives.
+        expect(texts()).not.toContain("❤️")
+        // Only player 2's meter.
+        expect(calls.filter((c) => c.name === "strokeRect")).toHaveLength(1)
+    })
+
+    it("counts a stun down in whole seconds, rounding up", () => {
+        expect(stunLabel(2)).toBe(`${STUN_BADGE} 2`)
+        expect(stunLabel(1.01)).toBe(`${STUN_BADGE} 2`)
+        expect(stunLabel(0.1)).toBe(`${STUN_BADGE} 1`)
+    })
+
+    it("marks a stunned player's sprite with the stun badge", () => {
+        const { renderer, texts } = setup()
+        const state = pair()
+        state.players[1].stunnedFor = 1
+        renderer.draw(state, 0)
+        expect(texts()).toEqual(["🦉", "1", "🐗", "2", STUN_BADGE])
     })
 })
