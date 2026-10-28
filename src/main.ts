@@ -1,3 +1,4 @@
+import { browserAudioContext, createAudio } from "./audio"
 import { energyHud } from "./breath"
 import { MAX_FRAME_MS, TICK_MS } from "./constants"
 import {
@@ -366,6 +367,17 @@ addEventListener("blur", autoPause)
 document.addEventListener("visibilitychange", () => {
     if (document.hidden) autoPause()
 })
+
+// Sound (KDA-212). Browsers only start audio after a user gesture, so the
+// first key or pointer press unlocks it; later ones resume it if the browser
+// suspended it. Gamepad presses don't count as gestures.
+const audio = createAudio({
+    createContext: browserAudioContext(globalThis),
+    setTimer: (callback, ms) => window.setInterval(callback, ms),
+    clearTimer: (handle) => window.clearInterval(handle),
+})
+for (const type of ["keydown", "pointerdown", "touchend"])
+    document.addEventListener(type, () => audio.unlock(), { capture: true })
 
 new KeyboardSource([PLAYER_1_KEYS, PLAYER_2_KEYS]).attach(input)
 pads.attach(input)
