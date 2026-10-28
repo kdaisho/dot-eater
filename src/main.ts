@@ -1,3 +1,5 @@
+import { browserAudioContext, createAudio } from "./audio"
+import { playEventSounds, screenSound } from "./sound"
 import { energyHud } from "./breath"
 import { MAX_FRAME_MS, TICK_MS } from "./constants"
 import { applyMotion, effectsForEvents } from "./eventEffects"
@@ -252,6 +254,7 @@ function flowDeps(dt: number): FlowDeps {
 // events.ts); empty otherwise. Sound (KDA-212) and particles and screen
 // shake (KDA-213) hook in here.
 function onGameEvents(events: readonly GameEvent[], game: GameState) {
+    playEventSounds(audio, events)
     effects.events(events, game)
 }
 
@@ -306,6 +309,7 @@ function enter(prev: Screen, next: Screen) {
         saveSettings(storage, settings)
         effects.motion()
     }
+    screenSound(audio, prev, next, settings)
     showOverlay(next)
 }
 
@@ -501,6 +505,20 @@ addEventListener("blur", autoPause)
 document.addEventListener("visibilitychange", () => {
     if (document.hidden) autoPause()
 })
+
+// Sound (KDA-212). Browsers only start audio after a user gesture, so the
+// first key or pointer press unlocks it; later ones resume it if the browser
+// suspended it. Gamepad presses don't count as gestures. Each screen change
+// sets the tune, menu sound and volumes (screenSound); the title tune waits
+// for the unlock.
+const audio = createAudio({
+    createContext: browserAudioContext(globalThis),
+    setTimer: (callback, ms) => window.setInterval(callback, ms),
+    clearTimer: (handle) => window.clearInterval(handle),
+})
+for (const type of ["keydown", "pointerdown", "touchend"])
+    document.addEventListener(type, () => audio.unlock(), { capture: true })
+screenSound(audio, undefined, screen, settings)
 
 new KeyboardSource([PLAYER_1_KEYS, PLAYER_2_KEYS]).attach(input)
 pads.attach(input)
