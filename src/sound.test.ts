@@ -217,6 +217,19 @@ describe("menuSound", () => {
         ).toBe("menuMove")
     })
 
+    it("blips on the first move of a pause menu made from play", () => {
+        // From play, the pause screen has no choice yet (on Resume).
+        expect(menuSound(paused(), { ...paused(), choice: "settings" })).toBe(
+            "menuMove"
+        )
+        expect(menuSound({ ...paused(), choice: "settings" }, paused())).toBe(
+            "menuMove"
+        )
+        expect(menuSound(paused(), { ...paused(), choice: "resume" })).toBe(
+            undefined
+        )
+    })
+
     it("is quiet when a screen changes without its cursor", () => {
         expect(
             menuSound(gameOver, { ...gameOver, shown: { seconds: 1 } })

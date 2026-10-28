@@ -11,7 +11,7 @@
 // - Drums voice: "k" kick, "s" snare, "h" hi-hat (see DRUM_KIT), "." a rest.
 // Every voice of a track has the same number of bars; the track loops.
 
-import { noteFreq, type Tone, type Wave } from "./tone"
+import { noteFreq, SILENT, type Tone, type Wave } from "./tone"
 
 export const STEPS_PER_BEAT = 2
 export const STEPS_PER_BAR = 8
@@ -175,6 +175,39 @@ export function tonesInWindow(
             const at = tone.at + offset
             if (at >= from && at < to) out.push({ ...tone, at })
         }
+    }
+    return out
+}
+
+// Quieter than this, a held tone isn't worth bringing back.
+const MIN_HELD_VOLUME = 0.005
+
+// The tones started before `position` (track time) and still sounding at
+// it, cut to what is left of them: each starts at `position` and ends where
+// it would have, at the pitch and (for a fading tone) the level it would
+// have reached. For resuming a paused tune in place. Tones faded to near
+// silence are left out.
+export function heldTones(track: CompiledTrack, position: number): Tone[] {
+    const out: Tone[] = []
+    const from = Math.max(0, position - track.length)
+    for (const tone of tonesInWindow(track, from, position)) {
+        const end = tone.at + tone.duration
+        if (end <= position) continue
+        const share = (position - tone.at) / tone.duration
+        const volume = tone.hold
+            ? tone.volume
+            : tone.volume * (SILENT / tone.volume) ** share
+        if (volume < MIN_HELD_VOLUME) continue
+        out.push({
+            ...tone,
+            at: position,
+            duration: end - position,
+            freq:
+                tone.freqEnd === undefined
+                    ? tone.freq
+                    : tone.freq * (tone.freqEnd / tone.freq) ** share,
+            volume,
+        })
     }
     return out
 }

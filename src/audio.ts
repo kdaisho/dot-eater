@@ -21,6 +21,7 @@
 
 import {
     compileTrack,
+    heldTones,
     TRACKS,
     tonesInWindow,
     type CompiledTrack,
@@ -223,6 +224,9 @@ export function createAudio(options: AudioOptions): Audio {
     let paused = false
     // Track time to start from when the tune (re)starts.
     let position = 0
+    // When each effect last started, so one asked for twice at the same
+    // moment (several ticks run in one frame after a hitch) plays once.
+    const lastSfx = new Map<SfxId, number>()
     const compiled = new Map<MusicTrackId, CompiledTrack>()
 
     function compiledTrack(id: MusicTrackId): CompiledTrack {
@@ -259,6 +263,12 @@ export function createAudio(options: AudioOptions): Audio {
         applyVolumes()
     }
 
+    // Whether music can't be heard (muted, or at volume 0): then the
+    // scheduler makes no nodes and just moves on.
+    function musicSilent(): boolean {
+        return volumes.muted || volumeGain(volumes.music) === 0
+    }
+
     // Schedule the notes of the playing tune that start before the
     // lookahead runs out. Notes a late timer missed are skipped, not
     // played in a burst.
@@ -267,13 +277,15 @@ export function createAudio(options: AudioOptions): Audio {
         const now = context.currentTime - playing.start
         const from = Math.max(playing.scheduled, now)
         const to = Math.max(now, 0) + LOOKAHEAD
-        for (const tone of tonesInWindow(playing.track, from, to))
-            playTone(context, tone, playing.start, playing.bus, noise)
+        if (!musicSilent()) {
+            for (const tone of tonesInWindow(playing.track, from, to))
+                playTone(context, tone, playing.start, playing.bus, noise)
+        }
         playing.scheduled = Math.max(playing.scheduled, to)
     }
 
     function startMusic() {
-        if (!context || !buses || !music || playing || paused) return
+        if (!context || !buses || !noise || !music || playing || paused) return
         const bus = context.createGain()
         bus.connect(buses.music)
         playing = {
@@ -282,6 +294,12 @@ export function createAudio(options: AudioOptions): Audio {
             start: context.currentTime + MUSIC_START_DELAY - position,
             scheduled: position,
             timer: options.setTimer(pump, SCHEDULE_MS),
+        }
+        // Resuming mid-tune: the notes still held at that point sound on
+        // for what is left of them.
+        if (!musicSilent()) {
+            for (const tone of heldTones(playing.track, position))
+                playTone(context, tone, playing.start, bus, noise)
         }
         pump()
     }
@@ -307,11 +325,18 @@ export function createAudio(options: AudioOptions): Audio {
                     }
                     setUp(ctx)
                 }
-                if (context?.state === "suspended")
+                // Not only "suspended": iOS Safari reports "interrupted"
+                // after a call, Siri or the lock screen.
+                if (
+                    context &&
+                    context.state !== "running" &&
+                    context.state !== "closed"
+                )
                     context.resume().catch(() => undefined)
                 startMusic()
             } catch (error) {
                 console.error(error)
+                haltMusic()
                 failed = true
                 context = undefined
             }
@@ -326,6 +351,8 @@ export function createAudio(options: AudioOptions): Audio {
             const tones = SFX[id] as readonly Tone[] | undefined
             if (!tones) return
             const now = context.currentTime
+            if (lastSfx.get(id) === now) return
+            lastSfx.set(id, now)
             for (const tone of tones)
                 playTone(context, tone, now, buses.effects, noise)
         },
@@ -345,8 +372,13 @@ export function createAudio(options: AudioOptions): Audio {
         },
         pauseMusic() {
             if (!music || paused) return
+            // Paused before a resume's start delay is over, it stays where
+            // it was rather than rewinding.
             if (playing && context)
-                position = Math.max(0, context.currentTime - playing.start)
+                position = Math.max(
+                    position,
+                    context.currentTime - playing.start
+                )
             haltMusic()
             paused = true
         },

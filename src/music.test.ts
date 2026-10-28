@@ -4,6 +4,7 @@ import {
     compileTrack,
     DEFAULT_GATE,
     DRUM_KIT,
+    heldTones,
     MUSIC_TRACK_IDS,
     STAGE_TRACKS,
     stageTrack,
@@ -112,6 +113,62 @@ describe("tonesInWindow", () => {
         for (let i = 0; i < 48; i++)
             tiled.push(...starts(i * 0.125, (i + 1) * 0.125))
         expect(tiled).toEqual(starts(0, 6))
+    })
+})
+
+describe("heldTones", () => {
+    // 120 bpm: C4 held 0–0.9 s, a sweep from 100 to 400 Hz fading 0–1 s.
+    const track = compileTrack({
+        bpm: 120,
+        voices: [
+            {
+                kind: "notes",
+                wave: "square",
+                volume: 0.5,
+                hold: true,
+                gate: 0.9,
+                bars: ["C4 - - - . . . ."],
+            },
+        ],
+    })
+    const sweep = {
+        length: 2,
+        stepSeconds: 0.25,
+        tones: [
+            {
+                wave: "sine" as const,
+                at: 0,
+                duration: 1,
+                freq: 100,
+                freqEnd: 400,
+                volume: 0.5,
+            },
+        ],
+    }
+
+    it("cuts a note held at the position to what is left of it", () => {
+        const [c] = heldTones(track, 0.5)
+        expect(c.at).toBe(0.5)
+        expect(c.duration).toBeCloseTo(0.4)
+        expect(c.freq).toBe(noteFreq("C4"))
+        expect(c.volume).toBe(0.5)
+    })
+
+    it("picks up a sweep and a fade where they were", () => {
+        const [t] = heldTones(sweep, 0.5)
+        expect(t.freq).toBeCloseTo(200)
+        expect(t.duration).toBeCloseTo(0.5)
+        expect(t.volume).toBeLessThan(0.5)
+    })
+
+    it("has nothing between notes, past their end, or faded out", () => {
+        expect(heldTones(track, 1.5)).toEqual([])
+        expect(heldTones(track, 0.9)).toEqual([])
+        expect(heldTones(sweep, 0.99)).toEqual([])
+    })
+
+    it("finds notes held across loops", () => {
+        expect(heldTones(track, 2.5)[0].at).toBe(2.5)
     })
 })
 

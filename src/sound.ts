@@ -118,6 +118,11 @@ function sameScreenSound(prev: Screen, next: Screen): SfxId | undefined {
             ? SfxId.menuMove
             : undefined
     }
+    // A pause screen made from play has no choice yet: it is on Resume.
+    if (prev.kind === "paused" && next.kind === "paused")
+        return (prev.choice ?? "resume") !== (next.choice ?? "resume")
+            ? SfxId.menuMove
+            : undefined
     if ("choice" in prev && "choice" in next)
         return prev.choice !== next.choice ? SfxId.menuMove : undefined
     return undefined

@@ -13,7 +13,7 @@ import {
     volumesOf,
     type AudioContextLike,
 } from "./audio"
-import { compileTrack, tonesInWindow, TRACKS } from "./music"
+import { compileTrack, heldTones, tonesInWindow, TRACKS } from "./music"
 import { defaultSettings } from "./settings"
 import { SFX, SfxId } from "./sfx"
 import { fakeContext, fakeTimers, type FakeGain } from "./test/fakeAudio"
@@ -79,6 +79,33 @@ describe("unlock", () => {
         audio.playMusic("title")
         expect(createContext).not.toHaveBeenCalled()
         expect(audio.unlocked).toBe(false)
+    })
+
+    it("resumes a context iOS Safari interrupted", () => {
+        const { audio, context } = setup()
+        audio.unlock()
+        context.state = "interrupted" as AudioContextState
+        audio.unlock()
+        expect(context.resume).toHaveBeenCalledTimes(2)
+        // A closed one can't be resumed.
+        context.state = "closed"
+        audio.unlock()
+        expect(context.resume).toHaveBeenCalledTimes(2)
+    })
+
+    it("stops the music timer when an unlock fails", () => {
+        const error = vi.spyOn(console, "error").mockImplementation(() => {})
+        const { audio, context, timers } = setup()
+        audio.unlock()
+        audio.playMusic("title")
+        expect(timers.live.size).toBe(1)
+        context.state = "suspended"
+        context.resume.mockImplementation(() => {
+            throw new Error("InvalidStateError")
+        })
+        audio.unlock()
+        expect(timers.live.size).toBe(0)
+        error.mockRestore()
     })
 
     it("makes the context once and resumes it while suspended", () => {
@@ -232,6 +259,19 @@ describe("playSfx", () => {
         expect(source.connections).toEqual([filter])
         expect(filter.type).toBe("bandpass")
         expect(filter.frequency.events[0][1]).toBe(SFX["breath.owl"][0].freq)
+    })
+
+    it("plays an effect asked for twice at the same moment once", () => {
+        const { audio, context } = setup()
+        audio.unlock()
+        audio.playSfx(SfxId.dot)
+        audio.playSfx(SfxId.dot)
+        expect(context.sources).toHaveLength(1)
+        // Another effect at that moment still plays, and the same one later.
+        audio.playSfx(SfxId.menuMove)
+        context.currentTime += 0.01
+        audio.playSfx(SfxId.dot)
+        expect(context.sources).toHaveLength(3)
     })
 
     it("disconnects a tone's envelope when it ends", () => {
@@ -438,14 +478,89 @@ describe("pausing music", () => {
         const resumed = context.currentTime + MUSIC_START_DELAY
         run(context, timers, 1)
         const reached = context.currentTime - resumed + pausedAt + LOOKAHEAD
-        // From the pause point on, not from the start, shifted to now.
-        const expected = tonesInWindow(stage1, pausedAt, reached)
+        // From the pause point on, not from the start, shifted to now
+        // (notes held at the pause point included).
+        const expected = [
+            ...heldTones(stage1, pausedAt),
+            ...tonesInWindow(stage1, pausedAt, reached),
+        ]
             .map((t) => resumed + t.at - pausedAt)
             .sort(byTime)
         expect(expected.length).toBeGreaterThan(0)
         const started = startedTimes(context, before)
         expect(started).toHaveLength(expected.length)
         started.forEach((t, i) => expect(t).toBeCloseTo(expected[i], 9))
+    })
+
+    it("brings back the notes held at the pause point, to their end", () => {
+        const { audio, context, timers } = setup()
+        audio.unlock()
+        audio.playMusic("stage4")
+        const start = context.currentTime + MUSIC_START_DELAY
+        // Stage 4's bass holds E2 for its whole first bar (2.9 s).
+        const bass = compileTrack(TRACKS.stage4).tones.find(
+            (t) => t.wave === "triangle" && t.at === 0
+        )
+        expect(bass?.duration).toBeGreaterThan(2)
+        run(context, timers, 1)
+        const pausedAt = context.currentTime - start
+        audio.pauseMusic()
+        run(context, timers, 3)
+        const before = context.oscillators.slice()
+        audio.resumeMusic()
+        const resumed = context.currentTime + MUSIC_START_DELAY
+        const tail = context.oscillators.find(
+            (o) =>
+                !before.includes(o) &&
+                o.type === "triangle" &&
+                o.frequency.events[0][1] === bass?.freq
+        )
+        expect(tail?.started).toBeCloseTo(resumed, 9)
+        expect(tail?.stopped).toBeCloseTo(
+            resumed + (bass?.duration ?? 0) - pausedAt,
+            9
+        )
+    })
+
+    it("doesn't rewind when paused again before a resume's start delay", () => {
+        const { audio, context, timers } = setup()
+        audio.unlock()
+        audio.playMusic("stage1")
+        run(context, timers, 1)
+        audio.pauseMusic()
+        // Each resume schedules its first window; the same notes, relative
+        // to its start, if the position held.
+        const firstWindow = () => {
+            const before = context.sources.slice()
+            audio.resumeMusic()
+            const start = context.currentTime + MUSIC_START_DELAY
+            return startedTimes(context, before).map((t) => t - start)
+        }
+        const first = firstWindow()
+        context.currentTime += 0.02
+        audio.pauseMusic()
+        const second = firstWindow()
+        expect(second).toHaveLength(first.length)
+        second.forEach((t, i) => expect(t).toBeCloseTo(first[i], 9))
+    })
+
+    it("makes no nodes while music is muted or at 0, moving on in time", () => {
+        const { audio, context, timers } = setup()
+        audio.unlock()
+        audio.setVolumes({ music: 0, effects: 5, muted: false })
+        audio.playMusic("stage1")
+        run(context, timers, 1)
+        audio.setVolumes({ music: 5, effects: 5, muted: true })
+        run(context, timers, 1)
+        expect(context.sources).toHaveLength(0)
+        // Unmuted, it carries on from where the tune is now.
+        audio.setVolumes({ music: 5, effects: 5, muted: false })
+        const start = 10 + MUSIC_START_DELAY
+        const now = context.currentTime - start
+        run(context, timers, 0.5)
+        const started = startedTimes(context)
+        expect(started.length).toBeGreaterThan(0)
+        for (const t of started) expect(t - start).toBeGreaterThan(now)
     })
 
     it("keeps a paused tune paused when it is asked for again", () => {
