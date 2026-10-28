@@ -1,5 +1,5 @@
-// Saved settings: volumes, mute, screen shake, the on-screen D-pad and the
-// control bindings.
+// Saved settings: volumes, mute, screen shake, the on-screen D-pad, the
+// facing guide and the control bindings.
 //
 // Like progress.ts: there is no DOM access here, storage is passed in
 // (window.localStorage in main), and every storage access is wrapped in
@@ -24,6 +24,15 @@ export const SETTINGS_VERSION = 1
 // Volumes are whole steps from 0 (silent) to VOLUME_MAX.
 export const VOLUME_MAX = 10
 
+// How the game shows which way each player faces (KDA-247): an arrow on
+// the player's ring, or the aim preview (the cells a ready breath would hit).
+export const FACING_GUIDES = ["arrow", "aim"] as const
+export type FacingGuide = (typeof FACING_GUIDES)[number]
+
+export function isFacingGuide(value: unknown): value is FacingGuide {
+    return FACING_GUIDES.includes(value as FacingGuide)
+}
+
 export type Settings = {
     version: typeof SETTINGS_VERSION
     // Music and sound effects volumes, 0 to VOLUME_MAX.
@@ -36,6 +45,8 @@ export type Settings = {
     screenShake: boolean | null
     // Whether touch play shows an on-screen D-pad (KDA-214).
     showDpad: boolean
+    // The facing guide drawn on the board (see FacingGuide).
+    facingGuide: FacingGuide
     // The keys and pad buttons (KDA-215); DEFAULT_BINDINGS when left out
     // (see bindingsOf). Checked with parseBindings when read.
     bindings?: Bindings
@@ -52,6 +63,7 @@ export function defaultSettings(): Settings {
         muted: false,
         screenShake: null,
         showDpad: false,
+        facingGuide: "arrow",
     }
 }
 
@@ -82,7 +94,14 @@ export function parseSettings(raw: string | null): Settings {
         return defaultSettings()
     }
     const defaults = defaultSettings()
-    const { musicVolume, effectsVolume, muted, screenShake, showDpad } = data
+    const {
+        musicVolume,
+        effectsVolume,
+        muted,
+        screenShake,
+        showDpad,
+        facingGuide,
+    } = data
     return {
         ...data,
         version: SETTINGS_VERSION,
@@ -96,6 +115,9 @@ export function parseSettings(raw: string | null): Settings {
                 ? screenShake
                 : defaults.screenShake,
         showDpad: typeof showDpad === "boolean" ? showDpad : defaults.showDpad,
+        facingGuide: isFacingGuide(facingGuide)
+            ? facingGuide
+            : defaults.facingGuide,
         // Left out when the save has none, so it keeps following the
         // defaults; otherwise valid, whatever was stored.
         ...(Object.hasOwn(data, "bindings")

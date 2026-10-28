@@ -204,6 +204,11 @@ const effects = {
         return {
             particles: particles.list,
             ...(moving ? { shake: shake.offset(Math.random) } : {}),
+            // The facing guide the settings pick (KDA-247). The arrow shows
+            // with the rings, paused and ending too; the aim preview only
+            // while playing.
+            guide: settings.facingGuide,
+            ...(s.kind === "playing" ? { aim: true } : {}),
         }
     },
 }
@@ -536,7 +541,9 @@ function showOverlay(s: Screen) {
                     return {
                         label: row.label,
                         ...(value === undefined ? {} : { value }),
-                        ...(row.kind === "slider" ? { steps: true } : {}),
+                        ...(row.kind === "slider" || row.kind === "choice"
+                            ? { steps: true }
+                            : {}),
                         selected: i === s.row,
                     }
                 })

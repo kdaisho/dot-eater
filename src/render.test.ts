@@ -34,6 +34,7 @@ import {
     textMap,
 } from "./test/helpers"
 import { vec2 } from "./vec2"
+import { stun } from "./versus"
 
 // canvas-confetti crashes under happy-dom; keep it out in case anything
 // imported here pulls it in.
@@ -1385,5 +1386,268 @@ describe("createRenderer with effects", () => {
         calls.length = 0
         renderer.resize()
         expect(calls.filter((c) => c.name === "arc")).toHaveLength(1)
+    })
+})
+
+describe("createRenderer with the facing guide", () => {
+    afterEach(() => {
+        vi.restoreAllMocks()
+    })
+
+    // The aim preview while playing.
+    const AIM = { guide: "aim", aim: true } as const
+
+    // A dotted corridor 9 cells long: player 1 at (1, 1) and, with two
+    // players, player 2 at (7, 1) facing it. Both breathe the Dragon's
+    // line, 5 cells.
+    const corridor = [
+        Array(9).fill(1),
+        [1, ...Array(7).fill(2), 1],
+        Array(9).fill(1),
+    ] as const
+    function game(players = 1) {
+        const starts = [
+            { x: 1, y: 1 },
+            { x: 7, y: 1 },
+        ].slice(0, players)
+        const state = makeState(corridor, starts, [], {
+            mode: players > 1 ? "versus" : "solo",
+        })
+        if (players > 1) state.players[1].breather.facing = vec2(-1, 0)
+        return state
+    }
+    function charge(state: ReturnType<typeof game>) {
+        for (const p of state.players) {
+            p.breather.energy = p.breather.breath.maxEnergy
+        }
+    }
+
+    const cellOf = (canvas: HTMLCanvasElement) =>
+        parseFloat(canvas.style.width) / 9
+    // The cells (by x on row 1) tinted in player `i`'s colour.
+    function tinted(
+        calls: ReturnType<typeof setup>["calls"],
+        canvas: HTMLCanvasElement,
+        i = 0
+    ) {
+        const cell = cellOf(canvas)
+        return calls
+            .filter(
+                (c) => c.name === "fillRect" && c.fillStyle === PLAYER_COLORS[i]
+            )
+            .map((c) => Math.round((c.args[0] as number) / cell))
+    }
+    // The edge's line segments.
+    const edges = (calls: ReturnType<typeof setup>["calls"]) =>
+        calls.filter((c) => c.name === "lineTo").length
+
+    it("tints the cells a charged breath would hit, in the player's colour", () => {
+        const { calls, canvas, renderer } = setup()
+        const state = game()
+        charge(state)
+        renderer.draw(state, 0, {}, {}, AIM)
+        expect(tinted(calls, canvas)).toEqual([2, 3, 4, 5, 6])
+        // An edge round the line: its top and bottom along each cell, and
+        // its two ends.
+        expect(edges(calls)).toBe(5 * 2 + 2)
+    })
+
+    it("draws the tint under the dots and the characters", () => {
+        const { calls, canvas, renderer } = setup()
+        const state = game()
+        charge(state)
+        renderer.draw(state, 0, {}, {}, AIM)
+        const cell = cellOf(canvas)
+        const tint = calls.findIndex(
+            (c) => c.name === "fillRect" && c.fillStyle === PLAYER_COLORS[0]
+        )
+        // The dot on that cell, (2, 1), after it.
+        const dot = calls.findIndex(
+            (c) =>
+                c.name === "fillRect" &&
+                c.fillStyle === "#000" &&
+                (c.args[0] as number) > 2 * cell &&
+                (c.args[0] as number) < 3 * cell &&
+                (c.args[1] as number) > cell
+        )
+        const sprite = calls.findIndex((c) => c.name === "fillText")
+        expect(tint).toBeGreaterThanOrEqual(0)
+        expect(dot).toBeGreaterThan(tint)
+        expect(sprite).toBeGreaterThan(tint)
+    })
+
+    it("draws nothing while the breath isn't charged", () => {
+        const { calls, canvas, renderer } = setup()
+        renderer.draw(game(), 0, {}, {}, AIM)
+        expect(tinted(calls, canvas)).toEqual([])
+        expect(edges(calls)).toBe(0)
+    })
+
+    it("draws nothing unless asked (paused, end screens)", () => {
+        const { calls, canvas, renderer } = setup()
+        const state = game()
+        charge(state)
+        renderer.draw(state, 0, {}, {}, { guide: "aim" })
+        expect(tinted(calls, canvas)).toEqual([])
+        expect(edges(calls)).toBe(0)
+    })
+
+    it("tints both players' aims, each in its colour, overlapping", () => {
+        const { calls, canvas, renderer } = setup()
+        const state = game(2)
+        charge(state)
+        renderer.draw(state, 0, {}, {}, AIM)
+        expect(tinted(calls, canvas, 0)).toEqual([2, 3, 4, 5, 6])
+        expect(tinted(calls, canvas, 1)).toEqual([2, 3, 4, 5, 6])
+    })
+
+    it("draws no aim for a player out of play", () => {
+        const { calls, canvas, renderer } = setup()
+        const state = game(2)
+        charge(state)
+        takeOut(state.players[0], 3)
+        renderer.draw(state, 0, {}, {}, AIM)
+        expect(tinted(calls, canvas, 0)).toEqual([])
+        expect(tinted(calls, canvas, 1)).toEqual([2, 3, 4, 5, 6])
+    })
+
+    it("draws no aim for a stunned player", () => {
+        const { calls, canvas, renderer } = setup()
+        const state = game(2)
+        charge(state)
+        stun(state.players[1])
+        renderer.draw(state, 0, {}, {}, AIM)
+        expect(tinted(calls, canvas, 0)).toEqual([2, 3, 4, 5, 6])
+        expect(tinted(calls, canvas, 1)).toEqual([])
+    })
+
+    it("hides the aim outside the fog's light", () => {
+        const { calls, canvas, renderer } = setup()
+        const state = game()
+        charge(state)
+        renderer.draw(state, 0, {}, { fog: { radius: 1.5 } }, AIM)
+        expect(tinted(calls, canvas)).toEqual([2, 3])
+        // The edge of those two cells only: top and bottom of each, and
+        // the near end.
+        expect(edges(calls)).toBe(2 * 2 + 1)
+    })
+
+    it("draws no aim tint with the arrow guide", () => {
+        const { calls, canvas, renderer } = setup()
+        const state = game(2)
+        charge(state)
+        renderer.draw(state, 0, {}, {}, { guide: "arrow", aim: true })
+        expect(tinted(calls, canvas, 0)).toEqual([])
+        expect(tinted(calls, canvas, 1)).toEqual([])
+    })
+
+    describe("the facing arrow", () => {
+        const ARROW = { guide: "arrow" } as const
+        // A game whose players can all breathe, so they get their arrows.
+        function charged(players?: number) {
+            const state = game(players)
+            charge(state)
+            return state
+        }
+        // The arrows drawn, as each one's colour and tip (in cells).
+        function arrows(
+            calls: ReturnType<typeof setup>["calls"],
+            canvas: HTMLCanvasElement
+        ) {
+            const cell = cellOf(canvas)
+            return calls.flatMap((c, i) => {
+                if (c.name !== "fill") return []
+                const color = PLAYER_COLORS.findIndex((p) => p === c.fillStyle)
+                if (color < 0) return []
+                const tip = calls
+                    .slice(0, i)
+                    .filter((m) => m.name === "moveTo")
+                    .at(-1)!.args as number[]
+                return [
+                    {
+                        color,
+                        tip: [
+                            Math.round((tip[0] / cell) * 10) / 10,
+                            Math.round((tip[1] / cell) * 10) / 10,
+                        ],
+                    },
+                ]
+            })
+        }
+
+        it("points right before the first move", () => {
+            const { calls, canvas, renderer } = setup()
+            renderer.draw(charged(), 0, {}, {}, ARROW)
+            expect(arrows(calls, canvas)).toEqual([
+                { color: 0, tip: [2.2, 1.5] },
+            ])
+        })
+
+        it.each([
+            ["up", vec2(0, -1), [1.5, 0.8]],
+            ["down", vec2(0, 1), [1.5, 2.2]],
+            ["left", vec2(-1, 0), [0.8, 1.5]],
+            ["right", vec2(1, 0), [2.2, 1.5]],
+        ])("points %s the way the player faces", (_, facing, tip) => {
+            const { calls, canvas, renderer } = setup()
+            const state = charged()
+            state.players[0].breather.facing = facing
+            renderer.draw(state, 0, {}, {}, ARROW)
+            expect(arrows(calls, canvas)).toEqual([{ color: 0, tip }])
+        })
+
+        it("gives each player its own, in its colour", () => {
+            const { calls, canvas, renderer } = setup()
+            renderer.draw(charged(2), 0, {}, {}, ARROW)
+            expect(arrows(calls, canvas)).toEqual([
+                { color: 0, tip: [2.2, 1.5] },
+                { color: 1, tip: [6.8, 1.5] },
+            ])
+        })
+
+        it("draws none for a player out of play", () => {
+            const { calls, canvas, renderer } = setup()
+            const state = charged(2)
+            takeOut(state.players[1], 3)
+            renderer.draw(state, 0, {}, {}, ARROW)
+            expect(arrows(calls, canvas).map((a) => a.color)).toEqual([0])
+        })
+
+        it("draws none for a stunned player", () => {
+            const { calls, canvas, renderer } = setup()
+            const state = charged(2)
+            stun(state.players[1])
+            renderer.draw(state, 0, {}, {}, ARROW)
+            expect(arrows(calls, canvas).map((a) => a.color)).toEqual([0])
+        })
+
+        it("travels with the gliding sprite", () => {
+            const { calls, canvas, renderer } = setup()
+            const state = charged()
+            const player = state.players[0].character
+            player.lastPos = vec2(1, 1)
+            player.pos = vec2(2, 1)
+            player.moveProgress = 0.5
+            renderer.draw(state, 0, {}, {}, ARROW)
+            expect(arrows(calls, canvas)).toEqual([
+                { color: 0, tip: [2.7, 1.5] },
+            ])
+        })
+
+        it("draws none while the breath isn't charged", () => {
+            const { calls, canvas, renderer } = setup()
+            renderer.draw(game(2), 0, {}, {}, ARROW)
+            expect(arrows(calls, canvas)).toEqual([])
+        })
+
+        it("draws none with the aim guide, or without a guide", () => {
+            for (const effects of [{ guide: "aim", aim: true } as const, {}]) {
+                const { calls, canvas, renderer } = setup()
+                const state = game(2)
+                charge(state)
+                renderer.draw(state, 0, {}, {}, effects)
+                expect(arrows(calls, canvas)).toEqual([])
+            }
+        })
     })
 })

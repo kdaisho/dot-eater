@@ -56,6 +56,7 @@ describe("defaultSettings", () => {
             muted: false,
             screenShake: null,
             showDpad: false,
+            facingGuide: "arrow",
         })
     })
 })
@@ -84,6 +85,7 @@ describe("parseSettings", () => {
             muted: true,
             screenShake: false,
             showDpad: true,
+            facingGuide: "aim",
         }
         expect(parseSettings(JSON.stringify(settings))).toEqual(settings)
     })
@@ -105,6 +107,9 @@ describe("parseSettings", () => {
         ["muted", "yes"],
         ["screenShake", 1],
         ["showDpad", null],
+        ["facingGuide", "arrows"],
+        ["facingGuide", 1],
+        ["facingGuide", null],
     ])("drops an invalid %s (%j) alone", (field, value) => {
         const parsed = parseSettings(saved({ [field]: value, muted: true }))
         expect(parsed).toEqual({ ...defaultSettings(), muted: true })

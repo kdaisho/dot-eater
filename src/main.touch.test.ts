@@ -164,22 +164,32 @@ describe("main on a touch screen", () => {
         expect(screen()).toBe("settings")
         const label = (i: number) =>
             el(`#overlay li[data-index='${i}']`).textContent
-        expect(label(4)).toBe("Show D-pad Off")
+        expect(label(5)).toBe("Show D-pad Off")
         // Music volume's ◀: one step down, the cursor on it.
         tap("#overlay li[data-index='0'] [data-step='-1']")
         expect(label(0)).toBe("Music volume ◀ 6 ▶")
         expect(selectedItem()).toBe("Music volume ◀ 6 ▶")
         tap("#overlay li[data-index='1'] [data-step='1']")
         expect(label(1)).toBe("Effects volume ◀ 9 ▶")
+        // Facing guide's ▶ and ◀ step it, wrapping round.
+        tap("#overlay li[data-index='4'] [data-step='1']")
+        expect(selectedItem()).toBe("Facing guide ◀ Aim ▶")
+        tap("#overlay li[data-index='4'] [data-step='1']")
+        expect(label(4)).toBe("Facing guide ◀ Arrow ▶")
+        tap("#overlay li[data-index='4'] [data-step='-1']")
+        expect(label(4)).toBe("Facing guide ◀ Aim ▶")
+        expect(localStorage.getItem(SETTINGS_KEY)).toContain(
+            '"facingGuide":"aim"'
+        )
         // Show D-pad: shows at once and is saved.
-        tap("#overlay li[data-index='4']")
-        expect(label(4)).toBe("Show D-pad On")
+        tap("#overlay li[data-index='5']")
+        expect(label(5)).toBe("Show D-pad On")
         expect(document.body.dataset.dpad).toBe("on")
         expect(localStorage.getItem(SETTINGS_KEY)).toContain('"showDpad":true')
-        tap("#overlay li[data-index='4']")
+        tap("#overlay li[data-index='5']")
         expect(document.body.dataset.dpad).toBe("off")
         // Back returns to the pause menu.
-        tap("#overlay li[data-index='5']")
+        tap("#overlay li[data-index='6']")
         expect(screen()).toBe("pause")
         tap("#overlay li[data-index='0']")
         expect(screen()).toBe("playing")

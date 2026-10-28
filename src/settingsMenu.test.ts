@@ -31,6 +31,7 @@ describe("SETTINGS_ROWS", () => {
             ["Effects volume", "slider"],
             ["Mute", "toggle"],
             ["Screen shake", "toggle"],
+            ["Facing guide", "choice"],
             ["Show D-pad", "toggle"],
             ["Controls", "action"],
             ["Back", "action"],
@@ -113,6 +114,25 @@ describe("changeRow", () => {
         expect(changeRow(shake, s, reduced, 1).screenShake).toBe(true)
     })
 
+    it("cycles a choice either way, wrapping round", () => {
+        const guide = row("facingGuide")
+        const s = defaultSettings()
+        expect(s.facingGuide).toBe("arrow")
+        const aim = changeRow(guide, s, context(), 1)
+        expect(aim.facingGuide).toBe("aim")
+        expect(changeRow(guide, aim, context(), 1).facingGuide).toBe("arrow")
+        expect(changeRow(guide, s, context(), -1).facingGuide).toBe("aim")
+        expect(changeRow(guide, aim, context(), -1).facingGuide).toBe("arrow")
+    })
+
+    it("shows the Facing guide from the title and from pause", () => {
+        for (const from of ["title", "pause"] as const) {
+            expect(settingsRows(context({ from })).map((r) => r.id)).toContain(
+                "facingGuide"
+            )
+        }
+    })
+
     it("leaves the settings alone for an action", () => {
         const s = defaultSettings()
         expect(changeRow(row("back"), s, context(), 1)).toBe(s)
@@ -140,5 +160,13 @@ describe("rowValue", () => {
             )
         ).toBe("Off")
         expect(rowValue(row("back"), s, context())).toBeUndefined()
+        expect(rowValue(row("facingGuide"), s, context())).toBe("◀ Arrow ▶")
+        expect(
+            rowValue(
+                row("facingGuide"),
+                { ...s, facingGuide: "aim" },
+                context()
+            )
+        ).toBe("◀ Aim ▶")
     })
 })
