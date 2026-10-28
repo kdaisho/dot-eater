@@ -1,16 +1,12 @@
 import { describe, expect, it } from "vite-plus/test"
-import {
-    DEFAULT_BINDINGS,
-    PAD_A,
-    PAD_START,
-    type BindingTarget,
-} from "./bindings"
+import { DEFAULT_BINDINGS, PAD_A, PAD_START, rebind } from "./bindings"
 import { CONTROLS_ROWS } from "./controlsMenu"
 import {
     baseScreen,
     initialScreen,
     screenSettings,
     update,
+    type Capture,
     type FlowDeps,
     type Screen,
     type TickInput,
@@ -36,12 +32,8 @@ const levels = [
     }),
 ]
 
-// One tick's input: player 1's presses, and what main captured (a key or
-// button, null for Escape).
-function input(
-    pressed: readonly Action[] = [],
-    captured?: BindingTarget | null
-): TickInput {
+// One tick's input: player 1's presses, and what main captured.
+function input(pressed: readonly Action[] = [], captured?: Capture): TickInput {
     return {
         wasPressed: (action, player = 0) =>
             player === 0 && pressed.includes(action),
@@ -176,7 +168,7 @@ describe("capturing", () => {
 
     it("binds the captured key and stops waiting", () => {
         const screen = press(on(breath), ["confirm"])
-        const next = update(screen, input([], "KeyX"), deps())
+        const next = update(screen, input([], { key: "KeyX" }), deps())
         expect(asControls(next).capturing).toBe(false)
         expect(bindings(next).players[0].keys.breath).toBe("KeyX")
     })
@@ -185,41 +177,45 @@ describe("capturing", () => {
     // press arrives on the same tick as the capture and must not act.
     it("doesn't let the captured press act on the menu", () => {
         const screen = press(on(up), ["confirm"])
-        const next = update(screen, input(["confirm"], "Space"), deps())
+        const next = update(
+            screen,
+            input(["confirm"], { key: "Space" }),
+            deps()
+        )
         expect(next).toMatchObject({ kind: "controls", capturing: false })
         expect(update(next, input([]), deps())).toBe(next)
     })
 
     it("swaps with a key in use, across players too", () => {
         let screen = press(on(up), ["confirm"])
-        screen = update(screen, input([], "Space"), deps())
+        screen = update(screen, input([], { key: "Space" }), deps())
         expect(bindings(screen).players[0].keys).toMatchObject({
             up: "Space",
             confirm: "ArrowUp",
         })
         screen = press({ ...asControls(screen), player: 1 }, ["confirm"])
-        screen = update(screen, input([], "ArrowDown"), deps())
+        screen = update(screen, input([], { key: "ArrowDown" }), deps())
         expect(bindings(screen).players[1].keys.up).toBe("ArrowDown")
         expect(bindings(screen).players[0].keys.down).toBe("KeyW")
     })
 
     it("binds player 2's keys on player 2's page", () => {
         let screen = press(on(breath, 1), ["confirm"])
-        screen = update(screen, input([], "KeyZ"), deps())
+        screen = update(screen, input([], { key: "KeyZ" }), deps())
         expect(bindings(screen).players[1].keys.breath).toBe("KeyZ")
         expect(bindings(screen).players[0]).toBe(DEFAULT_BINDINGS.players[0])
     })
 
     it("binds pad buttons on pad rows, swapping with pause", () => {
         let screen = press(on(padBreath), ["confirm"])
-        screen = update(screen, input([], 2), deps())
+        screen = update(screen, input([], { button: 2 }), deps())
         expect(bindings(screen).players[0].pad).toEqual({
             breath: 2,
             confirm: PAD_A,
             pause: PAD_START,
         })
         screen = press(on(padPause), ["confirm"])
-        screen = update(screen, input([], PAD_A), deps())
+        screen = update(screen, input([], { button: PAD_A }), deps())
         expect(bindings(screen).players[0].pad).toEqual({
             breath: PAD_START,
             confirm: PAD_START,
@@ -227,23 +223,51 @@ describe("capturing", () => {
         })
     })
 
-    it("keeps waiting for the other kind of control", () => {
-        const keyRow = press(on(breath), ["confirm"])
-        expect(update(keyRow, input([], 2), deps())).toBe(keyRow)
+    it("keeps a pad row waiting on a key", () => {
         const padRow = press(on(padBreath), ["confirm"])
-        expect(update(padRow, input([], "KeyX"), deps())).toBe(padRow)
+        expect(update(padRow, input([], { key: "KeyX" }), deps())).toBe(padRow)
+    })
+
+    // Regression: a pad-only player couldn't leave a key prompt, as only
+    // the keyboard's Escape cancelled it.
+    it("cancels a key prompt on a pad button, with nothing changed", () => {
+        const keyRow = press(on(breath), ["confirm"])
+        const next = update(keyRow, input([], { button: 2 }), deps())
+        expect(next).toMatchObject({ kind: "controls", capturing: false })
+        expect(screenSettings(next)).toBe(screenSettings(keyRow))
+    })
+
+    // Regression: main kept only the first capture of either kind, so a
+    // stray pad button dropped the key pressed after it.
+    it("takes the key over a pad button on the same tick", () => {
+        const keyRow = press(on(breath), ["confirm"])
+        const next = update(
+            keyRow,
+            input([], { button: 1, key: "KeyJ" }),
+            deps()
+        )
+        expect(next).toMatchObject({ capturing: false })
+        expect(bindings(next).players[0].keys.breath).toBe("KeyJ")
+        const padRow = press(on(padBreath), ["confirm"])
+        const pad = update(
+            padRow,
+            input([], { key: "KeyJ", button: 1 }),
+            deps()
+        )
+        expect(bindings(pad).players[0].pad.breath).toBe(1)
+        expect(bindings(pad).players[0].keys.breath).toBe("ShiftRight")
     })
 
     it("stops waiting on Escape with nothing changed", () => {
         const screen = press(on(breath), ["confirm"])
-        const next = update(screen, input(["pause"], null), deps())
+        const next = update(screen, input(["pause"], { cancel: true }), deps())
         expect(next).toMatchObject({ kind: "controls", capturing: false })
         expect(screenSettings(next)).toBe(screenSettings(screen))
     })
 
     it("changes nothing for an unbindable or unchanged capture", () => {
         const screen = press(on(breath), ["confirm"])
-        const same = update(screen, input([], "ShiftRight"), deps())
+        const same = update(screen, input([], { key: "ShiftRight" }), deps())
         expect(asControls(same).capturing).toBe(false)
         expect(screenSettings(same)).toBe(screenSettings(screen))
     })
@@ -255,11 +279,29 @@ describe("reset and back", () => {
 
     it("resets both players to the defaults", () => {
         let screen = press(on(rowIndex("key", "up")), ["confirm"])
-        screen = update(screen, input([], "KeyI"), deps())
+        screen = update(screen, input([], { key: "KeyI" }), deps())
         screen = { ...asControls(screen), row: reset }
         screen = press(screen, ["confirm"])
         expect(bindings(screen)).toBe(DEFAULT_BINDINGS)
         expect(asControls(screen).capturing).toBeFalsy()
+    })
+
+    // Regression: Reset stored a copy of the defaults (or rewrote equal
+    // bindings); now it drops the field, so the settings follow the
+    // defaults from then on.
+    it("drops the bindings from the settings, even equal ones", () => {
+        const copy = JSON.parse(JSON.stringify(DEFAULT_BINDINGS))
+        const saved = { ...defaultSettings(), musicVolume: 3, bindings: copy }
+        const screen = press(on(reset, 0, deps(saved)), ["confirm"])
+        const settings = screenSettings(screen)!
+        expect("bindings" in settings).toBe(false)
+        expect(settings).toEqual({ ...defaultSettings(), musicVolume: 3 })
+        const remapped = rebind(DEFAULT_BINDINGS, 0, "up", "KeyI")
+        const again = press(
+            on(reset, 0, deps({ ...defaultSettings(), bindings: remapped })),
+            ["confirm"]
+        )
+        expect("bindings" in screenSettings(again)!).toBe(false)
     })
 
     it("changes nothing when already on the defaults", () => {
@@ -272,7 +314,7 @@ describe("reset and back", () => {
         ["the pause action", "pause", 0],
     ] as const)("goes back with %s, cursor on Controls", (_, action, row) => {
         let screen = press(on(breath()), ["confirm"])
-        screen = update(screen, input([], "KeyX"), deps())
+        screen = update(screen, input([], { key: "KeyX" }), deps())
         screen = { ...asControls(screen), row }
         const settings = press(screen, [action])
         expect(settings).toMatchObject({ kind: "settings", row: 4 })

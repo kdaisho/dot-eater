@@ -4,7 +4,6 @@ import {
     CONTROLS_ROWS,
     controlsRowLabel,
     controlsRowValue,
-    takesTarget,
 } from "./controlsMenu"
 
 describe("CONTROLS_ROWS", () => {
@@ -69,19 +68,5 @@ describe("controlsRowValue", () => {
         expect(values(DEFAULT_BINDINGS, 2).every((v) => v === undefined)).toBe(
             true
         )
-    })
-})
-
-describe("takesTarget", () => {
-    it("takes keys on key rows and buttons on pad rows only", () => {
-        const [key] = CONTROLS_ROWS
-        const pad = CONTROLS_ROWS.find((r) => r.kind === "pad")!
-        const reset = CONTROLS_ROWS.find((r) => r.kind === "reset")!
-        expect(takesTarget(key!, "KeyX")).toBe(true)
-        expect(takesTarget(key!, 2)).toBe(false)
-        expect(takesTarget(pad, 2)).toBe(true)
-        expect(takesTarget(pad, "KeyX")).toBe(false)
-        expect(takesTarget(reset, "KeyX")).toBe(false)
-        expect(takesTarget(reset, 2)).toBe(false)
     })
 })

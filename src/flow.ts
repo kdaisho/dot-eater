@@ -1,6 +1,6 @@
 import type { Random } from "./ai"
-import { DEFAULT_BINDINGS, rebind, type BindingTarget } from "./bindings"
-import { CONTROLS_ROWS, takesTarget } from "./controlsMenu"
+import { rebind } from "./bindings"
+import { CONTROLS_ROWS } from "./controlsMenu"
 import {
     createGameState,
     settle,
@@ -62,13 +62,17 @@ import { matchWinner, roundResult, type RoundResult } from "./versus"
 // Back, or the pause action, returns to the settings with the cursor on
 // Controls. While capturing, every action press is ignored: the screen only
 // reads TickInput.captured, which main fills from raw keydowns (captureKey)
-// and pad buttons (captureButton). A key row takes a key and a pad row a
-// button; the other kind keeps it waiting. The capture goes through rebind
-// (so a key in use swaps), and Escape (null) stops waiting with nothing
-// changed. Either way capturing ends on that tick, whose press edges main
-// then clears, so the press that was captured never acts on the menu. Like
-// the settings screen, it carries the settings as changed so far, and main
-// saves (and applies) them whenever a tick returns them changed.
+// and pad buttons (captureButton), the first of each kind apart, so a press
+// of the wrong kind never hides a good one. A key row takes a key; a pad
+// button there cancels, but only on a tick with no key, so a player with
+// only a pad can always get out. A pad row takes a button; a key there
+// keeps it waiting. Escape cancels on either. The capture goes through
+// rebind (so a key in use swaps). Either way capturing ends on that tick,
+// whose press edges main then clears, so the press that was captured never
+// acts on the menu. Reset to defaults drops the bindings from the settings
+// altogether, so they follow the defaults from then on. Like the settings
+// screen, it carries the settings as changed so far, and main saves (and
+// applies) them whenever a tick returns them changed.
 //
 //   title <-> settings <-> controls
 //
@@ -319,10 +323,18 @@ export type TickInput = {
     wasPressed(action: Action, player?: number): boolean
     // Movement and the breath press for the game; only read while playing.
     move(player?: number): MoveInput
-    // The controls screen's capture: the key or pad button pressed since
-    // the previous tick, null for Escape (cancel), or undefined for none. Only
-    // read while capturing.
-    captured?(): BindingTarget | null | undefined
+    // The controls screen's capture since the previous tick (see Capture).
+    // Only read while capturing.
+    captured?(): Capture | undefined
+}
+
+// What main captured for the controls screen since the previous tick: the
+// first bindable key and the first fresh pad button pressed, each kind
+// kept apart, and whether Escape was pressed.
+export type Capture = {
+    readonly key?: string
+    readonly button?: number
+    readonly cancel?: boolean
 }
 
 export type FlowDeps = {
@@ -579,23 +591,22 @@ function runAction(screen: SettingsScreen, action: SettingsAction): Screen {
 function updateControls(screen: ControlsScreen, input: TickInput): Screen {
     const row = CONTROLS_ROWS[screen.row]
     if (screen.capturing) {
-        const target = input.captured?.()
-        if (target === undefined) return screen
-        if (target === null) return { ...screen, capturing: false }
-        if (row.kind !== "key" && row.kind !== "pad") {
-            return { ...screen, capturing: false }
+        const { key, button, cancel } = input.captured?.() ?? {}
+        const stop: Screen = { ...screen, capturing: false }
+        if (cancel) return stop
+        const bind = (target: string | number): Screen => {
+            if (row.kind !== "key" && row.kind !== "pad") return stop
+            const bindings = bindingsOf(screen.settings)
+            const next = rebind(bindings, screen.player, row.action, target)
+            return next === bindings
+                ? stop
+                : { ...stop, settings: { ...screen.settings, bindings: next } }
         }
-        if (!takesTarget(row, target)) return screen
-        const bindings = bindingsOf(screen.settings)
-        const next = rebind(bindings, screen.player, row.action, target)
-        return {
-            ...screen,
-            capturing: false,
-            settings:
-                next === bindings
-                    ? screen.settings
-                    : { ...screen.settings, bindings: next },
+        if (row.kind === "pad") {
+            return button === undefined ? screen : bind(button)
         }
+        if (key !== undefined) return bind(key)
+        return button === undefined ? screen : stop
     }
     const back = (): Screen => ({ ...screen.back, settings: screen.settings })
     if (input.wasPressed("pause")) return back()
@@ -603,16 +614,11 @@ function updateControls(screen: ControlsScreen, input: TickInput): Screen {
         switch (row.kind) {
             case "back":
                 return back()
-            case "reset":
-                return bindingsOf(screen.settings) === DEFAULT_BINDINGS
-                    ? screen
-                    : {
-                          ...screen,
-                          settings: {
-                              ...screen.settings,
-                              bindings: DEFAULT_BINDINGS,
-                          },
-                      }
+            case "reset": {
+                if (!("bindings" in screen.settings)) return screen
+                const { bindings: _, ...settings } = screen.settings
+                return { ...screen, settings }
+            }
             default:
                 return { ...screen, capturing: true }
         }

@@ -218,8 +218,10 @@ export type KeyMap = Readonly<Record<string, Action>>
 export function keyMapsFor(bindings: Bindings): KeyMap[] {
     return bindings.players.map((player, i) => {
         const map: Record<string, Action> = {}
-        for (const [action, code] of Object.entries(player.keys)) {
-            map[code] = action as Action
+        // The known actions only: stored bindings may carry unknown fields
+        // (see parseBindings).
+        for (const action of ACTIONS) {
+            map[player.keys[action]] = action
             if (i === 0 && action === "pause") map[FIXED_PAUSE_KEY] = "pause"
         }
         return map

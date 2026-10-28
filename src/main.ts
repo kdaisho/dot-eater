@@ -2,7 +2,7 @@ import {
     captureButton,
     captureKey,
     FIXED_PAUSE_KEY,
-    type BindingTarget,
+    sameBindings,
 } from "./bindings"
 import { energyHud } from "./breath"
 import { MAX_FRAME_MS, TICK_MS } from "./constants"
@@ -22,6 +22,7 @@ import {
     TITLE_CHOICES,
     update,
     type EndChoice,
+    type Capture,
     type FlowDeps,
     type Mode,
     type Screen,
@@ -135,40 +136,47 @@ const tickInput: TickInput = {
     captured: () => pendingCapture,
 }
 
-// The controls screen's capture (see TickInput.captured): the first key or
-// pad button pressed while it waits, or null for Escape (cancel). Taken only
-// while it waits, and cleared after every tick like the press edges.
-let pendingCapture: BindingTarget | null | undefined
+// The controls screen's capture (see Capture in flow.ts): the first key and
+// the first pad button pressed while it waits, each kind apart, so a stray
+// press of one kind doesn't hide the other, and Escape. Taken only while it
+// waits, and cleared after every tick like the press edges.
+let pendingCapture: Capture = {}
 const capturing = () => screen.kind === "controls" && !!screen.capturing
 
 addEventListener("keydown", (event) => {
-    if (!capturing() || pendingCapture !== undefined) return
+    if (!capturing()) return
     if (event.code === FIXED_PAUSE_KEY) {
-        pendingCapture = null
+        pendingCapture = { ...pendingCapture, cancel: true }
         return
     }
-    const code = captureKey(event)
-    if (code === undefined) return
+    if (pendingCapture.key !== undefined) return
+    const key = captureKey(event)
+    if (key === undefined) return
     // Tab and the like do nothing else while bound.
     event.preventDefault()
-    pendingCapture = code
+    pendingCapture = { ...pendingCapture, key }
 })
 
 // The buttons each pad held at the last frame, so only a fresh press is
 // captured: a button held when the prompt opens (the confirm that opened
-// it), or when a pad is first listed, doesn't count.
+// it), or when a pad is first listed, doesn't count. Read only while the
+// prompt waits; its first frame only notes what is held.
 const padList = browserPadList(navigator)
 let padButtonsDown = new Map<number, readonly number[]>()
 function capturePads() {
     const down = new Map<number, readonly number[]>()
+    if (!capturing()) {
+        padButtonsDown = down
+        return
+    }
     for (const pad of padList()) {
         if (!pad || pad.connected === false) continue
         const now = pressedButtons(pad)
         down.set(pad.index, now)
-        if (!capturing() || pendingCapture !== undefined) continue
+        if (pendingCapture.button !== undefined) continue
         const before = padButtonsDown.get(pad.index) ?? now
         const button = captureButton(before, now)
-        if (button !== undefined) pendingCapture = button
+        if (button !== undefined) pendingCapture = { ...pendingCapture, button }
     }
     padButtonsDown = down
 }
@@ -198,6 +206,7 @@ const pads = new GamepadSource(
 )
 pads.setAssignment(padAssignment(screen))
 let padPollFailed = false
+let padCaptureFailed = false
 
 // The loop ticks on every screen; menus and pause poll their input per tick
 // like play does. Only `playing` steps the game.
@@ -214,11 +223,17 @@ const loop = createLoop({
         requestAnimationFrame(() => {
             try {
                 pads.poll()
-                capturePads()
             } catch (error) {
                 // Once, not every frame.
                 if (!padPollFailed) console.error(error)
                 padPollFailed = true
+            }
+            // Apart, so a throw from one doesn't skip the other.
+            try {
+                capturePads()
+            } catch (error) {
+                if (!padCaptureFailed) console.error(error)
+                padCaptureFailed = true
             }
             callback()
         }),
@@ -235,7 +250,7 @@ function tick(dt: number) {
     const wasDefeated = boss?.defeated ?? true
     const next = update(screen, tickInput, flowDeps(dt))
     input.endTick()
-    pendingCapture = undefined
+    pendingCapture = {}
     if (game) onGameEvents(takeEvents(game))
     if (boss && !wasDefeated && boss.defeated) burst()
     if (next !== screen) enter(screen, next)
@@ -304,7 +319,8 @@ function enter(prev: Screen, next: Screen) {
     // applied, at once.
     const changed = screenSettings(next)
     if (changed && changed !== settings) {
-        if (bindingsOf(changed) !== bindingsOf(settings)) {
+        // By value: Reset gives equal bindings as another object.
+        if (!sameBindings(bindingsOf(changed), bindingsOf(settings))) {
             applyBindings(changed)
         }
         settings = changed

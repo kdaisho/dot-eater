@@ -12,6 +12,7 @@ import {
     PAD_START,
     parseBindings,
     rebind,
+    sameBindings,
     type Bindings,
 } from "./bindings"
 import { ACTIONS } from "./input"
@@ -229,6 +230,17 @@ describe("parseBindings", () => {
         expect(p2(b)).toEqual(p2(DEFAULT_BINDINGS))
     })
 
+    // Regression: any string was a key; "__proto__" even left the key
+    // maps without a confirm key.
+    it.each(["nonsense", "__proto__", "keyP", "K", "Key P", "Key-P"])(
+        "rejects %j as a stored key",
+        (code) => {
+            const value = JSON.parse(JSON.stringify(DEFAULT_BINDINGS))
+            value.players[0].keys.confirm = code
+            expect(parseBindings(value)).toEqual(DEFAULT_BINDINGS)
+        }
+    )
+
     it("rejects Escape and modifiers as stored keys", () => {
         const value = JSON.parse(JSON.stringify(DEFAULT_BINDINGS))
         value.players[0].keys.pause = "Escape"
@@ -262,12 +274,23 @@ describe("parseBindings", () => {
         expect(p1(b).pad).toEqual(p1(DEFAULT_BINDINGS).pad)
     })
 
-    it("drops unknown fields and ignores inherited ones", () => {
+    // Regression: unknown fields were dropped, so a save from a later
+    // build lost them when saved back.
+    it("keeps unknown fields at every level, and ignores inherited ones", () => {
         const value = JSON.parse(JSON.stringify(stored))
         value.players[0].keys.jump = "KeyJ"
+        value.players[1].pad.dash = 5
+        value.players[1].touch = { swipe: true }
         value.extra = true
         const b = parseBindings(value)
-        expect(b).toEqual(stored)
+        expect(b).toEqual(value)
+        // Kept even when the known keys fall back.
+        const dup = JSON.parse(JSON.stringify(value))
+        dup.players[1].keys.up = "ArrowUp"
+        expect(parseBindings(dup).players[0].keys).toEqual({
+            ...DEFAULT_BINDINGS.players[0].keys,
+            jump: "KeyJ",
+        })
         expect(
             parseBindings(Object.create({ players: stored.players }))
         ).toEqual(DEFAULT_BINDINGS)
@@ -275,6 +298,26 @@ describe("parseBindings", () => {
 })
 
 describe("isBindableKey and isBindableButton", () => {
+    // Regression: lock and IME keys were bindable.
+    it.each([
+        "NumLock",
+        "ScrollLock",
+        "KanaMode",
+        "Lang1",
+        "Lang2",
+        "Convert",
+        "NonConvert",
+    ])("rejects %s", (code) => {
+        expect(isBindableKey(code)).toBe(false)
+        expect(rebind(DEFAULT_BINDINGS, 0, "up", code)).toBe(DEFAULT_BINDINGS)
+    })
+
+    it("allows codes of any shape the browser uses", () => {
+        for (const code of ["KeyZ", "Digit0", "F12", "Numpad7", "IntlRo"]) {
+            expect(isBindableKey(code)).toBe(true)
+        }
+    })
+
     it("allows Shift keys but not Escape or other modifiers", () => {
         expect(isBindableKey("ShiftLeft")).toBe(true)
         expect(isBindableKey("KeyQ")).toBe(true)
@@ -321,6 +364,19 @@ describe("captureButton", () => {
         expect(captureButton([], [12, 13])).toBeUndefined()
         expect(captureButton([], [14, PAD_START])).toBe(PAD_START)
         expect(captureButton([], [])).toBeUndefined()
+    })
+})
+
+describe("sameBindings", () => {
+    it("compares by value, unknown fields aside", () => {
+        const copy = JSON.parse(JSON.stringify(DEFAULT_BINDINGS))
+        expect(sameBindings(copy, DEFAULT_BINDINGS)).toBe(true)
+        copy.players[1].keys.jump = "KeyJ"
+        expect(sameBindings(copy, DEFAULT_BINDINGS)).toBe(true)
+        const moved = rebind(DEFAULT_BINDINGS, 1, "pause", 8)
+        expect(sameBindings(moved, DEFAULT_BINDINGS)).toBe(false)
+        const key = rebind(DEFAULT_BINDINGS, 0, "up", "KeyI")
+        expect(sameBindings(DEFAULT_BINDINGS, key)).toBe(false)
     })
 })
 

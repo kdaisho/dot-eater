@@ -121,7 +121,11 @@ describe("showControls", () => {
             capturing: { label: "Breath", pad: false },
         })
         expect(title()).toBe("Controls · 2P")
-        expect(lines()).toEqual(["Press a key for Breath", "Esc to cancel"])
+        // A pad-only player can cancel a key prompt too.
+        expect(lines()).toEqual([
+            "Press a key for Breath",
+            "Esc or a pad button to cancel",
+        ])
         showControls({
             player: 1,
             items: [],

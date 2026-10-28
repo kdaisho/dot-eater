@@ -1,9 +1,4 @@
-import {
-    bindingName,
-    type BindingTarget,
-    type Bindings,
-    type PadAction,
-} from "./bindings"
+import { bindingName, type Bindings, type PadAction } from "./bindings"
 import type { Action } from "./input"
 
 // The controls screen's rows (see the controls screen in flow.ts). Pure, no
@@ -72,12 +67,4 @@ export function controlsRowValue(
         default:
             return undefined
     }
-}
-
-// Whether a row takes `target` when capturing: a key row takes keys, a pad
-// row pad buttons; anything else keeps the prompt waiting.
-export function takesTarget(row: ControlsRow, target: BindingTarget): boolean {
-    return row.kind === "key"
-        ? typeof target === "string"
-        : row.kind === "pad" && typeof target === "number"
 }

@@ -103,10 +103,26 @@ const UNBINDABLE_KEYS: ReadonlySet<string> = new Set([
     "CapsLock",
     "Fn",
     "FnLock",
+    // Lock keys and IME keys: toggles, or taken by the input method.
+    "NumLock",
+    "ScrollLock",
+    "KanaMode",
+    "Lang1",
+    "Lang2",
+    "Convert",
+    "NonConvert",
 ])
 
+// What a KeyboardEvent.code looks like ("KeyP", "ArrowUp", "F5"), so stored
+// junk ("nonsense", "__proto__") never counts as a key.
+const KEY_CODE = /^[A-Z][A-Za-z0-9]+$/
+
 export function isBindableKey(code: unknown): code is string {
-    return typeof code === "string" && !UNBINDABLE_KEYS.has(code)
+    return (
+        typeof code === "string" &&
+        KEY_CODE.test(code) &&
+        !UNBINDABLE_KEYS.has(code)
+    )
 }
 
 export function isBindableButton(button: unknown): button is number {
@@ -237,24 +253,64 @@ function withKey(
 // is checked: when two actions end up on one key (stored duplicates, or a
 // fallback default that a stored key already uses), every key falls back to
 // the defaults; when a player's pause shares a pad button, that player's
-// pad buttons fall back. Unknown extra fields are dropped.
+// pad buttons fall back.
+//
+// Unknown fields are kept (untyped, as they come), at the top, in each
+// player and in their keys and pad, as settings keeps its own: a save from
+// a later build (say with a new action) loses nothing when this one saves
+// it back. Only the known actions are ever read (see keyMapsFor and
+// padButtonsFor), so an unknown field never binds anything here.
 export function parseBindings(value: unknown): Bindings {
     const stored = field(value, "players")
-    const players = DEFAULT_BINDINGS.players.map((defaults, i) => {
-        const entry = Array.isArray(stored) ? stored[i] : undefined
-        return parsePlayer(entry, defaults)
-    }) as [PlayerBindings, PlayerBindings]
+    const entries = DEFAULT_BINDINGS.players.map((_, i) =>
+        Array.isArray(stored) ? (stored[i] as unknown) : undefined
+    )
+    const players = DEFAULT_BINDINGS.players.map((defaults, i) =>
+        parsePlayer(entries[i], defaults)
+    ) as [PlayerBindings, PlayerBindings]
     const codes = players.flatMap((p) => KEY_ACTIONS.map((a) => p.keys[a]))
     const keysOk = new Set(codes).size === codes.length
     return {
+        ...unknownFields(value),
         players: players.map((p, i) => {
             const defaults = DEFAULT_BINDINGS.players[i as 0 | 1]
+            const entry = entries[i]
             return {
-                keys: keysOk ? p.keys : defaults.keys,
-                pad: padOk(p.pad) ? p.pad : defaults.pad,
+                ...unknownFields(entry),
+                keys: {
+                    ...unknownFields(field(entry, "keys")),
+                    ...(keysOk ? p.keys : defaults.keys),
+                },
+                pad: {
+                    ...unknownFields(field(entry, "pad")),
+                    ...(padOk(p.pad) ? p.pad : defaults.pad),
+                },
             }
         }) as [PlayerBindings, PlayerBindings],
     }
+}
+
+// A stored object's own fields, for the known ones to be laid over; nothing
+// for anything else (an array, a string, null).
+function unknownFields(value: unknown): Record<string, unknown> {
+    return typeof value === "object" && value !== null && !Array.isArray(value)
+        ? { ...value }
+        : {}
+}
+
+// Whether two bindings bind the same keys and buttons (unknown fields
+// aside). For callers that must not redo work for equal bindings that are
+// different objects (e.g. after Reset to defaults).
+export function sameBindings(a: Bindings, b: Bindings): boolean {
+    if (a === b) return true
+    return a.players.every((p, i) => {
+        const q = b.players[i]
+        return (
+            !!q &&
+            KEY_ACTIONS.every((action) => p.keys[action] === q.keys[action]) &&
+            PAD_ACTIONS.every((action) => p.pad[action] === q.pad[action])
+        )
+    })
 }
 
 function parsePlayer(value: unknown, defaults: PlayerBindings): PlayerBindings {

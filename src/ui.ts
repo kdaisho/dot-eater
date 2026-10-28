@@ -1,6 +1,6 @@
 import confetti from "canvas-confetti"
 import { DEFAULT_BINDINGS, keyName, type Bindings } from "./bindings"
-import type { Action } from "./input"
+import { ACTIONS, type Action } from "./input"
 import type { StageSlot } from "./progress"
 import type { AnimalId, AnimalInfo } from "./roster"
 import { formatTicks, starList, starText, type ClearRating } from "./stars"
@@ -88,8 +88,8 @@ let keys = hintKeys(DEFAULT_BINDINGS)
 function hintKeys(bindings: Bindings): Record<Action, string>[] {
     return bindings.players.map((player) => {
         const names = {} as Record<Action, string>
-        for (const [action, code] of Object.entries(player.keys)) {
-            names[action as Action] = keyName(code)
+        for (const action of ACTIONS) {
+            names[action] = keyName(player.keys[action])
         }
         return names
     })
@@ -246,7 +246,10 @@ export function showControls({ player, items, capturing }: ControlsView) {
         lines: capturing
             ? [
                   `Press a ${capturing.pad ? "button" : "key"} for ${capturing.label}`,
-                  "Esc to cancel",
+                  // A pad-only player cancels a key prompt with a button.
+                  capturing.pad
+                      ? "Esc to cancel"
+                      : "Esc or a pad button to cancel",
               ]
             : [
                   `${keyPair("up", "down")} to choose, ${key("confirm")} to change`,
