@@ -158,6 +158,23 @@ describe("breathed", () => {
         expect(state.events).toEqual([])
     })
 
+    it("reports nothing for a hook that reports, then refuses", () => {
+        // Against the contract (refuse before changing anything), but its
+        // events mustn't outlive the refusal.
+        const state = breather(
+            testBreath({
+                fire: (hit) => {
+                    hit.enemies.forEach((e) => hit.defeat(e))
+                    return false
+                },
+            })
+        )
+        state.enemies.push(makeEnemy(3, 1))
+        state.spawns = { ...state.spawns, enemies: [vec2(7, 1)] }
+        tick(state, breath)
+        expect(state.events).toEqual([])
+    })
+
     it("reports nothing without the energy", () => {
         const state = breather(testBreath())
         state.players[0].breather.energy = 0

@@ -290,7 +290,12 @@ export function breathe(
     const eventsBefore = state.events.length
     const fired = breath.fire(hit) !== false
     if (iceAdded) rebuildIce(state)
-    if (!fired && !bossHit && stuns.length === 0) return false
+    if (!fired && !bossHit && stuns.length === 0) {
+        // A refused breath reports nothing (see events.ts), even if its
+        // hook reported something before refusing.
+        state.events.length = eventsBefore
+        return false
+    }
     const player = state.players.indexOf(who)
     // Reported before what it did, including the defeats the hook already
     // reported (a refusing hook changes nothing, so reports nothing).
