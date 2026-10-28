@@ -73,7 +73,7 @@ export const BURSTS: Readonly<Record<BurstKind, ParticleLook>> = {
     },
     // A poof of smoke and sparks where an enemy was defeated.
     defeat: {
-        colors: ["#9ca3af", "#e5e7eb", "#fbbf24", "#f87171"],
+        colors: ["#9ca3af", "#6b7280", "#f59e0b", "#ef4444"],
         count: 14,
         life: 0.6,
         speed: 2.5,
@@ -84,7 +84,7 @@ export const BURSTS: Readonly<Record<BurstKind, ParticleLook>> = {
     },
     // Red sparks round a player who was caught.
     caught: {
-        colors: ["#dc2626", "#f87171", "#fff"],
+        colors: ["#dc2626", "#f87171", "#7f1d1d"],
         count: 18,
         life: 0.7,
         speed: 3,
@@ -92,9 +92,9 @@ export const BURSTS: Readonly<Record<BurstKind, ParticleLook>> = {
         size: 0.13,
         drag: 2,
     },
-    // A splash of white and red where a breath hit the boss.
+    // A splash of reds where a breath hit the boss.
     bossHit: {
-        colors: ["#fff", "#fca5a5", "#dc2626"],
+        colors: ["#991b1b", "#f87171", "#dc2626"],
         count: 10,
         life: 0.45,
         speed: 3,
@@ -105,7 +105,7 @@ export const BURSTS: Readonly<Record<BurstKind, ParticleLook>> = {
     },
     // A big, colourful blast when the boss goes down.
     bossDefeat: {
-        colors: ["#dc2626", "#f59e0b", "#fbbf24", "#a855f7", "#fff"],
+        colors: ["#dc2626", "#f59e0b", "#fbbf24", "#a855f7", "#16a34a"],
         count: 60,
         life: 1.2,
         speed: 5,

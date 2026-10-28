@@ -333,3 +333,38 @@ describe("breath particles", () => {
         expect(new Set(palettes).size).toBe(ANIMAL_IDS.length)
     })
 })
+
+// Relative luminance (WCAG) of a "#rgb" or "#rrggbb" colour, 0 (black) to
+// 1 (white).
+function luminance(hex: string): number {
+    const digits =
+        hex.length === 4
+            ? [hex[1], hex[2], hex[3]].map((d) => d + d)
+            : [hex.slice(1, 3), hex.slice(3, 5), hex.slice(5, 7)]
+    const [r, g, b] = digits.map((d) => {
+        const c = parseInt(d, 16) / 255
+        return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4
+    })
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b
+}
+
+// Regression: white and near-white particles vanished on the white floor.
+describe("particle colours", () => {
+    const looks = [
+        ...Object.entries(BURSTS),
+        ...ANIMAL_IDS.map((a) => [a, BREATHS[a].particles] as const),
+    ]
+
+    it("measures luminance", () => {
+        expect(luminance("#fff")).toBeCloseTo(1)
+        expect(luminance("#000000")).toBeCloseTo(0)
+    })
+
+    it.each(looks)("%s shows on the white floor", (_name, look) => {
+        for (const color of look?.colors ?? []) {
+            expect(color).toMatch(/^#([0-9a-f]{3}|[0-9a-f]{6})$/i)
+            // Below 0.7: #fff is 1, the pale blue #bae6fd about 0.74.
+            expect(luminance(color), color).toBeLessThan(0.7)
+        }
+    })
+})

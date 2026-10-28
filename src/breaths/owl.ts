@@ -27,9 +27,10 @@ export const owl: BreathDef = {
     duration: 0,
     maxEnergy: 100,
     speedScale: 1,
-    // Quick wisps streaking along the line.
+    // Quick blue-grey wisps streaking along the line (pale ones would vanish
+    // on the white floor).
     particles: {
-        colors: ["#e0f2fe", "#cbd5e1", "#fff"],
+        colors: ["#94a3b8", "#a5b4c8", "#64748b"],
         count: 3,
         life: 0.35,
         speed: 5,

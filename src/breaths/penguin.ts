@@ -39,9 +39,10 @@ export const penguin: BreathDef = {
     maxEnergy: 100,
     speedScale: 1,
     slideSpeedScale: 1.5,
-    // Snowflakes drifting out along the cone.
+    // Icy blue flakes drifting out along the cone (white would vanish on
+    // the white floor).
     particles: {
-        colors: ["#fff", "#bae6fd", "#7dd3fc"],
+        colors: ["#38bdf8", "#7dd3fc", "#0284c7"],
         count: 3,
         life: 0.7,
         speed: 1.5,
