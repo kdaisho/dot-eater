@@ -139,6 +139,12 @@ body[data-dpad="on"] #play {
     content: "▶ ";
 }
 
+/* A setting's value, after its label. */
+.overlay-menu .menu-value {
+    margin-left: 0.5em;
+    font-variant-numeric: tabular-nums;
+}
+
 .overlay-menu li.locked {
     opacity: 0.3;
 }

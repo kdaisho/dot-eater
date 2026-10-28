@@ -7,6 +7,7 @@ import {
     Cell,
 } from "./constants"
 import type { BlockMap } from "./breath"
+import { emit } from "./events"
 import type { GameState, Player } from "./game"
 import { distanceMap, type DistanceMap } from "./path"
 import { allDirections, directions, samePos, vec2, type Vec2 } from "./vec2"
@@ -105,11 +106,16 @@ export function damageBoss(
     boss.flash = BOSS_FLASH
     // A small tolerance, so fractional damage that adds up to the health
     // still finishes it.
+    const player = state.players.indexOf(by)
+    const at = vec2(boss.pos.x, boss.pos.y)
     if (boss.health <= 1e-9) {
         boss.health = 0
         boss.defeated = true
         boss.flash = 0
         by.score += BOSS_DEFEAT_POINTS
+        emit(state, { type: "bossDefeated", player, at })
+    } else {
+        emit(state, { type: "bossHit", player, at, health: boss.health })
     }
 }
 
