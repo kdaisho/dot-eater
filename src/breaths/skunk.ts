@@ -49,6 +49,17 @@ export const skunk: BreathDef = {
     duration: DURATION,
     maxEnergy: 150,
     speedScale: 1,
+    // Slow green puffs welling up all round the cloud.
+    particles: {
+        colors: ["#84cc16", "#a3e635", "#65a30d"],
+        count: 2,
+        life: 0.9,
+        speed: 0.6,
+        spread: Math.PI * 2,
+        size: 0.2,
+        jitter: 0.35,
+        drag: 1,
+    },
     // Always fires: the cloud is worth having with no enemy near yet.
     fire(hit) {
         for (const cell of hit.cells) hit.addTile(cell, stink, DURATION)

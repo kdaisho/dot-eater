@@ -21,13 +21,16 @@ export type GameEvent =
     // A player breathed: the breath fired (or struck the boss or the other
     // player) and its cost was paid. A refused breath reports nothing.
     // `at` is the player's cell and `facing` the unit step it breathed
-    // along.
+    // along. `cells` are the cells the breath covered as it was breathed
+    // (its shape against the maze, ending at a boss's body), nearest first;
+    // with none in reach, the wall it opened if it opened one, else `at`.
     | {
           type: "breathed"
           player: number
           animal: AnimalId
           at: Vec2
           facing: Vec2
+          cells: readonly Vec2[]
       }
     // A player's breath defeated enemy `enemy` (its index in
     // GameState.enemies) on `at`, where it stood. `split` is true when it

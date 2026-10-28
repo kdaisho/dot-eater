@@ -27,6 +27,18 @@ export const owl: BreathDef = {
     duration: 0,
     maxEnergy: 100,
     speedScale: 1,
+    // Quick blue-grey wisps streaking along the line (pale ones would vanish
+    // on the white floor).
+    particles: {
+        colors: ["#94a3b8", "#a5b4c8", "#64748b"],
+        count: 3,
+        life: 0.35,
+        speed: 5,
+        spread: 0.3,
+        size: 0.08,
+        jitter: 0.3,
+        drag: 2,
+    },
     // Fires even with nobody in the line (the gust shows it). Facing a wall
     // with no enemy on the player's cell there is nothing to blow or show,
     // so the breath refuses and costs nothing. A push ignores other enemies
