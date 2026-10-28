@@ -128,7 +128,6 @@ describe("showControls", () => {
             "Press a key for Breath",
             "Esc or a pad button to cancel",
         ])
-        expect(overlay()?.querySelectorAll("p.overlay-hint")).toHaveLength(2)
         showControls({
             player: 1,
             items: [],
@@ -138,5 +137,27 @@ describe("showControls", () => {
             "Press a button for Pad pause",
             "Esc to cancel",
         ])
+    })
+
+    // Phones hide .overlay-hint lines: the prompt must stay, and only the
+    // key-only cancel line goes.
+    it("keeps the prompt visible on phones, hiding only the key cancel", () => {
+        const hints = () =>
+            [...(overlay()?.querySelectorAll("p.overlay-hint") ?? [])].map(
+                (p) => p.textContent
+            )
+        showControls({
+            player: 0,
+            items: [],
+            capturing: { label: "Breath", pad: false },
+        })
+        expect(hints()).toEqual(["Esc or a pad button to cancel"])
+        showControls({
+            player: 0,
+            items: [],
+            capturing: { label: "Breath", pad: false, touch: true },
+        })
+        expect(lines()).toEqual(["Press a key for Breath", "Tap to cancel"])
+        expect(hints()).toEqual([])
     })
 })

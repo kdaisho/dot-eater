@@ -82,6 +82,24 @@ describe("main's controls screen", () => {
         expect(selectedItem()).toBe("Up ↑")
     })
 
+    // A phone has no Escape: any tap on the overlay cancels instead, and
+    // the tapped row is neither picked nor run.
+    it("cancels a capture on a tap, binding nothing", () => {
+        const tapOn = (selector: string) => {
+            overlay()?.querySelector<HTMLElement>(selector)?.click()
+            vi.advanceTimersByTime(100)
+        }
+        for (const target of ["li:last-child", "p"]) {
+            pressAndTick("Space")
+            expect(capturing()).toBe(true)
+            tapOn(target)
+            expect(screen()).toBe("controls")
+            expect(capturing()).toBe(false)
+            expect(selectedItem()).toBe("Up ↑")
+            expect(saved()?.bindings).toBeUndefined()
+        }
+    })
+
     // Space is confirm: captured for Up, its press must not also confirm
     // (which would open the prompt again).
     it("captures a menu key without it acting on the menu", () => {

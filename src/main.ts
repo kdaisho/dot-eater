@@ -560,6 +560,7 @@ function showOverlay(s: Screen) {
                           capturing: {
                               label: controlsRowLabel(current),
                               pad: current.kind === "pad",
+                              touch,
                           },
                       }
                     : {}),
@@ -679,8 +680,14 @@ document.addEventListener("visibilitychange", () => {
 // Back), a slider's ◀ or ▶ puts the cursor on it and steps it (left or
 // right), and Back is the pause action (Esc). They go through player 1's
 // input like keys, so flow handles them on the next tick, delays and all.
+// While the controls screen waits for a key or button, any tap on the
+// overlay cancels, like Escape, so a phone isn't stuck on the prompt.
 document.addEventListener("click", (event) => {
     const tap = overlayTap(event.target)
+    if (tap && capturing()) {
+        pendingCapture = { ...pendingCapture, cancel: true }
+        return
+    }
     if (!tap || tap.kind === "panel") return
     if (tap.kind === "back") return tapAction("pause")
     const next = selectItem(screen, tap.index, flowDeps(0))

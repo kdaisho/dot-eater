@@ -82,8 +82,9 @@ type Overlay = {
     // A Back button, for screens that go back (the pause action).
     back?: boolean
     // The lines only name keys: they are hidden on phones (see
-    // .overlay-hint in the CSS), where the overlay is tapped instead.
-    keyHints?: boolean
+    // .overlay-hint in the CSS), where the overlay is tapped instead. A
+    // number marks only the lines from that index on.
+    keyHints?: boolean | number
 }
 
 // A character select card: emoji and name, the breath, the stat. With two
@@ -253,9 +254,10 @@ export type ControlsView = {
     player: number
     // One item per row, each with its key or button (see controlsMenu.ts).
     items: readonly MenuItem[]
-    // While waiting for a key or button: the row's label, and whether it
-    // takes a pad button rather than a key.
-    capturing?: { label: string; pad: boolean }
+    // While waiting for a key or button: the row's label, whether it
+    // takes a pad button rather than a key, and whether this is a touch
+    // device (where a tap cancels).
+    capturing?: { label: string; pad: boolean; touch?: boolean }
 }
 
 // The controls screen: one player's keys and pad buttons, or while
@@ -268,16 +270,21 @@ export function showControls({ player, items, capturing }: ControlsView) {
         lines: capturing
             ? [
                   `Press a ${capturing.pad ? "button" : "key"} for ${capturing.label}`,
-                  // A pad-only player cancels a key prompt with a button.
-                  capturing.pad
-                      ? "Esc to cancel"
-                      : "Esc or a pad button to cancel",
+                  // A tap cancels on touch devices; a pad-only player
+                  // cancels a key prompt with a button.
+                  capturing.touch
+                      ? "Tap to cancel"
+                      : capturing.pad
+                        ? "Esc to cancel"
+                        : "Esc or a pad button to cancel",
               ]
             : [
                   `${keyPair("up", "down")} to choose, ${key("confirm")} to change`,
                   `${keyPair("left", "right")} for ${other}P's controls, Esc to go back`,
               ],
-        keyHints: true,
+        // The prompt shows everywhere, and on touch devices so does how to
+        // cancel it; the rest only name keys.
+        keyHints: !capturing ? true : capturing.touch ? false : 1,
         items,
     })
 }
@@ -438,9 +445,12 @@ function show({
     heading.textContent = title
     panel.appendChild(heading)
 
-    for (const line of lines) {
+    const hintFrom =
+        keyHints === true ? 0 : keyHints === false ? lines.length : keyHints
+    for (const [i, line] of lines.entries()) {
         const p = document.createElement("p")
-        p.className = keyHints ? "overlay-line overlay-hint" : "overlay-line"
+        p.className =
+            i >= hintFrom ? "overlay-line overlay-hint" : "overlay-line"
         p.textContent = line
         panel.appendChild(p)
     }
