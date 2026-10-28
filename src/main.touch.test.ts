@@ -26,6 +26,20 @@ vi.mock("./game", async (importOriginal) => {
     }
 })
 
+// Keep the real touch source, but count the times main lets go of the
+// swipe.
+const touchReleases = vi.hoisted(() => ({ count: 0 }))
+vi.mock("./touch", async (importOriginal) => {
+    const actual = await importOriginal<typeof import("./touch")>()
+    class Counted extends actual.TouchSource {
+        override release() {
+            touchReleases.count++
+            super.release()
+        }
+    }
+    return { ...actual, TouchSource: Counted }
+})
+
 const FRAMES_MS = 100
 
 const screen = () =>
@@ -169,6 +183,45 @@ describe("main on a touch screen", () => {
         expect(screen()).toBe("pause")
         tap("#overlay li[data-index='0']")
         expect(screen()).toBe("playing")
+    })
+
+    // Regression (PR #56 review): the swipe kept holding left through the
+    // game over, so the retry set left aside (ignoreHeld) and ArrowLeft
+    // couldn't move left until the player swiped left again.
+    it("lets go of a swipe when the game ends, so the keys work after Retry", () => {
+        const play = el("#play")
+        pointer(play, "pointerdown", 100, 100)
+        pointer(play, "pointermove", 60, 100)
+        pointer(play, "pointerup", 60, 100)
+        vi.advanceTimersByTime(FRAMES_MS)
+        // Pausing and resuming keep the swipe.
+        const releases = touchReleases.count
+        const pause = el("#touch-controls [data-action=pause]")
+        pointer(pause, "pointerdown", 0, 0)
+        pointer(pause, "pointerup", 0, 0)
+        vi.advanceTimersByTime(FRAMES_MS)
+        tap("#overlay li[data-index='0']")
+        expect(screen()).toBe("playing")
+        expect(touchReleases.count).toBe(releases)
+        // The game ending lets go of it, and so does the retry.
+        nextOutcome = "dead"
+        vi.advanceTimersByTime(FRAMES_MS)
+        expect(touchReleases.count).toBe(releases + 1)
+        expect(screen()).toBe("game-over")
+        vi.advanceTimersByTime(END_CONFIRM_DELAY * 1000)
+        tap("#overlay li[data-index='0']")
+        expect(screen()).toBe("playing")
+        expect(touchReleases.count).toBe(releases + 2)
+        // Nothing steers the new game until the player does.
+        expect(moves(vi.mocked(step).mock.calls.length - 1)[0]?.held).toEqual(
+            []
+        )
+        const from = vi.mocked(step).mock.calls.length
+        dispatchEvent(new KeyboardEvent("keydown", { code: "ArrowLeft" }))
+        vi.advanceTimersByTime(FRAMES_MS)
+        expect(moves(from)[0]?.pressed).toEqual({ x: -1, y: 0 })
+        expect(moves(from).at(-1)?.held).toEqual([{ x: -1, y: 0 }])
+        dispatchEvent(new KeyboardEvent("keyup", { code: "ArrowLeft" }))
     })
 
     it("picks an end screen's item once its confirm delay is over", () => {

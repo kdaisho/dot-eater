@@ -1,5 +1,10 @@
 import { beforeEach, describe, expect, it } from "vite-plus/test"
-import { InputState, type DirectionAction } from "./input"
+import {
+    InputState,
+    KeyboardSource,
+    PLAYER_1_KEYS,
+    type DirectionAction,
+} from "./input"
 import {
     isTap,
     isTouchDevice,
@@ -304,5 +309,82 @@ describe("TouchSource", () => {
             [40, 0],
         ])
         expect(held()).toEqual([])
+    })
+
+    // Regression (PR #56 review): a swipe's hold outlived newer input. An
+    // arrow (or D-pad, or pad) pressed for a direction the swipe held made
+    // no press edge, so after swiping left then up, holding left kept going
+    // up, and letting go never stopped the player.
+    describe("with another source", () => {
+        const keys = new EventTarget()
+        beforeEach(() =>
+            new KeyboardSource([PLAYER_1_KEYS], keys).attach(input)
+        )
+        const key = (type: string, code: string) =>
+            keys.dispatchEvent(Object.assign(new Event(type), { code }))
+
+        it("lets a newer key press win over the swipe, and stop on release", () => {
+            stroke([
+                [0, 0],
+                [-40, 0],
+            ])
+            stroke([
+                [0, 0],
+                [0, -40],
+            ])
+            input.endTick()
+            key("keydown", "ArrowLeft")
+            expect(p1().pressedStep()).toEqual(vec2(-1, 0))
+            expect(p1().heldSteps()).toEqual([vec2(-1, 0)])
+            key("keyup", "ArrowLeft")
+            // Nothing holds anything now: the player stops.
+            expect(held()).toEqual([])
+        })
+
+        it("lets the next swipe steer again after a key", () => {
+            stroke([
+                [0, 0],
+                [40, 0],
+            ])
+            key("keydown", "ArrowUp")
+            key("keyup", "ArrowUp")
+            stroke([
+                [0, 0],
+                [0, 40],
+            ])
+            // No fallback left over from before the key press.
+            expect(p1().heldSteps()).toEqual([vec2(0, 1)])
+        })
+
+        it("doesn't drop the swipe for a breath or pause key", () => {
+            stroke([
+                [0, 0],
+                [40, 0],
+            ])
+            key("keydown", "ShiftRight")
+            key("keydown", "KeyP")
+            expect(held()).toEqual(["right"])
+        })
+    })
+
+    // Regression (PR #56 review): after a swipe left and a restart
+    // (ignoreHeld), ArrowLeft couldn't move left: the swipe still held
+    // left, so it stayed set aside. main releases the swipe whenever a game
+    // starts or ends.
+    it("frees a released swipe's direction for the keys after a restart", () => {
+        const keys = new EventTarget()
+        new KeyboardSource([PLAYER_1_KEYS], keys).attach(input)
+        stroke([
+            [0, 0],
+            [-40, 0],
+        ])
+        input.endTick()
+        source.release()
+        input.ignoreHeld()
+        keys.dispatchEvent(
+            Object.assign(new Event("keydown"), { code: "ArrowLeft" })
+        )
+        expect(p1().pressedStep()).toEqual(vec2(-1, 0))
+        expect(p1().heldSteps()).toEqual([vec2(-1, 0)])
     })
 })

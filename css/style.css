@@ -68,6 +68,9 @@ body[data-dpad="on"] #play {
     left: 50%;
     /* Scroll rather than run off a short window (the body doesn't scroll). */
     max-height: calc(100vh - 120px);
+    /* The visible height on phones, so the last item isn't under the
+       toolbar (iOS Safari). */
+    max-height: calc(100dvh - 120px);
     overflow-y: auto;
     position: fixed;
     top: 100px;
@@ -80,6 +83,7 @@ body[data-dpad="on"] #play {
 /* Short windows (a phone on its side): use the height there is. */
 @media (max-height: 500px) {
     .overlay {
+        max-height: calc(100vh - 32px);
         max-height: calc(100dvh - 32px);
         top: 16px;
     }
@@ -89,19 +93,19 @@ body[data-dpad="on"] #play {
     }
 }
 
-/* Back, on menus that go back: tapping it is Esc. */
+/* Back, on menus that go back: tapping it is Esc. A row of its own above
+   the title, so it never covers the title on a narrow phone. */
 .overlay-back {
     background: none;
     border: 0;
     color: #fff;
     cursor: pointer;
+    display: block;
     font-size: 18px;
-    left: 0;
     line-height: 44px;
+    margin-right: auto;
     opacity: 0.8;
     padding: 0 8px;
-    position: absolute;
-    top: 0;
 }
 
 .overlay-title {

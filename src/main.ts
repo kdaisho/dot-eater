@@ -111,6 +111,7 @@ if (!(canvas instanceof HTMLCanvasElement)) throw new Error("No #game canvas")
 // (applyDpad, live as the setting changes).
 const playArea = document.getElementById("play") ?? canvas
 const touchControls = createTouchControls()
+const touchSource = new TouchSource(playArea)
 let dpadShown = false
 setControls(document, { touch, dpad: false, playing: false })
 
@@ -259,6 +260,17 @@ function enter(prev: Screen, next: Screen) {
     screen = next
     pads.setAssignment(padAssignment(next))
     setControls(document, { playing: next.kind === "playing" })
+    // A swipe holds its direction until newer input; a game starting or
+    // ending (not a pause or resume) lets go of it, so it neither steers
+    // the next game nor sets that direction aside for the keys there.
+    const wasPlaying = prev.kind === "playing"
+    const isPlaying = next.kind === "playing"
+    if (
+        (isPlaying && !wasPlaying && prev.kind !== "paused") ||
+        (wasPlaying && !isPlaying && next.kind !== "paused")
+    ) {
+        touchSource.release()
+    }
     // Play started from a menu (character select or Retry): a direction
     // still held from the menu waits for a fresh press. Resuming from pause
     // keeps held directions, so holding through a pause carries on moving.
@@ -514,7 +526,7 @@ function tapAction(action: Action) {
 
 new KeyboardSource([PLAYER_1_KEYS, PLAYER_2_KEYS]).attach(input)
 pads.attach(input)
-new TouchSource(playArea).attach(input)
+touchSource.attach(input)
 new DpadSource(touchControls).attach(input)
 // The (empty) toast live region goes in at once, so screen readers already
 // watch it when the first toast shows.

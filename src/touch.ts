@@ -125,6 +125,10 @@ export class TouchSource implements InputSource {
     attach(input: InputState): void {
         this.detach()
         this.input = input
+        // Newer input from another source drops the swipe (see latch).
+        input.players[0]?.latch(SWIPE, () => {
+            this.held = []
+        })
         this.target.addEventListener("pointerdown", this.onDown)
         this.target.addEventListener("pointermove", this.onMove)
         this.target.addEventListener("pointerup", this.onUp)
