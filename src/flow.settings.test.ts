@@ -166,9 +166,10 @@ describe("Back from the settings", () => {
             "down",
             "down",
             "down",
+            "down",
         ])
         // Past Controls (title only), on Back.
-        expect(settings).toMatchObject({ row: 5 })
+        expect(settings).toMatchObject({ row: 6 })
         expect(press(settings, ["confirm"])).toBe(title)
     })
 
@@ -230,8 +231,15 @@ describe("the settings rows", () => {
     it("moves the cursor over the rows, stopping at either end", () => {
         const settings = open()
         expect(press(settings, ["up"])).toBe(settings)
-        const last = press(settings, ["down", "down", "down", "down", "down"])
-        expect(last).toMatchObject({ row: 5 })
+        const last = press(settings, [
+            "down",
+            "down",
+            "down",
+            "down",
+            "down",
+            "down",
+        ])
+        expect(last).toMatchObject({ row: 6 })
         expect(press(last, ["down"])).toBe(last)
     })
 
@@ -327,6 +335,21 @@ describe("selectItem on the title, pause and settings", () => {
         expect(settingsOf(update(mute, input(["confirm"]), deps())).muted).toBe(
             true
         )
+        // A choice's ▶ or ◀ (Facing guide): the cursor on it, then right
+        // or left, wrapping round; confirm steps it forward.
+        const guide = selectItem(settings, 4)
+        expect(guide).toMatchObject({ row: 4 })
+        const aim = update(guide, input(["right"]), deps())
+        expect(settingsOf(aim).facingGuide).toBe("aim")
+        expect(
+            settingsOf(update(aim, input(["right"]), deps())).facingGuide
+        ).toBe("arrow")
+        expect(
+            settingsOf(update(guide, input(["left"]), deps())).facingGuide
+        ).toBe("aim")
+        expect(
+            settingsOf(update(guide, input(["confirm"]), deps())).facingGuide
+        ).toBe("aim")
         // A slider's ▶: the cursor on it, then right.
         const effects = selectItem(settings, 1)
         expect(
@@ -337,19 +360,19 @@ describe("selectItem on the title, pause and settings", () => {
     it("counts the rows that show: Show D-pad only on touch devices", () => {
         const touch = deps({ touch: true })
         const settings = update(titleOnSettings(), input(["confirm"]), touch)
-        // Without touch: four rows, Controls, then Back (index 5) last.
-        expect(selectItem(settings, 6)).toBe(settings)
-        const dpad = selectItem(settings, 4, touch)
-        expect(dpad).toMatchObject({ row: 4 })
+        // Without touch: five rows, Controls, then Back (index 6) last.
+        expect(selectItem(settings, 7)).toBe(settings)
+        const dpad = selectItem(settings, 5, touch)
+        expect(dpad).toMatchObject({ row: 5 })
         expect(
             settingsOf(update(dpad, input(["confirm"]), touch)).showDpad
         ).toBe(true)
-        // With touch: Show D-pad, then Controls, then Back (index 6).
-        const controls = selectItem(settings, 5, touch)
+        // With touch: Show D-pad, then Controls, then Back (index 7).
+        const controls = selectItem(settings, 6, touch)
         expect(update(controls, input(["confirm"]), touch)).toMatchObject({
             kind: "controls",
         })
-        const back = selectItem(settings, 6, touch)
+        const back = selectItem(settings, 7, touch)
         expect(update(back, input(["confirm"]), touch)).toMatchObject({
             kind: "title",
         })

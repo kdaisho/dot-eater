@@ -148,6 +148,8 @@ describe("main's particles and shake", () => {
         expect(seen.effects?.particles).toBe(seen.particles!.list)
         expect(seen.effects?.shake).toBeDefined()
         expect(seen.effects?.aim).toBe(true)
+        // The Facing guide setting's default.
+        expect(seen.effects?.guide).toBe("arrow")
     })
 
     // Regression (the resume tick): effects moved on once more than the
@@ -178,6 +180,8 @@ describe("main's particles and shake", () => {
         expect(seen.effects?.shake).toBeUndefined()
         // No aim preview while paused.
         expect(seen.effects?.aim).toBeUndefined()
+        // The arrow still shows on the paused board.
+        expect(seen.effects?.guide).toBe("arrow")
         pressAndTick("KeyP")
         expect(screen()).toBe("playing")
         expect(seen.updates - updates).toBe(steps - stepped)

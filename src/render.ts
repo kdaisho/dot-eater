@@ -20,6 +20,7 @@ import { eatenDotVisible, glidePos, wrapCopies } from "./glide"
 import { computeLayout, type Layout } from "./layout"
 import type { LevelRules } from "./level"
 import { particleAlpha, type Particle } from "./particles"
+import type { FacingGuide } from "./settings"
 import { ANIMALS } from "./roster"
 import { isSplitterHalf } from "./splitter"
 import { vec2, type Vec2 } from "./vec2"
@@ -60,9 +61,14 @@ export type Effects = {
     // How far to move the maze this frame, in cells (see shake.ts). The
     // HUD stays put.
     shake?: Vec2
-    // Show each charged player's aim preview (see aimPreviews in
-    // breath.ts): a faint tint in its colour on the cells its breath would
-    // hit, under the dots. Only while playing, not paused or on end screens.
+    // How to show which way each player faces (KDA-247; the Facing guide
+    // setting): "arrow", an arrow on each player in play, or "aim", the aim
+    // preview while `aim` is set too. Neither when left out.
+    guide?: FacingGuide
+    // Whether the aim preview may show (only while playing, not paused or
+    // on end screens): with `guide` "aim", each charged player's preview
+    // (see aimPreviews in breath.ts), a faint tint in its colour on the
+    // cells its breath would hit, under the dots.
     aim?: boolean
 }
 
@@ -131,6 +137,15 @@ function playerSprite(player: Player): string {
 export const PLAYER_COLORS = ["#2563eb", "#dc2626"] as const
 // The ring's width and the number's size, as fractions of the sprite's.
 const RING_WIDTH = 0.08
+const LABEL_SCALE = 0.4
+
+// The facing arrow (see Effects.guide): a filled triangle in the player's
+// colour just outside its ring, pointing the way it faces. Its tip is this
+// far from the sprite's centre and its base this wide, in cells; it is
+// this opaque while the player is stunned.
+const ARROW_TIP = 0.6
+const ARROW_WIDTH = 0.2
+const ARROW_STUNNED_ALPHA = 0.35
 
 // The aim preview (see Effects.aim) is a tint in the player's colour: a
 // faint fill over each cell its breath would hit, and a slightly stronger
@@ -138,7 +153,6 @@ const RING_WIDTH = 0.08
 const AIM_FILL_ALPHA = 0.18
 const AIM_EDGE_ALPHA = 0.5
 const AIM_EDGE_WIDTH = 0.05
-const LABEL_SCALE = 0.4
 
 // Enemies look like what they do: every enemy of one AI type shares a
 // sprite. A Record over AiType, so a new AI type without a sprite is a type
@@ -264,10 +278,20 @@ export function createRenderer(
         if (shake && (shake.x !== 0 || shake.y !== 0)) {
             ctx.translate(shake.x * cell, shake.y * cell)
         }
-        const aims = effects.aim ? aimPreviews(state) : []
+        const aims =
+            effects.aim && effects.guide === "aim" ? aimPreviews(state) : []
         drawCells(ctx, state, alpha, cell, fog, aims)
         drawBoss(ctx, state, alpha, cell, cols, rows, fog)
-        drawCharacters(ctx, state, alpha, cell, cols, rows, fog)
+        drawCharacters(
+            ctx,
+            state,
+            alpha,
+            cell,
+            cols,
+            rows,
+            fog,
+            effects.guide === "arrow"
+        )
         if (effects.particles) drawParticles(ctx, effects.particles, cell, fog)
         ctx.restore()
         if (fog) drawDarkness(ctx, fog, cell, cols, rows, darknessLayer, dpr)
@@ -639,7 +663,8 @@ function drawCharacters(
     cell: number,
     cols: number,
     rows: number,
-    fog: Fog | null
+    fog: Fog | null,
+    arrows: boolean
 ) {
     ctx.textAlign = "center"
     ctx.textBaseline = "middle"
@@ -653,7 +678,8 @@ function drawCharacters(
     // it is drawn instead of creeping forward between ticks. Each player
     // glides at its current rate (Player.rate), as the ticks move it, and
     // with two players wears its marker (see PLAYER_COLORS). A Splitter's
-    // half is drawn smaller (HALF_SCALE), its disc and badges too.
+    // half is drawn smaller (HALF_SCALE), its disc and badges too. With
+    // `arrows`, each player also gets its facing arrow (see drawArrow).
     const marked = state.players.length > 1
     // A player out of play (see takeOut in game.ts) isn't drawn.
     const sprites = [
@@ -667,6 +693,13 @@ function drawCharacters(
                           rate: player.rate,
                           marker: marked ? i : null,
                           badge: versusBadge(player),
+                          arrow: arrows
+                              ? {
+                                    index: i,
+                                    facing: player.breather.facing,
+                                    dim: stunned(player),
+                                }
+                              : null,
                       },
                   ]
         ),
@@ -676,9 +709,10 @@ function drawCharacters(
             rate: 1,
             marker: null,
             badge: null,
+            arrow: null,
         })),
     ]
-    for (const { character, sprite, rate, marker, badge } of sprites) {
+    for (const { character, sprite, rate, marker, badge, arrow } of sprites) {
         const isPlayer = character.id === CharacterId.player
         if (!isPlayer && !enemyVisible(character)) continue
         const held = !isPlayer && hasStatus(character, "holds")
@@ -704,6 +738,7 @@ function drawCharacters(
             }
             ctx.fillText(sprite, x, y)
             if (marker !== null) drawMarker(ctx, marker, x, y, size)
+            if (arrow) drawArrow(ctx, arrow, x, y, cell)
             // A stunned player (versus) wears the stun badge, and one
             // immune just after a stun the immune badge, like a status's.
             const badges = [
@@ -773,6 +808,35 @@ function drawMarker(
     ctx.fillStyle = color
     ctx.font = `bold ${Math.round(size * LABEL_SCALE)}px sans-serif`
     ctx.fillText(String(index + 1), x - size / 2, y + size / 2)
+}
+
+// Player `arrow.index`'s facing arrow, for its sprite centred at (x, y): a
+// filled triangle in its colour, its base just outside the ring and its tip
+// ARROW_TIP cells out along `facing` (a unit step). Dimmed while stunned.
+function drawArrow(
+    ctx: CanvasRenderingContext2D,
+    arrow: { index: number; facing: Vec2; dim: boolean },
+    x: number,
+    y: number,
+    cell: number
+) {
+    const { x: fx, y: fy } = arrow.facing
+    const size = cell * SPRITE_SCALE
+    // The ring's outer edge (see drawMarker), drawn or not.
+    const base = size / 2 + Math.max(1, size * RING_WIDTH)
+    const tip = Math.max(base + 2, ARROW_TIP * cell)
+    const half = (ARROW_WIDTH * cell) / 2
+    ctx.save()
+    if (arrow.dim) ctx.globalAlpha = ARROW_STUNNED_ALPHA
+    ctx.fillStyle = PLAYER_COLORS[arrow.index]
+    ctx.beginPath()
+    ctx.moveTo(x + fx * tip, y + fy * tip)
+    // Across the facing: (-fy, fx).
+    ctx.lineTo(x + fx * base - fy * half, y + fy * base + fx * half)
+    ctx.lineTo(x + fx * base + fy * half, y + fy * base - fx * half)
+    ctx.closePath()
+    ctx.fill()
+    ctx.restore()
 }
 
 // Score on the left, lives (as the player's emoji) on the right, the energy

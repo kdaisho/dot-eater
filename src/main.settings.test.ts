@@ -41,6 +41,7 @@ describe("main's settings", () => {
             "Effects volume ◀ 8 ▶",
             "Mute Off",
             "Screen shake On",
+            "Facing guide ◀ Arrow ▶",
             "Controls",
             "Back",
         ])
@@ -81,6 +82,20 @@ describe("main's settings", () => {
             musicVolume: 8,
             muted: true,
         })
+
+        // The Facing guide shows from pause too, and cycles both ways.
+        pressAndTick("ArrowDown")
+        pressAndTick("ArrowDown")
+        expect(selectedItem()).toBe("Facing guide ◀ Arrow ▶")
+        pressAndTick("ArrowRight")
+        expect(selectedItem()).toBe("Facing guide ◀ Aim ▶")
+        expect(saved()).toMatchObject({ facingGuide: "aim" })
+        pressAndTick("ArrowRight")
+        expect(selectedItem()).toBe("Facing guide ◀ Arrow ▶")
+        pressAndTick("ArrowLeft")
+        expect(selectedItem()).toBe("Facing guide ◀ Aim ▶")
+        pressAndTick("ArrowLeft")
+        expect(saved()).toMatchObject({ facingGuide: "arrow" })
 
         // Back to the paused game, then on with it.
         pressAndTick("Escape")

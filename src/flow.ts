@@ -631,7 +631,9 @@ function updateSettings(
     }
     if (input.wasPressed("confirm")) {
         if (row.kind === "action") return runAction(screen, row.action)
-        return row.kind === "toggle" ? change(1) : screen
+        return row.kind === "toggle" || row.kind === "choice"
+            ? change(1)
+            : screen
     }
     const delta =
         Number(input.wasPressed("right")) - Number(input.wasPressed("left"))

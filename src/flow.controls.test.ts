@@ -67,7 +67,7 @@ function rowIndex(kind: string, action?: string): number {
 // The settings, opened from the title, with the cursor on Controls.
 function settingsOnControls(d = deps()): Screen {
     const title = press(initialScreen(), ["down", "down", "down"], d)
-    return press(title, ["confirm", "down", "down", "down", "down"], d)
+    return press(title, ["confirm", "down", "down", "down", "down", "down"], d)
 }
 
 // The controls screen, fresh from the settings.
@@ -107,7 +107,7 @@ describe("opening the controls screen", () => {
         const pausedSettings: Screen = {
             kind: "settings",
             mode: "solo",
-            row: 4,
+            row: 5,
             settings: defaultSettings(),
             back: {
                 kind: "paused",
@@ -353,7 +353,7 @@ describe("reset and back", () => {
         screen = update(screen, input([], { key: "KeyX" }), deps())
         screen = { ...asControls(screen), row }
         const settings = press(screen, [action])
-        expect(settings).toMatchObject({ kind: "settings", row: 4 })
+        expect(settings).toMatchObject({ kind: "settings", row: 5 })
         expect(screenSettings(settings)).toBe(screenSettings(screen))
         expect(
             bindingsOf(screenSettings(settings)!).players[0].keys.breath
