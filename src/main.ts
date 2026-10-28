@@ -368,7 +368,6 @@ function flowDeps(dt: number): FlowDeps {
         random: Math.random,
         settings,
         touch,
-        prefersReducedMotion: reducedMotion?.matches ?? false,
     }
 }
 
@@ -537,7 +536,7 @@ function showOverlay(s: Screen) {
             const context = settingsContext(s, flowDeps(0))
             return showSettings(
                 settingsRows(context).map((row, i) => {
-                    const value = rowValue(row, s.settings, context)
+                    const value = rowValue(row, s.settings)
                     return {
                         label: row.label,
                         ...(value === undefined ? {} : { value }),

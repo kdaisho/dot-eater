@@ -351,11 +351,9 @@ export type FlowDeps = {
     // The saved settings, which the settings screen starts from; the
     // defaults when left out.
     settings?: Settings
-    // Whether the device has a touch screen, and whether the system asks
-    // for reduced motion: what some settings rows depend on (see
-    // SettingsContext). Both false when left out.
+    // Whether the device has a touch screen: what some settings rows
+    // depend on (see SettingsContext). False when left out.
     touch?: boolean
-    prefersReducedMotion?: boolean
 }
 
 export function initialScreen(): Screen {
@@ -446,7 +444,7 @@ export function pauseIfPlaying(screen: Screen): Screen {
 export function selectItem(
     screen: Screen,
     index: number,
-    deps: Pick<FlowDeps, "touch" | "prefersReducedMotion"> = {}
+    deps: Pick<FlowDeps, "touch"> = {}
 ): Screen {
     const within = (count: number) =>
         Number.isInteger(index) && index >= 0 && index < count
@@ -579,12 +577,11 @@ function openSettings(
 // What the settings screen's rows depend on (see SettingsContext).
 export function settingsContext(
     screen: SettingsScreen,
-    deps: Pick<FlowDeps, "touch" | "prefersReducedMotion">
+    deps: Pick<FlowDeps, "touch">
 ): SettingsContext {
     return {
         from: screen.back.kind === "title" ? "title" : "pause",
         touch: deps.touch ?? false,
-        prefersReducedMotion: deps.prefersReducedMotion ?? false,
     }
 }
 
@@ -626,7 +623,7 @@ function updateSettings(
     const rows = settingsRows(context)
     const row = rows[Math.min(screen.row, rows.length - 1)]
     const change = (delta: -1 | 1): Screen => {
-        const settings = changeRow(row, screen.settings, context, delta)
+        const settings = changeRow(row, screen.settings, delta)
         return settings === screen.settings ? screen : { ...screen, settings }
     }
     if (input.wasPressed("confirm")) {
