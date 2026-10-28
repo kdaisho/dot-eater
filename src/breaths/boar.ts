@@ -38,6 +38,18 @@ export const boar: BreathDef = {
     duration: OPEN_SECONDS,
     maxEnergy: 100,
     speedScale: 0.875,
+    // Chunks of rubble thrown up from the broken wall, falling back.
+    particles: {
+        colors: ["#8b5a2b", "#57534e", "#a8a29e"],
+        count: 10,
+        life: 0.6,
+        speed: 3,
+        spread: Math.PI * 2,
+        size: 0.14,
+        jitter: 0.3,
+        gravity: 8,
+        shape: "square",
+    },
     fire(hit) {
         const { wall } = hit
         if (!wall || isOuterWall(hit.state.cells, wall)) return false

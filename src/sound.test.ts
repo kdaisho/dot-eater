@@ -109,6 +109,7 @@ describe("soundForEvent", () => {
                 animal,
                 at,
                 facing: vec2(1, 0),
+                cells: [at],
             }
             expect(soundForEvent(event)).toBe(breathSfx(animal))
         }

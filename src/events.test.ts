@@ -138,7 +138,7 @@ describe("dotEaten", () => {
 })
 
 describe("breathed", () => {
-    it("reports the player, its animal, its cell and its facing", () => {
+    it("reports the player, its animal, its cell, its facing and the cells it covered", () => {
         const state = breather(BREATHS[AnimalId.penguin])
         tick(state, breath)
         expect(ofType(state, "breathed")).toEqual([
@@ -148,8 +148,42 @@ describe("breathed", () => {
                 animal: AnimalId.penguin,
                 at: vec2(1, 1),
                 facing: east,
+                // The cone, in a corridor one cell high.
+                cells: [vec2(2, 1), vec2(3, 1), vec2(4, 1)],
             },
         ])
+    })
+
+    it("reports the cells up to the boss's body", () => {
+        const state = breather(BREATHS[AnimalId.dragon], room, {
+            boss: makeBoss(3, 1),
+        })
+        tick(state, breath)
+        expect(ofType(state, "breathed")[0].cells).toEqual([
+            vec2(2, 1),
+            vec2(3, 1),
+        ])
+    })
+
+    it("reports the wall a breath opened when nothing else was in reach", () => {
+        const state = breather(
+            BREATHS[AnimalId.boar],
+            textMap(["#####", "# # #", "#####", "#.###"]).map
+        )
+        tick(state, breath)
+        expect(ofType(state, "breathed")[0].cells).toEqual([vec2(2, 1)])
+    })
+
+    it("reports the player's cell when nothing was in reach", () => {
+        // Owl against a wall, blowing an enemy off the player's cell.
+        const state = breather(
+            BREATHS[AnimalId.owl],
+            textMap(["###", "# #", "###", "#.#"]).map
+        )
+        state.enemies = [makeEnemy(1, 1)]
+        state.spawns = { ...state.spawns, enemies: [vec2(1, 1)] }
+        tick(state, breath)
+        expect(ofType(state, "breathed")[0].cells).toEqual([vec2(1, 1)])
     })
 
     it("reports nothing for a breath that refuses", () => {
@@ -405,6 +439,8 @@ describe("playerStunned", () => {
                 animal: AnimalId.dragon,
                 at: vec2(1, 1),
                 facing: east,
+                // The whole line: players don't stop it.
+                cells: [2, 3, 4, 5, 6].map((x) => vec2(x, 1)),
             },
             { type: "playerStunned", player: 1, by: 0, at: vec2(3, 1) },
         ])

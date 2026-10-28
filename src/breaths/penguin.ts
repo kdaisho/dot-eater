@@ -39,6 +39,18 @@ export const penguin: BreathDef = {
     maxEnergy: 100,
     speedScale: 1,
     slideSpeedScale: 1.5,
+    // Icy blue flakes drifting out along the cone (white would vanish on
+    // the white floor).
+    particles: {
+        colors: ["#38bdf8", "#7dd3fc", "#0284c7"],
+        count: 3,
+        life: 0.7,
+        speed: 1.5,
+        spread: 1.2,
+        size: 0.1,
+        jitter: 0.3,
+        drag: 1.5,
+    },
     fire(hit) {
         // Facing straight into a wall with no enemy on the player's own
         // cell, there is nothing to freeze or ice: keep the energy.

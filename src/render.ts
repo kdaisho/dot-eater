@@ -12,6 +12,7 @@ import type { GameState, Player } from "./game"
 import { eatenDotVisible, glidePos, wrapCopies } from "./glide"
 import { computeLayout, type Layout } from "./layout"
 import type { LevelRules } from "./level"
+import { particleAlpha, type Particle } from "./particles"
 import { ANIMALS } from "./roster"
 import { isSplitterHalf } from "./splitter"
 import { vec2, type Vec2 } from "./vec2"
@@ -45,11 +46,26 @@ export type PlayerHud = {
     stunned?: number
 }
 
+// Visual effects drawn with the game (KDA-213), none of them part of it.
+export type Effects = {
+    // Drawn over the characters, under the fog (see particles.ts).
+    particles?: readonly Particle[]
+    // How far to move the maze this frame, in cells (see shake.ts). The
+    // HUD stays put.
+    shake?: Vec2
+}
+
 export type Renderer = {
     // Draw the game. `alpha` in [0, 1) is how far the loop is between the last
     // logic tick and the next; characters glide between cells with it.
     // `rules` are the level's special rules that change how it looks (fog).
-    draw(state: GameState, alpha: number, hud?: Hud, rules?: LevelRules): void
+    draw(
+        state: GameState,
+        alpha: number,
+        hud?: Hud,
+        rules?: LevelRules,
+        effects?: Effects
+    ): void
     // Paint the background only, for screens without a game, so the canvas
     // doesn't keep showing an old board. The canvas keeps its size.
     clear(): void
@@ -155,7 +171,13 @@ export function createRenderer(
     let cols = 0
     let rows = 0
     let last:
-        | { state: GameState; alpha: number; hud: Hud; rules: LevelRules }
+        | {
+              state: GameState
+              alpha: number
+              hud: Hud
+              rules: LevelRules
+              effects: Effects
+          }
         | undefined
     // With two players, the fog's darkness is drawn on a canvas of its own
     // first (see drawDarkness); made, with its context, when first needed
@@ -187,9 +209,10 @@ export function createRenderer(
         state: GameState,
         alpha: number,
         hud: Hud = {},
-        rules: LevelRules = {}
+        rules: LevelRules = {},
+        effects: Effects = {}
     ) {
-        last = { state, alpha, hud, rules }
+        last = { state, alpha, hud, rules, effects }
         const mapRows = state.cells.length
         const mapCols = state.cells[0]?.length ?? 0
         if (!layout || mapCols !== cols || mapRows !== rows) {
@@ -216,9 +239,18 @@ export function createRenderer(
         const fog = rules.fog
             ? createFog(state, alpha, cols, rows, rules.fog.radius)
             : null
+        // A shake moves everything in the maze, inside the still clip; the
+        // fog's darkness doesn't move, so it covers the edge a shake bares.
+        ctx.save()
+        const shake = effects.shake
+        if (shake && (shake.x !== 0 || shake.y !== 0)) {
+            ctx.translate(shake.x * cell, shake.y * cell)
+        }
         drawCells(ctx, state, alpha, cell, fog)
         drawBoss(ctx, state, alpha, cell, cols, rows, fog)
         drawCharacters(ctx, state, alpha, cell, cols, rows, fog)
+        if (effects.particles) drawParticles(ctx, effects.particles, cell, fog)
+        ctx.restore()
         if (fog) drawDarkness(ctx, fog, cell, cols, rows, darknessLayer, dpr)
         ctx.restore()
     }
@@ -236,8 +268,9 @@ export function createRenderer(
         clear,
         resize() {
             if (layout) fit()
-            if (last) draw(last.state, last.alpha, last.hud, last.rules)
-            else clear()
+            if (last) {
+                draw(last.state, last.alpha, last.hud, last.rules, last.effects)
+            } else clear()
         },
     }
 }
@@ -604,6 +637,38 @@ function drawCharacters(
             })
         }
     }
+}
+
+// Particles (see particles.ts), each a disc or a square of its colour,
+// fading out over its life. In fog, those outside the light are hidden like
+// any other thing. They aren't wrapped through tunnels: one flying off the
+// map is clipped.
+function drawParticles(
+    ctx: CanvasRenderingContext2D,
+    particles: readonly Particle[],
+    cell: number,
+    fog: Fog | null
+) {
+    if (particles.length === 0) return
+    ctx.save()
+    for (const p of particles) {
+        if (fog && !fog.visible(p)) continue
+        const alpha = particleAlpha(p)
+        if (alpha <= 0) continue
+        ctx.globalAlpha = alpha
+        ctx.fillStyle = p.color
+        const x = (p.x + 0.5) * cell
+        const y = (p.y + 0.5) * cell
+        const size = Math.max(1, p.size * cell)
+        if (p.shape === "square") {
+            ctx.fillRect(x - size / 2, y - size / 2, size, size)
+        } else {
+            ctx.beginPath()
+            ctx.arc(x, y, size / 2, 0, Math.PI * 2)
+            ctx.fill()
+        }
+    }
+    ctx.restore()
 }
 
 // Player `index`'s marker on its sprite centred at (x, y): a ring round it
