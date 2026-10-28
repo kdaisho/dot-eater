@@ -1,3 +1,4 @@
+import { DEFAULT_BINDINGS, FIXED_PAUSE_KEY, type Bindings } from "./bindings"
 import { vec2, type Vec2 } from "./vec2"
 
 // Abstract actions the game reads, per player. Input sources (keyboard now,
@@ -212,38 +213,51 @@ export interface InputSource {
 // in place on AZERTY, and Shift doesn't change them between keydown and keyup.
 export type KeyMap = Readonly<Record<string, Action>>
 
-export const PLAYER_1_KEYS: KeyMap = {
-    ArrowUp: "up",
-    ArrowDown: "down",
-    ArrowLeft: "left",
-    ArrowRight: "right",
-    ShiftRight: "breath",
-    KeyP: "pause",
-    Escape: "pause",
-    Space: "confirm",
+// One key map per player from bindings. Player 1's also has the fixed
+// Escape for pause, right after its own pause key.
+export function keyMapsFor(bindings: Bindings): KeyMap[] {
+    return bindings.players.map((player, i) => {
+        const map: Record<string, Action> = {}
+        for (const [action, code] of Object.entries(player.keys)) {
+            map[code] = action as Action
+            if (i === 0 && action === "pause") map[FIXED_PAUSE_KEY] = "pause"
+        }
+        return map
+    })
 }
 
-// Player 2, for 2-player play (main attaches both maps).
-export const PLAYER_2_KEYS: KeyMap = {
-    KeyW: "up",
-    KeyS: "down",
-    KeyA: "left",
-    KeyD: "right",
-    ShiftLeft: "breath",
-    KeyQ: "pause",
-    KeyE: "confirm",
-}
+// The default maps: P1 arrows, ShiftRight breath, P/Escape pause, Space
+// confirm; P2 WASD, ShiftLeft breath, Q pause, E confirm.
+export const [PLAYER_1_KEYS, PLAYER_2_KEYS] = keyMapsFor(DEFAULT_BINDINGS) as [
+    KeyMap,
+    KeyMap,
+]
 
 // Keyboard source. keyMaps[i] drives player i.
 export class KeyboardSource implements InputSource {
     private input: InputState | undefined
-    // Codes currently held, so blur and detach can release them.
+    // Codes currently held, bound or not, so blur and detach can release
+    // them, and a key held through setKeyMaps doesn't press until pressed
+    // again.
     private readonly held = new Set<string>()
 
     constructor(
-        private readonly keyMaps: readonly KeyMap[] = [PLAYER_1_KEYS],
+        private keyMaps: readonly KeyMap[] = [PLAYER_1_KEYS],
         private readonly target: EventTarget = globalThis
     ) {}
+
+    // Use the keys of new bindings (after a remap) for both players.
+    setBindings(bindings: Bindings): void {
+        this.setKeyMaps(keyMapsFor(bindings))
+    }
+
+    // Swap the key maps at runtime. Actions held by keys are released; a key
+    // still held presses its new action only once pressed again, so the key
+    // just bound in a remap prompt doesn't fire.
+    setKeyMaps(maps: readonly KeyMap[]): void {
+        for (const code of this.held) this.releaseCode(code)
+        this.keyMaps = maps
+    }
 
     attach(input: InputState): void {
         this.detach()
@@ -280,10 +294,11 @@ export class KeyboardSource implements InputSource {
         // Leave browser shortcuts (Ctrl+R, Cmd+W, ...) alone.
         if (e.ctrlKey || e.metaKey || e.altKey) return
         const bindings = this.bindings(e.code)
+        const held = this.held.has(e.code)
+        this.held.add(e.code)
         if (bindings.length === 0) return
         // Stop arrows and Space from scrolling the page.
         e.preventDefault()
-        const held = this.held.has(e.code)
         // Auto-repeat of a key we already hold never presses again. An
         // auto-repeat for a key we don't hold means its first keydown was
         // missed (made with Ctrl/Alt/Meta held, or before the window had
@@ -297,7 +312,6 @@ export class KeyboardSource implements InputSource {
                 player.release(action, control(e.code))
             }
         }
-        this.held.add(e.code)
         for (const [player, action] of bindings) {
             player.press(action, control(e.code))
         }
@@ -306,21 +320,21 @@ export class KeyboardSource implements InputSource {
     private readonly onKeyUp = (event: Event) => {
         const { code } = event as KeyboardEvent
         this.held.delete(code)
-        for (const [player, action] of this.bindings(code)) {
-            player.release(action, control(code))
-        }
+        this.releaseCode(code)
     }
 
     // Keyups are lost while the window is unfocused; drop everything held.
     private readonly onBlur = () => this.releaseAll()
 
     private releaseAll() {
-        for (const code of this.held) {
-            for (const [player, action] of this.bindings(code)) {
-                player.release(action, control(code))
-            }
-        }
+        for (const code of this.held) this.releaseCode(code)
         this.held.clear()
+    }
+
+    private releaseCode(code: string) {
+        for (const [player, action] of this.bindings(code)) {
+            player.release(action, control(code))
+        }
     }
 }
 

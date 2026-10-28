@@ -1,3 +1,10 @@
+import {
+    DEFAULT_BINDINGS,
+    PAD_ACTIONS,
+    PAD_DPAD,
+    type Bindings,
+    type PlayerBindings,
+} from "./bindings"
 import type { Action, InputSource, InputState } from "./input"
 
 // Gamepad source. The Gamepad API has no button events, so the source polls
@@ -58,16 +65,31 @@ export type PadChange =
           wasUsed: boolean
       }
 
-// Buttons of the browser's "standard" mapping.
-export const PAD_BUTTONS: Readonly<Record<number, readonly Action[]>> = {
-    // A (Cross): breath in play, confirm in menus.
-    0: ["breath", "confirm"],
-    9: ["pause"], // Start (Options)
-    12: ["up"], // D-pad
-    13: ["down"],
-    14: ["left"],
-    15: ["right"],
+// Button index (of the browser's "standard" mapping) to its actions.
+export type PadButtonMap = Readonly<Record<number, readonly Action[]>>
+
+// The fixed D-pad directions, in PAD_DPAD order.
+const DPAD_ACTIONS: readonly Action[] = ["up", "down", "left", "right"]
+
+// One player's pad buttons: the bound breath, confirm and pause buttons
+// (breath and confirm may share one), plus the fixed D-pad.
+export function padButtonsFor(player: PlayerBindings): PadButtonMap {
+    const map: Record<number, Action[]> = {}
+    for (const action of PAD_ACTIONS) {
+        const button = player.pad[action]
+        ;(map[button] ??= []).push(action)
+    }
+    PAD_DPAD.forEach((button, i) => {
+        map[button] = [DPAD_ACTIONS[i]!]
+    })
+    return map
 }
+
+// The default buttons: A (Cross) breath in play and confirm in menus, Start
+// (Options) pause, and the D-pad.
+export const PAD_BUTTONS: PadButtonMap = padButtonsFor(
+    DEFAULT_BINDINGS.players[0]
+)
 
 // How far the left stick must lean before it counts as a direction. High,
 // so the stick feels digital, like a D-pad, in a maze.
@@ -81,19 +103,50 @@ export function stickAction(x: number, y: number): Action | undefined {
     return y < 0 ? "up" : "down"
 }
 
-// What a pad holds right now: control id to its actions. Ids are
-// "pad:<index>:<button>" and "pad:<index>:stick", so a pad and the keyboard
-// (or two buttons) hold one action independently.
-export function padControls(pad: Pad): Map<string, readonly Action[]> {
-    const held = new Map<string, readonly Action[]>()
+// The indexes of the buttons a pad holds right now, bound or not (for a
+// remap prompt; see captureButton in bindings.ts).
+export function pressedButtons(pad: Pad): number[] {
+    const pressed: number[] = []
     pad.buttons?.forEach((button, i) => {
-        const actions = PAD_BUTTONS[i]
-        if (button?.pressed && actions)
-            held.set(`pad:${pad.index}:${i}`, actions)
+        if (button?.pressed) pressed.push(i)
     })
+    return pressed
+}
+
+// What a pad holds right now with `buttons`: control id to its actions. Ids
+// are "pad:<index>:<button>" and "pad:<index>:stick", so a pad and the
+// keyboard (or two buttons) hold one action independently.
+export function padControls(
+    pad: Pad,
+    buttons: PadButtonMap = PAD_BUTTONS
+): Map<string, readonly Action[]> {
+    const held = new Map<string, readonly Action[]>()
+    for (const i of pressedButtons(pad)) {
+        const actions = buttons[i]
+        if (actions) held.set(buttonControl(pad.index, i), actions)
+    }
     const stick = stickAction(pad.axes?.[0] ?? 0, pad.axes?.[1] ?? 0)
-    if (stick) held.set(`pad:${pad.index}:stick`, [stick])
+    if (stick) held.set(stickControl(pad.index), [stick])
     return held
+}
+
+// Every control a pad has down, bound or not.
+function downControls(pad: Pad): Set<string> {
+    const down = new Set(
+        pressedButtons(pad).map((i) => buttonControl(pad.index, i))
+    )
+    if (stickAction(pad.axes?.[0] ?? 0, pad.axes?.[1] ?? 0)) {
+        down.add(stickControl(pad.index))
+    }
+    return down
+}
+
+function buttonControl(index: number, button: number): string {
+    return `pad:${index}:${button}`
+}
+
+function stickControl(index: number): string {
+    return `pad:${index}:stick`
 }
 
 type Held = { player: number; actions: readonly Action[] }
@@ -103,7 +156,8 @@ export class GamepadSource implements InputSource {
     private assignment: PadAssignment = "shared"
     // Connected pads by index, each with its player slot in perPad mode (the
     // lowest slot free when it connected), what it holds for a player, every
-    // control down at the last poll (with a player or not), whether it has
+    // control down at the last poll (bound or not, with a player or not),
+    // whether it has
     // driven a player yet, and whether a poll has listed it yet (a connect
     // event can come before the pad list shows the pad).
     private readonly pads = new Map<
@@ -116,19 +170,24 @@ export class GamepadSource implements InputSource {
             listed: boolean
         }
     >()
-    // Controls held when the assignment changed, or when their pad was
-    // first listed. They count only once released, so a button held through
+    // Controls held when the assignment or bindings changed, or when their
+    // pad was first listed. They count only once released, so a button held through
     // the change doesn't press for the new player, and the press that woke
     // a pad up doesn't press at all.
     private readonly latched = new Set<string>()
+    // Each player's buttons.
+    private buttons: readonly PadButtonMap[]
 
     constructor(
         private readonly padList: PadList,
         private readonly target: EventTarget = globalThis,
         // Told when a pad connects or disconnects (for the toast, and to
         // pause play).
-        private readonly onChange: (change: PadChange) => void = () => {}
-    ) {}
+        private readonly onChange: (change: PadChange) => void = () => {},
+        bindings: Bindings = DEFAULT_BINDINGS
+    ) {
+        this.buttons = bindings.players.map(padButtonsFor)
+    }
 
     attach(input: InputState): void {
         this.detach()
@@ -153,10 +212,24 @@ export class GamepadSource implements InputSource {
     setAssignment(assignment: PadAssignment): void {
         if (assignment === this.assignment) return
         this.assignment = assignment
+        this.latchAll()
+    }
+
+    // Use the pad buttons of new bindings (after a remap). As with an
+    // assignment change, buttons held now count only once released, so the
+    // button just bound in a remap prompt doesn't fire.
+    setBindings(bindings: Bindings): void {
+        this.buttons = bindings.players.map(padButtonsFor)
+        this.latchAll()
+    }
+
+    // Release every pad, and latch every control down.
+    private latchAll() {
         for (const [index, pad] of this.pads) {
             // Every control down, not just those held for a player: a pad
             // with no player in perPad holds nothing, yet its A must not
-            // confirm once it shares player 1.
+            // confirm once it shares player 1. Unbound buttons too, since
+            // new bindings may bind them.
             for (const control of pad.down) this.latched.add(control)
             this.releasePad(index)
         }
@@ -195,17 +268,21 @@ export class GamepadSource implements InputSource {
         const state = this.pads.get(pad.index)
         const input = this.input
         if (!state || !input) return
-        const now = padControls(pad)
+        const player = this.playerOf(pad.index)
+        // A pad with no player reads player 1's buttons: the player it gets
+        // if the assignment turns shared.
+        const now = padControls(pad, this.buttons[player ?? 0])
+        const down = downControls(pad)
         // Some browsers list a pad only once a button on it is pressed.
         // Whatever it holds when first listed counts only after a release,
         // like a button held through an assignment change.
         if (!state.listed) {
-            for (const control of now.keys()) this.latched.add(control)
+            for (const control of down) this.latched.add(control)
             state.listed = true
         }
-        state.down = new Set(now.keys())
+        state.down = down
         for (const control of this.latched) {
-            if (control.startsWith(`pad:${pad.index}:`) && !now.has(control)) {
+            if (control.startsWith(`pad:${pad.index}:`) && !down.has(control)) {
                 this.latched.delete(control)
             }
         }
@@ -222,7 +299,6 @@ export class GamepadSource implements InputSource {
             if (kept.length) state.held.set(control, { player, actions: kept })
             else state.held.delete(control)
         }
-        const player = this.playerOf(pad.index)
         if (player === undefined) return
         if (now.size) state.used = true
         for (const [control, actions] of now) {
