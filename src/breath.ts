@@ -8,6 +8,7 @@ import {
 } from "./constants"
 import { bossDamage, damageBoss, inFootprint, tickBoss } from "./boss"
 import type { Character } from "./character"
+import type { ParticleLook } from "./particles"
 import type { GameState, Player } from "./game"
 import { loopPos, type Cells } from "./level"
 import type { AnimalId } from "./roster"
@@ -167,6 +168,9 @@ export type BreathDef = {
     // A further factor on the player's speed on its slide steps on ice
     // (level or breath ice; see Player.rate). Leave it out for 1.
     slideSpeedScale?: number
+    // How the breath looks in particles (see particles.ts): a burst on each
+    // cell it strikes, flying along the facing. Leave it out for none.
+    particles?: ParticleLook
     // What the breath does once its cost is paid. Return false (before
     // changing anything) to refuse, e.g. when there is nothing to hit; then
     // no energy is spent and there is no cooldown.

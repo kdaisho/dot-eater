@@ -37,8 +37,10 @@ import {
     stageSlots,
     type Progress,
 } from "./progress"
-import { createRenderer, type Hud } from "./render"
+import { createParticles } from "./particles"
+import { createRenderer, type Effects, type Hud } from "./render"
 import { ANIMAL_IDS, ANIMALS, type AnimalId } from "./roster"
+import { createShake } from "./shake"
 import {
     burst,
     celebrate,
@@ -77,6 +79,47 @@ const canvas = document.getElementById("game")
 if (!(canvas instanceof HTMLCanvasElement)) throw new Error("No #game canvas")
 const renderer = createRenderer(canvas)
 addEventListener("resize", () => renderer.resize())
+
+// Particles and screen shake (KDA-213): visual only, never read by the
+// game. They move on with the game's ticks (so they freeze while paused),
+// start over with each game, and show only while it is played, paused or
+// ending. With reduced motion there is no shake and particles are fewer and
+// shorter.
+const reducedMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)")
+const particles = createParticles({
+    random: Math.random,
+    reduced: reducedMotion?.matches ?? false,
+})
+const shake = createShake({ enabled: !(reducedMotion?.matches ?? false) })
+reducedMotion?.addEventListener?.("change", () => {
+    particles.reduced = reducedMotion.matches
+    shake.enabled = !reducedMotion.matches
+})
+const effects = {
+    tick(dt: number) {
+        if (screen.kind !== "playing" && screen.kind !== "ending") return
+        particles.update(dt)
+        shake.update(dt)
+    },
+    reset() {
+        particles.clear()
+        shake.clear()
+    },
+    of(s: Screen): Effects {
+        if (
+            s.kind !== "playing" &&
+            s.kind !== "ending" &&
+            s.kind !== "paused"
+        ) {
+            return {}
+        }
+        const moving = s.kind !== "paused"
+        return {
+            particles: particles.list,
+            ...(moving ? { shake: shake.offset(Math.random) } : {}),
+        }
+    },
+}
 
 const input = new InputState()
 // Each player's input, by index (player 1 is 0): flow asks for player 2's
@@ -160,6 +203,7 @@ function tick(dt: number) {
     input.endTick()
     if (boss && !wasDefeated && boss.defeated) burst()
     if (next !== screen) enter(screen, next)
+    effects.tick(dt)
 }
 
 // How pads map to players on a screen. The title, where the mode is still
@@ -178,7 +222,11 @@ function enter(prev: Screen, next: Screen) {
     // Play started from a menu (character select or Retry): a direction
     // still held from the menu waits for a fresh press. Resuming from pause
     // keeps held directions, so holding through a pause carries on moving.
-    if (next.kind === "playing" && prev.kind !== "paused") input.ignoreHeld()
+    // A new game also starts with no particles or shake left over.
+    if (next.kind === "playing" && prev.kind !== "paused") {
+        input.ignoreHeld()
+        effects.reset()
+    }
     // Only 1-player games remember the pick: 2-player games leave saved
     // data alone.
     if (
@@ -218,7 +266,7 @@ function render(alpha: number) {
     // Every screen with a game also says which level it is.
     const rules = "level" in screen ? levels[screen.level]?.rules : undefined
     const hud = game.mode === "versus" ? versusHud(game, screen) : hudOf(game)
-    renderer.draw(game, lastAlpha, hud, rules)
+    renderer.draw(game, lastAlpha, hud, rules, effects.of(screen))
 }
 
 // The versus HUD: each player's dots, meter, stun or respawn countdown, and
