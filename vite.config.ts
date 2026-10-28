@@ -6,7 +6,12 @@ export default defineConfig(({ command, isPreview }) => ({
     // the built files under the same base they reference.
     base: command === "build" || isPreview ? "/dot-eater/" : "/",
     fmt: {
-        ignorePatterns: ["dist/**"],
+        // Recordings are data saved by the game (?record), kept as written.
+        ignorePatterns: [
+            "dist/**",
+            "video/out/**",
+            "video/src/recordings/*.json",
+        ],
         tabWidth: 4,
         semi: false,
         singleQuote: false,
@@ -14,7 +19,7 @@ export default defineConfig(({ command, isPreview }) => ({
         printWidth: 80,
     },
     lint: {
-        ignorePatterns: ["dist/**"],
+        ignorePatterns: ["dist/**", "video/out/**"],
         options: {
             typeAware: true,
             typeCheck: true,
