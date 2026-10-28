@@ -238,14 +238,16 @@ describe("showPause", () => {
         expectSingle()
         expect(overlay()?.dataset.screen).toBe("pause")
         expect(title()).toBe("Paused")
-        expect(lines()).toEqual(["Press P, Esc or Space to resume"])
+        expect(lines()).toEqual(["↑ ↓ to choose, Space to pick, Esc to resume"])
+        // Key hints, hidden on phones.
+        expect(overlay()?.querySelector("p.overlay-hint")).not.toBeNull()
     })
 
     it("gives player 2's keys too with two players", () => {
         showPause(2)
         expect(lines()).toEqual([
-            "1P: P, Esc or Space to resume",
-            "2P: Q or E to resume",
+            "↑ ↓ to choose, Space or E to pick",
+            "Esc or Q to resume",
         ])
     })
 
@@ -585,5 +587,40 @@ describe("overlayTap", () => {
         expect(overlayTap(outside)).toBeUndefined()
         expect(overlayTap(document.body)).toBeUndefined()
         expect(overlayTap(null)).toBeUndefined()
+    })
+
+    it("gives a slider's arrows tap targets of their own", () => {
+        showSettings([
+            {
+                label: "Music volume",
+                value: "◀ 7 ▶",
+                steps: true,
+                selected: true,
+            },
+            { label: "Mute", value: "Off", selected: false },
+        ])
+        const [music, mute] = document.querySelectorAll("#overlay li")
+        // The text reads as before.
+        expect(music.textContent).toBe("Music volume ◀ 7 ▶")
+        const [less, more] = music.querySelectorAll("[data-step]")
+        expect(overlayTap(less)).toEqual({ kind: "step", index: 0, delta: -1 })
+        expect(overlayTap(more)).toEqual({ kind: "step", index: 0, delta: 1 })
+        expect(overlayTap(music.querySelector(".menu-value"))).toEqual({
+            kind: "item",
+            index: 0,
+        })
+        // A toggle has none: tapping it is tapping the item.
+        expect(mute.querySelector("[data-step]")).toBeNull()
+        expect(overlayTap(mute.querySelector(".menu-value"))).toEqual({
+            kind: "item",
+            index: 1,
+        })
+    })
+
+    it("marks key hints, so phones can hide them, and leaves other lines", () => {
+        showSettings([])
+        expect(document.querySelector("#overlay p.overlay-hint")).not.toBeNull()
+        showGameOver({ score: 10, items: [] })
+        expect(document.querySelector("#overlay p.overlay-hint")).toBeNull()
     })
 })

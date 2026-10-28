@@ -101,22 +101,18 @@ function mediaQuery(query: string): MediaQueryList | undefined {
     }
 }
 const reducedMotion = mediaQuery("(prefers-reduced-motion: reduce)")
-const touch = navigator.maxTouchPoints > 0
+const touch = isTouchDevice(window)
 
 const canvas = document.getElementById("game")
 if (!(canvas instanceof HTMLCanvasElement)) throw new Error("No #game canvas")
 // Touch: swipes and taps on the play area steer player 1 (TouchSource);
 // the optional on-screen D-pad, breath and pause buttons (dpad.ts) do too.
-// The D-pad is off unless the page is opened with ?dpad, until Settings
-// gets its toggle (KDA-246); setDpad switches it.
+// The D-pad shows on touch devices when the Show D-pad setting is on
+// (applyDpad, live as the setting changes).
 const playArea = document.getElementById("play") ?? canvas
 const touchControls = createTouchControls()
 let dpadShown = false
-setControls(document, {
-    touch: isTouchDevice(window),
-    dpad: false,
-    playing: false,
-})
+setControls(document, { touch, dpad: false, playing: false })
 
 // The renderer fits the maze into the window less the D-pad's band.
 const renderer = createRenderer(canvas, {
@@ -138,12 +134,16 @@ function controlsRoom() {
     return controlsSpace(innerWidth, innerHeight, dpadShown)
 }
 
-// Show or hide the on-screen D-pad and breath button, refitting the maze.
-function setDpad(on: boolean) {
+// Show or hide the on-screen D-pad and breath button as the settings say,
+// refitting the maze when that changes.
+function applyDpad() {
+    const on = touch && settings.showDpad
+    if (on === dpadShown) return
     dpadShown = on
     setControls(document, { dpad: on })
     renderer.resize()
 }
+applyDpad()
 
 const input = new InputState()
 // Each player's input, by index (player 1 is 0): flow asks for player 2's
@@ -289,6 +289,7 @@ function enter(prev: Screen, next: Screen) {
     if (next.kind === "settings" && next.settings !== settings) {
         settings = next.settings
         saveSettings(storage, settings)
+        applyDpad()
     }
     showOverlay(next)
 }
@@ -372,6 +373,7 @@ function showOverlay(s: Screen) {
                     return {
                         label: row.label,
                         ...(value === undefined ? {} : { value }),
+                        ...(row.kind === "slider" ? { steps: true } : {}),
                         selected: i === s.row,
                     }
                 })
@@ -487,24 +489,21 @@ document.addEventListener("visibilitychange", () => {
 })
 
 // Taps and clicks on the overlays: a menu item or card puts player 1's
-// cursor on it and confirms, Back is the pause action (Esc), and a tap
-// anywhere on the pause screen resumes. They go through player 1's input
-// like a key, so flow handles them on the next tick, delays and all.
+// cursor on it and confirms (on settings that flips a toggle or runs
+// Back), a slider's ◀ or ▶ puts the cursor on it and steps it (left or
+// right), and Back is the pause action (Esc). They go through player 1's
+// input like keys, so flow handles them on the next tick, delays and all.
 document.addEventListener("click", (event) => {
     const tap = overlayTap(event.target)
-    if (!tap) return
-    if (tap.kind === "item") {
-        const next = selectItem(screen, tap.index)
-        if (next !== screen) {
-            screen = next
-            showOverlay(screen)
-        }
-        tapAction("confirm")
-    } else if (tap.kind === "back") {
-        tapAction("pause")
-    } else if (screen.kind === "paused") {
-        tapAction("confirm")
+    if (!tap || tap.kind === "panel") return
+    if (tap.kind === "back") return tapAction("pause")
+    const next = selectItem(screen, tap.index, flowDeps(0))
+    if (next !== screen) {
+        screen = next
+        showOverlay(screen)
     }
+    if (tap.kind === "step") tapAction(tap.delta < 0 ? "left" : "right")
+    else tapAction("confirm")
 })
 
 function tapAction(action: Action) {
@@ -517,7 +516,6 @@ new KeyboardSource([PLAYER_1_KEYS, PLAYER_2_KEYS]).attach(input)
 pads.attach(input)
 new TouchSource(playArea).attach(input)
 new DpadSource(touchControls).attach(input)
-if (new URLSearchParams(location.search).has("dpad")) setDpad(true)
 // The (empty) toast live region goes in at once, so screen readers already
 // watch it when the first toast shows.
 hideToast()

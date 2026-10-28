@@ -49,6 +49,9 @@ export type MenuItem = {
     selected: boolean
     locked?: boolean
     value?: string
+    // The value is a slider's ("◀ 7 ▶"): its arrows get tap targets of
+    // their own (data-step -1 and 1), so a tap steps it.
+    steps?: boolean
 }
 
 // What the end screens show.
@@ -76,6 +79,9 @@ type Overlay = {
     cards?: readonly Card[]
     // A Back button, for screens that go back (the pause action).
     back?: boolean
+    // The lines only name keys: they are hidden on phones (see
+    // .overlay-hint in the CSS), where the overlay is tapped instead.
+    keyHints?: boolean
 }
 
 // A character select card: emoji and name, the breath, the stat. With two
@@ -96,6 +102,7 @@ export function showTitle(modes: readonly MenuItem[] = []) {
                 ? "↑ ↓ to choose, Space to start"
                 : "Press Space to start",
         ],
+        keyHints: true,
         items: modes,
     })
 }
@@ -108,6 +115,7 @@ export function showStageSelect(slots: readonly StageSlot[], selected: number) {
         id: "stage-select",
         title: "Select a stage",
         lines: ["↑ ↓ to choose, Space to pick a character, Esc to go back"],
+        keyHints: true,
         back: true,
         items: slots.map((slot, i) => ({
             label: slotLabel(slot),
@@ -155,6 +163,7 @@ export function showCharacterSelect(
                   "Esc or Q to go back",
               ]
             : ["← → to choose, Space to play, Esc to go back"],
+        keyHints: true,
         back: true,
         cards: animals.map((animal) => ({
             animal,
@@ -179,8 +188,9 @@ export function showPause(players = 1, items: readonly MenuItem[] = []) {
         title: "Paused",
         lines:
             players > 1
-                ? ["1P: P, Esc or Space to resume", "2P: Q or E to resume"]
-                : ["Press P, Esc or Space to resume"],
+                ? ["↑ ↓ to choose, Space or E to pick", "Esc or Q to resume"]
+                : ["↑ ↓ to choose, Space to pick, Esc to resume"],
+        keyHints: true,
         items,
     })
 }
@@ -192,6 +202,7 @@ export function showSettings(items: readonly MenuItem[]) {
         id: "settings",
         title: "Settings",
         lines: ["↑ ↓ to choose, ← → to change, Esc to go back"],
+        keyHints: true,
         items,
     })
 }
@@ -324,6 +335,7 @@ function show({
     items = [],
     cards = [],
     back = false,
+    keyHints = false,
 }: Overlay) {
     hideOverlay()
 
@@ -353,7 +365,7 @@ function show({
 
     for (const line of lines) {
         const p = document.createElement("p")
-        p.className = "overlay-line"
+        p.className = keyHints ? "overlay-line overlay-hint" : "overlay-line"
         p.textContent = line
         panel.appendChild(p)
     }
@@ -369,6 +381,7 @@ function show({
                 const value = document.createElement("span")
                 value.className = "menu-value"
                 value.textContent = item.value
+                if (item.steps) stepTargets(value, item.value)
                 li.append(" ", value)
             }
             if (item.selected) {
@@ -440,6 +453,8 @@ function cardRow(cards: readonly Card[]): HTMLElement {
 export type OverlayTap =
     | { kind: "item"; index: number }
     | { kind: "back" }
+    // A slider's ◀ (-1) or ▶ (1), on menu item `index`.
+    | { kind: "step"; index: number; delta: -1 | 1 }
     | { kind: "panel" }
 
 export function overlayTap(target: EventTarget | null): OverlayTap | undefined {
@@ -449,7 +464,26 @@ export function overlayTap(target: EventTarget | null): OverlayTap | undefined {
     const item = target.closest<HTMLElement>("#overlay [data-index]")
     if (!item) return { kind: "panel" }
     const index = Number(item.dataset.index)
-    return Number.isInteger(index) ? { kind: "item", index } : undefined
+    if (!Number.isInteger(index)) return undefined
+    const step = target.closest<HTMLElement>("[data-step]")?.dataset.step
+    if (step === "-1" || step === "1") {
+        return { kind: "step", index, delta: step === "1" ? 1 : -1 }
+    }
+    return { kind: "item", index }
+}
+
+// Fill a slider's value ("◀ 7 ▶") with its arrows as tap targets of their
+// own, the text unchanged.
+function stepTargets(el: HTMLElement, value: string) {
+    const arrow = (text: string, step: string) => {
+        const span = document.createElement("span")
+        span.className = "menu-step"
+        span.dataset.step = step
+        span.textContent = text
+        return span
+    }
+    const middle = value.replace(/^◀/, "").replace(/▶$/, "")
+    el.replaceChildren(arrow("◀", "-1"), middle, arrow("▶", "1"))
 }
 
 // A small note at the bottom of the screen (e.g. "Controller connected").

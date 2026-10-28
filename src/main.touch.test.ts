@@ -3,6 +3,7 @@ import { beforeAll, describe, expect, it, vi } from "vite-plus/test"
 import { END_CONFIRM_DELAY } from "./flow"
 import { createGameState, step, type MoveInput, type Outcome } from "./game"
 import { ANIMAL_IDS } from "./roster"
+import { SETTINGS_KEY } from "./settings"
 
 // main on a phone: overlays are tapped, swipes on the play area steer and
 // taps breathe, and the pause button pauses. (A separate file, since main
@@ -64,6 +65,11 @@ const moves = (from = 0): MoveInput[] =>
 describe("main on a touch screen", () => {
     beforeAll(async () => {
         vi.useFakeTimers()
+        // A touch screen, so the touch-only parts show.
+        Object.defineProperty(navigator, "maxTouchPoints", {
+            configurable: true,
+            value: 5,
+        })
         document.body.innerHTML =
             '<main id="play"><canvas id="game"></canvas></main>'
         await import("./main")
@@ -71,6 +77,7 @@ describe("main on a touch screen", () => {
 
     it("starts with the D-pad off and no pause button", () => {
         expect(document.querySelector("#touch-controls")).not.toBeNull()
+        expect(document.body.dataset.touch).toBe("on")
         expect(document.body.dataset.dpad).toBe("off")
         expect(document.body.dataset.playing).toBe("off")
     })
@@ -119,16 +126,49 @@ describe("main on a touch screen", () => {
         expect(moves(before).filter((m) => m.breath)).toHaveLength(1)
     })
 
-    it("pauses on the pause button and resumes on a tap", () => {
+    it("pauses on the pause button and resumes on a tap on Resume", () => {
         const button = el("#touch-controls [data-action=pause]")
         pointer(button, "pointerdown", 0, 0)
         pointer(button, "pointerup", 0, 0)
         vi.advanceTimersByTime(FRAMES_MS)
         expect(screen()).toBe("pause")
         expect(document.body.dataset.playing).toBe("off")
+        // Elsewhere on the panel does nothing now that pause is a menu.
         tap("#overlay")
+        expect(screen()).toBe("pause")
+        tap("#overlay li[data-index='0']")
         expect(screen()).toBe("playing")
         expect(document.body.dataset.playing).toBe("on")
+    })
+
+    it("taps through the settings from pause: a slider, Show D-pad, Back", () => {
+        const button = el("#touch-controls [data-action=pause]")
+        pointer(button, "pointerdown", 0, 0)
+        pointer(button, "pointerup", 0, 0)
+        vi.advanceTimersByTime(FRAMES_MS)
+        tap("#overlay li[data-index='1']")
+        expect(screen()).toBe("settings")
+        const label = (i: number) =>
+            el(`#overlay li[data-index='${i}']`).textContent
+        expect(label(4)).toBe("Show D-pad Off")
+        // Music volume's ◀: one step down, the cursor on it.
+        tap("#overlay li[data-index='0'] [data-step='-1']")
+        expect(label(0)).toBe("Music volume ◀ 6 ▶")
+        expect(selectedItem()).toBe("Music volume ◀ 6 ▶")
+        tap("#overlay li[data-index='1'] [data-step='1']")
+        expect(label(1)).toBe("Effects volume ◀ 9 ▶")
+        // Show D-pad: shows at once and is saved.
+        tap("#overlay li[data-index='4']")
+        expect(label(4)).toBe("Show D-pad On")
+        expect(document.body.dataset.dpad).toBe("on")
+        expect(localStorage.getItem(SETTINGS_KEY)).toContain('"showDpad":true')
+        tap("#overlay li[data-index='4']")
+        expect(document.body.dataset.dpad).toBe("off")
+        // Back returns to the pause menu.
+        tap("#overlay li[data-index='5']")
+        expect(screen()).toBe("pause")
+        tap("#overlay li[data-index='0']")
+        expect(screen()).toBe("playing")
     })
 
     it("picks an end screen's item once its confirm delay is over", () => {

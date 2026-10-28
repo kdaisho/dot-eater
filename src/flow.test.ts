@@ -933,7 +933,7 @@ describe("selectItem", () => {
 
     it("comes back unchanged off the menu, on the current item, or without a menu", () => {
         const title = initialScreen()
-        for (const index of [0, -1, 3, 0.5]) {
+        for (const index of [0, -1, 4, 0.5]) {
             expect(selectItem(title, index)).toBe(title)
         }
         const stages: Screen = {

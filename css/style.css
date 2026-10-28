@@ -123,11 +123,24 @@ body[data-dpad="on"] #play {
     opacity: 0.6;
 }
 
-/* Finger-sized menu items on touch screens. */
+/* Finger-sized menu items on touch screens, and a slider's ◀ ▶ wide
+   enough to hit. */
 @media (pointer: coarse) {
     .overlay-menu li {
         margin-bottom: 0;
         padding: 8px 0;
+    }
+
+    .overlay-menu .menu-step {
+        display: inline-block;
+        padding: 0 12px;
+    }
+}
+
+/* Phones tap the overlays, so hints that only name keys are hidden. */
+@media (hover: none) and (pointer: coarse) {
+    .overlay-hint {
+        display: none;
     }
 }
 

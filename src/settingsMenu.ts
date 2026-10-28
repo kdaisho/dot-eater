@@ -93,6 +93,15 @@ export const SETTINGS_ROWS: readonly SettingsRow[] = [
         get: (s, context) => shakeEnabled(s, context.prefersReducedMotion),
         set: (s, screenShake) => ({ ...s, screenShake }),
     },
+    {
+        // The on-screen D-pad and breath button (dpad.ts), for touch play.
+        id: "showDpad",
+        label: "Show D-pad",
+        kind: "toggle",
+        get: (s) => s.showDpad,
+        set: (s, showDpad) => ({ ...s, showDpad }),
+        show: touchOnly,
+    },
     { id: "back", label: "Back", kind: "action", action: "back" },
 ]
 

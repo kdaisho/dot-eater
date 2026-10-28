@@ -2,9 +2,10 @@
 import { beforeAll, describe, expect, it, vi } from "vite-plus/test"
 import { computeLayout, controlsSpace } from "./layout"
 import { levels } from "./levels"
+import { defaultSettings, serializeSettings, SETTINGS_KEY } from "./settings"
 
-// main opened with ?dpad: the D-pad shows and the maze is fitted into the
-// window less the D-pad's band. (A separate file, since main is imported
+// main on a touch screen with Show D-pad saved on: the D-pad shows and the
+// maze is fitted into the window less the D-pad's band. (A separate file, since main is imported
 // once per module graph.)
 
 vi.mock("canvas-confetti", () => ({ default: vi.fn() }))
@@ -40,12 +41,18 @@ describe("main with the D-pad on", () => {
         // happy-dom's own controls, which the DOM types don't know.
         const { happyDOM } = window as unknown as {
             happyDOM: {
-                setURL(url: string): void
                 setViewport(size: { width: number; height: number }): void
             }
         }
-        happyDOM.setURL("http://localhost/?dpad")
         happyDOM.setViewport({ width: 800, height: 700 })
+        Object.defineProperty(navigator, "maxTouchPoints", {
+            configurable: true,
+            value: 5,
+        })
+        localStorage.setItem(
+            SETTINGS_KEY,
+            serializeSettings({ ...defaultSettings(), showDpad: true })
+        )
         document.body.innerHTML =
             '<main id="play"><canvas id="game"></canvas></main>'
         await import("./main")
