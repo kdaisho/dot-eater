@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vite-plus/test"
 import { type Audio } from "./audio"
+import { DEFAULT_BINDINGS, rebind } from "./bindings"
 import type { GameEvent } from "./events"
 import { initialScreen, type Screen } from "./flow"
 import type { GameState } from "./game"
@@ -328,5 +329,52 @@ describe("screenSound", () => {
         screenSound(audio, playing(), ending, settings)
         expect(audio.stopMusic).toHaveBeenCalled()
         expect(audio.playMusic).not.toHaveBeenCalled()
+    })
+})
+
+// The controls screen (KDA-215) sits on the title's settings.
+describe("the controls screen", () => {
+    const back = { ...settingsOver(title), row: 4 }
+    const controls: ScreenOf<"controls"> = {
+        kind: "controls",
+        mode: "solo",
+        back,
+        player: 0,
+        row: 0,
+        settings,
+    }
+    const capturing = { ...controls, capturing: true }
+
+    it("keeps the title tune playing", () => {
+        expect(musicForScreen(controls)).toEqual({
+            track: "title",
+            paused: false,
+        })
+    })
+
+    it("confirms going in and goes back out", () => {
+        expect(menuSound(back, controls)).toBe("confirm")
+        expect(menuSound(controls, back)).toBe("back")
+    })
+
+    it("blips when the cursor or the player changes", () => {
+        expect(menuSound(controls, { ...controls, row: 1 })).toBe("menuMove")
+        expect(menuSound(controls, { ...controls, player: 1 })).toBe("menuMove")
+        expect(menuSound(controls, controls)).toBeUndefined()
+    })
+
+    it("confirms a prompt, a binding and a reset, and backs out of a cancel", () => {
+        const rebound = {
+            ...settings,
+            bindings: rebind(DEFAULT_BINDINGS, 0, "breath", "KeyB"),
+        }
+        expect(menuSound(controls, capturing)).toBe("confirm")
+        expect(menuSound(capturing, { ...controls, settings: rebound })).toBe(
+            "confirm"
+        )
+        expect(menuSound(capturing, controls)).toBe("back")
+        expect(menuSound({ ...controls, settings: rebound }, controls)).toBe(
+            "confirm"
+        )
     })
 })

@@ -1,3 +1,9 @@
+import {
+    captureButton,
+    captureKey,
+    FIXED_PAUSE_KEY,
+    sameBindings,
+} from "./bindings"
 import { browserAudioContext, createAudio } from "./audio"
 import { playEventSounds, screenSound } from "./sound"
 import { energyHud } from "./breath"
@@ -15,11 +21,13 @@ import {
     pauseIfPlaying,
     playerCount,
     recordsProgress,
+    screenSettings,
     selectItem,
     settingsContext,
     TITLE_CHOICES,
     update,
     type EndChoice,
+    type Capture,
     type FlowDeps,
     type Mode,
     type Screen,
@@ -28,18 +36,18 @@ import {
 } from "./flow"
 import { totalScore, type GameState } from "./game"
 import {
+    CONTROLS_ROWS,
+    controlsRowLabel,
+    controlsRowValue,
+} from "./controlsMenu"
+import {
     browserPadList,
     GamepadSource,
+    pressedButtons,
     type PadAssignment,
     type PadChange,
 } from "./gamepad"
-import {
-    InputState,
-    KeyboardSource,
-    PLAYER_1_KEYS,
-    PLAYER_2_KEYS,
-    type Action,
-} from "./input"
+import { InputState, KeyboardSource, keyMapsFor, type Action } from "./input"
 import { loadLastPick, saveLastPick } from "./lastPick"
 import { controlsSpace } from "./layout"
 import { levels } from "./levels"
@@ -53,7 +61,12 @@ import {
 import { createParticles } from "./particles"
 import { createRenderer, type Effects, type Hud } from "./render"
 import { ANIMAL_IDS, ANIMALS, type AnimalId } from "./roster"
-import { loadSettings, saveSettings, type Settings } from "./settings"
+import {
+    bindingsOf,
+    loadSettings,
+    saveSettings,
+    type Settings,
+} from "./settings"
 import { rowValue, settingsRows } from "./settingsMenu"
 import { createShake } from "./shake"
 import {
@@ -63,6 +76,7 @@ import {
     hideToast,
     overlayTap,
     showCharacterSelect,
+    showControls,
     showGameOver,
     showMatchResult,
     showPause,
@@ -70,6 +84,7 @@ import {
     showSettings,
     showStageClear,
     showStageSelect,
+    setHintBindings,
     showTitle,
     showToast,
     type EndScreenView,
@@ -196,6 +211,8 @@ effects.motion()
 reducedMotion?.addEventListener?.("change", () => effects.motion())
 
 const input = new InputState()
+// Both players' keys, as bound in the settings (see applyBindings).
+const keys = new KeyboardSource(keyMapsFor(bindingsOf(settings)))
 // Each player's input, by index (player 1 is 0): flow asks for player 2's
 // only in a 2-player mode.
 const tickInput: TickInput = {
@@ -208,6 +225,52 @@ const tickInput: TickInput = {
             breath: p.wasPressed("breath"),
         }
     },
+    captured: () => pendingCapture,
+}
+
+// The controls screen's capture (see Capture in flow.ts): the first key and
+// the first pad button pressed while it waits, each kind apart, so a stray
+// press of one kind doesn't hide the other, and Escape. Taken only while it
+// waits, and cleared after every tick like the press edges.
+let pendingCapture: Capture = {}
+const capturing = () => screen.kind === "controls" && !!screen.capturing
+
+addEventListener("keydown", (event) => {
+    if (!capturing()) return
+    if (event.code === FIXED_PAUSE_KEY) {
+        pendingCapture = { ...pendingCapture, cancel: true }
+        return
+    }
+    if (pendingCapture.key !== undefined) return
+    const key = captureKey(event)
+    if (key === undefined) return
+    // Tab and the like do nothing else while bound.
+    event.preventDefault()
+    pendingCapture = { ...pendingCapture, key }
+})
+
+// The buttons each pad held at the last frame, so only a fresh press is
+// captured: a button held when the prompt opens (the confirm that opened
+// it), or when a pad is first listed, doesn't count. Read only while the
+// prompt waits; its first frame only notes what is held.
+const padList = browserPadList(navigator)
+let padButtonsDown = new Map<number, readonly number[]>()
+function capturePads() {
+    const down = new Map<number, readonly number[]>()
+    if (!capturing()) {
+        padButtonsDown = down
+        return
+    }
+    for (const pad of padList()) {
+        if (!pad || pad.connected === false) continue
+        const now = pressedButtons(pad)
+        down.set(pad.index, now)
+        if (pendingCapture.button !== undefined) continue
+        const before = padButtonsDown.get(pad.index) ?? now
+        const button = captureButton(before, now)
+        if (button !== undefined) pendingCapture = { ...pendingCapture, button }
+    }
+    padButtonsDown = down
 }
 
 // Gamepads: in one-player play every pad drives player 1, alongside the
@@ -228,12 +291,14 @@ function onPadChange(change: PadChange) {
     if (change.kind === "disconnected" && change.wasUsed) autoPause()
 }
 const pads = new GamepadSource(
-    browserPadList(navigator),
+    padList,
     globalThis,
-    onPadChange
+    onPadChange,
+    bindingsOf(settings)
 )
 pads.setAssignment(padAssignment(screen))
 let padPollFailed = false
+let padCaptureFailed = false
 
 // The loop ticks on every screen; menus and pause poll their input per tick
 // like play does. Only `playing` steps the game.
@@ -255,6 +320,13 @@ const loop = createLoop({
                 if (!padPollFailed) console.error(error)
                 padPollFailed = true
             }
+            // Apart, so a throw from one doesn't skip the other.
+            try {
+                capturePads()
+            } catch (error) {
+                if (!padCaptureFailed) console.error(error)
+                padCaptureFailed = true
+            }
             callback()
         }),
     cancelFrame: (id) => cancelAnimationFrame(id),
@@ -270,6 +342,7 @@ function tick(dt: number) {
     const wasDefeated = boss?.defeated ?? true
     const next = update(screen, tickInput, flowDeps(dt))
     input.endTick()
+    pendingCapture = {}
     if (game) onGameEvents(takeEvents(game), game)
     if (boss && !wasDefeated && boss.defeated) burst()
     // Effects move on only when this tick moved the game on: a step, or
@@ -359,15 +432,29 @@ function enter(prev: Screen, next: Screen) {
         celebrate(10)
     }
     if (next.kind === "matchResult" && prev.kind === "ending") celebrate(10)
-    // Every change on the settings screen is saved at once.
-    if (next.kind === "settings" && next.settings !== settings) {
-        settings = next.settings
+    // Every change on the settings and controls screens is saved, and
+    // applied, at once.
+    const changed = screenSettings(next)
+    if (changed && changed !== settings) {
+        // By value: Reset gives equal bindings as another object.
+        if (!sameBindings(bindingsOf(changed), bindingsOf(settings))) {
+            applyBindings(changed)
+        }
+        settings = changed
         saveSettings(storage, settings)
         applyDpad()
         effects.motion()
     }
     screenSound(audio, prev, next, settings)
     showOverlay(next)
+}
+
+// Use the settings' bindings for the keyboard, the pads and the hints.
+function applyBindings(s: Settings) {
+    const bindings = bindingsOf(s)
+    keys.setBindings(bindings)
+    pads.setBindings(bindings)
+    setHintBindings(bindings)
 }
 
 // Interpolation only moves on during play and the ending outro (where the
@@ -454,6 +541,30 @@ function showOverlay(s: Screen) {
                     }
                 })
             )
+        }
+        case "controls": {
+            const bindings = bindingsOf(s.settings)
+            const current = CONTROLS_ROWS[s.row]
+            return showControls({
+                player: s.player,
+                items: CONTROLS_ROWS.map((row, i) => {
+                    const value = controlsRowValue(row, bindings, s.player)
+                    return {
+                        label: controlsRowLabel(row),
+                        ...(value === undefined ? {} : { value }),
+                        selected: i === s.row,
+                    }
+                }),
+                ...(s.capturing && current
+                    ? {
+                          capturing: {
+                              label: controlsRowLabel(current),
+                              pad: current.kind === "pad",
+                              touch,
+                          },
+                      }
+                    : {}),
+            })
         }
         case "stageSelect":
             return showStageSelect(
@@ -569,8 +680,14 @@ document.addEventListener("visibilitychange", () => {
 // Back), a slider's ◀ or ▶ puts the cursor on it and steps it (left or
 // right), and Back is the pause action (Esc). They go through player 1's
 // input like keys, so flow handles them on the next tick, delays and all.
+// While the controls screen waits for a key or button, any tap on the
+// overlay cancels, like Escape, so a phone isn't stuck on the prompt.
 document.addEventListener("click", (event) => {
     const tap = overlayTap(event.target)
+    if (tap && capturing()) {
+        pendingCapture = { ...pendingCapture, cancel: true }
+        return
+    }
     if (!tap || tap.kind === "panel") return
     if (tap.kind === "back") return tapAction("pause")
     const next = selectItem(screen, tap.index, flowDeps(0))
@@ -602,7 +719,8 @@ for (const type of ["keydown", "pointerdown", "touchend"])
     document.addEventListener(type, () => audio.unlock(), { capture: true })
 screenSound(audio, undefined, screen, settings)
 
-new KeyboardSource([PLAYER_1_KEYS, PLAYER_2_KEYS]).attach(input)
+keys.attach(input)
+setHintBindings(bindingsOf(settings))
 pads.attach(input)
 touchSource.attach(input)
 new DpadSource(touchControls).attach(input)

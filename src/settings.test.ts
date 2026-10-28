@@ -1,11 +1,14 @@
 import { describe, expect, it, vi } from "vite-plus/test"
+import { DEFAULT_BINDINGS, rebind } from "./bindings"
 import { LAST_PICK_KEY } from "./lastPick"
 import { PROGRESS_KEY } from "./progress"
 import {
+    bindingsOf,
     defaultSettings,
     loadSettings,
     parseSettings,
     saveSettings,
+    serializeSettings,
     SETTINGS_KEY,
     shakeEnabled,
     type SettingsStorage,
@@ -120,10 +123,45 @@ describe("parseSettings", () => {
     })
 
     it("keeps fields it doesn't know, for a later build", () => {
-        const bindings = { up: "KeyI" }
-        expect(parseSettings(saved({ bindings }))).toEqual({
+        const later = { up: "KeyI" }
+        expect(parseSettings(saved({ later }))).toEqual({
             ...defaultSettings(),
-            bindings,
+            later,
+        })
+    })
+
+    describe("bindings", () => {
+        const remapped = rebind(DEFAULT_BINDINGS, 0, "breath", "KeyX")
+
+        it("leaves them out when the save has none: the defaults", () => {
+            const s = parseSettings(saved({}))
+            expect("bindings" in s).toBe(false)
+            expect(bindingsOf(s)).toBe(DEFAULT_BINDINGS)
+            expect(bindingsOf(defaultSettings())).toBe(DEFAULT_BINDINGS)
+        })
+
+        it("round-trips saved bindings", () => {
+            const s = { ...defaultSettings(), bindings: remapped }
+            const back = parseSettings(serializeSettings(s))
+            expect(back).toEqual(s)
+            expect(bindingsOf(back).players[0].keys.breath).toBe("KeyX")
+        })
+
+        it.each([["nonsense"], [null], [{ players: 3 }], [[1, 2]]])(
+            "reads bad bindings %j as the defaults",
+            (bindings) => {
+                const s = parseSettings(saved({ bindings, musicVolume: 3 }))
+                expect(s.bindings).toEqual(DEFAULT_BINDINGS)
+                expect(s.musicVolume).toBe(3)
+            }
+        )
+
+        it("repairs bindings entry by entry", () => {
+            const bindings = JSON.parse(JSON.stringify(remapped))
+            bindings.players[1].keys.up = "Escape"
+            const s = parseSettings(saved({ bindings }))
+            expect(bindingsOf(s).players[1].keys.up).toBe("KeyW")
+            expect(bindingsOf(s).players[0].keys.breath).toBe("KeyX")
         })
     })
 })

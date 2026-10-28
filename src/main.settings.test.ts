@@ -41,6 +41,7 @@ describe("main's settings", () => {
             "Effects volume ◀ 8 ▶",
             "Mute Off",
             "Screen shake On",
+            "Controls",
             "Back",
         ])
         expect(localStorage.getItem(SETTINGS_KEY)).toBe("{oops")

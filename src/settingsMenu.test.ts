@@ -32,6 +32,7 @@ describe("SETTINGS_ROWS", () => {
             ["Mute", "toggle"],
             ["Screen shake", "toggle"],
             ["Show D-pad", "toggle"],
+            ["Controls", "action"],
             ["Back", "action"],
         ])
     })
@@ -118,9 +119,9 @@ describe("changeRow", () => {
     })
 
     it("keeps fields it doesn't know", () => {
-        const s = { ...defaultSettings(), bindings: { up: "KeyI" } }
+        const s = { ...defaultSettings(), later: { up: "KeyI" } }
         expect(changeRow(row("muted"), s, context(), 1)).toMatchObject({
-            bindings: { up: "KeyI" },
+            later: { up: "KeyI" },
         })
     })
 })

@@ -165,8 +165,10 @@ describe("Back from the settings", () => {
             "down",
             "down",
             "down",
+            "down",
         ])
-        expect(settings).toMatchObject({ row: 4 })
+        // Past Controls (title only), on Back.
+        expect(settings).toMatchObject({ row: 5 })
         expect(press(settings, ["confirm"])).toBe(title)
     })
 
@@ -228,8 +230,8 @@ describe("the settings rows", () => {
     it("moves the cursor over the rows, stopping at either end", () => {
         const settings = open()
         expect(press(settings, ["up"])).toBe(settings)
-        const last = press(settings, ["down", "down", "down", "down"])
-        expect(last).toMatchObject({ row: 4 })
+        const last = press(settings, ["down", "down", "down", "down", "down"])
+        expect(last).toMatchObject({ row: 5 })
         expect(press(last, ["down"])).toBe(last)
     })
 
@@ -335,14 +337,19 @@ describe("selectItem on the title, pause and settings", () => {
     it("counts the rows that show: Show D-pad only on touch devices", () => {
         const touch = deps({ touch: true })
         const settings = update(titleOnSettings(), input(["confirm"]), touch)
-        // Without touch: four rows, then Back (index 4) last.
-        expect(selectItem(settings, 5)).toBe(settings)
+        // Without touch: four rows, Controls, then Back (index 5) last.
+        expect(selectItem(settings, 6)).toBe(settings)
         const dpad = selectItem(settings, 4, touch)
         expect(dpad).toMatchObject({ row: 4 })
         expect(
             settingsOf(update(dpad, input(["confirm"]), touch)).showDpad
         ).toBe(true)
-        const back = selectItem(settings, 5, touch)
+        // With touch: Show D-pad, then Controls, then Back (index 6).
+        const controls = selectItem(settings, 5, touch)
+        expect(update(controls, input(["confirm"]), touch)).toMatchObject({
+            kind: "controls",
+        })
+        const back = selectItem(settings, 6, touch)
         expect(update(back, input(["confirm"]), touch)).toMatchObject({
             kind: "title",
         })

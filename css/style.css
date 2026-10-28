@@ -123,7 +123,7 @@ body[data-dpad="on"] #play {
 
 .overlay-menu li {
     cursor: pointer;
-    margin-bottom: 10px;
+    margin-bottom: 18px;
     opacity: 0.6;
 }
 
@@ -132,7 +132,7 @@ body[data-dpad="on"] #play {
 @media (pointer: coarse) {
     .overlay-menu li {
         margin-bottom: 0;
-        padding: 8px 0;
+        padding: 12px 0;
     }
 
     .overlay-menu .menu-step {

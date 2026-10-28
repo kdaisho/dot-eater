@@ -26,8 +26,9 @@ export type SettingsContext = {
 }
 
 // What an action row does on confirm; flow.ts carries it out. "back"
-// leaves the screen, as the pause action does.
-export type SettingsAction = "back"
+// leaves the screen, as the pause action does; "controls" opens the
+// controls screen (remapping, KDA-215).
+export type SettingsAction = "back" | "controls"
 
 type RowBase = {
     // Identifies the row (not shown).
@@ -101,6 +102,13 @@ export const SETTINGS_ROWS: readonly SettingsRow[] = [
         get: (s) => s.showDpad,
         set: (s, showDpad) => ({ ...s, showDpad }),
         show: touchOnly,
+    },
+    {
+        id: "controls",
+        label: "Controls",
+        kind: "action",
+        action: "controls",
+        show: titleOnly,
     },
     { id: "back", label: "Back", kind: "action", action: "back" },
 ]

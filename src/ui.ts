@@ -1,4 +1,6 @@
 import confetti from "canvas-confetti"
+import { DEFAULT_BINDINGS, keyName, type Bindings } from "./bindings"
+import { ACTIONS, type Action } from "./input"
 import type { StageSlot } from "./progress"
 import type { AnimalId, AnimalInfo } from "./roster"
 import { formatTicks, starList, starText, type ClearRating } from "./stars"
@@ -80,8 +82,9 @@ type Overlay = {
     // A Back button, for screens that go back (the pause action).
     back?: boolean
     // The lines only name keys: they are hidden on phones (see
-    // .overlay-hint in the CSS), where the overlay is tapped instead.
-    keyHints?: boolean
+    // .overlay-hint in the CSS), where the overlay is tapped instead. A
+    // number marks only the lines from that index on.
+    keyHints?: boolean | number
 }
 
 // A character select card: emoji and name, the breath, the stat. With two
@@ -92,6 +95,33 @@ type Card = {
     players?: readonly { index: number; ready: boolean }[]
 }
 
+// The hints name each player's keys as bound (see setHintBindings):
+// keys[player][action] is the key's display name.
+let keys = hintKeys(DEFAULT_BINDINGS)
+
+function hintKeys(bindings: Bindings): Record<Action, string>[] {
+    return bindings.players.map((player) => {
+        const names = {} as Record<Action, string>
+        for (const action of ACTIONS) {
+            names[action] = keyName(player.keys[action])
+        }
+        return names
+    })
+}
+
+// Make the hints name these bindings' keys from the next overlay shown.
+// Escape, fixed to pause and back, is always "Esc".
+export function setHintBindings(bindings: Bindings) {
+    keys = hintKeys(bindings)
+}
+
+// Player `player`'s key for `action`, as the hints name it.
+const key = (action: Action, player = 0) => keys[player]![action]
+
+// "↑ ↓": player `player`'s two keys for a menu axis.
+const keyPair = (a: Action, b: Action, player = 0) =>
+    `${key(a, player)} ${key(b, player)}`
+
 // The title, with the mode select's menu when `modes` are given.
 export function showTitle(modes: readonly MenuItem[] = []) {
     show({
@@ -99,8 +129,8 @@ export function showTitle(modes: readonly MenuItem[] = []) {
         title: "Dot Eater",
         lines: [
             modes.length > 0
-                ? "↑ ↓ to choose, Space to start"
-                : "Press Space to start",
+                ? `${keyPair("up", "down")} to choose, ${key("confirm")} to start`
+                : `Press ${key("confirm")} to start`,
         ],
         keyHints: true,
         items: modes,
@@ -114,7 +144,9 @@ export function showStageSelect(slots: readonly StageSlot[], selected: number) {
     show({
         id: "stage-select",
         title: "Select a stage",
-        lines: ["↑ ↓ to choose, Space to pick a character, Esc to go back"],
+        lines: [
+            `${keyPair("up", "down")} to choose, ${key("confirm")} to pick a character, Esc to go back`,
+        ],
         keyHints: true,
         back: true,
         items: slots.map((slot, i) => ({
@@ -158,11 +190,13 @@ export function showCharacterSelect(
         title: two ? "Pick your characters" : "Pick a character",
         lines: two
             ? [
-                  "1P: ← → to choose, Space to confirm",
-                  "2P: A D to choose, E to confirm",
-                  "Esc or Q to go back",
+                  `1P: ${keyPair("left", "right")} to choose, ${key("confirm")} to confirm`,
+                  `2P: ${keyPair("left", "right", 1)} to choose, ${key("confirm", 1)} to confirm`,
+                  `Esc or ${key("pause", 1)} to go back`,
               ]
-            : ["← → to choose, Space to play, Esc to go back"],
+            : [
+                  `${keyPair("left", "right")} to choose, ${key("confirm")} to play, Esc to go back`,
+              ],
         keyHints: true,
         back: true,
         cards: animals.map((animal) => ({
@@ -188,8 +222,13 @@ export function showPause(players = 1, items: readonly MenuItem[] = []) {
         title: "Paused",
         lines:
             players > 1
-                ? ["↑ ↓ to choose, Space or E to pick", "Esc or Q to resume"]
-                : ["↑ ↓ to choose, Space to pick, Esc to resume"],
+                ? [
+                      `${keyPair("up", "down")} to choose, ${key("confirm")} or ${key("confirm", 1)} to pick`,
+                      `Esc or ${key("pause", 1)} to resume`,
+                  ]
+                : [
+                      `${keyPair("up", "down")} to choose, ${key("confirm")} to pick, Esc to resume`,
+                  ],
         keyHints: true,
         items,
     })
@@ -201,8 +240,51 @@ export function showSettings(items: readonly MenuItem[]) {
     show({
         id: "settings",
         title: "Settings",
-        lines: ["↑ ↓ to choose, ← → to change, Esc to go back"],
+        lines: [
+            `${keyPair("up", "down")} to choose, ${keyPair("left", "right")} to change, Esc to go back`,
+        ],
         keyHints: true,
+        items,
+    })
+}
+
+// What the controls screen shows (see the controls screen in flow.ts).
+export type ControlsView = {
+    // Whose controls show (player 1 is 0).
+    player: number
+    // One item per row, each with its key or button (see controlsMenu.ts).
+    items: readonly MenuItem[]
+    // While waiting for a key or button: the row's label, whether it
+    // takes a pad button rather than a key, and whether this is a touch
+    // device (where a tap cancels).
+    capturing?: { label: string; pad: boolean; touch?: boolean }
+}
+
+// The controls screen: one player's keys and pad buttons, or while
+// capturing, the prompt for the new one.
+export function showControls({ player, items, capturing }: ControlsView) {
+    const other = player === 0 ? 2 : 1
+    show({
+        id: "controls",
+        title: `Controls · ${player + 1}P`,
+        lines: capturing
+            ? [
+                  `Press a ${capturing.pad ? "button" : "key"} for ${capturing.label}`,
+                  // A tap cancels on touch devices; a pad-only player
+                  // cancels a key prompt with a button.
+                  capturing.touch
+                      ? "Tap to cancel"
+                      : capturing.pad
+                        ? "Esc to cancel"
+                        : "Esc or a pad button to cancel",
+              ]
+            : [
+                  `${keyPair("up", "down")} to choose, ${key("confirm")} to change`,
+                  `${keyPair("left", "right")} for ${other}P's controls, Esc to go back`,
+              ],
+        // The prompt shows everywhere, and on touch devices so does how to
+        // cancel it; the rest only name keys.
+        keyHints: !capturing ? true : capturing.touch ? false : 1,
         items,
     })
 }
@@ -363,9 +445,12 @@ function show({
     heading.textContent = title
     panel.appendChild(heading)
 
-    for (const line of lines) {
+    const hintFrom =
+        keyHints === true ? 0 : keyHints === false ? lines.length : keyHints
+    for (const [i, line] of lines.entries()) {
         const p = document.createElement("p")
-        p.className = keyHints ? "overlay-line overlay-hint" : "overlay-line"
+        p.className =
+            i >= hintFrom ? "overlay-line overlay-hint" : "overlay-line"
         p.textContent = line
         panel.appendChild(p)
     }

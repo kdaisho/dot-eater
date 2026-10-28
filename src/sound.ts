@@ -70,6 +70,7 @@ export function musicForScreen(screen: Screen): MusicCue | undefined {
         case "characterSelect":
             return { track: MusicTrackId.title, paused: false }
         case "settings":
+        case "controls":
             return musicForScreen(screen.back)
         case "playing":
             return { track: stageTrack(screen.level), paused: false }
@@ -84,12 +85,14 @@ export function musicForScreen(screen: Screen): MusicCue | undefined {
     }
 }
 
-// Back moves: one menu up, or leaving settings.
+// Back moves: one menu up, or leaving settings (but not for the controls
+// screen, which is a step in).
 function isBack(prev: Screen, next: Screen): boolean {
     return (
         (prev.kind === "stageSelect" && next.kind === "title") ||
         (prev.kind === "characterSelect" && next.kind === "stageSelect") ||
-        prev.kind === "settings"
+        (prev.kind === "settings" && next.kind !== "controls") ||
+        prev.kind === "controls"
     )
 }
 
@@ -107,6 +110,17 @@ function sameScreenSound(prev: Screen, next: Screen): SfxId | undefined {
         return prev.row !== next.row || prev.settings !== next.settings
             ? SfxId.menuMove
             : undefined
+    if (prev.kind === "controls" && next.kind === "controls") {
+        // A prompt opening, or a key or button bound, confirms; a cancel
+        // (nothing bound) goes back. Reset to defaults confirms too.
+        if (!prev.capturing && next.capturing) return SfxId.confirm
+        if (prev.capturing && !next.capturing)
+            return prev.settings !== next.settings ? SfxId.confirm : SfxId.back
+        if (prev.settings !== next.settings) return SfxId.confirm
+        return prev.row !== next.row || prev.player !== next.player
+            ? SfxId.menuMove
+            : undefined
+    }
     if (prev.kind === "stageSelect" && next.kind === "stageSelect")
         return prev.selected !== next.selected ? SfxId.menuMove : undefined
     if (prev.kind === "characterSelect" && next.kind === "characterSelect") {

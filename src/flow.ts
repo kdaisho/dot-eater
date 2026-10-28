@@ -1,4 +1,6 @@
 import type { Random } from "./ai"
+import { rebind } from "./bindings"
+import { CONTROLS_ROWS } from "./controlsMenu"
 import {
     createGameState,
     settle,
@@ -12,7 +14,7 @@ import type { Action } from "./input"
 import type { Level } from "./level"
 import { isPlayable, STAGE_COUNT, type Progress } from "./progress"
 import { ANIMAL_IDS, DEFAULT_ANIMAL, type AnimalId } from "./roster"
-import { defaultSettings, type Settings } from "./settings"
+import { bindingsOf, defaultSettings, type Settings } from "./settings"
 import {
     changeRow,
     settingsRows,
@@ -51,6 +53,28 @@ import { matchWinner, roundResult, type RoundResult } from "./versus"
 // settings as changed so far; main saves them whenever a tick returns them
 // changed (as it records progress), and passes the saved ones back in
 // through FlowDeps.settings.
+//
+// Settings opened from the title have a Controls row (KDA-215), which opens
+// the controls screen: one player's bindings at a time (CONTROLS_ROWS in
+// controlsMenu.ts), player 1's first. Up/down move, left/right switch
+// between the players, confirm on a key or pad row waits for the new key or
+// button (`capturing`), and Reset to defaults and Back do what they say.
+// Back, or the pause action, returns to the settings with the cursor on
+// Controls. While capturing, every action press is ignored: the screen only
+// reads TickInput.captured, which main fills from raw keydowns (captureKey)
+// and pad buttons (captureButton), the first of each kind apart, so a press
+// of the wrong kind never hides a good one. A key row takes a key; a pad
+// button there cancels, but only on a tick with no key, so a player with
+// only a pad can always get out. A pad row takes a button; a key there
+// keeps it waiting. Escape cancels on either. The capture goes through
+// rebind (so a key in use swaps). Either way capturing ends on that tick,
+// whose press edges main then clears, so the press that was captured never
+// acts on the menu. Reset to defaults drops the bindings from the settings
+// altogether, so they follow the defaults from then on. Like the settings
+// screen, it carries the settings as changed so far, and main saves (and
+// applies) them whenever a tick returns them changed.
+//
+//   title <-> settings <-> controls
 //
 // There is no DOM access here: main feeds in one tick of input at a time,
 // renders whatever screen comes back and shows the matching overlay.
@@ -185,6 +209,21 @@ export type Screen =
           // The settings as changed so far.
           settings: Settings
       }
+    | {
+          kind: "controls"
+          // The mode of the title under the settings.
+          mode: Mode
+          // The settings screen, on its Controls row, that Back returns to.
+          back: SettingsScreen
+          // Whose controls show (player 1 is 0).
+          player: number
+          // The cursor, an index into CONTROLS_ROWS.
+          row: number
+          // Waiting for a key or button for the row under the cursor.
+          capturing?: boolean
+          // The settings as changed so far.
+          settings: Settings
+      }
     | { kind: "stageSelect"; mode: Mode; selected: number }
     | {
           kind: "characterSelect"
@@ -275,6 +314,7 @@ export type ScreenKind = Screen["kind"]
 type TitleScreen = Extract<Screen, { kind: "title" }>
 type PausedScreen = Extract<Screen, { kind: "paused" }>
 type SettingsScreen = Extract<Screen, { kind: "settings" }>
+type ControlsScreen = Extract<Screen, { kind: "controls" }>
 
 // One tick of input. `player` is the player's index, player 1 (0) unless
 // given.
@@ -283,6 +323,18 @@ export type TickInput = {
     wasPressed(action: Action, player?: number): boolean
     // Movement and the breath press for the game; only read while playing.
     move(player?: number): MoveInput
+    // The controls screen's capture since the previous tick (see Capture).
+    // Only read while capturing.
+    captured?(): Capture | undefined
+}
+
+// What main captured for the controls screen since the previous tick: the
+// first bindable key and the first fresh pad button pressed, each kind
+// kept apart, and whether Escape was pressed.
+export type Capture = {
+    readonly key?: string
+    readonly button?: number
+    readonly cancel?: boolean
 }
 
 export type FlowDeps = {
@@ -348,6 +400,8 @@ export function update(
             return updateTitle(screen, input, deps)
         case "settings":
             return updateSettings(screen, input, deps)
+        case "controls":
+            return updateControls(screen, input)
         case "stageSelect":
             return updateStageSelect(screen, input, deps)
         case "characterSelect":
@@ -420,6 +474,14 @@ export function selectItem(
                 ? { ...screen, row: index }
                 : screen
         }
+        // While capturing, a tap leaves the screen alone; its confirm press
+        // is ignored there too, so it binds nothing.
+        case "controls":
+            return !screen.capturing &&
+                within(CONTROLS_ROWS.length) &&
+                index !== screen.row
+                ? { ...screen, row: index }
+                : screen
         case "stageSelect":
             return within(STAGE_COUNT) && index !== screen.selected
                 ? { ...screen, selected: index }
@@ -582,12 +644,66 @@ function runAction(screen: SettingsScreen, action: SettingsAction): Screen {
     switch (action) {
         case "back":
             return screen.back
+        case "controls":
+            return {
+                kind: "controls",
+                mode: screen.mode,
+                back: screen,
+                player: 0,
+                row: 0,
+                settings: screen.settings,
+            }
         default: {
             const unhandled: never = action
             throw new Error(`Unknown settings action: ${String(unhandled)}`)
         }
     }
 }
+
+// See the top of this file. Player 1 drives it.
+function updateControls(screen: ControlsScreen, input: TickInput): Screen {
+    const row = CONTROLS_ROWS[screen.row]
+    if (screen.capturing) {
+        const { key, button, cancel } = input.captured?.() ?? {}
+        const stop: Screen = { ...screen, capturing: false }
+        if (cancel) return stop
+        const bind = (target: string | number): Screen => {
+            if (row.kind !== "key" && row.kind !== "pad") return stop
+            const bindings = bindingsOf(screen.settings)
+            const next = rebind(bindings, screen.player, row.action, target)
+            return next === bindings
+                ? stop
+                : { ...stop, settings: { ...screen.settings, bindings: next } }
+        }
+        if (row.kind === "pad") {
+            return button === undefined ? screen : bind(button)
+        }
+        if (key !== undefined) return bind(key)
+        return button === undefined ? screen : stop
+    }
+    const back = (): Screen => ({ ...screen.back, settings: screen.settings })
+    if (input.wasPressed("pause")) return back()
+    if (input.wasPressed("confirm")) {
+        switch (row.kind) {
+            case "back":
+                return back()
+            case "reset": {
+                if (!("bindings" in screen.settings)) return screen
+                const { bindings: _, ...settings } = screen.settings
+                return { ...screen, settings }
+            }
+            default:
+                return { ...screen, capturing: true }
+        }
+    }
+    const player = moveAcross(screen.player, CONTROLS_PLAYERS, input, 0)
+    if (player !== screen.player) return { ...screen, player }
+    const next = moveCursor(screen.row, CONTROLS_ROWS.length, input)
+    return next === screen.row ? screen : { ...screen, row: next }
+}
+
+// The controls screen shows both players' bindings, whatever the mode.
+const CONTROLS_PLAYERS = 2
 
 function updateStageSelect(
     screen: Extract<Screen, { kind: "stageSelect" }>,
@@ -840,10 +956,20 @@ function stepCursor(
     return Math.min(Math.max(next, 0), count - 1)
 }
 
-// The screen shown under this one: for settings, the screen they were
-// opened over (the title, or the paused game); otherwise the screen itself.
+// The screen shown under this one: for settings (and the controls screen
+// over them), the screen they were opened over (the title, or the paused
+// game); otherwise the screen itself.
 export function baseScreen(screen: Screen): Screen {
+    if (screen.kind === "controls") return baseScreen(screen.back)
     return screen.kind === "settings" ? screen.back : screen
+}
+
+// The settings a settings or controls screen carries, as changed so far;
+// undefined on other screens.
+export function screenSettings(screen: Screen): Settings | undefined {
+    return screen.kind === "settings" || screen.kind === "controls"
+        ? screen.settings
+        : undefined
 }
 
 // The game shown on this screen (or under it), if any.
