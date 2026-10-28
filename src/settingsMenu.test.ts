@@ -31,6 +31,7 @@ describe("SETTINGS_ROWS", () => {
             ["Effects volume", "slider"],
             ["Mute", "toggle"],
             ["Screen shake", "toggle"],
+            ["Show D-pad", "toggle"],
             ["Controls", "action"],
             ["Back", "action"],
         ])
@@ -43,7 +44,7 @@ describe("SETTINGS_ROWS", () => {
 })
 
 describe("settingsRows", () => {
-    // A title-only row and a touch-only row, as KDA-214 and KDA-215 add.
+    // A title-only row, as KDA-215 adds; Show D-pad is the touch-only one.
     const rows: SettingsRow[] = [
         ...SETTINGS_ROWS,
         {
@@ -53,19 +54,14 @@ describe("settingsRows", () => {
             action: "back",
             show: titleOnly,
         },
-        {
-            id: "showDpad",
-            label: "Show D-pad",
-            kind: "toggle",
-            get: (s) => s.showDpad,
-            set: (s, showDpad) => ({ ...s, showDpad }),
-            show: touchOnly,
-        },
     ]
     const ids = (c: SettingsContext) => settingsRows(c, rows).map((r) => r.id)
 
-    it("shows every row by default", () => {
-        expect(settingsRows(context())).toEqual(SETTINGS_ROWS)
+    it("shows every row on a touch device, and all but Show D-pad elsewhere", () => {
+        expect(settingsRows(context({ touch: true }))).toEqual(SETTINGS_ROWS)
+        expect(settingsRows(context())).toEqual(
+            SETTINGS_ROWS.filter((r) => r.id !== "showDpad")
+        )
     })
 
     it("shows a title-only row from the title only", () => {
@@ -76,6 +72,18 @@ describe("settingsRows", () => {
     it("shows a touch-only row on touch devices only", () => {
         expect(ids(context())).not.toContain("showDpad")
         expect(ids(context({ touch: true }))).toContain("showDpad")
+        expect(row("showDpad").show).toBe(touchOnly)
+    })
+
+    it("flips Show D-pad, which is off by default", () => {
+        const dpad = row("showDpad")
+        const s = defaultSettings()
+        const touch = context({ touch: true })
+        expect(rowValue(dpad, s, touch)).toBe("Off")
+        const on = changeRow(dpad, s, touch, 1)
+        expect(on.showDpad).toBe(true)
+        expect(rowValue(dpad, on, touch)).toBe("On")
+        expect(changeRow(dpad, on, touch, -1).showDpad).toBe(false)
     })
 })
 

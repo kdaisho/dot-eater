@@ -76,11 +76,11 @@ describe("hints follow the bindings", () => {
             "Esc or R to go back",
         ])
         showPause()
-        expect(lines()).toEqual(["Press O, Esc or Enter to resume"])
+        expect(lines()).toEqual(["I K to choose, Enter to pick, Esc to resume"])
         showPause(2)
         expect(lines()).toEqual([
-            "1P: O, Esc or Enter to resume",
-            "2P: R or F to resume",
+            "I K to choose, Enter or F to pick",
+            "Esc or R to resume",
         ])
         showSettings([])
         expect(lines()).toEqual([
@@ -112,6 +112,8 @@ describe("showControls", () => {
             "↑ ↓ to choose, Space to change",
             "← → for 2P's controls, Esc to go back",
         ])
+        // Key hints, hidden on phones.
+        expect(overlay()?.querySelectorAll("p.overlay-hint")).toHaveLength(2)
     })
 
     it("prompts for a key or a button while capturing", () => {
@@ -126,6 +128,7 @@ describe("showControls", () => {
             "Press a key for Breath",
             "Esc or a pad button to cancel",
         ])
+        expect(overlay()?.querySelectorAll("p.overlay-hint")).toHaveLength(2)
         showControls({
             player: 1,
             items: [],

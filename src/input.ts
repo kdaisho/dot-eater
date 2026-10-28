@@ -61,13 +61,28 @@ export class PlayerInput {
     // Directions held through ignoreHeld: they don't move the player until
     // they're released and pressed again.
     private readonly stale = new Set<Action>()
+    // Latching controls (a touch swipe), each with what to tell its owner
+    // when it is dropped (see latch).
+    private readonly latches = new Map<string, () => void>()
 
     constructor(
         private readonly onPress: (action: Action) => void = () => {}
     ) {}
 
+    // Make `control` a latch: a hold that lasts until newer input. When any
+    // other control presses a direction, every direction the latch holds is
+    // released first and `onDrop` is told, so the newest input wins (a key
+    // or D-pad pressed after a swipe takes over, and stops the player once
+    // let go) and the press is a fresh edge.
+    latch(control: string, onDrop: () => void): void {
+        this.latches.set(control, onDrop)
+    }
+
     // Returns true on a press edge (the action wasn't held before).
     press(action: Action, control: string): boolean {
+        if (isDirection(action) && !this.latches.has(control)) {
+            this.dropLatches()
+        }
         let holders = this.holders.get(action)
         if (!holders) {
             holders = new Set()
@@ -81,6 +96,19 @@ export class PlayerInput {
         this.pressedAt.set(action, ++this.seq)
         this.onPress(action)
         return true
+    }
+
+    private dropLatches() {
+        for (const [latch, onDrop] of this.latches) {
+            let held = false
+            for (const direction of DIRECTION_ACTIONS) {
+                if (this.holders.get(direction)?.has(latch)) {
+                    held = true
+                    this.release(direction, latch)
+                }
+            }
+            if (held) onDrop()
+        }
     }
 
     release(action: Action, control: string): void {

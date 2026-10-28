@@ -38,6 +38,11 @@ export function burst() {
 // menu (on character select, a row of cards instead). At most one overlay
 // exists at a time; each show* replaces whatever is showing, and hideOverlay
 // removes it. Input is handled by the state machine (flow.ts), not here.
+//
+// Overlays can be tapped or clicked, so a phone player needs no keyboard:
+// each menu item and card carries its index (data-index), and menus that
+// can go back have a Back button (data-back). main listens for clicks and
+// reads them with overlayTap.
 
 // A locked item is shown greyed out and marked aria-disabled. An item with
 // a `value` (a setting's, e.g. "On") shows it after the label.
@@ -46,6 +51,9 @@ export type MenuItem = {
     selected: boolean
     locked?: boolean
     value?: string
+    // The value is a slider's ("◀ 7 ▶"): its arrows get tap targets of
+    // their own (data-step -1 and 1), so a tap steps it.
+    steps?: boolean
 }
 
 // What the end screens show.
@@ -71,6 +79,11 @@ type Overlay = {
     lines?: readonly string[]
     items?: readonly MenuItem[]
     cards?: readonly Card[]
+    // A Back button, for screens that go back (the pause action).
+    back?: boolean
+    // The lines only name keys: they are hidden on phones (see
+    // .overlay-hint in the CSS), where the overlay is tapped instead.
+    keyHints?: boolean
 }
 
 // A character select card: emoji and name, the breath, the stat. With two
@@ -118,6 +131,7 @@ export function showTitle(modes: readonly MenuItem[] = []) {
                 ? `${keyPair("up", "down")} to choose, ${key("confirm")} to start`
                 : `Press ${key("confirm")} to start`,
         ],
+        keyHints: true,
         items: modes,
     })
 }
@@ -132,6 +146,8 @@ export function showStageSelect(slots: readonly StageSlot[], selected: number) {
         lines: [
             `${keyPair("up", "down")} to choose, ${key("confirm")} to pick a character, Esc to go back`,
         ],
+        keyHints: true,
+        back: true,
         items: slots.map((slot, i) => ({
             label: slotLabel(slot),
             selected: i === selected,
@@ -180,6 +196,8 @@ export function showCharacterSelect(
             : [
                   `${keyPair("left", "right")} to choose, ${key("confirm")} to play, Esc to go back`,
               ],
+        keyHints: true,
+        back: true,
         cards: animals.map((animal) => ({
             animal,
             selected: animal.id === picks[0],
@@ -204,10 +222,13 @@ export function showPause(players = 1, items: readonly MenuItem[] = []) {
         lines:
             players > 1
                 ? [
-                      `1P: ${key("pause")}, Esc or ${key("confirm")} to resume`,
-                      `2P: ${key("pause", 1)} or ${key("confirm", 1)} to resume`,
+                      `${keyPair("up", "down")} to choose, ${key("confirm")} or ${key("confirm", 1)} to pick`,
+                      `Esc or ${key("pause", 1)} to resume`,
                   ]
-                : [`Press ${key("pause")}, Esc or ${key("confirm")} to resume`],
+                : [
+                      `${keyPair("up", "down")} to choose, ${key("confirm")} to pick, Esc to resume`,
+                  ],
+        keyHints: true,
         items,
     })
 }
@@ -221,6 +242,7 @@ export function showSettings(items: readonly MenuItem[]) {
         lines: [
             `${keyPair("up", "down")} to choose, ${keyPair("left", "right")} to change, Esc to go back`,
         ],
+        keyHints: true,
         items,
     })
 }
@@ -255,6 +277,7 @@ export function showControls({ player, items, capturing }: ControlsView) {
                   `${keyPair("up", "down")} to choose, ${key("confirm")} to change`,
                   `${keyPair("left", "right")} for ${other}P's controls, Esc to go back`,
               ],
+        keyHints: true,
         items,
     })
 }
@@ -380,7 +403,15 @@ export function hideOverlay() {
     document.getElementById("overlay")?.remove()
 }
 
-function show({ id, title, lines = [], items = [], cards = [] }: Overlay) {
+function show({
+    id,
+    title,
+    lines = [],
+    items = [],
+    cards = [],
+    back = false,
+    keyHints = false,
+}: Overlay) {
     hideOverlay()
 
     const backdrop = document.createElement("div")
@@ -393,6 +424,15 @@ function show({ id, title, lines = [], items = [], cards = [] }: Overlay) {
     panel.className = "overlay"
     panel.dataset.screen = id
 
+    if (back) {
+        const button = document.createElement("button")
+        button.type = "button"
+        button.className = "overlay-back"
+        button.dataset.back = ""
+        button.textContent = "‹ Back"
+        panel.appendChild(button)
+    }
+
     const heading = document.createElement("h1")
     heading.className = "overlay-title"
     heading.textContent = title
@@ -400,7 +440,7 @@ function show({ id, title, lines = [], items = [], cards = [] }: Overlay) {
 
     for (const line of lines) {
         const p = document.createElement("p")
-        p.className = "overlay-line"
+        p.className = keyHints ? "overlay-line overlay-hint" : "overlay-line"
         p.textContent = line
         panel.appendChild(p)
     }
@@ -408,13 +448,15 @@ function show({ id, title, lines = [], items = [], cards = [] }: Overlay) {
     if (items.length > 0) {
         const menu = document.createElement("ul")
         menu.className = "overlay-menu"
-        for (const item of items) {
+        items.forEach((item, i) => {
             const li = document.createElement("li")
             li.textContent = item.label
+            li.dataset.index = String(i)
             if (item.value !== undefined) {
                 const value = document.createElement("span")
                 value.className = "menu-value"
                 value.textContent = item.value
+                if (item.steps) stepTargets(value, item.value)
                 li.append(" ", value)
             }
             if (item.selected) {
@@ -426,7 +468,7 @@ function show({ id, title, lines = [], items = [], cards = [] }: Overlay) {
                 li.setAttribute("aria-disabled", "true")
             }
             menu.appendChild(li)
-        }
+        })
         panel.appendChild(menu)
     }
 
@@ -441,10 +483,11 @@ function show({ id, title, lines = [], items = [], cards = [] }: Overlay) {
 function cardRow(cards: readonly Card[]): HTMLElement {
     const row = document.createElement("ul")
     row.className = "overlay-cards"
-    for (const { animal, selected, players = [] } of cards) {
+    cards.forEach(({ animal, selected, players = [] }, i) => {
         const li = document.createElement("li")
         li.className = "card"
         li.dataset.animal = animal.id
+        li.dataset.index = String(i)
         if (selected) {
             li.classList.add("selected")
             li.setAttribute("aria-current", "true")
@@ -475,8 +518,47 @@ function cardRow(cards: readonly Card[]): HTMLElement {
             li.appendChild(div)
         }
         row.appendChild(li)
-    }
+    })
     return row
+}
+
+// What a tap or click on the overlay hit: a menu item or card (its index
+// in the menu), the Back button, or anywhere else on the overlay or its
+// backdrop. Undefined for anything else.
+export type OverlayTap =
+    | { kind: "item"; index: number }
+    | { kind: "back" }
+    // A slider's ◀ (-1) or ▶ (1), on menu item `index`.
+    | { kind: "step"; index: number; delta: -1 | 1 }
+    | { kind: "panel" }
+
+export function overlayTap(target: EventTarget | null): OverlayTap | undefined {
+    if (!(target instanceof Element)) return undefined
+    if (!target.closest("#overlay, #backdrop")) return undefined
+    if (target.closest("[data-back]")) return { kind: "back" }
+    const item = target.closest<HTMLElement>("#overlay [data-index]")
+    if (!item) return { kind: "panel" }
+    const index = Number(item.dataset.index)
+    if (!Number.isInteger(index)) return undefined
+    const step = target.closest<HTMLElement>("[data-step]")?.dataset.step
+    if (step === "-1" || step === "1") {
+        return { kind: "step", index, delta: step === "1" ? 1 : -1 }
+    }
+    return { kind: "item", index }
+}
+
+// Fill a slider's value ("◀ 7 ▶") with its arrows as tap targets of their
+// own, the text unchanged.
+function stepTargets(el: HTMLElement, value: string) {
+    const arrow = (text: string, step: string) => {
+        const span = document.createElement("span")
+        span.className = "menu-step"
+        span.dataset.step = step
+        span.textContent = text
+        return span
+    }
+    const middle = value.replace(/^◀/, "").replace(/▶$/, "")
+    el.replaceChildren(arrow("◀", "-1"), middle, arrow("▶", "1"))
 }
 
 // A small note at the bottom of the screen (e.g. "Controller connected").

@@ -155,7 +155,7 @@ describe("main with two players", () => {
             [...(overlay()?.querySelectorAll(".overlay-line") ?? [])].map(
                 (p) => p.textContent
             )
-        ).toEqual(["1P: P, Esc or Space to resume", "2P: Q or E to resume"])
+        ).toEqual(["↑ ↓ to choose, Space or E to pick", "Esc or Q to resume"])
         pressAndTick("KeyE")
         expect(screen()).toBe("playing")
 

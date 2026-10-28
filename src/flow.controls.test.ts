@@ -5,6 +5,7 @@ import {
     baseScreen,
     initialScreen,
     screenSettings,
+    selectItem,
     update,
     type Capture,
     type FlowDeps,
@@ -137,6 +138,41 @@ describe("moving on the controls screen", () => {
         expect(press(p2, ["right"])).toBe(p2)
         expect(press(p2, ["left"])).toMatchObject({ player: 0, row: 2 })
         expect(press(screen, ["left"])).toBe(screen)
+    })
+})
+
+// A tap (KDA-214) puts the cursor on the row with selectItem, then main
+// presses confirm.
+describe("tapping a row", () => {
+    const breath = rowIndex("key", "breath")
+    const back = rowIndex("back")
+
+    it("puts the cursor on the row, which confirm then runs", () => {
+        const screen = controls()
+        const tapped = selectItem(screen, breath)
+        expect(tapped).toMatchObject({ kind: "controls", row: breath })
+        expect(asControls(press(tapped, ["confirm"])).capturing).toBe(true)
+        const onBack = selectItem(screen, back)
+        expect(press(onBack, ["confirm"])).toMatchObject({ kind: "settings" })
+    })
+
+    it("ignores a row it's on and indexes out of range", () => {
+        const screen = controls()
+        expect(selectItem(screen, 0)).toBe(screen)
+        expect(selectItem(screen, CONTROLS_ROWS.length)).toBe(screen)
+        expect(selectItem(screen, -1)).toBe(screen)
+    })
+
+    it("binds nothing when tapped while capturing", () => {
+        const waiting = press(on(breath), ["confirm"])
+        const tapped = selectItem(waiting, back)
+        expect(tapped).toBe(waiting)
+        const after = press(tapped, ["confirm"])
+        expect(asControls(after)).toMatchObject({
+            row: breath,
+            capturing: true,
+        })
+        expect(bindings(after)).toEqual(DEFAULT_BINDINGS)
     })
 })
 
