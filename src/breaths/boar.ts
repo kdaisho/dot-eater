@@ -26,6 +26,11 @@ export function isOuterWall(cells: Cells, pos: Vec2): boolean {
     )
 }
 
+// Whether the Boar's breath breaks `wall`: any wall but an outer one.
+function breaks(cells: Cells, wall: Vec2): boolean {
+    return !isOuterWall(cells, wall)
+}
+
 // Boar 🐗, wall-break breath (KDA-220): breaks the wall in front; it grows
 // back after 10 s, pushing out anything inside; outer walls hold. Refused
 // (nothing spent) when there is no wall in front or it is an outer wall.
@@ -50,9 +55,10 @@ export const boar: BreathDef = {
         gravity: 8,
         shape: "square",
     },
+    targetsWall: breaks,
     fire(hit) {
         const { wall } = hit
-        if (!wall || isOuterWall(hit.state.cells, wall)) return false
+        if (!wall || !breaks(hit.state.cells, wall)) return false
         hit.addTile(wall, BROKEN_WALL, OPEN_SECONDS)
     },
 }

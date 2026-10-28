@@ -204,6 +204,8 @@ const effects = {
         return {
             particles: particles.list,
             ...(moving ? { shake: shake.offset(Math.random) } : {}),
+            // The aim preview only while playing: not paused or ending.
+            ...(s.kind === "playing" ? { aim: true } : {}),
         }
     },
 }

@@ -1,5 +1,12 @@
 import { footprint } from "./boss"
-import { enemyVisible, hasStatus, type EnergyHud, type Look } from "./breath"
+import {
+    aimPreviews,
+    enemyVisible,
+    hasStatus,
+    type AimPreview,
+    type EnergyHud,
+    type Look,
+} from "./breath"
 import { AiType, Cell, CharacterId, SPRITE_SCALE } from "./constants"
 import {
     fogDistance,
@@ -53,6 +60,10 @@ export type Effects = {
     // How far to move the maze this frame, in cells (see shake.ts). The
     // HUD stays put.
     shake?: Vec2
+    // Show each charged player's aim preview (see aimPreviews in
+    // breath.ts): a faint tint in its colour on the cells its breath would
+    // hit, under the dots. Only while playing, not paused or on end screens.
+    aim?: boolean
 }
 
 export type Renderer = {
@@ -120,6 +131,13 @@ function playerSprite(player: Player): string {
 export const PLAYER_COLORS = ["#2563eb", "#dc2626"] as const
 // The ring's width and the number's size, as fractions of the sprite's.
 const RING_WIDTH = 0.08
+
+// The aim preview (see Effects.aim) is a tint in the player's colour: a
+// faint fill over each cell its breath would hit, and a slightly stronger
+// edge round the outside of those cells, this wide as a fraction of a cell.
+const AIM_FILL_ALPHA = 0.18
+const AIM_EDGE_ALPHA = 0.5
+const AIM_EDGE_WIDTH = 0.05
 const LABEL_SCALE = 0.4
 
 // Enemies look like what they do: every enemy of one AI type shares a
@@ -246,7 +264,8 @@ export function createRenderer(
         if (shake && (shake.x !== 0 || shake.y !== 0)) {
             ctx.translate(shake.x * cell, shake.y * cell)
         }
-        drawCells(ctx, state, alpha, cell, fog)
+        const aims = effects.aim ? aimPreviews(state) : []
+        drawCells(ctx, state, alpha, cell, fog, aims)
         drawBoss(ctx, state, alpha, cell, cols, rows, fog)
         drawCharacters(ctx, state, alpha, cell, cols, rows, fog)
         if (effects.particles) drawParticles(ctx, effects.particles, cell, fog)
@@ -424,7 +443,8 @@ function drawCells(
     state: GameState,
     alpha: number,
     cell: number,
-    fog: Fog | null
+    fog: Fog | null,
+    aims: readonly AimPreview[]
 ) {
     const wall = cell * WALL_SCALE
     const dot = Math.max(1, cell * DOT_SCALE)
@@ -447,6 +467,7 @@ function drawCells(
         )
     }
     const looks = tileLooks(state)
+    const aimed = aimGrid(state, aims)
     state.cells.forEach((row, y) => {
         row.forEach((value, x) => {
             if (fog && !fog.visible(vec2(x, y))) return
@@ -455,6 +476,11 @@ function drawCells(
             if (state.ice[y][x]) fillCell(x, y, COLORS.ice)
             for (const look of looks?.[y][x] ?? []) {
                 if (look.color) fillCell(x, y, look.color)
+            }
+            for (const player of aimed?.[y][x] ?? []) {
+                ctx.globalAlpha = AIM_FILL_ALPHA
+                fillCell(x, y, PLAYER_COLORS[player])
+                ctx.globalAlpha = 1
             }
             if (value === Cell.wall) {
                 ctx.fillStyle = COLORS.wall
@@ -468,6 +494,7 @@ function drawCells(
             }
         })
     })
+    for (const aim of aims) drawAimEdge(ctx, aim, cell, fog)
     if (!looks) return
     // Tile emoji go on top of everything in the cells, before characters.
     const emoji = looks.flatMap((row, y) =>
@@ -497,6 +524,63 @@ function tileLooks(state: GameState): Look[][][] | null {
         if (t.effect.look) looks[t.pos.y][t.pos.x].push(t.effect.look)
     }
     return looks
+}
+
+// Per cell [y][x], the players whose aim preview covers it, player 1
+// first, or null with no previews (the common case: no grid each frame).
+function aimGrid(
+    state: GameState,
+    aims: readonly AimPreview[]
+): number[][][] | null {
+    if (aims.length === 0) return null
+    const grid: number[][][] = state.cells.map((row) => row.map(() => []))
+    for (const { player, cells } of aims) {
+        for (const c of cells) grid[c.y][c.x].push(player)
+    }
+    return grid
+}
+
+// The edge of one aim preview: a line along every side of its cells that
+// doesn't border another of them, so it outlines the whole shape. In fog,
+// cells outside the light get none, as they get no fill.
+function drawAimEdge(
+    ctx: CanvasRenderingContext2D,
+    aim: AimPreview,
+    cell: number,
+    fog: Fog | null
+) {
+    const inAim = new Set(aim.cells.map((c) => `${c.x},${c.y}`))
+    const has = (x: number, y: number) => inAim.has(`${x},${y}`)
+    ctx.save()
+    ctx.globalAlpha = AIM_EDGE_ALPHA
+    ctx.strokeStyle = PLAYER_COLORS[aim.player]
+    ctx.lineWidth = Math.max(1, cell * AIM_EDGE_WIDTH)
+    ctx.beginPath()
+    for (const { x, y } of aim.cells) {
+        if (fog && !fog.visible(vec2(x, y))) continue
+        const left = x * cell
+        const top = y * cell
+        const right = left + cell
+        const bottom = top + cell
+        if (!has(x, y - 1)) {
+            ctx.moveTo(left, top)
+            ctx.lineTo(right, top)
+        }
+        if (!has(x, y + 1)) {
+            ctx.moveTo(left, bottom)
+            ctx.lineTo(right, bottom)
+        }
+        if (!has(x - 1, y)) {
+            ctx.moveTo(left, top)
+            ctx.lineTo(left, bottom)
+        }
+        if (!has(x + 1, y)) {
+            ctx.moveTo(right, top)
+            ctx.lineTo(right, bottom)
+        }
+    }
+    ctx.stroke()
+    ctx.restore()
 }
 
 // The boss, unless it is defeated (gone for good): its sprite centred on
