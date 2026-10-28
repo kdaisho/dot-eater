@@ -93,6 +93,18 @@ Order inside `step`: breath timers count down (expiries, regrowth, respawns), th
 - Characters glide from `lastPos` to `pos`, lagging at most one cell behind the logic; wrap tunnels slide (drawn on both edges, clipped). The HUD strip is above the maze: score left, lives right, energy meter in the middle (a mark per breath's cost, amber when ready). Breath looks come from breath data; `render.ts` has no per-breath code.
 - **Fog:** `rules.fog.radius` (at least 1.5) is purely visual: things wholly outside the radius around the player's glide position aren't drawn, with a 1.5-cell soft edge; the HUD stays visible; wrap-aware with tunnels.
 
+## Polish
+
+Decided with the user on 2026-10-27 (KDA-212–215, KDA-246):
+
+- **Sound** (KDA-212): all sound is synthesized with Web Audio in a chip style, with no asset files; each stage has its own generated music loop.
+- **Settings** (KDA-246): a Settings screen opens from the title menu (after the modes) and from the pause menu (Resume, Settings); Back returns where it came from, a paused game untouched. Remapping is on the title path only. Rows: Music volume and Effects volume (0–10 each), Mute (master), Screen shake; KDA-214 adds Show D-pad and KDA-215 Controls.
+- **Reduced motion** (KDA-213): with reduced motion requested, there is no screen shake and particles are fewer and shorter. The Screen shake toggle defaults to off under reduced motion and on otherwise (unset, it follows the system).
+- **Touch** (KDA-214): touch drives player 1 only, and every menu is tappable. Swipe is the default; an on-screen D-pad is off by default, with a Show D-pad toggle shown only on touch devices.
+- **Remapping** (KDA-215): per player, one key each for up, down, left, right, breath, pause and confirm, plus pad buttons for breath, confirm and pause; the pad's D-pad and stick are fixed. Escape always pauses and backs out and can't be rebound. Binding a key already in use swaps the two bindings, across P1 and P2 too. Reset to defaults restores them all.
+- **Game events** (KDA-246): `step` reports what happened in each tick as `GameState.events` (`GameEvent` in `events.ts`: dots, breaths, defeats, boss hits, catches, respawns, stuns, win and loss), one event per occurrence. Main takes them after each tick (`takeEvents`) and hands them to `onGameEvents`, where sound and effects hook in.
+- **Settings storage** (KDA-246): `{ version: 1, musicVolume, effectsVolume, muted, screenShake, showDpad }` under `dot-eater:settings:v1`; defaults 7, 8, off, unset (`null`), off. Bad JSON, another version or a non-object gives the defaults (no migrations); an invalid field on its own falls back to its default, and unknown fields are kept. New settings (KDA-215's bindings) are added as optional fields without a version bump.
+
 ## Tooling
 
 - CI uses `setup-vp` with `run-install: false` and runs on PRs only; pnpm 10 pinned.

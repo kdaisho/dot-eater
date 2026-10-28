@@ -8,6 +8,7 @@ import {
     showCharacterSelect,
     showGameOver,
     showPause,
+    showSettings,
     showStageClear,
     showStageSelect,
     showTitle,
@@ -245,6 +246,35 @@ describe("showPause", () => {
             "1P: P, Esc or Space to resume",
             "2P: Q or E to resume",
         ])
+    })
+
+    it("shows its menu when given one", () => {
+        showPause(1, [
+            { label: "Resume", selected: false },
+            { label: "Settings", selected: true },
+        ])
+        expect(items()).toEqual(["Resume", "Settings"])
+        expect(selected()).toEqual(["Settings"])
+    })
+})
+
+describe("showSettings", () => {
+    it("shows each row with its value after the label", () => {
+        showSettings([
+            { label: "Music volume", value: "◀ 7 ▶", selected: true },
+            { label: "Mute", value: "Off", selected: false },
+            { label: "Back", selected: false },
+        ])
+        expectSingle()
+        expect(overlay()?.dataset.screen).toBe("settings")
+        expect(title()).toBe("Settings")
+        expect(lines()).toEqual([
+            "↑ ↓ to choose, ← → to change, Esc to go back",
+        ])
+        expect(items()).toEqual(["Music volume ◀ 7 ▶", "Mute Off", "Back"])
+        expect(selected()).toEqual(["Music volume ◀ 7 ▶"])
+        const values = [...overlay()!.querySelectorAll(".menu-value")]
+        expect(values.map((v) => v.textContent)).toEqual(["◀ 7 ▶", "Off"])
     })
 })
 

@@ -146,6 +146,7 @@ export function makeState(
             players: starts.map(({ x, y }) => vec2(x, y)),
             enemies: enemies.map((e) => vec2(e.pos.x, e.pos.y)),
         },
+        events: [],
     }
 }
 

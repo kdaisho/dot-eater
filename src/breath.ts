@@ -8,6 +8,7 @@ import {
 } from "./constants"
 import { bossDamage, damageBoss, inFootprint, tickBoss } from "./boss"
 import type { Character } from "./character"
+import { emit } from "./events"
 import type { GameState, Player } from "./game"
 import { loopPos, type Cells } from "./level"
 import type { AnimalId } from "./roster"
@@ -282,11 +283,36 @@ export function breathe(
     const bossHit = body !== undefined && struck.some(body)
     // In versus, the other player on a struck cell (see opponentsStruck).
     const stuns = opponentsStruck(state, who, struck)
+    const eventsBefore = state.events.length
     const fired = breath.fire(hit) !== false
     if (iceAdded) rebuildIce(state)
-    if (!fired && !bossHit && stuns.length === 0) return false
+    if (!fired && !bossHit && stuns.length === 0) {
+        // A refused breath reports nothing (see events.ts), even if its
+        // hook reported something before refusing.
+        state.events.length = eventsBefore
+        return false
+    }
+    const player = state.players.indexOf(who)
+    // Reported before what it did, including the defeats the hook already
+    // reported (a refusing hook changes nothing, so reports nothing).
+    state.events.splice(eventsBefore, 0, {
+        type: "breathed",
+        player,
+        animal: breath.animal,
+        at: origin,
+        facing: vec2(facing.x, facing.y),
+    })
     if (bossHit) damageBoss(state, bossDamage(breath.cost), who)
-    stuns.forEach(stun)
+    for (const other of stuns) {
+        stun(other)
+        const { pos } = other.character
+        emit(state, {
+            type: "playerStunned",
+            player: state.players.indexOf(other),
+            by: player,
+            at: vec2(pos.x, pos.y),
+        })
+    }
     breather.energy -= breath.cost
     breather.cooldown = breath.cooldown
     return true
@@ -461,7 +487,15 @@ export function defeatEnemy(
     const i = state.enemies.indexOf(enemy)
     if (i < 0) return
     by.score += DEFEAT_POINTS
-    if (isWholeSplitter(enemy)) {
+    const split = isWholeSplitter(enemy)
+    emit(state, {
+        type: "enemyDefeated",
+        player: state.players.indexOf(by),
+        enemy: i,
+        at: vec2(enemy.pos.x, enemy.pos.y),
+        split,
+    })
+    if (split) {
         splitSplitter(state, i)
         return
     }
