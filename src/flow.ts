@@ -44,9 +44,12 @@ import { matchWinner, roundResult, type RoundResult } from "./versus"
 //
 //   title <-> settings        paused <-> settings
 //
-// The settings screen is a list of rows (see settingsMenu.ts) driven by
-// player 1: up/down move, left/right change a slider or flip a toggle,
-// confirm flips a toggle or runs an action. The screen carries the
+// The settings screen is a list of rows (see settingsMenu.ts): up/down
+// move, left/right change a slider or flip a toggle, confirm flips a toggle
+// or runs an action. From the title, player 1 drives it, like the title.
+// From a 2-player game's pause, either player does, like the pause menu;
+// on a tick both players press on, player 1's presses count and player
+// 2's are ignored. The screen carries the
 // settings as changed so far; main saves them whenever a tick returns them
 // changed (as it records progress), and passes the saved ones back in
 // through FlowDeps.settings.
@@ -500,13 +503,39 @@ export function settingsContext(
     }
 }
 
-// Player 1 drives it (see the top of this file). Back (the pause action)
-// returns to where it was opened.
+// The menu actions the settings screen reads.
+const SETTINGS_ACTIONS: readonly Action[] = [
+    "pause",
+    "confirm",
+    "up",
+    "down",
+    "left",
+    "right",
+]
+
+// Who drives the settings this tick (see the top of this file): player 1
+// from the title; from a 2-player game's pause, the first player, in
+// player order, who pressed anything on it.
+function settingsPlayer(screen: SettingsScreen, input: TickInput): number {
+    if (screen.back.kind === "title") return 0
+    for (let i = 0; i < playerCount(screen.mode); i++) {
+        if (SETTINGS_ACTIONS.some((a) => input.wasPressed(a, i))) return i
+    }
+    return 0
+}
+
+// Back (the pause action) returns to where it was opened.
 function updateSettings(
     screen: SettingsScreen,
-    input: TickInput,
+    tickInput: TickInput,
     deps: FlowDeps
 ): Screen {
+    // Everything below reads the driving player's presses only.
+    const who = settingsPlayer(screen, tickInput)
+    const input: TickInput = {
+        ...tickInput,
+        wasPressed: (action) => tickInput.wasPressed(action, who),
+    }
     if (input.wasPressed("pause")) return screen.back
     const context = settingsContext(screen, deps)
     const rows = settingsRows(context)
