@@ -314,6 +314,47 @@ export function pauseIfPlaying(screen: Screen): Screen {
     return screen.kind === "playing" ? { ...screen, kind: "paused" } : screen
 }
 
+// Put player 1's menu cursor on item `index` of the screen's menu (in the
+// order the overlay lists them), for a tapped or clicked item; main then
+// presses confirm, so the item is picked like with the keys. Screens
+// without a menu, an index off the menu, and a character select player 1
+// has already confirmed come back unchanged (the same object).
+export function selectItem(screen: Screen, index: number): Screen {
+    const within = (count: number) =>
+        Number.isInteger(index) && index >= 0 && index < count
+    switch (screen.kind) {
+        case "title":
+            return within(MODE_CHOICES.length) &&
+                MODE_CHOICES[index] !== screen.mode
+                ? { ...screen, mode: MODE_CHOICES[index] }
+                : screen
+        case "stageSelect":
+            return within(STAGE_COUNT) && index !== screen.selected
+                ? { ...screen, selected: index }
+                : screen
+        case "characterSelect": {
+            const animal = ANIMAL_IDS[index]
+            if (!within(ANIMAL_IDS.length) || screen.ready[0]) return screen
+            if (animal === screen.picks[0]) return screen
+            return { ...screen, picks: [animal, ...screen.picks.slice(1)] }
+        }
+        case "stageClear":
+        case "gameOver":
+        case "matchResult":
+            return within(END_CHOICES.length) &&
+                END_CHOICES[index] !== screen.choice
+                ? { ...screen, choice: END_CHOICES[index] }
+                : screen
+        case "roundResult":
+            return within(ROUND_CHOICES.length) &&
+                ROUND_CHOICES[index] !== screen.choice
+                ? { ...screen, choice: ROUND_CHOICES[index] }
+                : screen
+        default:
+            return screen
+    }
+}
+
 // Whether any player of `mode` pressed `action` this tick.
 function anyPressed(mode: Mode, input: TickInput, action: Action): boolean {
     for (let i = 0; i < playerCount(mode); i++) {

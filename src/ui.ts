@@ -36,6 +36,11 @@ export function burst() {
 // menu (on character select, a row of cards instead). At most one overlay
 // exists at a time; each show* replaces whatever is showing, and hideOverlay
 // removes it. Input is handled by the state machine (flow.ts), not here.
+//
+// Overlays can be tapped or clicked, so a phone player needs no keyboard:
+// each menu item and card carries its index (data-index), and menus that
+// can go back have a Back button (data-back). main listens for clicks and
+// reads them with overlayTap.
 
 // A locked item is shown greyed out and marked aria-disabled.
 export type MenuItem = { label: string; selected: boolean; locked?: boolean }
@@ -63,6 +68,8 @@ type Overlay = {
     lines?: readonly string[]
     items?: readonly MenuItem[]
     cards?: readonly Card[]
+    // A Back button, for screens that go back (the pause action).
+    back?: boolean
 }
 
 // A character select card: emoji and name, the breath, the stat. With two
@@ -95,6 +102,7 @@ export function showStageSelect(slots: readonly StageSlot[], selected: number) {
         id: "stage-select",
         title: "Select a stage",
         lines: ["↑ ↓ to choose, Space to pick a character, Esc to go back"],
+        back: true,
         items: slots.map((slot, i) => ({
             label: slotLabel(slot),
             selected: i === selected,
@@ -141,6 +149,7 @@ export function showCharacterSelect(
                   "Esc or Q to go back",
               ]
             : ["← → to choose, Space to play, Esc to go back"],
+        back: true,
         cards: animals.map((animal) => ({
             animal,
             selected: animal.id === picks[0],
@@ -289,7 +298,14 @@ export function hideOverlay() {
     document.getElementById("overlay")?.remove()
 }
 
-function show({ id, title, lines = [], items = [], cards = [] }: Overlay) {
+function show({
+    id,
+    title,
+    lines = [],
+    items = [],
+    cards = [],
+    back = false,
+}: Overlay) {
     hideOverlay()
 
     const backdrop = document.createElement("div")
@@ -301,6 +317,15 @@ function show({ id, title, lines = [], items = [], cards = [] }: Overlay) {
     panel.id = "overlay"
     panel.className = "overlay"
     panel.dataset.screen = id
+
+    if (back) {
+        const button = document.createElement("button")
+        button.type = "button"
+        button.className = "overlay-back"
+        button.dataset.back = ""
+        button.textContent = "‹ Back"
+        panel.appendChild(button)
+    }
 
     const heading = document.createElement("h1")
     heading.className = "overlay-title"
@@ -317,9 +342,10 @@ function show({ id, title, lines = [], items = [], cards = [] }: Overlay) {
     if (items.length > 0) {
         const menu = document.createElement("ul")
         menu.className = "overlay-menu"
-        for (const item of items) {
+        items.forEach((item, i) => {
             const li = document.createElement("li")
             li.textContent = item.label
+            li.dataset.index = String(i)
             if (item.selected) {
                 li.classList.add("selected")
                 li.setAttribute("aria-current", "true")
@@ -329,7 +355,7 @@ function show({ id, title, lines = [], items = [], cards = [] }: Overlay) {
                 li.setAttribute("aria-disabled", "true")
             }
             menu.appendChild(li)
-        }
+        })
         panel.appendChild(menu)
     }
 
@@ -344,10 +370,11 @@ function show({ id, title, lines = [], items = [], cards = [] }: Overlay) {
 function cardRow(cards: readonly Card[]): HTMLElement {
     const row = document.createElement("ul")
     row.className = "overlay-cards"
-    for (const { animal, selected, players = [] } of cards) {
+    cards.forEach(({ animal, selected, players = [] }, i) => {
         const li = document.createElement("li")
         li.className = "card"
         li.dataset.animal = animal.id
+        li.dataset.index = String(i)
         if (selected) {
             li.classList.add("selected")
             li.setAttribute("aria-current", "true")
@@ -378,8 +405,26 @@ function cardRow(cards: readonly Card[]): HTMLElement {
             li.appendChild(div)
         }
         row.appendChild(li)
-    }
+    })
     return row
+}
+
+// What a tap or click on the overlay hit: a menu item or card (its index
+// in the menu), the Back button, or anywhere else on the overlay or its
+// backdrop. Undefined for anything else.
+export type OverlayTap =
+    | { kind: "item"; index: number }
+    | { kind: "back" }
+    | { kind: "panel" }
+
+export function overlayTap(target: EventTarget | null): OverlayTap | undefined {
+    if (!(target instanceof Element)) return undefined
+    if (!target.closest("#overlay, #backdrop")) return undefined
+    if (target.closest("[data-back]")) return { kind: "back" }
+    const item = target.closest<HTMLElement>("#overlay [data-index]")
+    if (!item) return { kind: "panel" }
+    const index = Number(item.dataset.index)
+    return Number.isInteger(index) ? { kind: "item", index } : undefined
 }
 
 // A small note at the bottom of the screen (e.g. "Controller connected").

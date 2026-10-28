@@ -5,6 +5,7 @@ import {
     celebrate,
     hideOverlay,
     hideToast,
+    overlayTap,
     showCharacterSelect,
     showGameOver,
     showPause,
@@ -481,5 +482,78 @@ describe("toast", () => {
         expect(toasts()).toEqual([region])
         expect(region?.isConnected).toBe(true)
         expect(region?.textContent).toBe("Controller disconnected")
+    })
+})
+
+describe("overlayTap", () => {
+    const menu = (n: number) =>
+        Array.from({ length: n }, (_, i) => ({
+            label: `Item ${i}`,
+            selected: i === 0,
+        }))
+    const el = (selector: string) =>
+        document.querySelector<HTMLElement>(selector)
+
+    it("reads a tapped menu item's index", () => {
+        showTitle(menu(3))
+        const items = [...document.querySelectorAll("#overlay li")]
+        expect(items.map((li) => overlayTap(li))).toEqual([
+            { kind: "item", index: 0 },
+            { kind: "item", index: 1 },
+            { kind: "item", index: 2 },
+        ])
+    })
+
+    it("reads a stage slot's index, locked ones too", () => {
+        showStageSelect(
+            [
+                { kind: "open", name: "One" },
+                { kind: "locked", name: "Two" },
+            ],
+            0
+        )
+        expect(overlayTap(el("#overlay li.locked"))).toEqual({
+            kind: "item",
+            index: 1,
+        })
+    })
+
+    it("reads a character card's index from anywhere on it", () => {
+        const animals = ANIMAL_IDS.map((id) => ANIMALS[id])
+        showCharacterSelect(animals, ANIMAL_IDS[0])
+        const card = document.querySelectorAll("#overlay li.card")[2]
+        expect(overlayTap(card.querySelector(".card-name"))).toEqual({
+            kind: "item",
+            index: 2,
+        })
+    })
+
+    it("has a Back button on stage and character select only", () => {
+        showStageSelect([{ kind: "open", name: "One" }], 0)
+        expect(overlayTap(el("#overlay [data-back]"))).toEqual({
+            kind: "back",
+        })
+        showCharacterSelect([ANIMALS[ANIMAL_IDS[0]]], ANIMAL_IDS[0])
+        expect(el("#overlay [data-back]")?.textContent).toBe("‹ Back")
+        showTitle(menu(3))
+        expect(el("#overlay [data-back]")).toBeNull()
+        showPause()
+        expect(el("#overlay [data-back]")).toBeNull()
+    })
+
+    it("reads anywhere else on the overlay or backdrop as the panel", () => {
+        showPause()
+        expect(overlayTap(el("#overlay"))).toEqual({ kind: "panel" })
+        expect(overlayTap(el("#overlay p"))).toEqual({ kind: "panel" })
+        expect(overlayTap(el("#backdrop"))).toEqual({ kind: "panel" })
+    })
+
+    it("ignores everything off the overlay", () => {
+        showPause()
+        const outside = document.createElement("div")
+        document.body.appendChild(outside)
+        expect(overlayTap(outside)).toBeUndefined()
+        expect(overlayTap(document.body)).toBeUndefined()
+        expect(overlayTap(null)).toBeUndefined()
     })
 })

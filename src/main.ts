@@ -1,5 +1,6 @@
 import { energyHud } from "./breath"
 import { MAX_FRAME_MS, TICK_MS } from "./constants"
+import { createTouchControls, DpadSource, setControls } from "./dpad"
 import {
     END_CHOICES,
     ROUND_CHOICES,
@@ -9,6 +10,7 @@ import {
     pauseIfPlaying,
     playerCount,
     recordsProgress,
+    selectItem,
     update,
     type EndChoice,
     type Mode,
@@ -27,8 +29,10 @@ import {
     KeyboardSource,
     PLAYER_1_KEYS,
     PLAYER_2_KEYS,
+    type Action,
 } from "./input"
 import { loadLastPick, saveLastPick } from "./lastPick"
+import { controlsSpace } from "./layout"
 import { levels } from "./levels"
 import { createLoop } from "./loop"
 import {
@@ -44,6 +48,7 @@ import {
     celebrate,
     hideOverlay,
     hideToast,
+    overlayTap,
     showCharacterSelect,
     showGameOver,
     showMatchResult,
@@ -55,6 +60,7 @@ import {
     showToast,
     type EndScreenView,
 } from "./ui"
+import { isTouchDevice, TouchSource } from "./touch"
 import { roundWins, stunned, tallyText } from "./versus"
 
 let screen: Screen = initialScreen()
@@ -75,8 +81,45 @@ let lastAnimal: AnimalId = loadLastPick(storage)
 
 const canvas = document.getElementById("game")
 if (!(canvas instanceof HTMLCanvasElement)) throw new Error("No #game canvas")
-const renderer = createRenderer(canvas)
+// Touch: swipes and taps on the play area steer player 1 (TouchSource);
+// the optional on-screen D-pad, breath and pause buttons (dpad.ts) do too.
+// The D-pad is off unless the page is opened with ?dpad, until Settings
+// gets its toggle (KDA-246); setDpad switches it.
+const playArea = document.getElementById("play") ?? canvas
+const touchControls = createTouchControls()
+let dpadShown = false
+setControls(document, {
+    touch: isTouchDevice(window),
+    dpad: false,
+    playing: false,
+})
+
+// The renderer fits the maze into the window less the D-pad's band.
+const renderer = createRenderer(canvas, {
+    view: {
+        get innerWidth() {
+            return innerWidth - controlsRoom().width
+        },
+        get innerHeight() {
+            return innerHeight - controlsRoom().height
+        },
+        get devicePixelRatio() {
+            return devicePixelRatio
+        },
+    },
+})
 addEventListener("resize", () => renderer.resize())
+
+function controlsRoom() {
+    return controlsSpace(innerWidth, innerHeight, dpadShown)
+}
+
+// Show or hide the on-screen D-pad and breath button, refitting the maze.
+function setDpad(on: boolean) {
+    dpadShown = on
+    setControls(document, { dpad: on })
+    renderer.resize()
+}
 
 const input = new InputState()
 // Each player's input, by index (player 1 is 0): flow asks for player 2's
@@ -175,6 +218,7 @@ function padAssignment(screen: Screen): PadAssignment {
 function enter(prev: Screen, next: Screen) {
     screen = next
     pads.setAssignment(padAssignment(next))
+    setControls(document, { playing: next.kind === "playing" })
     // Play started from a menu (character select or Retry): a direction
     // still held from the menu waits for a fresh press. Resuming from pause
     // keeps held directions, so holding through a pause carries on moving.
@@ -367,8 +411,38 @@ document.addEventListener("visibilitychange", () => {
     if (document.hidden) autoPause()
 })
 
+// Taps and clicks on the overlays: a menu item or card puts player 1's
+// cursor on it and confirms, Back is the pause action (Esc), and a tap
+// anywhere on the pause screen resumes. They go through player 1's input
+// like a key, so flow handles them on the next tick, delays and all.
+document.addEventListener("click", (event) => {
+    const tap = overlayTap(event.target)
+    if (!tap) return
+    if (tap.kind === "item") {
+        const next = selectItem(screen, tap.index)
+        if (next !== screen) {
+            screen = next
+            showOverlay(screen)
+        }
+        tapAction("confirm")
+    } else if (tap.kind === "back") {
+        tapAction("pause")
+    } else if (screen.kind === "paused") {
+        tapAction("confirm")
+    }
+})
+
+function tapAction(action: Action) {
+    const player = input.player(0)
+    player.press(action, "tap")
+    player.release(action, "tap")
+}
+
 new KeyboardSource([PLAYER_1_KEYS, PLAYER_2_KEYS]).attach(input)
 pads.attach(input)
+new TouchSource(playArea).attach(input)
+new DpadSource(touchControls).attach(input)
+if (new URLSearchParams(location.search).has("dpad")) setDpad(true)
 // The (empty) toast live region goes in at once, so screen readers already
 // watch it when the first toast shows.
 hideToast()

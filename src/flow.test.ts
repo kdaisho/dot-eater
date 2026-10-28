@@ -6,6 +6,7 @@ import {
     gameOf,
     initialScreen,
     pauseIfPlaying,
+    selectItem,
     startLevel,
     update,
     type FlowDeps,
@@ -866,5 +867,84 @@ describe("gameOf", () => {
             gameOf({ kind: "stageSelect", mode: "solo", selected: 0 })
         ).toBeUndefined()
         expect(gameOf(characterSelect())).toBeUndefined()
+    })
+})
+
+describe("selectItem", () => {
+    it("moves the title's cursor to a mode, then confirm picks it", () => {
+        const coop = selectItem(initialScreen(), 1)
+        expect(coop).toEqual({ kind: "title", mode: "coop" })
+        expect(update(coop, tickInput(["confirm"]), deps())).toEqual({
+            kind: "stageSelect",
+            mode: "coop",
+            selected: 0,
+        })
+    })
+
+    it("moves stage select's cursor, locked slots included", () => {
+        const stages: Screen = {
+            kind: "stageSelect",
+            mode: "solo",
+            selected: 0,
+        }
+        expect(selectItem(stages, 1)).toEqual({ ...stages, selected: 1 })
+        // Confirm on a slot with no level stays put, as with the keys.
+        const empty = selectItem(stages, STAGE_COUNT - 1)
+        expect(empty).toEqual({ ...stages, selected: STAGE_COUNT - 1 })
+        expect(update(empty, tickInput(["confirm"]), deps())).toBe(empty)
+    })
+
+    it("moves player 1's character, then confirm plays it", () => {
+        const screen = selectItem(characterSelect(), 2)
+        expect(screen).toMatchObject({ picks: [ANIMAL_IDS[2]] })
+        expect(update(screen, tickInput(["confirm"]), deps())).toMatchObject({
+            kind: "playing",
+            animals: [ANIMAL_IDS[2]],
+        })
+    })
+
+    it("leaves player 2's cursor, and a confirmed player 1's pick", () => {
+        const two: Screen = {
+            kind: "characterSelect",
+            mode: "coop",
+            level: 0,
+            picks: [ANIMAL_IDS[0], ANIMAL_IDS[3]],
+            ready: [false, false],
+        }
+        expect(selectItem(two, 1)).toMatchObject({
+            picks: [ANIMAL_IDS[1], ANIMAL_IDS[3]],
+        })
+        const ready: Screen = { ...two, ready: [true, false] }
+        expect(selectItem(ready, 1)).toBe(ready)
+    })
+
+    it("moves an end screen's choice, keeping its confirm delay", () => {
+        const shown = { seconds: 0 }
+        const over = end("gameOver")
+        if (over.kind !== "gameOver") throw new Error(over.kind)
+        const screen: Screen = { ...over, shown }
+        const next = selectItem(screen, 1)
+        expect(next).toMatchObject({ choice: "stageSelect" })
+        expect("shown" in next && next.shown).toBe(shown)
+        expect(selectItem(end("stageClear"), 1)).toMatchObject({
+            choice: "stageSelect",
+        })
+    })
+
+    it("comes back unchanged off the menu, on the current item, or without a menu", () => {
+        const title = initialScreen()
+        for (const index of [0, -1, 3, 0.5]) {
+            expect(selectItem(title, index)).toBe(title)
+        }
+        const stages: Screen = {
+            kind: "stageSelect",
+            mode: "solo",
+            selected: 0,
+        }
+        expect(selectItem(stages, STAGE_COUNT)).toBe(stages)
+        const game = playing()
+        expect(selectItem(game, 0)).toBe(game)
+        const paused = pauseIfPlaying(playing())
+        expect(selectItem(paused, 0)).toBe(paused)
     })
 })

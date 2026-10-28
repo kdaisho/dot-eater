@@ -53,3 +53,22 @@ export function computeLayout(
         dpr: ratio,
     }
 }
+
+// The band (CSS pixels) kept for the on-screen D-pad and breath button
+// when they show: below the maze in portrait, and on both sides of it in
+// landscape (D-pad left, breath right). css/style.css uses the same size.
+export const DPAD_SPACE = 180
+
+// The room the touch controls take from a viewport (CSS pixels), to fit
+// the maze in the rest. None without the D-pad. Portrait is a viewport at
+// least as tall as it is wide, as in CSS's orientation media feature.
+export function controlsSpace(
+    viewportWidth: number,
+    viewportHeight: number,
+    dpad: boolean
+): { width: number; height: number } {
+    if (!dpad) return { width: 0, height: 0 }
+    return viewportHeight >= viewportWidth
+        ? { width: 0, height: DPAD_SPACE }
+        : { width: 2 * DPAD_SPACE, height: 0 }
+}
