@@ -1573,15 +1573,15 @@ describe("createRenderer with the facing guide", () => {
             const { calls, canvas, renderer } = setup()
             renderer.draw(game(), 0, {}, {}, ARROW)
             expect(arrows(calls, canvas)).toEqual([
-                { color: 0, tip: [2.1, 1.5] },
+                { color: 0, tip: [2.2, 1.5] },
             ])
         })
 
         it.each([
-            ["up", vec2(0, -1), [1.5, 0.9]],
-            ["down", vec2(0, 1), [1.5, 2.1]],
-            ["left", vec2(-1, 0), [0.9, 1.5]],
-            ["right", vec2(1, 0), [2.1, 1.5]],
+            ["up", vec2(0, -1), [1.5, 0.8]],
+            ["down", vec2(0, 1), [1.5, 2.2]],
+            ["left", vec2(-1, 0), [0.8, 1.5]],
+            ["right", vec2(1, 0), [2.2, 1.5]],
         ])("points %s the way the player faces", (_, facing, tip) => {
             const { calls, canvas, renderer } = setup()
             const state = game()
@@ -1594,8 +1594,8 @@ describe("createRenderer with the facing guide", () => {
             const { calls, canvas, renderer } = setup()
             renderer.draw(game(2), 0, {}, {}, ARROW)
             expect(arrows(calls, canvas)).toEqual([
-                { color: 0, tip: [2.1, 1.5] },
-                { color: 1, tip: [6.9, 1.5] },
+                { color: 0, tip: [2.2, 1.5] },
+                { color: 1, tip: [6.8, 1.5] },
             ])
         })
 
@@ -1624,7 +1624,7 @@ describe("createRenderer with the facing guide", () => {
             player.moveProgress = 0.5
             renderer.draw(state, 0, {}, {}, ARROW)
             expect(arrows(calls, canvas)).toEqual([
-                { color: 0, tip: [2.6, 1.5] },
+                { color: 0, tip: [2.7, 1.5] },
             ])
         })
 

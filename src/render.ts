@@ -143,15 +143,15 @@ const LABEL_SCALE = 0.4
 // colour just outside its ring, pointing the way it faces. Its tip is this
 // far from the sprite's centre and its base this wide, in cells; it is
 // this opaque while the player is stunned.
-const ARROW_TIP = 0.6
-const ARROW_WIDTH = 0.2
+const ARROW_TIP = 0.7
+const ARROW_WIDTH = 0.3
 const ARROW_STUNNED_ALPHA = 0.35
 
 // The aim preview (see Effects.aim) is a tint in the player's colour: a
 // faint fill over each cell its breath would hit, and a slightly stronger
 // edge round the outside of those cells, this wide as a fraction of a cell.
-const AIM_FILL_ALPHA = 0.18
-const AIM_EDGE_ALPHA = 0.5
+const AIM_FILL_ALPHA = 0.1
+const AIM_EDGE_ALPHA = 0.3
 const AIM_EDGE_WIDTH = 0.05
 
 // Enemies look like what they do: every enemy of one AI type shares a
