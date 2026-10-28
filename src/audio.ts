@@ -4,6 +4,10 @@
 // feeds the speakers. The context and the timer that drives music
 // scheduling are injected, so tests run it on a fake without a browser.
 //
+// Pause: `pauseMusic` freezes the tune where it is (cutting the notes
+// already scheduled ahead) and `resumeMusic` carries on from that point in
+// the tune, not from its start.
+//
 // Autoplay: browsers only let audio start after a user gesture, so nothing
 // is created until `unlock()`, which main.ts calls on the first key or
 // pointer press (and again on later ones, which resumes a context the
@@ -22,6 +26,7 @@ import {
     type CompiledTrack,
     type MusicTrackId,
 } from "./music"
+import { defaultSettings, VOLUME_MAX, type Settings } from "./settings"
 import { SFX, type SfxId } from "./sfx"
 import { DEFAULT_ATTACK, RELEASE, SILENT, type Tone } from "./tone"
 
@@ -40,17 +45,27 @@ export type AudioContextLike = Pick<
     | "createBuffer"
 >
 
-// Volumes as the settings store them (KDA-246): music and effects 0–10,
-// and a master mute.
+// The volume settings (KDA-246's musicVolume, effectsVolume and muted):
+// music and effects 0–VOLUME_MAX, and a master mute.
 export type Volumes = {
     music: number
     effects: number
     muted: boolean
 }
 
-export const VOLUME_MAX = 10
-// Used until the first setVolumes.
-export const DEFAULT_VOLUMES: Volumes = { music: 7, effects: 8, muted: false }
+// The volumes in saved settings.
+export function volumesOf(
+    settings: Pick<Settings, "musicVolume" | "effectsVolume" | "muted">
+): Volumes {
+    return {
+        music: settings.musicVolume,
+        effects: settings.effectsVolume,
+        muted: settings.muted,
+    }
+}
+
+// Used until the first setVolumes: the settings' defaults.
+export const DEFAULT_VOLUMES: Volumes = volumesOf(defaultSettings())
 
 // The master gain when not muted: headroom, so several sounds at once don't
 // clip.
@@ -165,14 +180,20 @@ export type Audio = {
     // effects volume 0.
     playSfx(id: SfxId): void
     // Loop a tune from its start, replacing the one playing. Asking for the
-    // tune already playing (or waiting for unlock) keeps it going.
+    // tune already playing (or paused, or waiting for unlock) changes
+    // nothing: it keeps going, or stays paused.
     playMusic(track: MusicTrackId): void
-    // Stop the tune at once.
+    // Stop the tune at once and forget it.
     stopMusic(): void
+    // Freeze the tune where it is; nothing without a tune.
+    pauseMusic(): void
+    // Carry on from where the tune was paused.
+    resumeMusic(): void
     // Whether unlock has been called.
     readonly unlocked: boolean
-    // The tune playing, or waiting for unlock to start.
+    // The tune playing, paused, or waiting for unlock to start.
     readonly music: MusicTrackId | undefined
+    readonly musicPaused: boolean
 }
 
 type Buses = { master: GainNode; music: GainNode; effects: GainNode }
@@ -199,6 +220,9 @@ export function createAudio(options: AudioOptions): Audio {
     let volumes: Volumes = DEFAULT_VOLUMES
     let music: MusicTrackId | undefined
     let playing: Playing | undefined
+    let paused = false
+    // Track time to start from when the tune (re)starts.
+    let position = 0
     const compiled = new Map<MusicTrackId, CompiledTrack>()
 
     function compiledTrack(id: MusicTrackId): CompiledTrack {
@@ -249,14 +273,14 @@ export function createAudio(options: AudioOptions): Audio {
     }
 
     function startMusic() {
-        if (!context || !buses || !music || playing) return
+        if (!context || !buses || !music || playing || paused) return
         const bus = context.createGain()
         bus.connect(buses.music)
         playing = {
             track: compiledTrack(music),
             bus,
-            start: context.currentTime + MUSIC_START_DELAY,
-            scheduled: 0,
+            start: context.currentTime + MUSIC_START_DELAY - position,
+            scheduled: position,
             timer: options.setTimer(pump, SCHEDULE_MS),
         }
         pump()
@@ -309,17 +333,36 @@ export function createAudio(options: AudioOptions): Audio {
             if (music === track) return
             haltMusic()
             music = track
+            paused = false
+            position = 0
             startMusic()
         },
         stopMusic() {
             haltMusic()
             music = undefined
+            paused = false
+            position = 0
+        },
+        pauseMusic() {
+            if (!music || paused) return
+            if (playing && context)
+                position = Math.max(0, context.currentTime - playing.start)
+            haltMusic()
+            paused = true
+        },
+        resumeMusic() {
+            if (!paused) return
+            paused = false
+            startMusic()
         },
         get unlocked() {
             return unlocked
         },
         get music() {
             return music
+        },
+        get musicPaused() {
+            return paused
         },
     }
 }

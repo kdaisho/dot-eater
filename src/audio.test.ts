@@ -10,146 +10,15 @@ import {
     MUSIC_START_DELAY,
     SCHEDULE_MS,
     volumeGain,
+    volumesOf,
     type AudioContextLike,
 } from "./audio"
 import { compileTrack, tonesInWindow, TRACKS } from "./music"
+import { defaultSettings } from "./settings"
 import { SFX, SfxId } from "./sfx"
-
-// A stand-in for the Web Audio graph that records what the engine does.
-
-type ParamEvent = [kind: string, value: number, time: number]
-
-class FakeParam {
-    events: ParamEvent[] = []
-    setValueAtTime(value: number, time: number) {
-        this.events.push(["set", value, time])
-        return this
-    }
-    linearRampToValueAtTime(value: number, time: number) {
-        this.events.push(["linear", value, time])
-        return this
-    }
-    exponentialRampToValueAtTime(value: number, time: number) {
-        this.events.push(["exp", value, time])
-        return this
-    }
-    // The last value set at or before `time` by setValueAtTime.
-    setAt(time: number): number | undefined {
-        return this.events
-            .filter(([k, , t]) => k === "set" && t <= time)
-            .at(-1)?.[1]
-    }
-}
-
-class FakeNode {
-    connections: FakeNode[] = []
-    disconnected = false
-    connect(node: FakeNode) {
-        this.connections.push(node)
-        return node
-    }
-    disconnect() {
-        this.disconnected = true
-    }
-}
-
-class FakeGain extends FakeNode {
-    gain = new FakeParam()
-}
-
-class FakeSource extends FakeNode {
-    started: number | undefined
-    stopped: number | undefined
-    onended: (() => void) | null = null
-    start(time: number) {
-        this.started = time
-    }
-    stop(time: number) {
-        this.stopped = time
-    }
-}
-
-class FakeOscillator extends FakeSource {
-    type = "sine"
-    frequency = new FakeParam()
-}
-
-class FakeBufferSource extends FakeSource {
-    buffer: unknown = null
-    loop = false
-}
-
-class FakeFilter extends FakeNode {
-    type = "lowpass"
-    frequency = new FakeParam()
-}
-
-function fakeContext() {
-    const fake = {
-        currentTime: 10,
-        sampleRate: 100,
-        state: "suspended" as AudioContextState,
-        destination: new FakeNode(),
-        gains: [] as FakeGain[],
-        oscillators: [] as FakeOscillator[],
-        bufferSources: [] as FakeBufferSource[],
-        filters: [] as FakeFilter[],
-        resume: vi.fn(() => {
-            fake.state = "running"
-            return Promise.resolve()
-        }),
-        createGain() {
-            const node = new FakeGain()
-            fake.gains.push(node)
-            return node
-        },
-        createOscillator() {
-            const node = new FakeOscillator()
-            fake.oscillators.push(node)
-            return node
-        },
-        createBufferSource() {
-            const node = new FakeBufferSource()
-            fake.bufferSources.push(node)
-            return node
-        },
-        createBiquadFilter() {
-            const node = new FakeFilter()
-            fake.filters.push(node)
-            return node
-        },
-        createBuffer(_channels: number, length: number) {
-            const data = new Float32Array(length)
-            return { length, getChannelData: () => data }
-        },
-        // Every source scheduled so far, oscillators and noise.
-        get sources(): FakeSource[] {
-            return [...fake.oscillators, ...fake.bufferSources]
-        },
-    }
-    return fake
-}
+import { fakeContext, fakeTimers, type FakeGain } from "./test/fakeAudio"
 
 const byTime = (a: number, b: number) => a - b
-
-// Hand-driven timers: `fire()` runs every live one.
-function fakeTimers() {
-    const live = new Map<number, () => void>()
-    let next = 1
-    return {
-        live,
-        setTimer: vi.fn((callback: () => void, _ms: number) => {
-            live.set(next, callback)
-            return next++
-        }),
-        clearTimer: vi.fn((handle: number) => {
-            live.delete(handle)
-        }),
-        fire() {
-            for (const callback of live.values()) callback()
-        },
-    }
-}
 
 function setup() {
     const context = fakeContext()
@@ -502,6 +371,139 @@ describe("music", () => {
         audio.stopMusic()
         audio.unlock()
         expect(timers.setTimer).not.toHaveBeenCalled()
+    })
+})
+
+describe("volumesOf", () => {
+    it("reads the volumes from settings; the defaults are settings'", () => {
+        const d = defaultSettings()
+        expect(volumesOf({ ...d, musicVolume: 3, muted: true })).toEqual({
+            music: 3,
+            effects: d.effectsVolume,
+            muted: true,
+        })
+        expect(DEFAULT_VOLUMES).toEqual({
+            music: d.musicVolume,
+            effects: d.effectsVolume,
+            muted: d.muted,
+        })
+    })
+})
+
+describe("pausing music", () => {
+    const stage1 = compileTrack(TRACKS.stage1)
+    const startedTimes = (
+        context: ReturnType<typeof fakeContext>,
+        before: readonly unknown[] = []
+    ) =>
+        context.sources
+            .filter((s) => !before.includes(s))
+            .map((s) => s.started ?? NaN)
+            .sort(byTime)
+
+    // Run the scheduler for `seconds` of context time from now.
+    function run(
+        context: ReturnType<typeof fakeContext>,
+        timers: ReturnType<typeof fakeTimers>,
+        seconds: number
+    ) {
+        const end = context.currentTime + seconds
+        while (context.currentTime < end - 1e-9) {
+            context.currentTime += 0.025
+            timers.fire()
+        }
+    }
+
+    it("freezes the tune and carries on from the same point", () => {
+        const { audio, context, timers } = setup()
+        audio.unlock()
+        audio.playMusic("stage1")
+        const start = context.currentTime + MUSIC_START_DELAY
+        run(context, timers, 2)
+        const pausedAt = context.currentTime - start
+        audio.pauseMusic()
+        expect(audio.musicPaused).toBe(true)
+        expect(timers.live.size).toBe(0)
+        // The notes scheduled ahead are cut with the tune's own gain node
+        // (made right after the three buses).
+        expect(context.gains[3].disconnected).toBe(true)
+
+        // Paused for 5 s: nothing new is scheduled.
+        const before = context.sources
+        run(context, timers, 5)
+        expect(context.sources.length).toBe(before.length)
+
+        audio.resumeMusic()
+        expect(audio.musicPaused).toBe(false)
+        const resumed = context.currentTime + MUSIC_START_DELAY
+        run(context, timers, 1)
+        const reached = context.currentTime - resumed + pausedAt + LOOKAHEAD
+        // From the pause point on, not from the start, shifted to now.
+        const expected = tonesInWindow(stage1, pausedAt, reached)
+            .map((t) => resumed + t.at - pausedAt)
+            .sort(byTime)
+        expect(expected.length).toBeGreaterThan(0)
+        const started = startedTimes(context, before)
+        expect(started).toHaveLength(expected.length)
+        started.forEach((t, i) => expect(t).toBeCloseTo(expected[i], 9))
+    })
+
+    it("keeps a paused tune paused when it is asked for again", () => {
+        const { audio, timers } = setup()
+        audio.unlock()
+        audio.playMusic("title")
+        audio.pauseMusic()
+        audio.playMusic("title")
+        expect(audio.musicPaused).toBe(true)
+        expect(timers.live.size).toBe(0)
+    })
+
+    it("starts a new tune unpaused, from its start", () => {
+        const { audio, context, timers } = setup()
+        audio.unlock()
+        audio.playMusic("title")
+        run(context, timers, 1)
+        audio.pauseMusic()
+        const before = context.sources
+        audio.playMusic("stage1")
+        expect(audio.musicPaused).toBe(false)
+        const start = context.currentTime + MUSIC_START_DELAY
+        const expected = tonesInWindow(stage1, 0, LOOKAHEAD)
+            .map((t) => start + t.at)
+            .sort(byTime)
+        const started = startedTimes(context, before)
+        expect(started).toHaveLength(expected.length)
+        started.forEach((t, i) => expect(t).toBeCloseTo(expected[i], 9))
+    })
+
+    it("does nothing without a tune, or resuming one not paused", () => {
+        const { audio, timers } = setup()
+        audio.unlock()
+        audio.pauseMusic()
+        expect(audio.musicPaused).toBe(false)
+        audio.playMusic("title")
+        audio.resumeMusic()
+        expect(timers.setTimer).toHaveBeenCalledTimes(1)
+    })
+
+    it("stays paused through unlock, and starts on resume", () => {
+        const { audio, timers } = setup()
+        audio.playMusic("title")
+        audio.pauseMusic()
+        audio.unlock()
+        expect(timers.setTimer).not.toHaveBeenCalled()
+        audio.resumeMusic()
+        expect(timers.setTimer).toHaveBeenCalledTimes(1)
+    })
+
+    it("forgets the pause when the tune is stopped", () => {
+        const { audio } = setup()
+        audio.unlock()
+        audio.playMusic("title")
+        audio.pauseMusic()
+        audio.stopMusic()
+        expect(audio.musicPaused).toBe(false)
+        expect(audio.music).toBeUndefined()
     })
 })
 

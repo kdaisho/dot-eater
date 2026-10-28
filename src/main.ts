@@ -1,4 +1,5 @@
 import { browserAudioContext, createAudio } from "./audio"
+import { playEventSounds, screenSound } from "./sound"
 import { energyHud } from "./breath"
 import { MAX_FRAME_MS, TICK_MS } from "./constants"
 import { takeEvents, type GameEvent } from "./events"
@@ -178,7 +179,7 @@ function tick(dt: number) {
     const wasDefeated = boss?.defeated ?? true
     const next = update(screen, tickInput, flowDeps(dt))
     input.endTick()
-    if (game) onGameEvents(takeEvents(game))
+    if (game) onGameEvents(takeEvents(game), game)
     if (boss && !wasDefeated && boss.defeated) burst()
     if (next !== screen) enter(screen, next)
 }
@@ -199,7 +200,9 @@ function flowDeps(dt: number): FlowDeps {
 // What happened in the tick's game step, if it stepped the game (see
 // events.ts); empty otherwise. Sound (KDA-212) and particles and screen
 // shake (KDA-213) hook in here.
-function onGameEvents(_events: readonly GameEvent[]) {}
+function onGameEvents(events: readonly GameEvent[], _game: GameState) {
+    playEventSounds(audio, events)
+}
 
 // How pads map to players on a screen. The title, where the mode is still
 // being chosen, shares every pad with player 1, so any pad can pick the
@@ -247,6 +250,7 @@ function enter(prev: Screen, next: Screen) {
         settings = next.settings
         saveSettings(storage, settings)
     }
+    screenSound(audio, prev, next, settings)
     showOverlay(next)
 }
 
@@ -445,7 +449,9 @@ document.addEventListener("visibilitychange", () => {
 
 // Sound (KDA-212). Browsers only start audio after a user gesture, so the
 // first key or pointer press unlocks it; later ones resume it if the browser
-// suspended it. Gamepad presses don't count as gestures.
+// suspended it. Gamepad presses don't count as gestures. Each screen change
+// sets the tune, menu sound and volumes (screenSound); the title tune waits
+// for the unlock.
 const audio = createAudio({
     createContext: browserAudioContext(globalThis),
     setTimer: (callback, ms) => window.setInterval(callback, ms),
@@ -453,6 +459,7 @@ const audio = createAudio({
 })
 for (const type of ["keydown", "pointerdown", "touchend"])
     document.addEventListener(type, () => audio.unlock(), { capture: true })
+screenSound(audio, undefined, screen, settings)
 
 new KeyboardSource([PLAYER_1_KEYS, PLAYER_2_KEYS]).attach(input)
 pads.attach(input)
