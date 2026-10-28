@@ -3,9 +3,18 @@ body {
     background: #fff;
     display: flex;
     height: 100vh;
+    /* The visible height on phones, whose 100vh runs under the URL bar. */
+    height: 100dvh;
     justify-content: center;
     margin: 0;
     overflow: hidden;
+    /* No page scroll, pinch zoom or pull-to-refresh: touches steer the
+       game (src/touch.ts). Overlays allow vertical scrolling again. */
+    overscroll-behavior: none;
+    touch-action: none;
+    -webkit-tap-highlight-color: transparent;
+    -webkit-touch-callout: none;
+    user-select: none;
 }
 
 body * {
@@ -19,6 +28,29 @@ body * {
 
 #game {
     display: block;
+}
+
+/* The play area: the whole window, the maze centred in it. Swipes anywhere
+   on it steer. With the D-pad on, it leaves the controls' band free
+   (DPAD_SPACE in src/layout.ts): below in portrait, both sides in
+   landscape. */
+#play {
+    align-items: center;
+    box-sizing: border-box;
+    display: flex;
+    inset: 0;
+    justify-content: center;
+    position: fixed;
+}
+
+body[data-dpad="on"] #play {
+    padding-bottom: 180px;
+}
+
+@media (orientation: landscape) {
+    body[data-dpad="on"] #play {
+        padding: 0 180px;
+    }
 }
 
 .backdrop {
@@ -36,12 +68,44 @@ body * {
     left: 50%;
     /* Scroll rather than run off a short window (the body doesn't scroll). */
     max-height: calc(100vh - 120px);
+    /* The visible height on phones, so the last item isn't under the
+       toolbar (iOS Safari). */
+    max-height: calc(100dvh - 120px);
     overflow-y: auto;
     position: fixed;
     top: 100px;
+    touch-action: pan-y;
     transform: translateX(-50%);
     width: 90%;
     z-index: 30;
+}
+
+/* Short windows (a phone on its side): use the height there is. */
+@media (max-height: 500px) {
+    .overlay {
+        max-height: calc(100vh - 32px);
+        max-height: calc(100dvh - 32px);
+        top: 16px;
+    }
+
+    .overlay-title {
+        margin-bottom: 12px;
+    }
+}
+
+/* Back, on menus that go back: tapping it is Esc. A row of its own above
+   the title, so it never covers the title on a narrow phone. */
+.overlay-back {
+    background: none;
+    border: 0;
+    color: #fff;
+    cursor: pointer;
+    display: block;
+    font-size: 18px;
+    line-height: 44px;
+    margin-right: auto;
+    opacity: 0.8;
+    padding: 0 8px;
 }
 
 .overlay-title {
@@ -58,8 +122,30 @@ body * {
 }
 
 .overlay-menu li {
+    cursor: pointer;
     margin-bottom: 10px;
     opacity: 0.6;
+}
+
+/* Finger-sized menu items on touch screens, and a slider's ◀ ▶ wide
+   enough to hit. */
+@media (pointer: coarse) {
+    .overlay-menu li {
+        margin-bottom: 0;
+        padding: 8px 0;
+    }
+
+    .overlay-menu .menu-step {
+        display: inline-block;
+        padding: 0 12px;
+    }
+}
+
+/* Phones tap the overlays, so hints that only name keys are hidden. */
+@media (hover: none) and (pointer: coarse) {
+    .overlay-hint {
+        display: none;
+    }
 }
 
 .overlay-menu li.selected {
@@ -95,6 +181,7 @@ body * {
 
 .overlay-cards .card {
     border: 2px solid transparent;
+    cursor: pointer;
     border-radius: 8px;
     box-sizing: border-box;
     opacity: 0.6;
@@ -206,4 +293,101 @@ body * {
 .toast:empty {
     background: none;
     padding: 0;
+}
+
+/* Touch controls (src/dpad.ts). Hidden unless the body's data attributes
+   (setControls) say otherwise. Above the maze, under the overlays. */
+.touch-controls > * {
+    display: none;
+}
+
+.touch-controls button {
+    background: rgba(0, 0, 0, 0.08);
+    border: 2px solid rgba(0, 0, 0, 0.25);
+    border-radius: 50%;
+    color: #000;
+    cursor: pointer;
+    position: fixed;
+    touch-action: none;
+    z-index: 5;
+}
+
+.touch-controls button:active {
+    background: rgba(0, 0, 0, 0.25);
+}
+
+/* Pause: a small button in the top right corner, during play on touch
+   screens (there is no Esc key on a phone). */
+body[data-touch="on"][data-playing="on"] .touch-pause {
+    display: block;
+}
+
+.touch-pause {
+    font-size: 20px;
+    height: 44px;
+    right: 8px;
+    top: 8px;
+    width: 44px;
+}
+
+/* The D-pad (bottom left) and breath button (bottom right), in the band
+   #play leaves free: below the maze in portrait, at its sides in
+   landscape. */
+body[data-dpad="on"] .dpad,
+body[data-dpad="on"] .touch-breath {
+    display: block;
+}
+
+.dpad {
+    background: rgba(0, 0, 0, 0.08);
+    border: 2px solid rgba(0, 0, 0, 0.25);
+    border-radius: 50%;
+    bottom: 15px;
+    box-sizing: border-box;
+    height: 150px;
+    left: 15px;
+    position: fixed;
+    touch-action: none;
+    width: 150px;
+    z-index: 5;
+}
+
+.dpad-arrow {
+    color: rgba(0, 0, 0, 0.5);
+    font-size: 24px;
+    line-height: 24px;
+    pointer-events: none;
+    position: absolute;
+}
+
+.dpad-up {
+    left: 50%;
+    top: 10px;
+    transform: translateX(-50%);
+}
+
+.dpad-down {
+    bottom: 10px;
+    left: 50%;
+    transform: translateX(-50%);
+}
+
+.dpad-left {
+    left: 10px;
+    top: 50%;
+    transform: translateY(-50%);
+}
+
+.dpad-right {
+    right: 10px;
+    top: 50%;
+    transform: translateY(-50%);
+}
+
+.touch-breath {
+    bottom: 40px;
+    font-size: 36px;
+    height: 100px;
+    right: 40px;
+    width: 100px;
 }

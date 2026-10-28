@@ -2,6 +2,7 @@ import { describe, expect, it } from "vite-plus/test"
 import {
     END_CONFIRM_DELAY,
     MODE_CHOICES,
+    selectItem,
     startLevel,
     update,
     type FlowDeps,
@@ -252,5 +253,22 @@ describe("the match's end", () => {
         expect(update(over, confirm, deps())).toBe(over)
         const moved = update(over, input([["down"]]), deps())
         expect(moved).toMatchObject({ choice: "stageSelect" })
+    })
+})
+
+describe("selectItem on the versus results", () => {
+    it("moves the round result's choice to Quit", () => {
+        const next = finishRound(playing(), 0)
+        expect(next.kind).toBe("roundResult")
+        expect(selectItem(next, 1)).toMatchObject({ choice: "quit" })
+        expect(selectItem(next, 2)).toBe(next)
+    })
+
+    it("moves the match result's choice to Stage select", () => {
+        const first = finishRound(playing(), 0)
+        if (first.kind !== "roundResult") throw new Error(first.kind)
+        const last = finishRound(playing(first.match), 0)
+        expect(last.kind).toBe("matchResult")
+        expect(selectItem(last, 1)).toMatchObject({ choice: "stageSelect" })
     })
 })

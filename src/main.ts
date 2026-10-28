@@ -2,6 +2,7 @@ import { browserAudioContext, createAudio } from "./audio"
 import { playEventSounds, screenSound } from "./sound"
 import { energyHud } from "./breath"
 import { MAX_FRAME_MS, TICK_MS } from "./constants"
+import { createTouchControls, DpadSource, setControls } from "./dpad"
 import { applyMotion, effectsForEvents } from "./eventEffects"
 import { takeEvents, type GameEvent } from "./events"
 import {
@@ -14,6 +15,7 @@ import {
     pauseIfPlaying,
     playerCount,
     recordsProgress,
+    selectItem,
     settingsContext,
     TITLE_CHOICES,
     update,
@@ -36,8 +38,10 @@ import {
     KeyboardSource,
     PLAYER_1_KEYS,
     PLAYER_2_KEYS,
+    type Action,
 } from "./input"
 import { loadLastPick, saveLastPick } from "./lastPick"
+import { controlsSpace } from "./layout"
 import { levels } from "./levels"
 import { createLoop } from "./loop"
 import {
@@ -57,6 +61,7 @@ import {
     celebrate,
     hideOverlay,
     hideToast,
+    overlayTap,
     showCharacterSelect,
     showGameOver,
     showMatchResult,
@@ -69,6 +74,7 @@ import {
     showToast,
     type EndScreenView,
 } from "./ui"
+import { isTouchDevice, TouchSource } from "./touch"
 import { roundWins, stunned, tallyText } from "./versus"
 
 let screen: Screen = initialScreen()
@@ -100,12 +106,50 @@ function mediaQuery(query: string): MediaQueryList | undefined {
     }
 }
 const reducedMotion = mediaQuery("(prefers-reduced-motion: reduce)")
-const touch = navigator.maxTouchPoints > 0
+const touch = isTouchDevice(window)
 
 const canvas = document.getElementById("game")
 if (!(canvas instanceof HTMLCanvasElement)) throw new Error("No #game canvas")
-const renderer = createRenderer(canvas)
+// Touch: swipes and taps on the play area steer player 1 (TouchSource);
+// the optional on-screen D-pad, breath and pause buttons (dpad.ts) do too.
+// The D-pad shows on touch devices when the Show D-pad setting is on
+// (applyDpad, live as the setting changes).
+const playArea = document.getElementById("play") ?? canvas
+const touchControls = createTouchControls()
+const touchSource = new TouchSource(playArea)
+let dpadShown = false
+setControls(document, { touch, dpad: false, playing: false })
+
+// The renderer fits the maze into the window less the D-pad's band.
+const renderer = createRenderer(canvas, {
+    view: {
+        get innerWidth() {
+            return innerWidth - controlsRoom().width
+        },
+        get innerHeight() {
+            return innerHeight - controlsRoom().height
+        },
+        get devicePixelRatio() {
+            return devicePixelRatio
+        },
+    },
+})
 addEventListener("resize", () => renderer.resize())
+
+function controlsRoom() {
+    return controlsSpace(innerWidth, innerHeight, dpadShown)
+}
+
+// Show or hide the on-screen D-pad and breath button as the settings say,
+// refitting the maze when that changes.
+function applyDpad() {
+    const on = touch && settings.showDpad
+    if (on === dpadShown) return
+    dpadShown = on
+    setControls(document, { dpad: on })
+    renderer.resize()
+}
+applyDpad()
 
 // Particles and screen shake (KDA-213): visual only, never read by the
 // game. They move on with the game's ticks (so they freeze while paused),
@@ -273,6 +317,18 @@ function padAssignment(shown: Screen): PadAssignment {
 function enter(prev: Screen, next: Screen) {
     screen = next
     pads.setAssignment(padAssignment(next))
+    setControls(document, { playing: next.kind === "playing" })
+    // A swipe holds its direction until newer input; a game starting or
+    // ending (not a pause or resume) lets go of it, so it neither steers
+    // the next game nor sets that direction aside for the keys there.
+    const wasPlaying = prev.kind === "playing"
+    const isPlaying = next.kind === "playing"
+    if (
+        (isPlaying && !wasPlaying && prev.kind !== "paused") ||
+        (wasPlaying && !isPlaying && next.kind !== "paused")
+    ) {
+        touchSource.release()
+    }
     // Play started from a menu (character select or Retry): a direction
     // still held from the menu waits for a fresh press. Resuming from pause
     // keeps held directions, so holding through a pause carries on moving.
@@ -307,6 +363,7 @@ function enter(prev: Screen, next: Screen) {
     if (next.kind === "settings" && next.settings !== settings) {
         settings = next.settings
         saveSettings(storage, settings)
+        applyDpad()
         effects.motion()
     }
     screenSound(audio, prev, next, settings)
@@ -392,6 +449,7 @@ function showOverlay(s: Screen) {
                     return {
                         label: row.label,
                         ...(value === undefined ? {} : { value }),
+                        ...(row.kind === "slider" ? { steps: true } : {}),
                         selected: i === s.row,
                     }
                 })
@@ -506,6 +564,30 @@ document.addEventListener("visibilitychange", () => {
     if (document.hidden) autoPause()
 })
 
+// Taps and clicks on the overlays: a menu item or card puts player 1's
+// cursor on it and confirms (on settings that flips a toggle or runs
+// Back), a slider's ◀ or ▶ puts the cursor on it and steps it (left or
+// right), and Back is the pause action (Esc). They go through player 1's
+// input like keys, so flow handles them on the next tick, delays and all.
+document.addEventListener("click", (event) => {
+    const tap = overlayTap(event.target)
+    if (!tap || tap.kind === "panel") return
+    if (tap.kind === "back") return tapAction("pause")
+    const next = selectItem(screen, tap.index, flowDeps(0))
+    if (next !== screen) {
+        screen = next
+        showOverlay(screen)
+    }
+    if (tap.kind === "step") tapAction(tap.delta < 0 ? "left" : "right")
+    else tapAction("confirm")
+})
+
+function tapAction(action: Action) {
+    const player = input.player(0)
+    player.press(action, "tap")
+    player.release(action, "tap")
+}
+
 // Sound (KDA-212). Browsers only start audio after a user gesture, so the
 // first key or pointer press unlocks it; later ones resume it if the browser
 // suspended it. Gamepad presses don't count as gestures. Each screen change
@@ -522,6 +604,8 @@ screenSound(audio, undefined, screen, settings)
 
 new KeyboardSource([PLAYER_1_KEYS, PLAYER_2_KEYS]).attach(input)
 pads.attach(input)
+touchSource.attach(input)
+new DpadSource(touchControls).attach(input)
 // The (empty) toast live region goes in at once, so screen readers already
 // watch it when the first toast shows.
 hideToast()

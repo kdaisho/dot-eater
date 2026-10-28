@@ -3,6 +3,7 @@ import {
     baseScreen,
     gameOf,
     initialScreen,
+    selectItem,
     startLevel,
     update,
     type FlowDeps,
@@ -282,5 +283,68 @@ describe("the settings rows", () => {
         expect(settingsOf(twice).musicVolume).toBe(9)
         expect(settingsOf(once)).not.toBe(settingsOf(settings))
         expect(settingsOf(settings).musicVolume).toBe(7)
+    })
+})
+
+// Tapping (KDA-214): main puts the cursor on the tapped item with
+// selectItem, then presses confirm, or left/right for a slider's arrows.
+describe("selectItem on the title, pause and settings", () => {
+    it("puts the title's cursor on Settings and back on a mode", () => {
+        const title = initialScreen()
+        const onSettings = selectItem(title, 3)
+        expect(onSettings).toEqual({ ...title, onSettings: true })
+        expect(selectItem(onSettings, 3)).toBe(onSettings)
+        expect(update(onSettings, input(["confirm"]), deps())).toMatchObject({
+            kind: "settings",
+        })
+        expect(selectItem(onSettings, 0)).toEqual({
+            kind: "title",
+            mode: "solo",
+        })
+    })
+
+    it("puts the pause menu's cursor on Settings or Resume", () => {
+        const paused = press(startLevel(levels, 0, [AnimalId.dragon]), [
+            "pause",
+        ])
+        const onSettings = selectItem(paused, 1)
+        expect(onSettings).toMatchObject({ kind: "paused", choice: "settings" })
+        expect(update(onSettings, input(["confirm"]), deps())).toMatchObject({
+            kind: "settings",
+        })
+        expect(selectItem(paused, 0)).toBe(paused)
+        expect(
+            update(selectItem(onSettings, 0), input(["confirm"]), deps())
+        ).toMatchObject({ kind: "playing" })
+    })
+
+    it("moves the settings cursor to a row, which confirm or left/right then change", () => {
+        const settings = update(titleOnSettings(), input(["confirm"]), deps())
+        const mute = selectItem(settings, 2)
+        expect(mute).toMatchObject({ row: 2 })
+        expect(settingsOf(update(mute, input(["confirm"]), deps())).muted).toBe(
+            true
+        )
+        // A slider's ▶: the cursor on it, then right.
+        const effects = selectItem(settings, 1)
+        expect(
+            settingsOf(update(effects, input(["right"]), deps())).effectsVolume
+        ).toBe(defaultSettings().effectsVolume + 1)
+    })
+
+    it("counts the rows that show: Show D-pad only on touch devices", () => {
+        const touch = deps({ touch: true })
+        const settings = update(titleOnSettings(), input(["confirm"]), touch)
+        // Without touch: four rows, then Back (index 4) last.
+        expect(selectItem(settings, 5)).toBe(settings)
+        const dpad = selectItem(settings, 4, touch)
+        expect(dpad).toMatchObject({ row: 4 })
+        expect(
+            settingsOf(update(dpad, input(["confirm"]), touch)).showDpad
+        ).toBe(true)
+        const back = selectItem(settings, 5, touch)
+        expect(update(back, input(["confirm"]), touch)).toMatchObject({
+            kind: "title",
+        })
     })
 })
