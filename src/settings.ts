@@ -1,4 +1,5 @@
-// Saved settings: volumes, mute, screen shake and the on-screen D-pad.
+// Saved settings: volumes, mute, screen shake, the on-screen D-pad and the
+// control bindings.
 //
 // Like progress.ts: there is no DOM access here, storage is passed in
 // (window.localStorage in main), and every storage access is wrapped in
@@ -11,8 +12,10 @@
 // Fields a save has besides these are kept too (untyped, as they come), so
 // a save written by a later build loses nothing when this one saves it
 // back; keep them by spreading when changing a setting. New settings
-// (e.g. the key bindings of KDA-215) are added as optional fields without a
+// (like the key bindings of KDA-215) are added as optional fields without a
 // version bump, as progress adds per-stage records.
+
+import { DEFAULT_BINDINGS, parseBindings, type Bindings } from "./bindings"
 
 // Versioned, so a future save shape can live beside this one under a new key.
 export const SETTINGS_KEY = "dot-eater:settings:v1"
@@ -33,6 +36,9 @@ export type Settings = {
     screenShake: boolean | null
     // Whether touch play shows an on-screen D-pad (KDA-214).
     showDpad: boolean
+    // The keys and pad buttons (KDA-215); DEFAULT_BINDINGS when left out
+    // (see bindingsOf). Checked with parseBindings when read.
+    bindings?: Bindings
 }
 
 // The part of the Web Storage API this module uses.
@@ -56,6 +62,11 @@ export function shakeEnabled(
     prefersReducedMotion: boolean
 ): boolean {
     return settings.screenShake ?? !prefersReducedMotion
+}
+
+// The bindings in effect.
+export function bindingsOf(settings: Settings): Bindings {
+    return settings.bindings ?? DEFAULT_BINDINGS
 }
 
 // Read a saved string (see the top of this file for what counts).
@@ -85,6 +96,11 @@ export function parseSettings(raw: string | null): Settings {
                 ? screenShake
                 : defaults.screenShake,
         showDpad: typeof showDpad === "boolean" ? showDpad : defaults.showDpad,
+        // Left out when the save has none, so it keeps following the
+        // defaults; otherwise valid, whatever was stored.
+        ...(Object.hasOwn(data, "bindings")
+            ? { bindings: parseBindings(data.bindings) }
+            : {}),
     }
 }
 

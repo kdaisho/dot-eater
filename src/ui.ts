@@ -1,4 +1,6 @@
 import confetti from "canvas-confetti"
+import { DEFAULT_BINDINGS, keyName, type Bindings } from "./bindings"
+import type { Action } from "./input"
 import type { StageSlot } from "./progress"
 import type { AnimalId, AnimalInfo } from "./roster"
 import { formatTicks, starList, starText, type ClearRating } from "./stars"
@@ -79,6 +81,33 @@ type Card = {
     players?: readonly { index: number; ready: boolean }[]
 }
 
+// The hints name each player's keys as bound (see setHintBindings):
+// keys[player][action] is the key's display name.
+let keys = hintKeys(DEFAULT_BINDINGS)
+
+function hintKeys(bindings: Bindings): Record<Action, string>[] {
+    return bindings.players.map((player) => {
+        const names = {} as Record<Action, string>
+        for (const [action, code] of Object.entries(player.keys)) {
+            names[action as Action] = keyName(code)
+        }
+        return names
+    })
+}
+
+// Make the hints name these bindings' keys from the next overlay shown.
+// Escape, fixed to pause and back, is always "Esc".
+export function setHintBindings(bindings: Bindings) {
+    keys = hintKeys(bindings)
+}
+
+// Player `player`'s key for `action`, as the hints name it.
+const key = (action: Action, player = 0) => keys[player]![action]
+
+// "↑ ↓": player `player`'s two keys for a menu axis.
+const keyPair = (a: Action, b: Action, player = 0) =>
+    `${key(a, player)} ${key(b, player)}`
+
 // The title, with the mode select's menu when `modes` are given.
 export function showTitle(modes: readonly MenuItem[] = []) {
     show({
@@ -86,8 +115,8 @@ export function showTitle(modes: readonly MenuItem[] = []) {
         title: "Dot Eater",
         lines: [
             modes.length > 0
-                ? "↑ ↓ to choose, Space to start"
-                : "Press Space to start",
+                ? `${keyPair("up", "down")} to choose, ${key("confirm")} to start`
+                : `Press ${key("confirm")} to start`,
         ],
         items: modes,
     })
@@ -100,7 +129,9 @@ export function showStageSelect(slots: readonly StageSlot[], selected: number) {
     show({
         id: "stage-select",
         title: "Select a stage",
-        lines: ["↑ ↓ to choose, Space to pick a character, Esc to go back"],
+        lines: [
+            `${keyPair("up", "down")} to choose, ${key("confirm")} to pick a character, Esc to go back`,
+        ],
         items: slots.map((slot, i) => ({
             label: slotLabel(slot),
             selected: i === selected,
@@ -142,11 +173,13 @@ export function showCharacterSelect(
         title: two ? "Pick your characters" : "Pick a character",
         lines: two
             ? [
-                  "1P: ← → to choose, Space to confirm",
-                  "2P: A D to choose, E to confirm",
-                  "Esc or Q to go back",
+                  `1P: ${keyPair("left", "right")} to choose, ${key("confirm")} to confirm`,
+                  `2P: ${keyPair("left", "right", 1)} to choose, ${key("confirm", 1)} to confirm`,
+                  `Esc or ${key("pause", 1)} to go back`,
               ]
-            : ["← → to choose, Space to play, Esc to go back"],
+            : [
+                  `${keyPair("left", "right")} to choose, ${key("confirm")} to play, Esc to go back`,
+              ],
         cards: animals.map((animal) => ({
             animal,
             selected: animal.id === picks[0],
@@ -170,8 +203,11 @@ export function showPause(players = 1, items: readonly MenuItem[] = []) {
         title: "Paused",
         lines:
             players > 1
-                ? ["1P: P, Esc or Space to resume", "2P: Q or E to resume"]
-                : ["Press P, Esc or Space to resume"],
+                ? [
+                      `1P: ${key("pause")}, Esc or ${key("confirm")} to resume`,
+                      `2P: ${key("pause", 1)} or ${key("confirm", 1)} to resume`,
+                  ]
+                : [`Press ${key("pause")}, Esc or ${key("confirm")} to resume`],
         items,
     })
 }
@@ -182,7 +218,40 @@ export function showSettings(items: readonly MenuItem[]) {
     show({
         id: "settings",
         title: "Settings",
-        lines: ["↑ ↓ to choose, ← → to change, Esc to go back"],
+        lines: [
+            `${keyPair("up", "down")} to choose, ${keyPair("left", "right")} to change, Esc to go back`,
+        ],
+        items,
+    })
+}
+
+// What the controls screen shows (see the controls screen in flow.ts).
+export type ControlsView = {
+    // Whose controls show (player 1 is 0).
+    player: number
+    // One item per row, each with its key or button (see controlsMenu.ts).
+    items: readonly MenuItem[]
+    // While waiting for a key or button: the row's label, and whether it
+    // takes a pad button rather than a key.
+    capturing?: { label: string; pad: boolean }
+}
+
+// The controls screen: one player's keys and pad buttons, or while
+// capturing, the prompt for the new one.
+export function showControls({ player, items, capturing }: ControlsView) {
+    const other = player === 0 ? 2 : 1
+    show({
+        id: "controls",
+        title: `Controls · ${player + 1}P`,
+        lines: capturing
+            ? [
+                  `Press a ${capturing.pad ? "button" : "key"} for ${capturing.label}`,
+                  "Esc to cancel",
+              ]
+            : [
+                  `${keyPair("up", "down")} to choose, ${key("confirm")} to change`,
+                  `${keyPair("left", "right")} for ${other}P's controls, Esc to go back`,
+              ],
         items,
     })
 }

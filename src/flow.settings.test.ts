@@ -163,8 +163,10 @@ describe("Back from the settings", () => {
             "down",
             "down",
             "down",
+            "down",
         ])
-        expect(settings).toMatchObject({ row: 4 })
+        // Past Controls (title only), on Back.
+        expect(settings).toMatchObject({ row: 5 })
         expect(press(settings, ["confirm"])).toBe(title)
     })
 
@@ -199,8 +201,8 @@ describe("the settings rows", () => {
     it("moves the cursor over the rows, stopping at either end", () => {
         const settings = open()
         expect(press(settings, ["up"])).toBe(settings)
-        const last = press(settings, ["down", "down", "down", "down"])
-        expect(last).toMatchObject({ row: 4 })
+        const last = press(settings, ["down", "down", "down", "down", "down"])
+        expect(last).toMatchObject({ row: 5 })
         expect(press(last, ["down"])).toBe(last)
     })
 

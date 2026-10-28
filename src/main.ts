@@ -1,3 +1,9 @@
+import {
+    captureButton,
+    captureKey,
+    FIXED_PAUSE_KEY,
+    type BindingTarget,
+} from "./bindings"
 import { energyHud } from "./breath"
 import { MAX_FRAME_MS, TICK_MS } from "./constants"
 import { takeEvents, type GameEvent } from "./events"
@@ -11,6 +17,7 @@ import {
     pauseIfPlaying,
     playerCount,
     recordsProgress,
+    screenSettings,
     settingsContext,
     TITLE_CHOICES,
     update,
@@ -23,17 +30,18 @@ import {
 } from "./flow"
 import { totalScore, type GameState } from "./game"
 import {
+    CONTROLS_ROWS,
+    controlsRowLabel,
+    controlsRowValue,
+} from "./controlsMenu"
+import {
     browserPadList,
     GamepadSource,
+    pressedButtons,
     type PadAssignment,
     type PadChange,
 } from "./gamepad"
-import {
-    InputState,
-    KeyboardSource,
-    PLAYER_1_KEYS,
-    PLAYER_2_KEYS,
-} from "./input"
+import { InputState, KeyboardSource, keyMapsFor } from "./input"
 import { loadLastPick, saveLastPick } from "./lastPick"
 import { levels } from "./levels"
 import { createLoop } from "./loop"
@@ -45,7 +53,12 @@ import {
 } from "./progress"
 import { createRenderer, type Hud } from "./render"
 import { ANIMAL_IDS, ANIMALS, type AnimalId } from "./roster"
-import { loadSettings, saveSettings, type Settings } from "./settings"
+import {
+    bindingsOf,
+    loadSettings,
+    saveSettings,
+    type Settings,
+} from "./settings"
 import { rowValue, settingsRows } from "./settingsMenu"
 import {
     burst,
@@ -53,6 +66,7 @@ import {
     hideOverlay,
     hideToast,
     showCharacterSelect,
+    showControls,
     showGameOver,
     showMatchResult,
     showPause,
@@ -60,6 +74,7 @@ import {
     showSettings,
     showStageClear,
     showStageSelect,
+    setHintBindings,
     showTitle,
     showToast,
     type EndScreenView,
@@ -103,6 +118,8 @@ const renderer = createRenderer(canvas)
 addEventListener("resize", () => renderer.resize())
 
 const input = new InputState()
+// Both players' keys, as bound in the settings (see applyBindings).
+const keys = new KeyboardSource(keyMapsFor(bindingsOf(settings)))
 // Each player's input, by index (player 1 is 0): flow asks for player 2's
 // only in a 2-player mode.
 const tickInput: TickInput = {
@@ -115,6 +132,45 @@ const tickInput: TickInput = {
             breath: p.wasPressed("breath"),
         }
     },
+    captured: () => pendingCapture,
+}
+
+// The controls screen's capture (see TickInput.captured): the first key or
+// pad button pressed while it waits, or null for Escape (cancel). Taken only
+// while it waits, and cleared after every tick like the press edges.
+let pendingCapture: BindingTarget | null | undefined
+const capturing = () => screen.kind === "controls" && !!screen.capturing
+
+addEventListener("keydown", (event) => {
+    if (!capturing() || pendingCapture !== undefined) return
+    if (event.code === FIXED_PAUSE_KEY) {
+        pendingCapture = null
+        return
+    }
+    const code = captureKey(event)
+    if (code === undefined) return
+    // Tab and the like do nothing else while bound.
+    event.preventDefault()
+    pendingCapture = code
+})
+
+// The buttons each pad held at the last frame, so only a fresh press is
+// captured: a button held when the prompt opens (the confirm that opened
+// it), or when a pad is first listed, doesn't count.
+const padList = browserPadList(navigator)
+let padButtonsDown = new Map<number, readonly number[]>()
+function capturePads() {
+    const down = new Map<number, readonly number[]>()
+    for (const pad of padList()) {
+        if (!pad || pad.connected === false) continue
+        const now = pressedButtons(pad)
+        down.set(pad.index, now)
+        if (!capturing() || pendingCapture !== undefined) continue
+        const before = padButtonsDown.get(pad.index) ?? now
+        const button = captureButton(before, now)
+        if (button !== undefined) pendingCapture = button
+    }
+    padButtonsDown = down
 }
 
 // Gamepads: in one-player play every pad drives player 1, alongside the
@@ -135,9 +191,10 @@ function onPadChange(change: PadChange) {
     if (change.kind === "disconnected" && change.wasUsed) autoPause()
 }
 const pads = new GamepadSource(
-    browserPadList(navigator),
+    padList,
     globalThis,
-    onPadChange
+    onPadChange,
+    bindingsOf(settings)
 )
 pads.setAssignment(padAssignment(screen))
 let padPollFailed = false
@@ -157,6 +214,7 @@ const loop = createLoop({
         requestAnimationFrame(() => {
             try {
                 pads.poll()
+                capturePads()
             } catch (error) {
                 // Once, not every frame.
                 if (!padPollFailed) console.error(error)
@@ -177,6 +235,7 @@ function tick(dt: number) {
     const wasDefeated = boss?.defeated ?? true
     const next = update(screen, tickInput, flowDeps(dt))
     input.endTick()
+    pendingCapture = undefined
     if (game) onGameEvents(takeEvents(game))
     if (boss && !wasDefeated && boss.defeated) burst()
     if (next !== screen) enter(screen, next)
@@ -241,12 +300,25 @@ function enter(prev: Screen, next: Screen) {
         celebrate(10)
     }
     if (next.kind === "matchResult" && prev.kind === "ending") celebrate(10)
-    // Every change on the settings screen is saved at once.
-    if (next.kind === "settings" && next.settings !== settings) {
-        settings = next.settings
+    // Every change on the settings and controls screens is saved, and
+    // applied, at once.
+    const changed = screenSettings(next)
+    if (changed && changed !== settings) {
+        if (bindingsOf(changed) !== bindingsOf(settings)) {
+            applyBindings(changed)
+        }
+        settings = changed
         saveSettings(storage, settings)
     }
     showOverlay(next)
+}
+
+// Use the settings' bindings for the keyboard, the pads and the hints.
+function applyBindings(s: Settings) {
+    const bindings = bindingsOf(s)
+    keys.setBindings(bindings)
+    pads.setBindings(bindings)
+    setHintBindings(bindings)
 }
 
 // Interpolation only moves on during play and the ending outro (where the
@@ -332,6 +404,29 @@ function showOverlay(s: Screen) {
                     }
                 })
             )
+        }
+        case "controls": {
+            const bindings = bindingsOf(s.settings)
+            const current = CONTROLS_ROWS[s.row]
+            return showControls({
+                player: s.player,
+                items: CONTROLS_ROWS.map((row, i) => {
+                    const value = controlsRowValue(row, bindings, s.player)
+                    return {
+                        label: controlsRowLabel(row),
+                        ...(value === undefined ? {} : { value }),
+                        selected: i === s.row,
+                    }
+                }),
+                ...(s.capturing && current
+                    ? {
+                          capturing: {
+                              label: controlsRowLabel(current),
+                              pad: current.kind === "pad",
+                          },
+                      }
+                    : {}),
+            })
         }
         case "stageSelect":
             return showStageSelect(
@@ -442,7 +537,8 @@ document.addEventListener("visibilitychange", () => {
     if (document.hidden) autoPause()
 })
 
-new KeyboardSource([PLAYER_1_KEYS, PLAYER_2_KEYS]).attach(input)
+keys.attach(input)
+setHintBindings(bindingsOf(settings))
 pads.attach(input)
 // The (empty) toast live region goes in at once, so screen readers already
 // watch it when the first toast shows.

@@ -1,4 +1,6 @@
 import type { Random } from "./ai"
+import { DEFAULT_BINDINGS, rebind, type BindingTarget } from "./bindings"
+import { CONTROLS_ROWS, takesTarget } from "./controlsMenu"
 import {
     createGameState,
     settle,
@@ -12,7 +14,7 @@ import type { Action } from "./input"
 import type { Level } from "./level"
 import { isPlayable, STAGE_COUNT, type Progress } from "./progress"
 import { ANIMAL_IDS, DEFAULT_ANIMAL, type AnimalId } from "./roster"
-import { defaultSettings, type Settings } from "./settings"
+import { bindingsOf, defaultSettings, type Settings } from "./settings"
 import {
     changeRow,
     settingsRows,
@@ -48,6 +50,24 @@ import { matchWinner, roundResult, type RoundResult } from "./versus"
 // settings as changed so far; main saves them whenever a tick returns them
 // changed (as it records progress), and passes the saved ones back in
 // through FlowDeps.settings.
+//
+// Settings opened from the title have a Controls row (KDA-215), which opens
+// the controls screen: one player's bindings at a time (CONTROLS_ROWS in
+// controlsMenu.ts), player 1's first. Up/down move, left/right switch
+// between the players, confirm on a key or pad row waits for the new key or
+// button (`capturing`), and Reset to defaults and Back do what they say.
+// Back, or the pause action, returns to the settings with the cursor on
+// Controls. While capturing, every action press is ignored: the screen only
+// reads TickInput.captured, which main fills from raw keydowns (captureKey)
+// and pad buttons (captureButton). A key row takes a key and a pad row a
+// button; the other kind keeps it waiting. The capture goes through rebind
+// (so a key in use swaps), and Escape (null) stops waiting with nothing
+// changed. Either way capturing ends on that tick, whose press edges main
+// then clears, so the press that was captured never acts on the menu. Like
+// the settings screen, it carries the settings as changed so far, and main
+// saves (and applies) them whenever a tick returns them changed.
+//
+//   title <-> settings <-> controls
 //
 // There is no DOM access here: main feeds in one tick of input at a time,
 // renders whatever screen comes back and shows the matching overlay.
@@ -182,6 +202,21 @@ export type Screen =
           // The settings as changed so far.
           settings: Settings
       }
+    | {
+          kind: "controls"
+          // The mode of the title under the settings.
+          mode: Mode
+          // The settings screen, on its Controls row, that Back returns to.
+          back: SettingsScreen
+          // Whose controls show (player 1 is 0).
+          player: number
+          // The cursor, an index into CONTROLS_ROWS.
+          row: number
+          // Waiting for a key or button for the row under the cursor.
+          capturing?: boolean
+          // The settings as changed so far.
+          settings: Settings
+      }
     | { kind: "stageSelect"; mode: Mode; selected: number }
     | {
           kind: "characterSelect"
@@ -272,6 +307,7 @@ export type ScreenKind = Screen["kind"]
 type TitleScreen = Extract<Screen, { kind: "title" }>
 type PausedScreen = Extract<Screen, { kind: "paused" }>
 type SettingsScreen = Extract<Screen, { kind: "settings" }>
+type ControlsScreen = Extract<Screen, { kind: "controls" }>
 
 // One tick of input. `player` is the player's index, player 1 (0) unless
 // given.
@@ -280,6 +316,10 @@ export type TickInput = {
     wasPressed(action: Action, player?: number): boolean
     // Movement and the breath press for the game; only read while playing.
     move(player?: number): MoveInput
+    // The controls screen's capture: the key or pad button pressed since
+    // the previous tick, null for Escape (cancel), or undefined for none. Only
+    // read while capturing.
+    captured?(): BindingTarget | null | undefined
 }
 
 export type FlowDeps = {
@@ -345,6 +385,8 @@ export function update(
             return updateTitle(screen, input, deps)
         case "settings":
             return updateSettings(screen, input, deps)
+        case "controls":
+            return updateControls(screen, input)
         case "stageSelect":
             return updateStageSelect(screen, input, deps)
         case "characterSelect":
@@ -488,12 +530,72 @@ function runAction(screen: SettingsScreen, action: SettingsAction): Screen {
     switch (action) {
         case "back":
             return screen.back
+        case "controls":
+            return {
+                kind: "controls",
+                mode: screen.mode,
+                back: screen,
+                player: 0,
+                row: 0,
+                settings: screen.settings,
+            }
         default: {
             const unhandled: never = action
             throw new Error(`Unknown settings action: ${String(unhandled)}`)
         }
     }
 }
+
+// See the top of this file. Player 1 drives it.
+function updateControls(screen: ControlsScreen, input: TickInput): Screen {
+    const row = CONTROLS_ROWS[screen.row]
+    if (screen.capturing) {
+        const target = input.captured?.()
+        if (target === undefined) return screen
+        if (target === null) return { ...screen, capturing: false }
+        if (row.kind !== "key" && row.kind !== "pad") {
+            return { ...screen, capturing: false }
+        }
+        if (!takesTarget(row, target)) return screen
+        const bindings = bindingsOf(screen.settings)
+        const next = rebind(bindings, screen.player, row.action, target)
+        return {
+            ...screen,
+            capturing: false,
+            settings:
+                next === bindings
+                    ? screen.settings
+                    : { ...screen.settings, bindings: next },
+        }
+    }
+    const back = (): Screen => ({ ...screen.back, settings: screen.settings })
+    if (input.wasPressed("pause")) return back()
+    if (input.wasPressed("confirm")) {
+        switch (row.kind) {
+            case "back":
+                return back()
+            case "reset":
+                return bindingsOf(screen.settings) === DEFAULT_BINDINGS
+                    ? screen
+                    : {
+                          ...screen,
+                          settings: {
+                              ...screen.settings,
+                              bindings: DEFAULT_BINDINGS,
+                          },
+                      }
+            default:
+                return { ...screen, capturing: true }
+        }
+    }
+    const player = moveAcross(screen.player, CONTROLS_PLAYERS, input, 0)
+    if (player !== screen.player) return { ...screen, player }
+    const next = moveCursor(screen.row, CONTROLS_ROWS.length, input)
+    return next === screen.row ? screen : { ...screen, row: next }
+}
+
+// The controls screen shows both players' bindings, whatever the mode.
+const CONTROLS_PLAYERS = 2
 
 function updateStageSelect(
     screen: Extract<Screen, { kind: "stageSelect" }>,
@@ -746,10 +848,20 @@ function stepCursor(
     return Math.min(Math.max(next, 0), count - 1)
 }
 
-// The screen shown under this one: for settings, the screen they were
-// opened over (the title, or the paused game); otherwise the screen itself.
+// The screen shown under this one: for settings (and the controls screen
+// over them), the screen they were opened over (the title, or the paused
+// game); otherwise the screen itself.
 export function baseScreen(screen: Screen): Screen {
+    if (screen.kind === "controls") return baseScreen(screen.back)
     return screen.kind === "settings" ? screen.back : screen
+}
+
+// The settings a settings or controls screen carries, as changed so far;
+// undefined on other screens.
+export function screenSettings(screen: Screen): Settings | undefined {
+    return screen.kind === "settings" || screen.kind === "controls"
+        ? screen.settings
+        : undefined
 }
 
 // The game shown on this screen (or under it), if any.
