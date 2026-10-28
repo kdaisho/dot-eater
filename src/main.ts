@@ -1,20 +1,26 @@
 import { browserAudioContext, createAudio } from "./audio"
 import { energyHud } from "./breath"
 import { MAX_FRAME_MS, TICK_MS } from "./constants"
+import { takeEvents, type GameEvent } from "./events"
 import {
+    baseScreen,
     END_CHOICES,
     ROUND_CHOICES,
     gameOf,
     initialScreen,
-    MODE_CHOICES,
+    PAUSE_CHOICES,
     pauseIfPlaying,
     playerCount,
     recordsProgress,
+    settingsContext,
+    TITLE_CHOICES,
     update,
     type EndChoice,
+    type FlowDeps,
     type Mode,
     type Screen,
     type TickInput,
+    type TitleChoice,
 } from "./flow"
 import { totalScore, type GameState } from "./game"
 import {
@@ -40,6 +46,8 @@ import {
 } from "./progress"
 import { createRenderer, type Hud } from "./render"
 import { ANIMAL_IDS, ANIMALS, type AnimalId } from "./roster"
+import { loadSettings, saveSettings, type Settings } from "./settings"
+import { rowValue, settingsRows } from "./settingsMenu"
 import {
     burst,
     celebrate,
@@ -50,6 +58,7 @@ import {
     showMatchResult,
     showPause,
     showRoundResult,
+    showSettings,
     showStageClear,
     showStageSelect,
     showTitle,
@@ -73,6 +82,21 @@ const storage = browserStorage()
 let progress: Progress = loadProgress(storage)
 // Kept here too, so the last pick holds for the session if saving fails.
 let lastAnimal: AnimalId = loadLastPick(storage)
+// Likewise the settings: saved on every change on the settings screen.
+let settings: Settings = loadSettings(storage)
+
+// The system's reduced motion setting, read as it is now on every tick (it
+// can change while the game runs), and whether this is a touch device:
+// what some settings depend on (see SettingsContext).
+function mediaQuery(query: string): MediaQueryList | undefined {
+    try {
+        return window.matchMedia(query)
+    } catch {
+        return undefined
+    }
+}
+const reducedMotion = mediaQuery("(prefers-reduced-motion: reduce)")
+const touch = navigator.maxTouchPoints > 0
 
 const canvas = document.getElementById("game")
 if (!(canvas instanceof HTMLCanvasElement)) throw new Error("No #game canvas")
@@ -147,27 +171,43 @@ const loop = createLoop({
 // One logic tick: advance the screen machine with player 1's input, then
 // clear this tick's press edges, so a press is seen by exactly one tick (and
 // one screen). A boss defeated during the tick gets its burst of confetti
-// at once, mid-game.
+// at once, mid-game. What the game step reported goes to onGameEvents.
 function tick(dt: number) {
-    const boss = gameOf(screen)?.boss
+    const game = gameOf(screen)
+    const boss = game?.boss
     const wasDefeated = boss?.defeated ?? true
-    const next = update(screen, tickInput, {
+    const next = update(screen, tickInput, flowDeps(dt))
+    input.endTick()
+    if (game) onGameEvents(takeEvents(game))
+    if (boss && !wasDefeated && boss.defeated) burst()
+    if (next !== screen) enter(screen, next)
+}
+
+function flowDeps(dt: number): FlowDeps {
+    return {
         levels,
         progress,
         lastAnimal,
         dt,
         random: Math.random,
-    })
-    input.endTick()
-    if (boss && !wasDefeated && boss.defeated) burst()
-    if (next !== screen) enter(screen, next)
+        settings,
+        touch,
+        prefersReducedMotion: reducedMotion?.matches ?? false,
+    }
 }
+
+// What happened in the tick's game step, if it stepped the game (see
+// events.ts); empty otherwise. Sound (KDA-212) and particles and screen
+// shake (KDA-213) hook in here.
+function onGameEvents(_events: readonly GameEvent[]) {}
 
 // How pads map to players on a screen. The title, where the mode is still
 // being chosen, shares every pad with player 1, so any pad can pick the
 // mode (and go back to 1 player). From stage select on, a 2-player mode
 // gives each pad its own player, so player 2's pad picks its character.
-function padAssignment(screen: Screen): PadAssignment {
+// Settings follow the screen they were opened over.
+function padAssignment(shown: Screen): PadAssignment {
+    const screen = baseScreen(shown)
     return screen.kind !== "title" && playerCount(screen.mode) > 1
         ? "perPad"
         : "shared"
@@ -202,6 +242,11 @@ function enter(prev: Screen, next: Screen) {
         celebrate(10)
     }
     if (next.kind === "matchResult" && prev.kind === "ending") celebrate(10)
+    // Every change on the settings screen is saved at once.
+    if (next.kind === "settings" && next.settings !== settings) {
+        settings = next.settings
+        saveSettings(storage, settings)
+    }
     showOverlay(next)
 }
 
@@ -211,14 +256,16 @@ function enter(prev: Screen, next: Screen) {
 let lastAlpha = 0
 
 function render(alpha: number) {
-    const game = gameOf(screen)
+    // Settings over a paused game show that game behind them.
+    const shown = baseScreen(screen)
+    const game = gameOf(shown)
     if (!game) return renderer.clear()
-    if (screen.kind === "playing" || screen.kind === "ending") {
+    if (shown.kind === "playing" || shown.kind === "ending") {
         lastAlpha = alpha
     }
     // Every screen with a game also says which level it is.
-    const rules = "level" in screen ? levels[screen.level]?.rules : undefined
-    const hud = game.mode === "versus" ? versusHud(game, screen) : hudOf(game)
+    const rules = "level" in shown ? levels[shown.level]?.rules : undefined
+    const hud = game.mode === "versus" ? versusHud(game, shown) : hudOf(game)
     renderer.draw(game, lastAlpha, hud, rules)
 }
 
@@ -265,13 +312,28 @@ function hudOf(game: GameState): Hud {
 
 function showOverlay(s: Screen) {
     switch (s.kind) {
-        case "title":
+        case "title": {
+            const current: TitleChoice = s.onSettings ? "settings" : s.mode
             return showTitle(
-                MODE_CHOICES.map((mode) => ({
-                    label: MODE_LABELS[mode],
-                    selected: mode === s.mode,
+                TITLE_CHOICES.map((choice) => ({
+                    label: TITLE_LABELS[choice],
+                    selected: choice === current,
                 }))
             )
+        }
+        case "settings": {
+            const context = settingsContext(s, flowDeps(0))
+            return showSettings(
+                settingsRows(context).map((row, i) => {
+                    const value = rowValue(row, s.settings, context)
+                    return {
+                        label: row.label,
+                        ...(value === undefined ? {} : { value }),
+                        selected: i === s.row,
+                    }
+                })
+            )
+        }
         case "stageSelect":
             return showStageSelect(
                 stageSlots(
@@ -290,7 +352,13 @@ function showOverlay(s: Screen) {
         case "ending":
             return hideOverlay()
         case "paused":
-            return showPause(s.game.players.length)
+            return showPause(
+                s.game.players.length,
+                PAUSE_CHOICES.map((c) => ({
+                    label: PAUSE_LABELS[c],
+                    selected: c === (s.choice ?? "resume"),
+                }))
+            )
         case "stageClear":
             return showStageClear({
                 ...endView(s.game, s.choice),
@@ -334,12 +402,19 @@ const MATCH_LABELS = { retry: "Rematch", stageSelect: "Stage select" } as const
 const END_LABELS = { retry: "Retry", stageSelect: "Stage select" } as const
 
 // The mode select's labels, one per mode; the title offers them all, in
-// MODE_CHOICES order.
+// MODE_CHOICES order, then Settings.
 const MODE_LABELS: Record<Mode, string> = {
     solo: "1 player",
     coop: "Co-op",
     versus: "Versus",
 }
+
+const TITLE_LABELS: Record<TitleChoice, string> = {
+    ...MODE_LABELS,
+    settings: "Settings",
+}
+
+const PAUSE_LABELS = { resume: "Resume", settings: "Settings" } as const
 
 function endView(game: GameState, choice: EndChoice): EndScreenView {
     return {

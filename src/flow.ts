@@ -12,6 +12,13 @@ import type { Action } from "./input"
 import type { Level } from "./level"
 import { isPlayable, STAGE_COUNT, type Progress } from "./progress"
 import { ANIMAL_IDS, DEFAULT_ANIMAL, type AnimalId } from "./roster"
+import { defaultSettings, type Settings } from "./settings"
+import {
+    changeRow,
+    settingsRows,
+    type SettingsAction,
+    type SettingsContext,
+} from "./settingsMenu"
 import { rateClear, type ClearRating } from "./stars"
 import { matchWinner, roundResult, type RoundResult } from "./versus"
 
@@ -27,6 +34,21 @@ import { matchWinner, roundResult, type RoundResult } from "./versus"
 //
 // Back (the pause action, P or Escape) goes one menu up: character select
 // to stage select, stage select to the title.
+//
+// Settings open from the title's menu (its last entry, after the modes;
+// TITLE_CHOICES) and from the pause menu (PAUSE_CHOICES), and Back returns
+// to where they were opened, with the cursor still on Settings; from pause
+// that is the same paused game, which isn't stepped meanwhile.
+//
+//   title <-> settings        paused <-> settings
+//
+// The settings screen is a list of rows (see settingsMenu.ts) driven by
+// player 1: up/down move, left/right change a slider or flip a toggle,
+// confirm flips a toggle or runs an action. The screen carries the
+// settings as changed so far; main saves them whenever a tick returns them
+// changed (as it records progress), and passes the saved ones back in
+// through FlowDeps.settings.
+//
 // There is no DOM access here: main feeds in one tick of input at a time,
 // renders whatever screen comes back and shows the matching overlay.
 //
@@ -99,6 +121,18 @@ export type { Mode }
 // each mode.
 export const MODE_CHOICES: readonly Mode[] = ["solo", "coop", "versus"]
 
+// The title's whole menu, in order: the modes, then Settings.
+export type TitleChoice = Mode | "settings"
+export const TITLE_CHOICES: readonly TitleChoice[] = [
+    ...MODE_CHOICES,
+    "settings",
+]
+
+// What the pause screen offers, in menu order. Resume is selected on
+// entry, so confirm resumes as the pause action does.
+export const PAUSE_CHOICES = ["resume", "settings"] as const
+export type PauseChoice = (typeof PAUSE_CHOICES)[number]
+
 // How many players a mode has.
 export function playerCount(mode: Mode): number {
     return mode === "solo" ? 1 : 2
@@ -129,7 +163,25 @@ export type ShownFor = { seconds: number }
 export type Match = readonly RoundResult[]
 
 export type Screen =
-    | { kind: "title"; mode: Mode }
+    | {
+          kind: "title"
+          // The mode under the cursor, or the last one it was on while it
+          // is on Settings.
+          mode: Mode
+          // Whether the cursor is on Settings rather than a mode.
+          onSettings?: boolean
+      }
+    | {
+          kind: "settings"
+          // The mode of the screen it was opened from.
+          mode: Mode
+          // Where Back returns to: the title or the paused game, as it was.
+          back: TitleScreen | PausedScreen
+          // The cursor, an index into the rows that show (settingsRows).
+          row: number
+          // The settings as changed so far.
+          settings: Settings
+      }
     | { kind: "stageSelect"; mode: Mode; selected: number }
     | {
           kind: "characterSelect"
@@ -157,6 +209,8 @@ export type Screen =
           animals: Picks
           game: GameState
           match?: Match
+          // The pause menu's cursor; Resume when left out.
+          choice?: PauseChoice
       }
     | {
           kind: "ending"
@@ -215,6 +269,10 @@ export type Screen =
 
 export type ScreenKind = Screen["kind"]
 
+type TitleScreen = Extract<Screen, { kind: "title" }>
+type PausedScreen = Extract<Screen, { kind: "paused" }>
+type SettingsScreen = Extract<Screen, { kind: "settings" }>
+
 // One tick of input. `player` is the player's index, player 1 (0) unless
 // given.
 export type TickInput = {
@@ -235,6 +293,14 @@ export type FlowDeps = {
     lastAnimal?: AnimalId
     // Injected so tests can watch it; defaults to the real game step.
     step?: typeof step
+    // The saved settings, which the settings screen starts from; the
+    // defaults when left out.
+    settings?: Settings
+    // Whether the device has a touch screen, and whether the system asks
+    // for reduced motion: what some settings rows depend on (see
+    // SettingsContext). Both false when left out.
+    touch?: boolean
+    prefersReducedMotion?: boolean
 }
 
 export function initialScreen(): Screen {
@@ -276,7 +342,9 @@ export function update(
 ): Screen {
     switch (screen.kind) {
         case "title":
-            return updateTitle(screen, input)
+            return updateTitle(screen, input, deps)
+        case "settings":
+            return updateSettings(screen, input, deps)
         case "stageSelect":
             return updateStageSelect(screen, input, deps)
         case "characterSelect":
@@ -284,10 +352,7 @@ export function update(
         case "playing":
             return updatePlaying(screen, input, deps)
         case "paused":
-            return anyPressed(screen.mode, input, "pause") ||
-                anyPressed(screen.mode, input, "confirm")
-                ? { ...screen, kind: "playing" }
-                : screen
+            return updatePaused(screen, input, deps)
         case "ending":
             return settle(screen.game, deps.dt)
                 ? endScreen(screen, deps.levels)
@@ -322,18 +387,112 @@ function anyPressed(mode: Mode, input: TickInput, action: Action): boolean {
     return false
 }
 
-// Up/down move over MODE_CHOICES; confirm goes on to stage select in that
-// mode.
+// Up/down move over TITLE_CHOICES; confirm on a mode goes on to stage
+// select in that mode, and on Settings opens them.
 function updateTitle(
-    screen: Extract<Screen, { kind: "title" }>,
-    input: TickInput
+    screen: TitleScreen,
+    input: TickInput,
+    deps: FlowDeps
 ): Screen {
     if (input.wasPressed("confirm")) {
-        return { kind: "stageSelect", mode: screen.mode, selected: 0 }
+        return screen.onSettings
+            ? openSettings(screen, deps)
+            : { kind: "stageSelect", mode: screen.mode, selected: 0 }
     }
-    const index = Math.max(0, MODE_CHOICES.indexOf(screen.mode))
-    const next = moveCursor(index, MODE_CHOICES.length, input)
-    return next === index ? screen : { ...screen, mode: MODE_CHOICES[next] }
+    const current: TitleChoice = screen.onSettings ? "settings" : screen.mode
+    const index = Math.max(0, TITLE_CHOICES.indexOf(current))
+    const next = moveCursor(index, TITLE_CHOICES.length, input)
+    if (next === index) return screen
+    const choice = TITLE_CHOICES[next]
+    return choice === "settings"
+        ? { ...screen, onSettings: true }
+        : { kind: "title", mode: choice }
+}
+
+// The pause action resumes, as does confirm on Resume (either player's, in
+// a 2-player game); confirm on Settings opens them. Player 1 moves the
+// cursor.
+function updatePaused(
+    screen: PausedScreen,
+    input: TickInput,
+    deps: FlowDeps
+): Screen {
+    const { mode } = screen
+    const confirmed = anyPressed(mode, input, "confirm")
+    if (confirmed && screen.choice === "settings") {
+        return openSettings(screen, deps)
+    }
+    if (confirmed || anyPressed(mode, input, "pause")) {
+        const { choice: _, ...game } = screen
+        return { ...game, kind: "playing" }
+    }
+    const index = PAUSE_CHOICES.indexOf(screen.choice ?? "resume")
+    const next = moveCursor(index, PAUSE_CHOICES.length, input)
+    return next === index ? screen : { ...screen, choice: PAUSE_CHOICES[next] }
+}
+
+// The settings screen over `back` (the title or the paused game), on its
+// first row, starting from the saved settings.
+function openSettings(
+    back: TitleScreen | PausedScreen,
+    deps: FlowDeps
+): SettingsScreen {
+    return {
+        kind: "settings",
+        mode: back.mode,
+        back,
+        row: 0,
+        settings: deps.settings ?? defaultSettings(),
+    }
+}
+
+// What the settings screen's rows depend on (see SettingsContext).
+export function settingsContext(
+    screen: SettingsScreen,
+    deps: Pick<FlowDeps, "touch" | "prefersReducedMotion">
+): SettingsContext {
+    return {
+        from: screen.back.kind === "title" ? "title" : "pause",
+        touch: deps.touch ?? false,
+        prefersReducedMotion: deps.prefersReducedMotion ?? false,
+    }
+}
+
+// Player 1 drives it (see the top of this file). Back (the pause action)
+// returns to where it was opened.
+function updateSettings(
+    screen: SettingsScreen,
+    input: TickInput,
+    deps: FlowDeps
+): Screen {
+    if (input.wasPressed("pause")) return screen.back
+    const context = settingsContext(screen, deps)
+    const rows = settingsRows(context)
+    const row = rows[Math.min(screen.row, rows.length - 1)]
+    const change = (delta: -1 | 1): Screen => {
+        const settings = changeRow(row, screen.settings, context, delta)
+        return settings === screen.settings ? screen : { ...screen, settings }
+    }
+    if (input.wasPressed("confirm")) {
+        if (row.kind === "action") return runAction(screen, row.action)
+        return row.kind === "toggle" ? change(1) : screen
+    }
+    const delta =
+        Number(input.wasPressed("right")) - Number(input.wasPressed("left"))
+    if (delta !== 0) return change(delta < 0 ? -1 : 1)
+    const next = moveCursor(screen.row, rows.length, input)
+    return next === screen.row ? screen : { ...screen, row: next }
+}
+
+function runAction(screen: SettingsScreen, action: SettingsAction): Screen {
+    switch (action) {
+        case "back":
+            return screen.back
+        default: {
+            const unhandled: never = action
+            throw new Error(`Unknown settings action: ${String(unhandled)}`)
+        }
+    }
 }
 
 function updateStageSelect(
@@ -587,7 +746,14 @@ function stepCursor(
     return Math.min(Math.max(next, 0), count - 1)
 }
 
-// The game shown on this screen, if any.
+// The screen shown under this one: for settings, the screen they were
+// opened over (the title, or the paused game); otherwise the screen itself.
+export function baseScreen(screen: Screen): Screen {
+    return screen.kind === "settings" ? screen.back : screen
+}
+
+// The game shown on this screen (or under it), if any.
 export function gameOf(screen: Screen): GameState | undefined {
-    return "game" in screen ? screen.game : undefined
+    const base = baseScreen(screen)
+    return "game" in base ? base.game : undefined
 }

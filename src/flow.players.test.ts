@@ -124,13 +124,20 @@ describe("the title's mode select", () => {
         expect(initialScreen()).toEqual({ kind: "title", mode: "solo" })
     })
 
-    it("moves over the modes with up and down, stopping at either end", () => {
+    it("moves over the modes, then Settings, with up and down, stopping at either end", () => {
         const solo = initialScreen()
         const coop = update(solo, input([["down"]]), deps())
         expect(coop).toEqual({ kind: "title", mode: "coop" })
         const versus = update(coop, input([["down"]]), deps())
         expect(versus).toEqual({ kind: "title", mode: "versus" })
-        expect(update(versus, input([["down"]]), deps())).toBe(versus)
+        const settings = update(versus, input([["down"]]), deps())
+        expect(settings).toEqual({
+            kind: "title",
+            mode: "versus",
+            onSettings: true,
+        })
+        expect(update(settings, input([["down"]]), deps())).toBe(settings)
+        expect(update(settings, input([["up"]]), deps())).toEqual(versus)
         expect(update(coop, input([["up"]]), deps())).toEqual(solo)
         expect(update(solo, input([["up"]]), deps())).toBe(solo)
     })
