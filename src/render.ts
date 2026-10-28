@@ -1,6 +1,7 @@
 import { footprint } from "./boss"
 import {
     aimPreviews,
+    canBreathe,
     enemyVisible,
     hasStatus,
     type AimPreview,
@@ -140,12 +141,12 @@ const RING_WIDTH = 0.08
 const LABEL_SCALE = 0.4
 
 // The facing arrow (see Effects.guide): a filled triangle in the player's
-// colour just outside its ring, pointing the way it faces. Its tip is this
-// far from the sprite's centre and its base this wide, in cells; it is
-// this opaque while the player is stunned.
+// colour just outside its ring, pointing the way it faces, shown only while
+// its breath could fire (the aim preview's rule: charged, not stunned).
+// Its tip is this far from the sprite's centre and its base this wide, in
+// cells.
 const ARROW_TIP = 0.7
 const ARROW_WIDTH = 0.3
-const ARROW_STUNNED_ALPHA = 0.35
 
 // The aim preview (see Effects.aim) is a tint in the player's colour: a
 // faint fill over each cell its breath would hit, and a slightly stronger
@@ -679,7 +680,8 @@ function drawCharacters(
     // glides at its current rate (Player.rate), as the ticks move it, and
     // with two players wears its marker (see PLAYER_COLORS). A Splitter's
     // half is drawn smaller (HALF_SCALE), its disc and badges too. With
-    // `arrows`, each player also gets its facing arrow (see drawArrow).
+    // `arrows`, each player who could breathe also gets its facing arrow (see
+    // drawArrow).
     const marked = state.players.length > 1
     // A player out of play (see takeOut in game.ts) isn't drawn.
     const sprites = [
@@ -693,13 +695,12 @@ function drawCharacters(
                           rate: player.rate,
                           marker: marked ? i : null,
                           badge: versusBadge(player),
-                          arrow: arrows
-                              ? {
-                                    index: i,
-                                    facing: player.breather.facing,
-                                    dim: stunned(player),
-                                }
-                              : null,
+                          arrow:
+                              arrows &&
+                              !stunned(player) &&
+                              canBreathe(player.breather)
+                                  ? { index: i, facing: player.breather.facing }
+                                  : null,
                       },
                   ]
         ),
@@ -812,10 +813,10 @@ function drawMarker(
 
 // Player `arrow.index`'s facing arrow, for its sprite centred at (x, y): a
 // filled triangle in its colour, its base just outside the ring and its tip
-// ARROW_TIP cells out along `facing` (a unit step). Dimmed while stunned.
+// ARROW_TIP cells out along `facing` (a unit step).
 function drawArrow(
     ctx: CanvasRenderingContext2D,
-    arrow: { index: number; facing: Vec2; dim: boolean },
+    arrow: { index: number; facing: Vec2 },
     x: number,
     y: number,
     cell: number
@@ -827,7 +828,6 @@ function drawArrow(
     const tip = Math.max(base + 2, ARROW_TIP * cell)
     const half = (ARROW_WIDTH * cell) / 2
     ctx.save()
-    if (arrow.dim) ctx.globalAlpha = ARROW_STUNNED_ALPHA
     ctx.fillStyle = PLAYER_COLORS[arrow.index]
     ctx.beginPath()
     ctx.moveTo(x + fx * tip, y + fy * tip)

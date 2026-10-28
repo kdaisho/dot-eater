@@ -1543,6 +1543,12 @@ describe("createRenderer with the facing guide", () => {
 
     describe("the facing arrow", () => {
         const ARROW = { guide: "arrow" } as const
+        // A game whose players can all breathe, so they get their arrows.
+        function charged(players?: number) {
+            const state = game(players)
+            charge(state)
+            return state
+        }
         // The arrows drawn, as each one's colour and tip (in cells).
         function arrows(
             calls: ReturnType<typeof setup>["calls"],
@@ -1569,9 +1575,9 @@ describe("createRenderer with the facing guide", () => {
             })
         }
 
-        it("points right before the first move, charged or not", () => {
+        it("points right before the first move", () => {
             const { calls, canvas, renderer } = setup()
-            renderer.draw(game(), 0, {}, {}, ARROW)
+            renderer.draw(charged(), 0, {}, {}, ARROW)
             expect(arrows(calls, canvas)).toEqual([
                 { color: 0, tip: [2.2, 1.5] },
             ])
@@ -1584,7 +1590,7 @@ describe("createRenderer with the facing guide", () => {
             ["right", vec2(1, 0), [2.2, 1.5]],
         ])("points %s the way the player faces", (_, facing, tip) => {
             const { calls, canvas, renderer } = setup()
-            const state = game()
+            const state = charged()
             state.players[0].breather.facing = facing
             renderer.draw(state, 0, {}, {}, ARROW)
             expect(arrows(calls, canvas)).toEqual([{ color: 0, tip }])
@@ -1592,7 +1598,7 @@ describe("createRenderer with the facing guide", () => {
 
         it("gives each player its own, in its colour", () => {
             const { calls, canvas, renderer } = setup()
-            renderer.draw(game(2), 0, {}, {}, ARROW)
+            renderer.draw(charged(2), 0, {}, {}, ARROW)
             expect(arrows(calls, canvas)).toEqual([
                 { color: 0, tip: [2.2, 1.5] },
                 { color: 1, tip: [6.8, 1.5] },
@@ -1601,23 +1607,23 @@ describe("createRenderer with the facing guide", () => {
 
         it("draws none for a player out of play", () => {
             const { calls, canvas, renderer } = setup()
-            const state = game(2)
+            const state = charged(2)
             takeOut(state.players[1], 3)
             renderer.draw(state, 0, {}, {}, ARROW)
             expect(arrows(calls, canvas).map((a) => a.color)).toEqual([0])
         })
 
-        it("still draws one for a stunned player (dimmed)", () => {
+        it("draws none for a stunned player", () => {
             const { calls, canvas, renderer } = setup()
-            const state = game(2)
+            const state = charged(2)
             stun(state.players[1])
             renderer.draw(state, 0, {}, {}, ARROW)
-            expect(arrows(calls, canvas).map((a) => a.color)).toEqual([0, 1])
+            expect(arrows(calls, canvas).map((a) => a.color)).toEqual([0])
         })
 
         it("travels with the gliding sprite", () => {
             const { calls, canvas, renderer } = setup()
-            const state = game()
+            const state = charged()
             const player = state.players[0].character
             player.lastPos = vec2(1, 1)
             player.pos = vec2(2, 1)
@@ -1626,6 +1632,12 @@ describe("createRenderer with the facing guide", () => {
             expect(arrows(calls, canvas)).toEqual([
                 { color: 0, tip: [2.7, 1.5] },
             ])
+        })
+
+        it("draws none while the breath isn't charged", () => {
+            const { calls, canvas, renderer } = setup()
+            renderer.draw(game(2), 0, {}, {}, ARROW)
+            expect(arrows(calls, canvas)).toEqual([])
         })
 
         it("draws none with the aim guide, or without a guide", () => {
