@@ -6,6 +6,7 @@ import {
     startLevel,
     update,
     type FlowDeps,
+    type Mode,
     type Picks,
     type Screen,
     type TickInput,
@@ -63,7 +64,7 @@ const titleOnSettings = (): Screen =>
 
 // A paused game (1-player unless `mode` says co-op) with the cursor on
 // Settings.
-function pausedOnSettings(mode: "solo" | "coop" = "solo"): Screen {
+function pausedOnSettings(mode: Mode = "solo"): Screen {
     const animals: Picks =
         mode === "solo" ? [AnimalId.dragon] : [AnimalId.dragon, AnimalId.owl]
     const playing = startLevel(levels, 0, animals, mode)
@@ -168,9 +169,36 @@ describe("Back from the settings", () => {
         expect(press(settings, ["confirm"])).toBe(title)
     })
 
-    it("follows player 1 only", () => {
+    it("follows player 1 only from the title, even in a 2-player mode", () => {
+        const title = press(initialScreen(), ["down", "down", "down"])
+        expect(title).toMatchObject({ mode: "versus", onSettings: true })
+        const settings = press(title, ["confirm"])
+        for (const action of ["down", "right", "pause"] as Action[]) {
+            expect(update(settings, input([], [action]), deps())).toBe(settings)
+        }
+    })
+
+    it.each(["coop", "versus"] as const)(
+        "from pause in %s, follows either player",
+        (mode) => {
+            const paused = pausedOnSettings(mode)
+            const settings = update(paused, input([], ["confirm"]), deps())
+            const p2 = (s: Screen, action: Action) =>
+                update(s, input([], [action]), deps())
+            // Player 2 moves the cursor, changes a value and goes back.
+            const effects = p2(settings, "down")
+            expect(effects).toMatchObject({ row: 1 })
+            expect(settingsOf(p2(effects, "right")).effectsVolume).toBe(9)
+            expect(p2(effects, "pause")).toBe(paused)
+            // Player 1 still does too.
+            expect(press(settings, ["down"])).toMatchObject({ row: 1 })
+        }
+    )
+
+    it("from pause, player 1 wins a tick both players press on", () => {
         const settings = press(pausedOnSettings("coop"), ["confirm"])
-        expect(update(settings, input([], ["pause"]), deps())).toBe(settings)
+        const both = update(settings, input(["down"], ["pause"]), deps())
+        expect(both).toMatchObject({ kind: "settings", row: 1 })
     })
 
     it("keeps the paused game as it was: never stepped meanwhile", () => {
