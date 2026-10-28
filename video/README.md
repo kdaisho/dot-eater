@@ -11,11 +11,11 @@ the `--filter dot-eater-video` part.
 
 ## Preview and render
 
-| Command                                        | What it does                                     |
-| ---------------------------------------------- | ------------------------------------------------ |
-| `pnpm --filter dot-eater-video studio`         | Remotion Studio: scrub and preview the video     |
-| `pnpm --filter dot-eater-video render`         | Render `Promo` to `video/out/promo.mp4`          |
-| `pnpm --filter dot-eater-video record-demo`    | Re-record the demo run (`src/recordings/demo.json`) |
+| Command                                     | What it does                                        |
+| ------------------------------------------- | --------------------------------------------------- |
+| `pnpm --filter dot-eater-video studio`      | Remotion Studio: scrub and preview the video        |
+| `pnpm --filter dot-eater-video render`      | Render `Promo` to `video/out/promo.mp4`             |
+| `pnpm --filter dot-eater-video record-demo` | Re-record the demo run (`src/recordings/demo.json`) |
 
 A still frame, e.g. to check a zoom:
 
