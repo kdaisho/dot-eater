@@ -409,3 +409,25 @@ function toastRegion(): HTMLElement {
     document.body.appendChild(toast)
     return toast
 }
+
+// A small "● REC" badge in the top corner while gameplay recording is on
+// (?record, see replay.ts). It stays up for the whole session.
+export function showRecordingBadge() {
+    if (document.getElementById("rec-badge")) return
+    const badge = document.createElement("div")
+    badge.id = "rec-badge"
+    badge.className = "rec-badge"
+    badge.textContent = "● REC"
+    badge.title = "Recording gameplay: each run downloads when it ends"
+    document.body.appendChild(badge)
+}
+
+// Hand the player `text` as a file named `name` to save.
+export function downloadFile(name: string, text: string, type: string) {
+    const url = URL.createObjectURL(new Blob([text], { type }))
+    const link = document.createElement("a")
+    link.href = url
+    link.download = name
+    link.click()
+    URL.revokeObjectURL(url)
+}

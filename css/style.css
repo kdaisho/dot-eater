@@ -201,3 +201,18 @@ body * {
     background: none;
     padding: 0;
 }
+
+/* While gameplay recording is on (?record): small, in the corner, out of
+   the way of the board. */
+.rec-badge {
+    background: rgba(0, 0, 0, 0.8);
+    border-radius: 6px;
+    color: #ff5a5a;
+    font-size: 12px;
+    padding: 4px 8px;
+    pointer-events: none;
+    position: fixed;
+    right: 8px;
+    top: 8px;
+    z-index: 40;
+}
