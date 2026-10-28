@@ -37,8 +37,14 @@ export function burst() {
 // exists at a time; each show* replaces whatever is showing, and hideOverlay
 // removes it. Input is handled by the state machine (flow.ts), not here.
 
-// A locked item is shown greyed out and marked aria-disabled.
-export type MenuItem = { label: string; selected: boolean; locked?: boolean }
+// A locked item is shown greyed out and marked aria-disabled. An item with
+// a `value` (a setting's, e.g. "On") shows it after the label.
+export type MenuItem = {
+    label: string
+    selected: boolean
+    locked?: boolean
+    value?: string
+}
 
 // What the end screens show.
 export type EndScreenView = {
@@ -155,9 +161,10 @@ export function showCharacterSelect(
     })
 }
 
-// The pause screen. With two players either one resumes, so the hint
-// gives player 2's keys too.
-export function showPause(players = 1) {
+// The pause screen, with its menu (Resume, Settings) when `items` are
+// given. With two players either one resumes, so the hint gives player 2's
+// keys too.
+export function showPause(players = 1, items: readonly MenuItem[] = []) {
     show({
         id: "pause",
         title: "Paused",
@@ -165,6 +172,18 @@ export function showPause(players = 1) {
             players > 1
                 ? ["1P: P, Esc or Space to resume", "2P: Q or E to resume"]
                 : ["Press P, Esc or Space to resume"],
+        items,
+    })
+}
+
+// The settings screen: one item per row that shows, each with its value
+// (see rowValue in settingsMenu.ts).
+export function showSettings(items: readonly MenuItem[]) {
+    show({
+        id: "settings",
+        title: "Settings",
+        lines: ["↑ ↓ to choose, ← → to change, Esc to go back"],
+        items,
     })
 }
 
@@ -320,6 +339,12 @@ function show({ id, title, lines = [], items = [], cards = [] }: Overlay) {
         for (const item of items) {
             const li = document.createElement("li")
             li.textContent = item.label
+            if (item.value !== undefined) {
+                const value = document.createElement("span")
+                value.className = "menu-value"
+                value.textContent = item.value
+                li.append(" ", value)
+            }
             if (item.selected) {
                 li.classList.add("selected")
                 li.setAttribute("aria-current", "true")
