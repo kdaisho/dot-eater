@@ -124,7 +124,6 @@ const effects = {
         effectsForEvents(events, game, { particles, shake })
     },
     tick(dt: number) {
-        if (screen.kind !== "playing" && screen.kind !== "ending") return
         particles.update(dt)
         shake.update(dt)
     },
@@ -227,8 +226,13 @@ function tick(dt: number) {
     input.endTick()
     if (game) onGameEvents(takeEvents(game), game)
     if (boss && !wasDefeated && boss.defeated) burst()
+    // Effects move on only when this tick moved the game on: a step, or
+    // the outro's settle. Not on a tick that pauses or resumes.
+    const moved =
+        screen.kind === "ending" ||
+        (screen.kind === "playing" && next.kind !== "paused")
     if (next !== screen) enter(screen, next)
-    effects.tick(dt)
+    if (moved) effects.tick(dt)
 }
 
 function flowDeps(dt: number): FlowDeps {
