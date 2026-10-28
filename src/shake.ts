@@ -19,6 +19,8 @@ export const SHAKE_DECAY = 2.5
 export const SHAKES = {
     // A breath defeating an enemy, or hitting the boss.
     hit: 0.35,
+    // Versus: a player stunned by the other's breath.
+    stun: 0.2,
     // A player caught: a life lost, or taken out.
     caught: 0.7,
     // The boss going down.

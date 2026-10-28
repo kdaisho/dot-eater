@@ -1,5 +1,6 @@
 import { energyHud } from "./breath"
 import { MAX_FRAME_MS, TICK_MS } from "./constants"
+import { applyMotion, effectsForEvents } from "./eventEffects"
 import { takeEvents, type GameEvent } from "./events"
 import {
     baseScreen,
@@ -108,17 +109,20 @@ addEventListener("resize", () => renderer.resize())
 // game. They move on with the game's ticks (so they freeze while paused),
 // start over with each game, and show only while it is played, paused or
 // ending. With reduced motion there is no shake and particles are fewer and
-// shorter.
-const particles = createParticles({
-    random: Math.random,
-    reduced: reducedMotion?.matches ?? false,
-})
-const shake = createShake({ enabled: !(reducedMotion?.matches ?? false) })
-reducedMotion?.addEventListener?.("change", () => {
-    particles.reduced = reducedMotion.matches
-    shake.enabled = !reducedMotion.matches
-})
+// shorter; the Screen shake setting, when set, overrides the shake part.
+const particles = createParticles({ random: Math.random })
+const shake = createShake()
 const effects = {
+    // Follow reduced motion and the Screen shake setting: on load, when the
+    // settings change and when the system setting does.
+    motion() {
+        const reduced = reducedMotion?.matches ?? false
+        applyMotion({ particles, shake }, settings, reduced)
+    },
+    // The bursts and shakes for a tick's game events (see eventEffects.ts).
+    events(events: readonly GameEvent[], game: GameState) {
+        effectsForEvents(events, game, { particles, shake })
+    },
     tick(dt: number) {
         if (screen.kind !== "playing" && screen.kind !== "ending") return
         particles.update(dt)
@@ -143,6 +147,8 @@ const effects = {
         }
     },
 }
+effects.motion()
+reducedMotion?.addEventListener?.("change", () => effects.motion())
 
 const input = new InputState()
 // Each player's input, by index (player 1 is 0): flow asks for player 2's
@@ -219,7 +225,7 @@ function tick(dt: number) {
     const wasDefeated = boss?.defeated ?? true
     const next = update(screen, tickInput, flowDeps(dt))
     input.endTick()
-    if (game) onGameEvents(takeEvents(game))
+    if (game) onGameEvents(takeEvents(game), game)
     if (boss && !wasDefeated && boss.defeated) burst()
     if (next !== screen) enter(screen, next)
     effects.tick(dt)
@@ -241,7 +247,9 @@ function flowDeps(dt: number): FlowDeps {
 // What happened in the tick's game step, if it stepped the game (see
 // events.ts); empty otherwise. Sound (KDA-212) and particles and screen
 // shake (KDA-213) hook in here.
-function onGameEvents(_events: readonly GameEvent[]) {}
+function onGameEvents(events: readonly GameEvent[], game: GameState) {
+    effects.events(events, game)
+}
 
 // How pads map to players on a screen. The title, where the mode is still
 // being chosen, shares every pad with player 1, so any pad can pick the
@@ -292,6 +300,7 @@ function enter(prev: Screen, next: Screen) {
     if (next.kind === "settings" && next.settings !== settings) {
         settings = next.settings
         saveSettings(storage, settings)
+        effects.motion()
     }
     showOverlay(next)
 }
