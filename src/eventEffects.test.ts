@@ -1,16 +1,18 @@
 import { describe, expect, it } from "vite-plus/test"
 import { BREATHS } from "./breaths"
+import { TICK_RATE } from "./constants"
 import {
     applyMotion,
     effectsForEvent,
     effectsForEvents,
     type EffectTargets,
 } from "./eventEffects"
-import type { GameEvent } from "./events"
+import { takeEvents, type GameEvent } from "./events"
+import { step, type GameState, type MoveInput } from "./game"
 import { createParticles, type ParticleLook } from "./particles"
 import { defaultSettings } from "./settings"
 import { createShake, SHAKES } from "./shake"
-import { makeBoss, makeState, testBreath } from "./test/helpers"
+import { fixedRandom, makeBoss, makeState, testBreath } from "./test/helpers"
 import { vec2, type Vec2 } from "./vec2"
 
 // Records what the effects asked for.
@@ -127,24 +129,25 @@ describe("effectsForEvent", () => {
     })
 
     describe("a breath", () => {
-        const breathed = (at: Vec2, facing: Vec2, player = 0): GameEvent => ({
+        const breathed = (
+            at: Vec2,
+            facing: Vec2,
+            cells: readonly Vec2[],
+            player = 0
+        ): GameEvent => ({
             type: "breathed",
             player,
             animal: "dragon",
             at,
             facing,
+            cells,
         })
 
-        it("emits its look on every cell of its line, along the facing", () => {
+        it("emits its look on every cell it covered, along the facing", () => {
             const state = room({ breath: BREATHS.dragon })
-            const r = run(breathed(vec2(1, 2), vec2(1, 0)), state)
-            // Range 5, but the wall at x 6 stops it after 4.
-            expect(r.emits.map((e) => e.at)).toEqual([
-                vec2(2, 2),
-                vec2(3, 2),
-                vec2(4, 2),
-                vec2(5, 2),
-            ])
+            const cells = [vec2(2, 2), vec2(3, 2), vec2(4, 2)]
+            const r = run(breathed(vec2(1, 2), vec2(1, 0), cells), state)
+            expect(r.emits.map((e) => e.at)).toEqual(cells)
             for (const e of r.emits) {
                 expect(e.look).toBe(BREATHS.dragon.particles)
                 expect(e.direction).toEqual(vec2(1, 0))
@@ -152,42 +155,116 @@ describe("effectsForEvent", () => {
             expect(r.shakes).toEqual([])
         })
 
-        it("covers an area breath's cells", () => {
-            const state = room({ breath: BREATHS.skunk })
-            const r = run(breathed(vec2(3, 2), vec2(1, 0)), state)
-            expect(r.emits).toHaveLength(9)
-            expect(r.emits.map((e) => e.at)).toContainEqual(vec2(3, 2))
-            expect(r.emits[0].look).toBe(BREATHS.skunk.particles)
-        })
-
         it("uses the breathing player's own breath", () => {
             const state = makeState(ROOM, [vec2(1, 2), vec2(1, 3)], [], {
                 breath: [BREATHS.dragon, BREATHS.penguin],
                 mode: "coop",
             })
-            const r = run(breathed(vec2(1, 3), vec2(1, 0), 1), state)
+            const r = run(
+                breathed(vec2(1, 3), vec2(1, 0), [vec2(2, 3)], 1),
+                state
+            )
             expect(r.emits[0].look).toBe(BREATHS.penguin.particles)
-        })
-
-        it("comes from the player's cell when nothing is in reach", () => {
-            const state = room({ breath: BREATHS.dragon })
-            const r = run(breathed(vec2(1, 2), vec2(-1, 0)), state)
-            expect(r.emits.map((e) => e.at)).toEqual([vec2(1, 2)])
-        })
-
-        it("stops at the boss's body", () => {
-            const state = room({
-                breath: BREATHS.dragon,
-                boss: makeBoss(3, 1),
-            })
-            const r = run(breathed(vec2(1, 2), vec2(1, 0)), state)
-            expect(r.emits.map((e) => e.at)).toEqual([vec2(2, 2), vec2(3, 2)])
         })
 
         it("emits nothing for a breath without a look", () => {
             const state = room({ breath: testBreath() })
-            const r = run(breathed(vec2(1, 2), vec2(1, 0)), state)
+            const r = run(breathed(vec2(1, 2), vec2(1, 0), [vec2(2, 2)]), state)
             expect(r.emits).toEqual([])
+        })
+    })
+
+    // Through a real tick: the cells are the ones the breath covered when
+    // it was breathed, whatever changes later in the tick.
+    describe("a breath in a tick", () => {
+        const TICK = 1 / TICK_RATE
+        const idle: MoveInput = { held: [], pressed: vec2(0, 0) }
+        const breathe: MoveInput = { ...idle, breath: true }
+
+        // Where each look's particles were emitted.
+        function emitted(state: GameState, moves: readonly MoveInput[]) {
+            step(state, TICK, moves, fixedRandom(0))
+            const r = recorder()
+            effectsForEvents(takeEvents(state), state, r.targets)
+            return (look: ParticleLook | undefined) =>
+                r.emits.filter((e) => e.look === look).map((e) => e.at)
+        }
+
+        // A hall 9 wide and 2 high, the player at (1, 1) facing right, a
+        // boss on (3, 1)-(4, 2).
+        const bossHall = (health: number) => {
+            const boss = makeBoss(3, 1)
+            boss.health = health
+            const state = makeState(
+                [
+                    Array(9).fill(1),
+                    [1, ...Array(7).fill(0), 1],
+                    [1, ...Array(7).fill(0), 1],
+                    Array(9).fill(1),
+                ],
+                { x: 1, y: 1 },
+                [],
+                { breath: BREATHS.dragon, boss }
+            )
+            state.players[0].breather.energy = 100
+            return state
+        }
+
+        // Regression: the cells were worked out after the tick, with the
+        // boss gone, so the fire ran on through where it stood.
+        it("stops at the boss its killing blow defeats", () => {
+            const state = bossHall(1)
+            const at = emitted(state, [breathe])
+            expect(state.boss?.defeated).toBe(true)
+            expect(at(BREATHS.dragon.particles)).toEqual([
+                vec2(2, 1),
+                vec2(3, 1),
+            ])
+        })
+
+        // Regression: a boss that moved after the breath changed the line.
+        it("keeps the line the boss stopped, even once the boss has moved", () => {
+            const state = bossHall(12)
+            step(state, TICK, [breathe], fixedRandom(0))
+            const events = takeEvents(state)
+            // Out of the line later in the tick.
+            state.boss!.pos = vec2(5, 2)
+            const r = recorder()
+            effectsForEvents(events, state, r.targets)
+            expect(r.emits.map((e) => e.at)).toEqual([vec2(2, 1), vec2(3, 1)])
+        })
+
+        // A hall with an inner wall at (3, 1): player 1 (Dragon) at (1, 1)
+        // facing it, player 2 (Boar) at (4, 1) facing it from the other side.
+        const wallHall = () => {
+            const state = makeState(
+                [
+                    Array(9).fill(1),
+                    [1, 0, 0, 1, 0, 0, 0, 0, 1],
+                    Array(9).fill(1),
+                ],
+                [vec2(1, 1), vec2(4, 1)],
+                [],
+                { breath: [BREATHS.dragon, BREATHS.boar], mode: "versus" }
+            )
+            for (const p of state.players) p.breather.energy = 100
+            state.players[1].breather.facing = vec2(-1, 0)
+            return state
+        }
+
+        // Regression: player 2's Boar opening the wall later in the same
+        // tick let player 1's embers through it.
+        it("doesn't pass a wall another breath opens later in the tick", () => {
+            const state = wallHall()
+            const at = emitted(state, [breathe, breathe])
+            expect(state.cells[1][3]).not.toBe(1)
+            expect(at(BREATHS.dragon.particles)).toEqual([vec2(2, 1)])
+        })
+
+        it("throws the Boar's rubble from the wall it opened", () => {
+            const state = wallHall()
+            const at = emitted(state, [idle, breathe])
+            expect(at(BREATHS.boar.particles)).toEqual([vec2(3, 1)])
         })
     })
 })

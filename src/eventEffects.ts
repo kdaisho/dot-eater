@@ -1,5 +1,3 @@
-import { inFootprint } from "./boss"
-import { resolveShape } from "./breath"
 import type { GameEvent } from "./events"
 import type { GameState } from "./game"
 import type { Particles } from "./particles"
@@ -89,30 +87,19 @@ function bossCentre(at: Vec2): Vec2 {
     return vec2(at.x + 0.5, at.y + 0.5)
 }
 
-// A breath's particles (BreathDef.particles, if any) on every cell its
-// shape covers from where it was breathed, flying along the facing: the
-// shape is worked out again, as breathe does, on the maze as the breath
-// left it (so the Boar's rubble flies from the wall it opened). With no
-// cell in reach (a line against a wall, striking an enemy on the player's
-// own cell) they come from the player's cell.
+// A breath's particles (BreathDef.particles, if any) on every cell it
+// covered as it was breathed (the event's cells: the Boar's rubble flies
+// from the wall it opened), flying along the facing. Taken from the event,
+// not worked out again after the tick, when the boss or the walls may
+// have changed.
 function breathParticles(
     event: Extract<GameEvent, { type: "breathed" }>,
     state: GameState,
     particles: EffectTargets["particles"]
 ) {
-    const breath = state.players[event.player]?.breather.breath
-    const look = breath?.particles
-    if (!breath || !look) return
-    const boss = state.boss && !state.boss.defeated ? state.boss : null
-    const body = boss ? (p: Vec2) => inFootprint(boss.pos, p) : undefined
-    const { cells } = resolveShape(
-        state.cells,
-        event.at,
-        event.facing,
-        breath.shape,
-        body
-    )
-    for (const cell of cells.length > 0 ? cells : [event.at]) {
+    const look = state.players[event.player]?.breather.breath.particles
+    if (!look) return
+    for (const cell of event.cells) {
         particles.emit(look, cell, { direction: event.facing })
     }
 }

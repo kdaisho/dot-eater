@@ -305,6 +305,7 @@ export function breathe(
         animal: breath.animal,
         at: origin,
         facing: vec2(facing.x, facing.y),
+        cells: coveredCells(state, origin, reach),
     })
     if (bossHit) damageBoss(state, bossDamage(breath.cost), who)
     for (const other of stuns) {
@@ -320,6 +321,22 @@ export function breathe(
     breather.energy -= breath.cost
     breather.cooldown = breath.cooldown
     return true
+}
+
+// The cells a breath covered, for its event (see "breathed" in events.ts):
+// what its shape reached, or with nothing in reach the wall it stopped at
+// if the hook has just opened it (the Boar), else the player's own cell.
+function coveredCells(
+    state: GameState,
+    origin: Vec2,
+    reach: ShapeReach
+): Vec2[] {
+    if (reach.cells.length > 0) return reach.cells.map((c) => vec2(c.x, c.y))
+    const { wall } = reach
+    if (wall && state.cells[wall.y][wall.x] !== Cell.wall) {
+        return [vec2(wall.x, wall.y)]
+    }
+    return [vec2(origin.x, origin.y)]
 }
 
 // ---- Shapes ----
