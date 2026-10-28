@@ -24,6 +24,7 @@ import {
     STUN_BADGE,
     stunLabel,
 } from "./render"
+import type { Particle } from "./particles"
 import { createSplitter } from "./splitter"
 import {
     makeBoss,
@@ -1208,5 +1209,181 @@ describe("createRenderer in versus", () => {
         state.players[1].stunImmuneFor = 1
         renderer.draw(state, 0)
         expect(texts()).toEqual(["🦉", "1", "🐗", "2", IMMUNE_BADGE])
+    })
+})
+
+describe("createRenderer with effects", () => {
+    afterEach(() => {
+        vi.restoreAllMocks()
+    })
+
+    // A one-row corridor 9 cells long, the player at (1, 1).
+    const corridor = () =>
+        makeState(
+            [Array(9).fill(1), [1, ...Array(7).fill(0), 1], Array(9).fill(1)],
+            { x: 1, y: 1 }
+        )
+
+    function particle(overrides: Partial<Particle> = {}): Particle {
+        return {
+            x: 3,
+            y: 1,
+            vx: 0,
+            vy: 0,
+            age: 0,
+            life: 1,
+            size: 0.2,
+            color: "lime",
+            shape: "circle",
+            gravity: 0,
+            drag: 0,
+            ...overrides,
+        }
+    }
+
+    // The cell size, in CSS pixels.
+    const cellOf = (canvas: HTMLCanvasElement) =>
+        parseFloat(canvas.style.width) / 9
+
+    it("draws each particle as a disc of its colour at its cell position", () => {
+        const { calls, canvas, renderer } = setup()
+        renderer.draw(corridor(), 0, {}, {}, { particles: [particle()] })
+        const cell = cellOf(canvas)
+        const arcs = calls.filter((c) => c.name === "arc")
+        expect(arcs).toHaveLength(1)
+        const [x, y, r] = arcs[0].args as number[]
+        expect(x).toBeCloseTo(3.5 * cell)
+        expect(y).toBeCloseTo(1.5 * cell)
+        expect(r).toBeCloseTo(0.1 * cell)
+        const fills = calls.filter((c) => c.name === "fill")
+        expect(fills.map((c) => c.fillStyle)).toEqual(["lime"])
+    })
+
+    it("draws a square particle as a square", () => {
+        const { calls, canvas, renderer } = setup()
+        renderer.draw(
+            corridor(),
+            0,
+            {},
+            {},
+            { particles: [particle({ shape: "square", color: "brown" })] }
+        )
+        const cell = cellOf(canvas)
+        const square = calls.find(
+            (c) => c.name === "fillRect" && c.fillStyle === "brown"
+        )
+        expect(square?.args[2]).toBeCloseTo(0.2 * cell)
+        expect(calls.some((c) => c.name === "arc")).toBe(false)
+    })
+
+    it("draws particles over the characters", () => {
+        const { calls, renderer } = setup()
+        renderer.draw(corridor(), 0, {}, {}, { particles: [particle()] })
+        const sprite = calls.findIndex((c) => c.name === "fillText")
+        const arc = calls.findIndex((c) => c.name === "arc")
+        expect(arc).toBeGreaterThan(sprite)
+    })
+
+    it("skips a particle whose life is over", () => {
+        const { calls, renderer } = setup()
+        renderer.draw(
+            corridor(),
+            0,
+            {},
+            {},
+            { particles: [particle({ age: 1, life: 1 })] }
+        )
+        expect(calls.some((c) => c.name === "arc")).toBe(false)
+    })
+
+    it("hides particles outside the fog's light", () => {
+        const { calls, canvas, renderer } = setup()
+        renderer.draw(
+            corridor(),
+            0,
+            {},
+            { fog: { radius: 2 } },
+            {
+                particles: [
+                    particle({ x: 2, color: "near" }),
+                    particle({ x: 7, color: "far" }),
+                ],
+            }
+        )
+        const cell = cellOf(canvas)
+        const arcs = calls.filter((c) => c.name === "arc")
+        expect(arcs).toHaveLength(1)
+        expect(arcs[0].args[0]).toBeCloseTo(2.5 * cell)
+    })
+
+    it("draws nothing extra without effects", () => {
+        const plain = setup()
+        plain.renderer.draw(corridor(), 0)
+        const empty = setup()
+        empty.renderer.draw(corridor(), 0, {}, {}, { particles: [] })
+        expect(empty.calls.map((c) => c.name)).toEqual(
+            plain.calls.map((c) => c.name)
+        )
+    })
+
+    it("shakes the maze, not the HUD", () => {
+        const { calls, canvas, renderer } = setup()
+        renderer.draw(
+            corridor(),
+            0,
+            { score: 5 },
+            {},
+            { shake: vec2(0.2, -0.1) }
+        )
+        const cell = cellOf(canvas)
+        const translates = calls.filter((c) => c.name === "translate")
+        // Down past the HUD strip, then the shake.
+        expect(translates).toHaveLength(2)
+        expect(translates[1].args[0]).toBeCloseTo(0.2 * cell)
+        expect(translates[1].args[1]).toBeCloseTo(-0.1 * cell)
+        const shakeAt = calls.indexOf(translates[1])
+        const hud = calls.findIndex((c) => c.args[0] === "Score 5")
+        const sprite = calls.findIndex((c) => c.args[0] === "🐉")
+        expect(hud).toBeLessThan(shakeAt)
+        expect(sprite).toBeGreaterThan(shakeAt)
+        // The clip is set before the shake, so the maze moves inside it.
+        const clip = calls.findIndex((c) => c.name === "clip")
+        expect(clip).toBeLessThan(shakeAt)
+    })
+
+    it("doesn't move the fog's darkness with the shake", () => {
+        const { calls, renderer } = setup()
+        renderer.draw(
+            corridor(),
+            0,
+            {},
+            { fog: { radius: 2 } },
+            { shake: vec2(0.2, 0.2) }
+        )
+        const shakeAt = calls.findIndex(
+            (c) => c.name === "translate" && c.args[0] !== 0
+        )
+        const restoreAfter = calls.findIndex(
+            (c, i) => i > shakeAt && c.name === "restore"
+        )
+        const gradient = calls.findIndex(
+            (c) => c.name === "createRadialGradient"
+        )
+        expect(restoreAfter).toBeGreaterThan(shakeAt)
+        expect(gradient).toBeGreaterThan(restoreAfter)
+    })
+
+    it("doesn't translate for a zero shake", () => {
+        const { calls, renderer } = setup()
+        renderer.draw(corridor(), 0, {}, {}, { shake: vec2(0, 0) })
+        expect(calls.filter((c) => c.name === "translate")).toHaveLength(1)
+    })
+
+    it("keeps the effects when redrawing on resize", () => {
+        const { calls, renderer } = setup()
+        renderer.draw(corridor(), 0, {}, {}, { particles: [particle()] })
+        calls.length = 0
+        renderer.resize()
+        expect(calls.filter((c) => c.name === "arc")).toHaveLength(1)
     })
 })

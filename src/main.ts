@@ -1,6 +1,9 @@
+import { browserAudioContext, createAudio } from "./audio"
+import { playEventSounds, screenSound } from "./sound"
 import { energyHud } from "./breath"
 import { MAX_FRAME_MS, TICK_MS } from "./constants"
 import { createTouchControls, DpadSource, setControls } from "./dpad"
+import { applyMotion, effectsForEvents } from "./eventEffects"
 import { takeEvents, type GameEvent } from "./events"
 import {
     baseScreen,
@@ -47,10 +50,12 @@ import {
     stageSlots,
     type Progress,
 } from "./progress"
-import { createRenderer, type Hud } from "./render"
+import { createParticles } from "./particles"
+import { createRenderer, type Effects, type Hud } from "./render"
 import { ANIMAL_IDS, ANIMALS, type AnimalId } from "./roster"
 import { loadSettings, saveSettings, type Settings } from "./settings"
 import { rowValue, settingsRows } from "./settingsMenu"
+import { createShake } from "./shake"
 import {
     burst,
     celebrate,
@@ -146,6 +151,50 @@ function applyDpad() {
 }
 applyDpad()
 
+// Particles and screen shake (KDA-213): visual only, never read by the
+// game. They move on with the game's ticks (so they freeze while paused),
+// start over with each game, and show only while it is played, paused or
+// ending. With reduced motion there is no shake and particles are fewer and
+// shorter; the Screen shake setting, when set, overrides the shake part.
+const particles = createParticles({ random: Math.random })
+const shake = createShake()
+const effects = {
+    // Follow reduced motion and the Screen shake setting: on load, when the
+    // settings change and when the system setting does.
+    motion() {
+        const reduced = reducedMotion?.matches ?? false
+        applyMotion({ particles, shake }, settings, reduced)
+    },
+    // The bursts and shakes for a tick's game events (see eventEffects.ts).
+    events(events: readonly GameEvent[], game: GameState) {
+        effectsForEvents(events, game, { particles, shake })
+    },
+    tick(dt: number) {
+        particles.update(dt)
+        shake.update(dt)
+    },
+    reset() {
+        particles.clear()
+        shake.clear()
+    },
+    of(s: Screen): Effects {
+        if (
+            s.kind !== "playing" &&
+            s.kind !== "ending" &&
+            s.kind !== "paused"
+        ) {
+            return {}
+        }
+        const moving = s.kind !== "paused"
+        return {
+            particles: particles.list,
+            ...(moving ? { shake: shake.offset(Math.random) } : {}),
+        }
+    },
+}
+effects.motion()
+reducedMotion?.addEventListener?.("change", () => effects.motion())
+
 const input = new InputState()
 // Each player's input, by index (player 1 is 0): flow asks for player 2's
 // only in a 2-player mode.
@@ -221,9 +270,15 @@ function tick(dt: number) {
     const wasDefeated = boss?.defeated ?? true
     const next = update(screen, tickInput, flowDeps(dt))
     input.endTick()
-    if (game) onGameEvents(takeEvents(game))
+    if (game) onGameEvents(takeEvents(game), game)
     if (boss && !wasDefeated && boss.defeated) burst()
+    // Effects move on only when this tick moved the game on: a step, or
+    // the outro's settle. Not on a tick that pauses or resumes.
+    const moved =
+        screen.kind === "ending" ||
+        (screen.kind === "playing" && next.kind !== "paused")
     if (next !== screen) enter(screen, next)
+    if (moved) effects.tick(dt)
 }
 
 function flowDeps(dt: number): FlowDeps {
@@ -242,7 +297,10 @@ function flowDeps(dt: number): FlowDeps {
 // What happened in the tick's game step, if it stepped the game (see
 // events.ts); empty otherwise. Sound (KDA-212) and particles and screen
 // shake (KDA-213) hook in here.
-function onGameEvents(_events: readonly GameEvent[]) {}
+function onGameEvents(events: readonly GameEvent[], game: GameState) {
+    playEventSounds(audio, events)
+    effects.events(events, game)
+}
 
 // How pads map to players on a screen. The title, where the mode is still
 // being chosen, shares every pad with player 1, so any pad can pick the
@@ -274,7 +332,11 @@ function enter(prev: Screen, next: Screen) {
     // Play started from a menu (character select or Retry): a direction
     // still held from the menu waits for a fresh press. Resuming from pause
     // keeps held directions, so holding through a pause carries on moving.
-    if (next.kind === "playing" && prev.kind !== "paused") input.ignoreHeld()
+    // A new game also starts with no particles or shake left over.
+    if (next.kind === "playing" && prev.kind !== "paused") {
+        input.ignoreHeld()
+        effects.reset()
+    }
     // Only 1-player games remember the pick: 2-player games leave saved
     // data alone.
     if (
@@ -302,7 +364,9 @@ function enter(prev: Screen, next: Screen) {
         settings = next.settings
         saveSettings(storage, settings)
         applyDpad()
+        effects.motion()
     }
+    screenSound(audio, prev, next, settings)
     showOverlay(next)
 }
 
@@ -322,7 +386,7 @@ function render(alpha: number) {
     // Every screen with a game also says which level it is.
     const rules = "level" in shown ? levels[shown.level]?.rules : undefined
     const hud = game.mode === "versus" ? versusHud(game, shown) : hudOf(game)
-    renderer.draw(game, lastAlpha, hud, rules)
+    renderer.draw(game, lastAlpha, hud, rules, effects.of(shown))
 }
 
 // The versus HUD: each player's dots, meter, stun or respawn countdown, and
@@ -523,6 +587,20 @@ function tapAction(action: Action) {
     player.press(action, "tap")
     player.release(action, "tap")
 }
+
+// Sound (KDA-212). Browsers only start audio after a user gesture, so the
+// first key or pointer press unlocks it; later ones resume it if the browser
+// suspended it. Gamepad presses don't count as gestures. Each screen change
+// sets the tune, menu sound and volumes (screenSound); the title tune waits
+// for the unlock.
+const audio = createAudio({
+    createContext: browserAudioContext(globalThis),
+    setTimer: (callback, ms) => window.setInterval(callback, ms),
+    clearTimer: (handle) => window.clearInterval(handle),
+})
+for (const type of ["keydown", "pointerdown", "touchend"])
+    document.addEventListener(type, () => audio.unlock(), { capture: true })
+screenSound(audio, undefined, screen, settings)
 
 new KeyboardSource([PLAYER_1_KEYS, PLAYER_2_KEYS]).attach(input)
 pads.attach(input)
