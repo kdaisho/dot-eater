@@ -8,6 +8,8 @@ import {
 } from "./constants"
 import { bossDamage, damageBoss, inFootprint, tickBoss } from "./boss"
 import type { Character } from "./character"
+import { emit } from "./events"
+import type { ParticleLook } from "./particles"
 import type { GameState, Player } from "./game"
 import { loopPos, type Cells } from "./level"
 import type { AnimalId } from "./roster"
@@ -17,7 +19,7 @@ import {
     isWholeSplitter,
     splitSplitter,
 } from "./splitter"
-import { opponentsStruck, stun } from "./versus"
+import { opponentsStruck, stun, stunned } from "./versus"
 import { allDirections, directions, samePos, vec2, type Vec2 } from "./vec2"
 
 // The breath system. Pure, no DOM: time comes in as `dt`, the breath press
@@ -167,6 +169,14 @@ export type BreathDef = {
     // A further factor on the player's speed on its slide steps on ice
     // (level or breath ice; see Player.rate). Leave it out for 1.
     slideSpeedScale?: number
+    // How the breath looks in particles (see particles.ts): a burst on each
+    // cell it strikes, flying along the facing. Leave it out for none.
+    particles?: ParticleLook
+    // Whether the breath acts on `wall`, the wall its shape stopped at
+    // (BreathHit.wall), e.g. to break it. The aim preview (see aimCells)
+    // marks that wall when this says yes. Leave it out for a breath that
+    // does nothing to walls.
+    targetsWall?: (cells: Cells, wall: Vec2) => boolean
     // What the breath does once its cost is paid. Return false (before
     // changing anything) to refuse, e.g. when there is nothing to hit; then
     // no energy is spent and there is no cooldown.
@@ -239,10 +249,7 @@ export function breathe(
     const breather = who.breather
     if (!canBreathe(breather)) return false
     const { breath, facing } = breather
-    const origin = vec2(who.character.pos.x, who.character.pos.y)
-    const boss = state.boss && !state.boss.defeated ? state.boss : null
-    const body = boss ? (p: Vec2) => inFootprint(boss.pos, p) : undefined
-    const reach = resolveShape(state.cells, origin, facing, breath.shape, body)
+    const { origin, reach, body } = aimOf(state, who)
     // Line and cone shapes start a cell ahead, but an enemy can stand on the
     // player's own cell while its sprite still glides in (collisions are on
     // drawn positions), so they hit enemies there too, first.
@@ -282,14 +289,112 @@ export function breathe(
     const bossHit = body !== undefined && struck.some(body)
     // In versus, the other player on a struck cell (see opponentsStruck).
     const stuns = opponentsStruck(state, who, struck)
+    const eventsBefore = state.events.length
     const fired = breath.fire(hit) !== false
     if (iceAdded) rebuildIce(state)
-    if (!fired && !bossHit && stuns.length === 0) return false
+    if (!fired && !bossHit && stuns.length === 0) {
+        // A refused breath reports nothing (see events.ts), even if its
+        // hook reported something before refusing.
+        state.events.length = eventsBefore
+        return false
+    }
+    const player = state.players.indexOf(who)
+    // Reported before what it did, including the defeats the hook already
+    // reported (a refusing hook changes nothing, so reports nothing).
+    state.events.splice(eventsBefore, 0, {
+        type: "breathed",
+        player,
+        animal: breath.animal,
+        at: origin,
+        facing: vec2(facing.x, facing.y),
+        cells: coveredCells(state, origin, reach),
+    })
     if (bossHit) damageBoss(state, bossDamage(breath.cost), who)
-    stuns.forEach(stun)
+    for (const other of stuns) {
+        stun(other)
+        const { pos } = other.character
+        emit(state, {
+            type: "playerStunned",
+            player: state.players.indexOf(other),
+            by: player,
+            at: vec2(pos.x, pos.y),
+        })
+    }
     breather.energy -= breath.cost
     breather.cooldown = breath.cooldown
     return true
+}
+
+// Where `who`'s breath reaches if it breathes now: its shape resolved from
+// the player's cell (not its gliding sprite) along its facing, stopped by
+// walls and by the live boss's body. Shared by breathe and the aim preview,
+// so the preview always shows what a breath would do.
+function aimOf(
+    state: GameState,
+    who: Player
+): {
+    origin: Vec2
+    reach: ShapeReach
+    // The boss's body, if one is in play (see resolveShape).
+    body: ((p: Vec2) => boolean) | undefined
+} {
+    const { breath, facing } = who.breather
+    const origin = vec2(who.character.pos.x, who.character.pos.y)
+    const boss = state.boss && !state.boss.defeated ? state.boss : null
+    const body = boss ? (p: Vec2) => inFootprint(boss.pos, p) : undefined
+    const reach = resolveShape(state.cells, origin, facing, breath.shape, body)
+    return { origin, reach, body }
+}
+
+// The cells player `index`'s breath (player 1's unless given) would hit if
+// it breathed now, nearest first, whether or not it can: the cells its shape
+// reaches (see aimOf), plus the wall it stopped at if the breath acts on
+// that wall (BreathDef.targetsWall: the Boar's target). Not the player's
+// own cell for a line or a cone, though enemies there are hit too: the
+// preview shows where the breath goes, and the sprite covers that cell.
+export function aimCells(state: GameState, index = 0): Vec2[] {
+    const who = state.players[index]
+    const { reach } = aimOf(state, who)
+    const cells = reach.cells.map((c) => vec2(c.x, c.y))
+    const { wall } = reach
+    if (wall && who.breather.breath.targetsWall?.(state.cells, wall)) {
+        cells.push(vec2(wall.x, wall.y))
+    }
+    return cells
+}
+
+// One player's aim preview: its index and the cells its breath would hit.
+export type AimPreview = {
+    player: number
+    cells: readonly Vec2[]
+}
+
+// The aim previews to draw now (see render.ts): one per player that could
+// breathe this moment (in play, not stunned, and charged: the energy HUD's
+// ready rule, canBreathe), player 1 first, leaving out any whose breath
+// would hit nothing.
+export function aimPreviews(state: GameState): AimPreview[] {
+    return state.players.flatMap((p, player) => {
+        if (p.out || stunned(p) || !canBreathe(p.breather)) return []
+        const cells = aimCells(state, player)
+        return cells.length > 0 ? [{ player, cells }] : []
+    })
+}
+
+// The cells a breath covered, for its event (see "breathed" in events.ts):
+// what its shape reached, or with nothing in reach the wall it stopped at
+// if the hook has just opened it (the Boar), else the player's own cell.
+function coveredCells(
+    state: GameState,
+    origin: Vec2,
+    reach: ShapeReach
+): Vec2[] {
+    if (reach.cells.length > 0) return reach.cells.map((c) => vec2(c.x, c.y))
+    const { wall } = reach
+    if (wall && state.cells[wall.y][wall.x] !== Cell.wall) {
+        return [vec2(wall.x, wall.y)]
+    }
+    return [vec2(origin.x, origin.y)]
 }
 
 // ---- Shapes ----
@@ -461,7 +566,15 @@ export function defeatEnemy(
     const i = state.enemies.indexOf(enemy)
     if (i < 0) return
     by.score += DEFEAT_POINTS
-    if (isWholeSplitter(enemy)) {
+    const split = isWholeSplitter(enemy)
+    emit(state, {
+        type: "enemyDefeated",
+        player: state.players.indexOf(by),
+        enemy: i,
+        at: vec2(enemy.pos.x, enemy.pos.y),
+        split,
+    })
+    if (split) {
         splitSplitter(state, i)
         return
     }

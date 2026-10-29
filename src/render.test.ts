@@ -24,6 +24,7 @@ import {
     STUN_BADGE,
     stunLabel,
 } from "./render"
+import type { Particle } from "./particles"
 import { createSplitter } from "./splitter"
 import {
     makeBoss,
@@ -33,6 +34,7 @@ import {
     textMap,
 } from "./test/helpers"
 import { vec2 } from "./vec2"
+import { stun } from "./versus"
 
 // canvas-confetti crashes under happy-dom; keep it out in case anything
 // imported here pulls it in.
@@ -1208,5 +1210,444 @@ describe("createRenderer in versus", () => {
         state.players[1].stunImmuneFor = 1
         renderer.draw(state, 0)
         expect(texts()).toEqual(["🦉", "1", "🐗", "2", IMMUNE_BADGE])
+    })
+})
+
+describe("createRenderer with effects", () => {
+    afterEach(() => {
+        vi.restoreAllMocks()
+    })
+
+    // A one-row corridor 9 cells long, the player at (1, 1).
+    const corridor = () =>
+        makeState(
+            [Array(9).fill(1), [1, ...Array(7).fill(0), 1], Array(9).fill(1)],
+            { x: 1, y: 1 }
+        )
+
+    function particle(overrides: Partial<Particle> = {}): Particle {
+        return {
+            x: 3,
+            y: 1,
+            vx: 0,
+            vy: 0,
+            age: 0,
+            life: 1,
+            size: 0.2,
+            color: "lime",
+            shape: "circle",
+            gravity: 0,
+            drag: 0,
+            ...overrides,
+        }
+    }
+
+    // The cell size, in CSS pixels.
+    const cellOf = (canvas: HTMLCanvasElement) =>
+        parseFloat(canvas.style.width) / 9
+
+    it("draws each particle as a disc of its colour at its cell position", () => {
+        const { calls, canvas, renderer } = setup()
+        renderer.draw(corridor(), 0, {}, {}, { particles: [particle()] })
+        const cell = cellOf(canvas)
+        const arcs = calls.filter((c) => c.name === "arc")
+        expect(arcs).toHaveLength(1)
+        const [x, y, r] = arcs[0].args as number[]
+        expect(x).toBeCloseTo(3.5 * cell)
+        expect(y).toBeCloseTo(1.5 * cell)
+        expect(r).toBeCloseTo(0.1 * cell)
+        const fills = calls.filter((c) => c.name === "fill")
+        expect(fills.map((c) => c.fillStyle)).toEqual(["lime"])
+    })
+
+    it("draws a square particle as a square", () => {
+        const { calls, canvas, renderer } = setup()
+        renderer.draw(
+            corridor(),
+            0,
+            {},
+            {},
+            { particles: [particle({ shape: "square", color: "brown" })] }
+        )
+        const cell = cellOf(canvas)
+        const square = calls.find(
+            (c) => c.name === "fillRect" && c.fillStyle === "brown"
+        )
+        expect(square?.args[2]).toBeCloseTo(0.2 * cell)
+        expect(calls.some((c) => c.name === "arc")).toBe(false)
+    })
+
+    it("draws particles over the characters", () => {
+        const { calls, renderer } = setup()
+        renderer.draw(corridor(), 0, {}, {}, { particles: [particle()] })
+        const sprite = calls.findIndex((c) => c.name === "fillText")
+        const arc = calls.findIndex((c) => c.name === "arc")
+        expect(arc).toBeGreaterThan(sprite)
+    })
+
+    it("skips a particle whose life is over", () => {
+        const { calls, renderer } = setup()
+        renderer.draw(
+            corridor(),
+            0,
+            {},
+            {},
+            { particles: [particle({ age: 1, life: 1 })] }
+        )
+        expect(calls.some((c) => c.name === "arc")).toBe(false)
+    })
+
+    it("hides particles outside the fog's light", () => {
+        const { calls, canvas, renderer } = setup()
+        renderer.draw(
+            corridor(),
+            0,
+            {},
+            { fog: { radius: 2 } },
+            {
+                particles: [
+                    particle({ x: 2, color: "near" }),
+                    particle({ x: 7, color: "far" }),
+                ],
+            }
+        )
+        const cell = cellOf(canvas)
+        const arcs = calls.filter((c) => c.name === "arc")
+        expect(arcs).toHaveLength(1)
+        expect(arcs[0].args[0]).toBeCloseTo(2.5 * cell)
+    })
+
+    it("draws nothing extra without effects", () => {
+        const plain = setup()
+        plain.renderer.draw(corridor(), 0)
+        const empty = setup()
+        empty.renderer.draw(corridor(), 0, {}, {}, { particles: [] })
+        expect(empty.calls.map((c) => c.name)).toEqual(
+            plain.calls.map((c) => c.name)
+        )
+    })
+
+    it("shakes the maze, not the HUD", () => {
+        const { calls, canvas, renderer } = setup()
+        renderer.draw(
+            corridor(),
+            0,
+            { score: 5 },
+            {},
+            { shake: vec2(0.2, -0.1) }
+        )
+        const cell = cellOf(canvas)
+        const translates = calls.filter((c) => c.name === "translate")
+        // Down past the HUD strip, then the shake.
+        expect(translates).toHaveLength(2)
+        expect(translates[1].args[0]).toBeCloseTo(0.2 * cell)
+        expect(translates[1].args[1]).toBeCloseTo(-0.1 * cell)
+        const shakeAt = calls.indexOf(translates[1])
+        const hud = calls.findIndex((c) => c.args[0] === "Score 5")
+        const sprite = calls.findIndex((c) => c.args[0] === "🐉")
+        expect(hud).toBeLessThan(shakeAt)
+        expect(sprite).toBeGreaterThan(shakeAt)
+        // The clip is set before the shake, so the maze moves inside it.
+        const clip = calls.findIndex((c) => c.name === "clip")
+        expect(clip).toBeLessThan(shakeAt)
+    })
+
+    it("doesn't move the fog's darkness with the shake", () => {
+        const { calls, renderer } = setup()
+        renderer.draw(
+            corridor(),
+            0,
+            {},
+            { fog: { radius: 2 } },
+            { shake: vec2(0.2, 0.2) }
+        )
+        const shakeAt = calls.findIndex(
+            (c) => c.name === "translate" && c.args[0] !== 0
+        )
+        const restoreAfter = calls.findIndex(
+            (c, i) => i > shakeAt && c.name === "restore"
+        )
+        const gradient = calls.findIndex(
+            (c) => c.name === "createRadialGradient"
+        )
+        expect(restoreAfter).toBeGreaterThan(shakeAt)
+        expect(gradient).toBeGreaterThan(restoreAfter)
+    })
+
+    it("doesn't translate for a zero shake", () => {
+        const { calls, renderer } = setup()
+        renderer.draw(corridor(), 0, {}, {}, { shake: vec2(0, 0) })
+        expect(calls.filter((c) => c.name === "translate")).toHaveLength(1)
+    })
+
+    it("keeps the effects when redrawing on resize", () => {
+        const { calls, renderer } = setup()
+        renderer.draw(corridor(), 0, {}, {}, { particles: [particle()] })
+        calls.length = 0
+        renderer.resize()
+        expect(calls.filter((c) => c.name === "arc")).toHaveLength(1)
+    })
+})
+
+describe("createRenderer with the facing guide", () => {
+    afterEach(() => {
+        vi.restoreAllMocks()
+    })
+
+    // The aim preview while playing.
+    const AIM = { guide: "aim", aim: true } as const
+
+    // A dotted corridor 9 cells long: player 1 at (1, 1) and, with two
+    // players, player 2 at (7, 1) facing it. Both breathe the Dragon's
+    // line, 5 cells.
+    const corridor = [
+        Array(9).fill(1),
+        [1, ...Array(7).fill(2), 1],
+        Array(9).fill(1),
+    ] as const
+    function game(players = 1) {
+        const starts = [
+            { x: 1, y: 1 },
+            { x: 7, y: 1 },
+        ].slice(0, players)
+        const state = makeState(corridor, starts, [], {
+            mode: players > 1 ? "versus" : "solo",
+        })
+        if (players > 1) state.players[1].breather.facing = vec2(-1, 0)
+        return state
+    }
+    function charge(state: ReturnType<typeof game>) {
+        for (const p of state.players) {
+            p.breather.energy = p.breather.breath.maxEnergy
+        }
+    }
+
+    const cellOf = (canvas: HTMLCanvasElement) =>
+        parseFloat(canvas.style.width) / 9
+    // The cells (by x on row 1) tinted in player `i`'s colour.
+    function tinted(
+        calls: ReturnType<typeof setup>["calls"],
+        canvas: HTMLCanvasElement,
+        i = 0
+    ) {
+        const cell = cellOf(canvas)
+        return calls
+            .filter(
+                (c) => c.name === "fillRect" && c.fillStyle === PLAYER_COLORS[i]
+            )
+            .map((c) => Math.round((c.args[0] as number) / cell))
+    }
+    // The edge's line segments.
+    const edges = (calls: ReturnType<typeof setup>["calls"]) =>
+        calls.filter((c) => c.name === "lineTo").length
+
+    it("tints the cells a charged breath would hit, in the player's colour", () => {
+        const { calls, canvas, renderer } = setup()
+        const state = game()
+        charge(state)
+        renderer.draw(state, 0, {}, {}, AIM)
+        expect(tinted(calls, canvas)).toEqual([2, 3, 4, 5, 6])
+        // An edge round the line: its top and bottom along each cell, and
+        // its two ends.
+        expect(edges(calls)).toBe(5 * 2 + 2)
+    })
+
+    it("draws the tint under the dots and the characters", () => {
+        const { calls, canvas, renderer } = setup()
+        const state = game()
+        charge(state)
+        renderer.draw(state, 0, {}, {}, AIM)
+        const cell = cellOf(canvas)
+        const tint = calls.findIndex(
+            (c) => c.name === "fillRect" && c.fillStyle === PLAYER_COLORS[0]
+        )
+        // The dot on that cell, (2, 1), after it.
+        const dot = calls.findIndex(
+            (c) =>
+                c.name === "fillRect" &&
+                c.fillStyle === "#000" &&
+                (c.args[0] as number) > 2 * cell &&
+                (c.args[0] as number) < 3 * cell &&
+                (c.args[1] as number) > cell
+        )
+        const sprite = calls.findIndex((c) => c.name === "fillText")
+        expect(tint).toBeGreaterThanOrEqual(0)
+        expect(dot).toBeGreaterThan(tint)
+        expect(sprite).toBeGreaterThan(tint)
+    })
+
+    it("draws nothing while the breath isn't charged", () => {
+        const { calls, canvas, renderer } = setup()
+        renderer.draw(game(), 0, {}, {}, AIM)
+        expect(tinted(calls, canvas)).toEqual([])
+        expect(edges(calls)).toBe(0)
+    })
+
+    it("draws nothing unless asked (paused, end screens)", () => {
+        const { calls, canvas, renderer } = setup()
+        const state = game()
+        charge(state)
+        renderer.draw(state, 0, {}, {}, { guide: "aim" })
+        expect(tinted(calls, canvas)).toEqual([])
+        expect(edges(calls)).toBe(0)
+    })
+
+    it("tints both players' aims, each in its colour, overlapping", () => {
+        const { calls, canvas, renderer } = setup()
+        const state = game(2)
+        charge(state)
+        renderer.draw(state, 0, {}, {}, AIM)
+        expect(tinted(calls, canvas, 0)).toEqual([2, 3, 4, 5, 6])
+        expect(tinted(calls, canvas, 1)).toEqual([2, 3, 4, 5, 6])
+    })
+
+    it("draws no aim for a player out of play", () => {
+        const { calls, canvas, renderer } = setup()
+        const state = game(2)
+        charge(state)
+        takeOut(state.players[0], 3)
+        renderer.draw(state, 0, {}, {}, AIM)
+        expect(tinted(calls, canvas, 0)).toEqual([])
+        expect(tinted(calls, canvas, 1)).toEqual([2, 3, 4, 5, 6])
+    })
+
+    it("draws no aim for a stunned player", () => {
+        const { calls, canvas, renderer } = setup()
+        const state = game(2)
+        charge(state)
+        stun(state.players[1])
+        renderer.draw(state, 0, {}, {}, AIM)
+        expect(tinted(calls, canvas, 0)).toEqual([2, 3, 4, 5, 6])
+        expect(tinted(calls, canvas, 1)).toEqual([])
+    })
+
+    it("hides the aim outside the fog's light", () => {
+        const { calls, canvas, renderer } = setup()
+        const state = game()
+        charge(state)
+        renderer.draw(state, 0, {}, { fog: { radius: 1.5 } }, AIM)
+        expect(tinted(calls, canvas)).toEqual([2, 3])
+        // The edge of those two cells only: top and bottom of each, and
+        // the near end.
+        expect(edges(calls)).toBe(2 * 2 + 1)
+    })
+
+    it("draws no aim tint with the arrow guide", () => {
+        const { calls, canvas, renderer } = setup()
+        const state = game(2)
+        charge(state)
+        renderer.draw(state, 0, {}, {}, { guide: "arrow", aim: true })
+        expect(tinted(calls, canvas, 0)).toEqual([])
+        expect(tinted(calls, canvas, 1)).toEqual([])
+    })
+
+    describe("the facing arrow", () => {
+        const ARROW = { guide: "arrow" } as const
+        // A game whose players can all breathe, so they get their arrows.
+        function charged(players?: number) {
+            const state = game(players)
+            charge(state)
+            return state
+        }
+        // The arrows drawn, as each one's colour and tip (in cells).
+        function arrows(
+            calls: ReturnType<typeof setup>["calls"],
+            canvas: HTMLCanvasElement
+        ) {
+            const cell = cellOf(canvas)
+            return calls.flatMap((c, i) => {
+                if (c.name !== "fill") return []
+                const color = PLAYER_COLORS.findIndex((p) => p === c.fillStyle)
+                if (color < 0) return []
+                const tip = calls
+                    .slice(0, i)
+                    .filter((m) => m.name === "moveTo")
+                    .at(-1)!.args as number[]
+                return [
+                    {
+                        color,
+                        tip: [
+                            Math.round((tip[0] / cell) * 10) / 10,
+                            Math.round((tip[1] / cell) * 10) / 10,
+                        ],
+                    },
+                ]
+            })
+        }
+
+        it("points right before the first move", () => {
+            const { calls, canvas, renderer } = setup()
+            renderer.draw(charged(), 0, {}, {}, ARROW)
+            expect(arrows(calls, canvas)).toEqual([
+                { color: 0, tip: [2.2, 1.5] },
+            ])
+        })
+
+        it.each([
+            ["up", vec2(0, -1), [1.5, 0.8]],
+            ["down", vec2(0, 1), [1.5, 2.2]],
+            ["left", vec2(-1, 0), [0.8, 1.5]],
+            ["right", vec2(1, 0), [2.2, 1.5]],
+        ])("points %s the way the player faces", (_, facing, tip) => {
+            const { calls, canvas, renderer } = setup()
+            const state = charged()
+            state.players[0].breather.facing = facing
+            renderer.draw(state, 0, {}, {}, ARROW)
+            expect(arrows(calls, canvas)).toEqual([{ color: 0, tip }])
+        })
+
+        it("gives each player its own, in its colour", () => {
+            const { calls, canvas, renderer } = setup()
+            renderer.draw(charged(2), 0, {}, {}, ARROW)
+            expect(arrows(calls, canvas)).toEqual([
+                { color: 0, tip: [2.2, 1.5] },
+                { color: 1, tip: [6.8, 1.5] },
+            ])
+        })
+
+        it("draws none for a player out of play", () => {
+            const { calls, canvas, renderer } = setup()
+            const state = charged(2)
+            takeOut(state.players[1], 3)
+            renderer.draw(state, 0, {}, {}, ARROW)
+            expect(arrows(calls, canvas).map((a) => a.color)).toEqual([0])
+        })
+
+        it("draws none for a stunned player", () => {
+            const { calls, canvas, renderer } = setup()
+            const state = charged(2)
+            stun(state.players[1])
+            renderer.draw(state, 0, {}, {}, ARROW)
+            expect(arrows(calls, canvas).map((a) => a.color)).toEqual([0])
+        })
+
+        it("travels with the gliding sprite", () => {
+            const { calls, canvas, renderer } = setup()
+            const state = charged()
+            const player = state.players[0].character
+            player.lastPos = vec2(1, 1)
+            player.pos = vec2(2, 1)
+            player.moveProgress = 0.5
+            renderer.draw(state, 0, {}, {}, ARROW)
+            expect(arrows(calls, canvas)).toEqual([
+                { color: 0, tip: [2.7, 1.5] },
+            ])
+        })
+
+        it("draws none while the breath isn't charged", () => {
+            const { calls, canvas, renderer } = setup()
+            renderer.draw(game(2), 0, {}, {}, ARROW)
+            expect(arrows(calls, canvas)).toEqual([])
+        })
+
+        it("draws none with the aim guide, or without a guide", () => {
+            for (const effects of [{ guide: "aim", aim: true } as const, {}]) {
+                const { calls, canvas, renderer } = setup()
+                const state = game(2)
+                charge(state)
+                renderer.draw(state, 0, {}, {}, effects)
+                expect(arrows(calls, canvas)).toEqual([])
+            }
+        })
     })
 })

@@ -30,6 +30,17 @@ export const dragon: BreathDef = {
     duration: BURN_SECONDS,
     maxEnergy: 100,
     speedScale: 1,
+    // Embers flying along the line from each burning cell.
+    particles: {
+        colors: ["#f97316", "#fbbf24", "#dc2626"],
+        count: 4,
+        life: 0.5,
+        speed: 2.5,
+        spread: 1,
+        size: 0.12,
+        jitter: 0.2,
+        drag: 2,
+    },
     fire(hit) {
         const target = hit.enemies[0]
         if (!target && hit.cells.length === 0) return false

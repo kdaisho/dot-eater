@@ -78,11 +78,15 @@ describe("main in versus", () => {
         vi.useFakeTimers()
         const saved = serializeProgress(emptyProgress())
         localStorage.setItem(PROGRESS_KEY, saved)
+        // Without ?record nothing is recorded or downloaded.
+        const createObjectURL = vi.fn(() => "blob:unexpected")
+        URL.createObjectURL = createObjectURL
         document.body.innerHTML = '<canvas id="game"></canvas>'
         await import("./main")
         const setItem = vi.spyOn(localStorage, "setItem")
+        expect(document.getElementById("rec-badge")).toBeNull()
 
-        expect(menu()).toEqual(["1 player", "Co-op", "Versus"])
+        expect(menu()).toEqual(["1 player", "Co-op", "Versus", "Settings"])
         pressAndTick("ArrowDown")
         pressAndTick("ArrowDown")
         pressAndTick("Space")
@@ -135,6 +139,8 @@ describe("main in versus", () => {
         expect(setItem).not.toHaveBeenCalled()
         expect(localStorage.getItem(PROGRESS_KEY)).toBe(saved)
         expect(localStorage.getItem(LAST_PICK_KEY)).toBeNull()
+        // And no recording of the rounds.
+        expect(createObjectURL).not.toHaveBeenCalled()
 
         // A rematch starts again from round 1.
         pressAndTick("Space")

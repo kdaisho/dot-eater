@@ -38,6 +38,15 @@ Scripts:
 
 CI runs `pnpm check`, `pnpm test` and `pnpm build` on every pull request.
 
+## Recording gameplay
+
+Add `?record` to the URL (e.g. `http://localhost:5173/dot-eater/?record`, or the live site) to record runs for videos. A small "● REC" badge shows in the top-right corner while it's on.
+
+- Each run is recorded from the moment play starts until its end screen: a stage clear or game over, or in versus each round. When it ends, the browser downloads it as a JSON file, e.g. `dot-eater-stage1-solo-dragon-lost-2026-10-28T19-40-05.json`.
+- Pausing is fine: paused time is left out of the recording.
+- A recording holds the run's input and the seed of its randomness, so `src/replay.ts` (`createReplayer`, `verify`) replays it exactly, tick by tick.
+- Without `?record` nothing is recorded.
+
 ## Tech
 
 TypeScript, built with [Vite+](https://viteplus.dev).

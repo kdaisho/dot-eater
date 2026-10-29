@@ -1,5 +1,13 @@
 import { footprint } from "./boss"
-import { enemyVisible, hasStatus, type EnergyHud, type Look } from "./breath"
+import {
+    aimPreviews,
+    canBreathe,
+    enemyVisible,
+    hasStatus,
+    type AimPreview,
+    type EnergyHud,
+    type Look,
+} from "./breath"
 import { AiType, Cell, CharacterId, SPRITE_SCALE } from "./constants"
 import {
     fogDistance,
@@ -12,6 +20,8 @@ import type { GameState, Player } from "./game"
 import { eatenDotVisible, glidePos, wrapCopies } from "./glide"
 import { computeLayout, type Layout } from "./layout"
 import type { LevelRules } from "./level"
+import { particleAlpha, type Particle } from "./particles"
+import type { FacingGuide } from "./settings"
 import { ANIMALS } from "./roster"
 import { isSplitterHalf } from "./splitter"
 import { vec2, type Vec2 } from "./vec2"
@@ -45,11 +55,35 @@ export type PlayerHud = {
     stunned?: number
 }
 
+// Visual effects drawn with the game (KDA-213), none of them part of it.
+export type Effects = {
+    // Drawn over the characters, under the fog (see particles.ts).
+    particles?: readonly Particle[]
+    // How far to move the maze this frame, in cells (see shake.ts). The
+    // HUD stays put.
+    shake?: Vec2
+    // How to show which way each player faces (KDA-247; the Facing guide
+    // setting): "arrow", an arrow on each player in play, or "aim", the aim
+    // preview while `aim` is set too. Neither when left out.
+    guide?: FacingGuide
+    // Whether the aim preview may show (only while playing, not paused or
+    // on end screens): with `guide` "aim", each charged player's preview
+    // (see aimPreviews in breath.ts), a faint tint in its colour on the
+    // cells its breath would hit, under the dots.
+    aim?: boolean
+}
+
 export type Renderer = {
     // Draw the game. `alpha` in [0, 1) is how far the loop is between the last
     // logic tick and the next; characters glide between cells with it.
     // `rules` are the level's special rules that change how it looks (fog).
-    draw(state: GameState, alpha: number, hud?: Hud, rules?: LevelRules): void
+    draw(
+        state: GameState,
+        alpha: number,
+        hud?: Hud,
+        rules?: LevelRules,
+        effects?: Effects
+    ): void
     // Paint the background only, for screens without a game, so the canvas
     // doesn't keep showing an old board. The canvas keeps its size.
     clear(): void
@@ -106,6 +140,21 @@ export const PLAYER_COLORS = ["#2563eb", "#dc2626"] as const
 const RING_WIDTH = 0.08
 const LABEL_SCALE = 0.4
 
+// The facing arrow (see Effects.guide): a filled triangle in the player's
+// colour just outside its ring, pointing the way it faces, shown only while
+// its breath could fire (the aim preview's rule: charged, not stunned).
+// Its tip is this far from the sprite's centre and its base this wide, in
+// cells.
+const ARROW_TIP = 0.7
+const ARROW_WIDTH = 0.3
+
+// The aim preview (see Effects.aim) is a tint in the player's colour: a
+// faint fill over each cell its breath would hit, and a slightly stronger
+// edge round the outside of those cells, this wide as a fraction of a cell.
+const AIM_FILL_ALPHA = 0.1
+const AIM_EDGE_ALPHA = 0.3
+const AIM_EDGE_WIDTH = 0.05
+
 // Enemies look like what they do: every enemy of one AI type shares a
 // sprite. A Record over AiType, so a new AI type without a sprite is a type
 // error.
@@ -155,7 +204,13 @@ export function createRenderer(
     let cols = 0
     let rows = 0
     let last:
-        | { state: GameState; alpha: number; hud: Hud; rules: LevelRules }
+        | {
+              state: GameState
+              alpha: number
+              hud: Hud
+              rules: LevelRules
+              effects: Effects
+          }
         | undefined
     // With two players, the fog's darkness is drawn on a canvas of its own
     // first (see drawDarkness); made, with its context, when first needed
@@ -187,9 +242,10 @@ export function createRenderer(
         state: GameState,
         alpha: number,
         hud: Hud = {},
-        rules: LevelRules = {}
+        rules: LevelRules = {},
+        effects: Effects = {}
     ) {
-        last = { state, alpha, hud, rules }
+        last = { state, alpha, hud, rules, effects }
         const mapRows = state.cells.length
         const mapCols = state.cells[0]?.length ?? 0
         if (!layout || mapCols !== cols || mapRows !== rows) {
@@ -216,9 +272,29 @@ export function createRenderer(
         const fog = rules.fog
             ? createFog(state, alpha, cols, rows, rules.fog.radius)
             : null
-        drawCells(ctx, state, alpha, cell, fog)
+        // A shake moves everything in the maze, inside the still clip; the
+        // fog's darkness doesn't move, so it covers the edge a shake bares.
+        ctx.save()
+        const shake = effects.shake
+        if (shake && (shake.x !== 0 || shake.y !== 0)) {
+            ctx.translate(shake.x * cell, shake.y * cell)
+        }
+        const aims =
+            effects.aim && effects.guide === "aim" ? aimPreviews(state) : []
+        drawCells(ctx, state, alpha, cell, fog, aims)
         drawBoss(ctx, state, alpha, cell, cols, rows, fog)
-        drawCharacters(ctx, state, alpha, cell, cols, rows, fog)
+        drawCharacters(
+            ctx,
+            state,
+            alpha,
+            cell,
+            cols,
+            rows,
+            fog,
+            effects.guide === "arrow"
+        )
+        if (effects.particles) drawParticles(ctx, effects.particles, cell, fog)
+        ctx.restore()
         if (fog) drawDarkness(ctx, fog, cell, cols, rows, darknessLayer, dpr)
         ctx.restore()
     }
@@ -236,8 +312,9 @@ export function createRenderer(
         clear,
         resize() {
             if (layout) fit()
-            if (last) draw(last.state, last.alpha, last.hud, last.rules)
-            else clear()
+            if (last) {
+                draw(last.state, last.alpha, last.hud, last.rules, last.effects)
+            } else clear()
         },
     }
 }
@@ -391,7 +468,8 @@ function drawCells(
     state: GameState,
     alpha: number,
     cell: number,
-    fog: Fog | null
+    fog: Fog | null,
+    aims: readonly AimPreview[]
 ) {
     const wall = cell * WALL_SCALE
     const dot = Math.max(1, cell * DOT_SCALE)
@@ -414,6 +492,7 @@ function drawCells(
         )
     }
     const looks = tileLooks(state)
+    const aimed = aimGrid(state, aims)
     state.cells.forEach((row, y) => {
         row.forEach((value, x) => {
             if (fog && !fog.visible(vec2(x, y))) return
@@ -422,6 +501,11 @@ function drawCells(
             if (state.ice[y][x]) fillCell(x, y, COLORS.ice)
             for (const look of looks?.[y][x] ?? []) {
                 if (look.color) fillCell(x, y, look.color)
+            }
+            for (const player of aimed?.[y][x] ?? []) {
+                ctx.globalAlpha = AIM_FILL_ALPHA
+                fillCell(x, y, PLAYER_COLORS[player])
+                ctx.globalAlpha = 1
             }
             if (value === Cell.wall) {
                 ctx.fillStyle = COLORS.wall
@@ -435,6 +519,7 @@ function drawCells(
             }
         })
     })
+    for (const aim of aims) drawAimEdge(ctx, aim, cell, fog)
     if (!looks) return
     // Tile emoji go on top of everything in the cells, before characters.
     const emoji = looks.flatMap((row, y) =>
@@ -464,6 +549,63 @@ function tileLooks(state: GameState): Look[][][] | null {
         if (t.effect.look) looks[t.pos.y][t.pos.x].push(t.effect.look)
     }
     return looks
+}
+
+// Per cell [y][x], the players whose aim preview covers it, player 1
+// first, or null with no previews (the common case: no grid each frame).
+function aimGrid(
+    state: GameState,
+    aims: readonly AimPreview[]
+): number[][][] | null {
+    if (aims.length === 0) return null
+    const grid: number[][][] = state.cells.map((row) => row.map(() => []))
+    for (const { player, cells } of aims) {
+        for (const c of cells) grid[c.y][c.x].push(player)
+    }
+    return grid
+}
+
+// The edge of one aim preview: a line along every side of its cells that
+// doesn't border another of them, so it outlines the whole shape. In fog,
+// cells outside the light get none, as they get no fill.
+function drawAimEdge(
+    ctx: CanvasRenderingContext2D,
+    aim: AimPreview,
+    cell: number,
+    fog: Fog | null
+) {
+    const inAim = new Set(aim.cells.map((c) => `${c.x},${c.y}`))
+    const has = (x: number, y: number) => inAim.has(`${x},${y}`)
+    ctx.save()
+    ctx.globalAlpha = AIM_EDGE_ALPHA
+    ctx.strokeStyle = PLAYER_COLORS[aim.player]
+    ctx.lineWidth = Math.max(1, cell * AIM_EDGE_WIDTH)
+    ctx.beginPath()
+    for (const { x, y } of aim.cells) {
+        if (fog && !fog.visible(vec2(x, y))) continue
+        const left = x * cell
+        const top = y * cell
+        const right = left + cell
+        const bottom = top + cell
+        if (!has(x, y - 1)) {
+            ctx.moveTo(left, top)
+            ctx.lineTo(right, top)
+        }
+        if (!has(x, y + 1)) {
+            ctx.moveTo(left, bottom)
+            ctx.lineTo(right, bottom)
+        }
+        if (!has(x - 1, y)) {
+            ctx.moveTo(left, top)
+            ctx.lineTo(left, bottom)
+        }
+        if (!has(x + 1, y)) {
+            ctx.moveTo(right, top)
+            ctx.lineTo(right, bottom)
+        }
+    }
+    ctx.stroke()
+    ctx.restore()
 }
 
 // The boss, unless it is defeated (gone for good): its sprite centred on
@@ -522,7 +664,8 @@ function drawCharacters(
     cell: number,
     cols: number,
     rows: number,
-    fog: Fog | null
+    fog: Fog | null,
+    arrows: boolean
 ) {
     ctx.textAlign = "center"
     ctx.textBaseline = "middle"
@@ -536,7 +679,9 @@ function drawCharacters(
     // it is drawn instead of creeping forward between ticks. Each player
     // glides at its current rate (Player.rate), as the ticks move it, and
     // with two players wears its marker (see PLAYER_COLORS). A Splitter's
-    // half is drawn smaller (HALF_SCALE), its disc and badges too.
+    // half is drawn smaller (HALF_SCALE), its disc and badges too. With
+    // `arrows`, each player who could breathe also gets its facing arrow (see
+    // drawArrow).
     const marked = state.players.length > 1
     // A player out of play (see takeOut in game.ts) isn't drawn.
     const sprites = [
@@ -550,6 +695,12 @@ function drawCharacters(
                           rate: player.rate,
                           marker: marked ? i : null,
                           badge: versusBadge(player),
+                          arrow:
+                              arrows &&
+                              !stunned(player) &&
+                              canBreathe(player.breather)
+                                  ? { index: i, facing: player.breather.facing }
+                                  : null,
                       },
                   ]
         ),
@@ -559,9 +710,10 @@ function drawCharacters(
             rate: 1,
             marker: null,
             badge: null,
+            arrow: null,
         })),
     ]
-    for (const { character, sprite, rate, marker, badge } of sprites) {
+    for (const { character, sprite, rate, marker, badge, arrow } of sprites) {
         const isPlayer = character.id === CharacterId.player
         if (!isPlayer && !enemyVisible(character)) continue
         const held = !isPlayer && hasStatus(character, "holds")
@@ -587,6 +739,7 @@ function drawCharacters(
             }
             ctx.fillText(sprite, x, y)
             if (marker !== null) drawMarker(ctx, marker, x, y, size)
+            if (arrow) drawArrow(ctx, arrow, x, y, cell)
             // A stunned player (versus) wears the stun badge, and one
             // immune just after a stun the immune badge, like a status's.
             const badges = [
@@ -604,6 +757,38 @@ function drawCharacters(
             })
         }
     }
+}
+
+// Particles (see particles.ts), each a disc or a square of its colour,
+// fading out over its life. In fog, those outside the light are hidden like
+// any other thing. They aren't wrapped through tunnels: one flying off the
+// map is clipped.
+function drawParticles(
+    ctx: CanvasRenderingContext2D,
+    particles: readonly Particle[],
+    cell: number,
+    fog: Fog | null
+) {
+    if (particles.length === 0) return
+    ctx.save()
+    for (const p of particles) {
+        if (fog && !fog.visible(p)) continue
+        const alpha = particleAlpha(p)
+        if (alpha <= 0) continue
+        ctx.globalAlpha = alpha
+        ctx.fillStyle = p.color
+        const x = (p.x + 0.5) * cell
+        const y = (p.y + 0.5) * cell
+        const size = Math.max(1, p.size * cell)
+        if (p.shape === "square") {
+            ctx.fillRect(x - size / 2, y - size / 2, size, size)
+        } else {
+            ctx.beginPath()
+            ctx.arc(x, y, size / 2, 0, Math.PI * 2)
+            ctx.fill()
+        }
+    }
+    ctx.restore()
 }
 
 // Player `index`'s marker on its sprite centred at (x, y): a ring round it
@@ -624,6 +809,34 @@ function drawMarker(
     ctx.fillStyle = color
     ctx.font = `bold ${Math.round(size * LABEL_SCALE)}px sans-serif`
     ctx.fillText(String(index + 1), x - size / 2, y + size / 2)
+}
+
+// Player `arrow.index`'s facing arrow, for its sprite centred at (x, y): a
+// filled triangle in its colour, its base just outside the ring and its tip
+// ARROW_TIP cells out along `facing` (a unit step).
+function drawArrow(
+    ctx: CanvasRenderingContext2D,
+    arrow: { index: number; facing: Vec2 },
+    x: number,
+    y: number,
+    cell: number
+) {
+    const { x: fx, y: fy } = arrow.facing
+    const size = cell * SPRITE_SCALE
+    // The ring's outer edge (see drawMarker), drawn or not.
+    const base = size / 2 + Math.max(1, size * RING_WIDTH)
+    const tip = Math.max(base + 2, ARROW_TIP * cell)
+    const half = (ARROW_WIDTH * cell) / 2
+    ctx.save()
+    ctx.fillStyle = PLAYER_COLORS[arrow.index]
+    ctx.beginPath()
+    ctx.moveTo(x + fx * tip, y + fy * tip)
+    // Across the facing: (-fy, fx).
+    ctx.lineTo(x + fx * base - fy * half, y + fy * base + fx * half)
+    ctx.lineTo(x + fx * base + fy * half, y + fy * base - fx * half)
+    ctx.closePath()
+    ctx.fill()
+    ctx.restore()
 }
 
 // Score on the left, lives (as the player's emoji) on the right, the energy

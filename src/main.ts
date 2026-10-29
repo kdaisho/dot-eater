@@ -1,34 +1,56 @@
+import type { Random } from "./ai"
+import {
+    captureButton,
+    captureKey,
+    FIXED_PAUSE_KEY,
+    sameBindings,
+} from "./bindings"
+import { browserAudioContext, createAudio } from "./audio"
+import { playEventSounds, screenSound } from "./sound"
 import { energyHud } from "./breath"
 import { MAX_FRAME_MS, TICK_MS } from "./constants"
+import { createTouchControls, DpadSource, setControls } from "./dpad"
+import { applyMotion, effectsForEvents } from "./eventEffects"
+import { takeEvents, type GameEvent } from "./events"
 import {
+    baseScreen,
     END_CHOICES,
     ROUND_CHOICES,
     gameOf,
     initialScreen,
-    MODE_CHOICES,
+    PAUSE_CHOICES,
     pauseIfPlaying,
     playerCount,
     recordsProgress,
+    screenSettings,
+    selectItem,
+    settingsContext,
+    TITLE_CHOICES,
     update,
     type EndChoice,
+    type Capture,
+    type FlowDeps,
     type Mode,
     type Screen,
     type TickInput,
+    type TitleChoice,
 } from "./flow"
 import { totalScore, type GameState } from "./game"
 import {
+    CONTROLS_ROWS,
+    controlsRowLabel,
+    controlsRowValue,
+} from "./controlsMenu"
+import {
     browserPadList,
     GamepadSource,
+    pressedButtons,
     type PadAssignment,
     type PadChange,
 } from "./gamepad"
-import {
-    InputState,
-    KeyboardSource,
-    PLAYER_1_KEYS,
-    PLAYER_2_KEYS,
-} from "./input"
+import { InputState, KeyboardSource, keyMapsFor, type Action } from "./input"
 import { loadLastPick, saveLastPick } from "./lastPick"
+import { controlsSpace } from "./layout"
 import { levels } from "./levels"
 import { createLoop } from "./loop"
 import {
@@ -37,24 +59,48 @@ import {
     stageSlots,
     type Progress,
 } from "./progress"
-import { createRenderer, type Hud } from "./render"
+import { createParticles } from "./particles"
+import { createRenderer, type Effects, type Hud } from "./render"
+import {
+    createRecorder,
+    newSeed,
+    seededRandom,
+    shouldRecord,
+    type Recorder,
+    type Recording,
+} from "./replay"
 import { ANIMAL_IDS, ANIMALS, type AnimalId } from "./roster"
+import {
+    bindingsOf,
+    loadSettings,
+    saveSettings,
+    type Settings,
+} from "./settings"
+import { rowValue, settingsRows } from "./settingsMenu"
+import { createShake } from "./shake"
 import {
     burst,
     celebrate,
+    downloadFile,
     hideOverlay,
     hideToast,
+    overlayTap,
     showCharacterSelect,
+    showControls,
     showGameOver,
     showMatchResult,
     showPause,
+    showRecordingBadge,
     showRoundResult,
+    showSettings,
     showStageClear,
     showStageSelect,
+    setHintBindings,
     showTitle,
     showToast,
     type EndScreenView,
 } from "./ui"
+import { isTouchDevice, TouchSource } from "./touch"
 import { roundWins, stunned, tallyText } from "./versus"
 
 let screen: Screen = initialScreen()
@@ -72,13 +118,127 @@ const storage = browserStorage()
 let progress: Progress = loadProgress(storage)
 // Kept here too, so the last pick holds for the session if saving fails.
 let lastAnimal: AnimalId = loadLastPick(storage)
+// Likewise the settings: saved on every change on the settings screen.
+let settings: Settings = loadSettings(storage)
+
+// The system's reduced motion setting, read as it is now on every tick (it
+// can change while the game runs), and whether this is a touch device:
+// what some settings depend on (see SettingsContext).
+function mediaQuery(query: string): MediaQueryList | undefined {
+    try {
+        return window.matchMedia(query)
+    } catch {
+        return undefined
+    }
+}
+const reducedMotion = mediaQuery("(prefers-reduced-motion: reduce)")
+const touch = isTouchDevice(window)
+
+// Gameplay recording, for videos (see replay.ts), on with ?record in the
+// URL. Each run (a game from its start in `playing` to its end screen; in
+// versus, each round) gets a fresh seed, and its game randomness comes from
+// that seed; its ticks are recorded, and the recording downloads when the
+// run reaches its end screen. Without ?record nothing is recorded and the
+// game uses Math.random as always.
+const recordingOn = new URLSearchParams(location.search).has("record")
+let recorder: Recorder | undefined
+let gameRandom: Random = Math.random
 
 const canvas = document.getElementById("game")
 if (!(canvas instanceof HTMLCanvasElement)) throw new Error("No #game canvas")
-const renderer = createRenderer(canvas)
+// Touch: swipes and taps on the play area steer player 1 (TouchSource);
+// the optional on-screen D-pad, breath and pause buttons (dpad.ts) do too.
+// The D-pad shows on touch devices when the Show D-pad setting is on
+// (applyDpad, live as the setting changes).
+const playArea = document.getElementById("play") ?? canvas
+const touchControls = createTouchControls()
+const touchSource = new TouchSource(playArea)
+let dpadShown = false
+setControls(document, { touch, dpad: false, playing: false })
+
+// The renderer fits the maze into the window less the D-pad's band.
+const renderer = createRenderer(canvas, {
+    view: {
+        get innerWidth() {
+            return innerWidth - controlsRoom().width
+        },
+        get innerHeight() {
+            return innerHeight - controlsRoom().height
+        },
+        get devicePixelRatio() {
+            return devicePixelRatio
+        },
+    },
+})
 addEventListener("resize", () => renderer.resize())
 
+function controlsRoom() {
+    return controlsSpace(innerWidth, innerHeight, dpadShown)
+}
+
+// Show or hide the on-screen D-pad and breath button as the settings say,
+// refitting the maze when that changes.
+function applyDpad() {
+    const on = touch && settings.showDpad
+    if (on === dpadShown) return
+    dpadShown = on
+    setControls(document, { dpad: on })
+    renderer.resize()
+}
+applyDpad()
+
+// Particles and screen shake (KDA-213): visual only, never read by the
+// game. They move on with the game's ticks (so they freeze while paused),
+// start over with each game, and show only while it is played, paused or
+// ending. With reduced motion there is no shake and particles are fewer and
+// shorter; the Screen shake setting, when set, overrides the shake part.
+const particles = createParticles({ random: Math.random })
+const shake = createShake()
+const effects = {
+    // Follow reduced motion and the Screen shake setting: on load, when the
+    // settings change and when the system setting does.
+    motion() {
+        const reduced = reducedMotion?.matches ?? false
+        applyMotion({ particles, shake }, settings, reduced)
+    },
+    // The bursts and shakes for a tick's game events (see eventEffects.ts).
+    events(events: readonly GameEvent[], game: GameState) {
+        effectsForEvents(events, game, { particles, shake })
+    },
+    tick(dt: number) {
+        particles.update(dt)
+        shake.update(dt)
+    },
+    reset() {
+        particles.clear()
+        shake.clear()
+    },
+    of(s: Screen): Effects {
+        if (
+            s.kind !== "playing" &&
+            s.kind !== "ending" &&
+            s.kind !== "paused"
+        ) {
+            return {}
+        }
+        const moving = s.kind !== "paused"
+        return {
+            particles: particles.list,
+            ...(moving ? { shake: shake.offset(Math.random) } : {}),
+            // The facing guide the settings pick (KDA-247). The arrow shows
+            // with the rings, paused and ending too; the aim preview only
+            // while playing.
+            guide: settings.facingGuide,
+            ...(s.kind === "playing" ? { aim: true } : {}),
+        }
+    },
+}
+effects.motion()
+reducedMotion?.addEventListener?.("change", () => effects.motion())
+
 const input = new InputState()
+// Both players' keys, as bound in the settings (see applyBindings).
+const keys = new KeyboardSource(keyMapsFor(bindingsOf(settings)))
 // Each player's input, by index (player 1 is 0): flow asks for player 2's
 // only in a 2-player mode.
 const tickInput: TickInput = {
@@ -91,6 +251,52 @@ const tickInput: TickInput = {
             breath: p.wasPressed("breath"),
         }
     },
+    captured: () => pendingCapture,
+}
+
+// The controls screen's capture (see Capture in flow.ts): the first key and
+// the first pad button pressed while it waits, each kind apart, so a stray
+// press of one kind doesn't hide the other, and Escape. Taken only while it
+// waits, and cleared after every tick like the press edges.
+let pendingCapture: Capture = {}
+const capturing = () => screen.kind === "controls" && !!screen.capturing
+
+addEventListener("keydown", (event) => {
+    if (!capturing()) return
+    if (event.code === FIXED_PAUSE_KEY) {
+        pendingCapture = { ...pendingCapture, cancel: true }
+        return
+    }
+    if (pendingCapture.key !== undefined) return
+    const key = captureKey(event)
+    if (key === undefined) return
+    // Tab and the like do nothing else while bound.
+    event.preventDefault()
+    pendingCapture = { ...pendingCapture, key }
+})
+
+// The buttons each pad held at the last frame, so only a fresh press is
+// captured: a button held when the prompt opens (the confirm that opened
+// it), or when a pad is first listed, doesn't count. Read only while the
+// prompt waits; its first frame only notes what is held.
+const padList = browserPadList(navigator)
+let padButtonsDown = new Map<number, readonly number[]>()
+function capturePads() {
+    const down = new Map<number, readonly number[]>()
+    if (!capturing()) {
+        padButtonsDown = down
+        return
+    }
+    for (const pad of padList()) {
+        if (!pad || pad.connected === false) continue
+        const now = pressedButtons(pad)
+        down.set(pad.index, now)
+        if (pendingCapture.button !== undefined) continue
+        const before = padButtonsDown.get(pad.index) ?? now
+        const button = captureButton(before, now)
+        if (button !== undefined) pendingCapture = { ...pendingCapture, button }
+    }
+    padButtonsDown = down
 }
 
 // Gamepads: in one-player play every pad drives player 1, alongside the
@@ -111,12 +317,14 @@ function onPadChange(change: PadChange) {
     if (change.kind === "disconnected" && change.wasUsed) autoPause()
 }
 const pads = new GamepadSource(
-    browserPadList(navigator),
+    padList,
     globalThis,
-    onPadChange
+    onPadChange,
+    bindingsOf(settings)
 )
 pads.setAssignment(padAssignment(screen))
 let padPollFailed = false
+let padCaptureFailed = false
 
 // The loop ticks on every screen; menus and pause poll their input per tick
 // like play does. Only `playing` steps the game.
@@ -138,6 +346,13 @@ const loop = createLoop({
                 if (!padPollFailed) console.error(error)
                 padPollFailed = true
             }
+            // Apart, so a throw from one doesn't skip the other.
+            try {
+                capturePads()
+            } catch (error) {
+                if (!padCaptureFailed) console.error(error)
+                padCaptureFailed = true
+            }
             callback()
         }),
     cancelFrame: (id) => cancelAnimationFrame(id),
@@ -146,27 +361,56 @@ const loop = createLoop({
 // One logic tick: advance the screen machine with player 1's input, then
 // clear this tick's press edges, so a press is seen by exactly one tick (and
 // one screen). A boss defeated during the tick gets its burst of confetti
-// at once, mid-game.
+// at once, mid-game. What the game step reported goes to onGameEvents.
 function tick(dt: number) {
-    const boss = gameOf(screen)?.boss
+    const game = gameOf(screen)
+    const boss = game?.boss
     const wasDefeated = boss?.defeated ?? true
-    const next = update(screen, tickInput, {
+    const next = update(screen, tickInput, flowDeps(dt))
+    // Before endTick, which clears the presses the recorder reads.
+    if (recorder && shouldRecord(screen, next)) recorder.add(tickInput)
+    input.endTick()
+    pendingCapture = {}
+    if (game) onGameEvents(takeEvents(game), game)
+    if (boss && !wasDefeated && boss.defeated) burst()
+    // Effects move on only when this tick moved the game on: a step, or
+    // the outro's settle. Not on a tick that pauses or resumes.
+    const moved =
+        screen.kind === "ending" ||
+        (screen.kind === "playing" && next.kind !== "paused")
+    if (next !== screen) enter(screen, next)
+    if (moved) effects.tick(dt)
+}
+
+function flowDeps(dt: number): FlowDeps {
+    return {
         levels,
         progress,
         lastAnimal,
         dt,
-        random: Math.random,
-    })
-    input.endTick()
-    if (boss && !wasDefeated && boss.defeated) burst()
-    if (next !== screen) enter(screen, next)
+        // Seeded while recording (see recordRuns).
+        random: gameRandom,
+        settings,
+        touch,
+        prefersReducedMotion: reducedMotion?.matches ?? false,
+    }
+}
+
+// What happened in the tick's game step, if it stepped the game (see
+// events.ts); empty otherwise. Sound (KDA-212) and particles and screen
+// shake (KDA-213) hook in here.
+function onGameEvents(events: readonly GameEvent[], game: GameState) {
+    playEventSounds(audio, events)
+    effects.events(events, game)
 }
 
 // How pads map to players on a screen. The title, where the mode is still
 // being chosen, shares every pad with player 1, so any pad can pick the
 // mode (and go back to 1 player). From stage select on, a 2-player mode
 // gives each pad its own player, so player 2's pad picks its character.
-function padAssignment(screen: Screen): PadAssignment {
+// Settings follow the screen they were opened over.
+function padAssignment(shown: Screen): PadAssignment {
+    const screen = baseScreen(shown)
     return screen.kind !== "title" && playerCount(screen.mode) > 1
         ? "perPad"
         : "shared"
@@ -175,10 +419,26 @@ function padAssignment(screen: Screen): PadAssignment {
 function enter(prev: Screen, next: Screen) {
     screen = next
     pads.setAssignment(padAssignment(next))
+    setControls(document, { playing: next.kind === "playing" })
+    // A swipe holds its direction until newer input; a game starting or
+    // ending (not a pause or resume) lets go of it, so it neither steers
+    // the next game nor sets that direction aside for the keys there.
+    const wasPlaying = prev.kind === "playing"
+    const isPlaying = next.kind === "playing"
+    if (
+        (isPlaying && !wasPlaying && prev.kind !== "paused") ||
+        (wasPlaying && !isPlaying && next.kind !== "paused")
+    ) {
+        touchSource.release()
+    }
     // Play started from a menu (character select or Retry): a direction
     // still held from the menu waits for a fresh press. Resuming from pause
     // keeps held directions, so holding through a pause carries on moving.
-    if (next.kind === "playing" && prev.kind !== "paused") input.ignoreHeld()
+    // A new game also starts with no particles or shake left over.
+    if (next.kind === "playing" && prev.kind !== "paused") {
+        input.ignoreHeld()
+        effects.reset()
+    }
     // Only 1-player games remember the pick: 2-player games leave saved
     // data alone.
     if (
@@ -201,7 +461,62 @@ function enter(prev: Screen, next: Screen) {
         celebrate(10)
     }
     if (next.kind === "matchResult" && prev.kind === "ending") celebrate(10)
+    if (recordingOn) recordRuns(prev, next)
+    // Every change on the settings and controls screens is saved, and
+    // applied, at once.
+    const changed = screenSettings(next)
+    if (changed && changed !== settings) {
+        // By value: Reset gives equal bindings as another object.
+        if (!sameBindings(bindingsOf(changed), bindingsOf(settings))) {
+            applyBindings(changed)
+        }
+        settings = changed
+        saveSettings(storage, settings)
+        applyDpad()
+        effects.motion()
+    }
+    screenSound(audio, prev, next, settings)
     showOverlay(next)
+}
+
+// Use the settings' bindings for the keyboard, the pads and the hints.
+function applyBindings(s: Settings) {
+    const bindings = bindingsOf(s)
+    keys.setBindings(bindings)
+    pads.setBindings(bindings)
+    setHintBindings(bindings)
+}
+
+// Start a recording when a run starts (play entered other than from
+// pause), and download it when the run leaves its outro for an end screen.
+function recordRuns(prev: Screen, next: Screen) {
+    if (next.kind === "playing" && prev.kind !== "paused") {
+        const seed = newSeed(Math.random)
+        gameRandom = seededRandom(seed)
+        recorder = createRecorder(next, seed)
+    } else if (prev.kind === "ending" && recorder) {
+        const recording = recorder.finish(next)
+        recorder = undefined
+        downloadFile(
+            recordingName(recording, new Date()),
+            JSON.stringify(recording),
+            "application/json"
+        )
+    }
+}
+
+// e.g. dot-eater-stage1-solo-dragon-lost-2026-10-28T19-40-05.json: easy to
+// tell apart, and in time order when sorted by name.
+function recordingName(recording: Recording, date: Date): string {
+    const { level, mode, animals, final, match = [] } = recording
+    const outcome =
+        final.kind === "stageClear"
+            ? "won"
+            : final.kind === "gameOver"
+              ? "lost"
+              : `round${match.length + 1}`
+    const time = date.toISOString().slice(0, 19).replaceAll(":", "-")
+    return `dot-eater-stage${level + 1}-${mode}-${animals.join("+")}-${outcome}-${time}.json`
 }
 
 // Interpolation only moves on during play and the ending outro (where the
@@ -210,15 +525,17 @@ function enter(prev: Screen, next: Screen) {
 let lastAlpha = 0
 
 function render(alpha: number) {
-    const game = gameOf(screen)
+    // Settings over a paused game show that game behind them.
+    const shown = baseScreen(screen)
+    const game = gameOf(shown)
     if (!game) return renderer.clear()
-    if (screen.kind === "playing" || screen.kind === "ending") {
+    if (shown.kind === "playing" || shown.kind === "ending") {
         lastAlpha = alpha
     }
     // Every screen with a game also says which level it is.
-    const rules = "level" in screen ? levels[screen.level]?.rules : undefined
-    const hud = game.mode === "versus" ? versusHud(game, screen) : hudOf(game)
-    renderer.draw(game, lastAlpha, hud, rules)
+    const rules = "level" in shown ? levels[shown.level]?.rules : undefined
+    const hud = game.mode === "versus" ? versusHud(game, shown) : hudOf(game)
+    renderer.draw(game, lastAlpha, hud, rules, effects.of(shown))
 }
 
 // The versus HUD: each player's dots, meter, stun or respawn countdown, and
@@ -264,13 +581,55 @@ function hudOf(game: GameState): Hud {
 
 function showOverlay(s: Screen) {
     switch (s.kind) {
-        case "title":
+        case "title": {
+            const current: TitleChoice = s.onSettings ? "settings" : s.mode
             return showTitle(
-                MODE_CHOICES.map((mode) => ({
-                    label: MODE_LABELS[mode],
-                    selected: mode === s.mode,
+                TITLE_CHOICES.map((choice) => ({
+                    label: TITLE_LABELS[choice],
+                    selected: choice === current,
                 }))
             )
+        }
+        case "settings": {
+            const context = settingsContext(s, flowDeps(0))
+            return showSettings(
+                settingsRows(context).map((row, i) => {
+                    const value = rowValue(row, s.settings, context)
+                    return {
+                        label: row.label,
+                        ...(value === undefined ? {} : { value }),
+                        ...(row.kind === "slider" || row.kind === "choice"
+                            ? { steps: true }
+                            : {}),
+                        selected: i === s.row,
+                    }
+                })
+            )
+        }
+        case "controls": {
+            const bindings = bindingsOf(s.settings)
+            const current = CONTROLS_ROWS[s.row]
+            return showControls({
+                player: s.player,
+                items: CONTROLS_ROWS.map((row, i) => {
+                    const value = controlsRowValue(row, bindings, s.player)
+                    return {
+                        label: controlsRowLabel(row),
+                        ...(value === undefined ? {} : { value }),
+                        selected: i === s.row,
+                    }
+                }),
+                ...(s.capturing && current
+                    ? {
+                          capturing: {
+                              label: controlsRowLabel(current),
+                              pad: current.kind === "pad",
+                              touch,
+                          },
+                      }
+                    : {}),
+            })
+        }
         case "stageSelect":
             return showStageSelect(
                 stageSlots(
@@ -289,7 +648,13 @@ function showOverlay(s: Screen) {
         case "ending":
             return hideOverlay()
         case "paused":
-            return showPause(s.game.players.length)
+            return showPause(
+                s.game.players.length,
+                PAUSE_CHOICES.map((c) => ({
+                    label: PAUSE_LABELS[c],
+                    selected: c === (s.choice ?? "resume"),
+                }))
+            )
         case "stageClear":
             return showStageClear({
                 ...endView(s.game, s.choice),
@@ -333,12 +698,19 @@ const MATCH_LABELS = { retry: "Rematch", stageSelect: "Stage select" } as const
 const END_LABELS = { retry: "Retry", stageSelect: "Stage select" } as const
 
 // The mode select's labels, one per mode; the title offers them all, in
-// MODE_CHOICES order.
+// MODE_CHOICES order, then Settings.
 const MODE_LABELS: Record<Mode, string> = {
     solo: "1 player",
     coop: "Co-op",
     versus: "Versus",
 }
+
+const TITLE_LABELS: Record<TitleChoice, string> = {
+    ...MODE_LABELS,
+    settings: "Settings",
+}
+
+const PAUSE_LABELS = { resume: "Resume", settings: "Settings" } as const
 
 function endView(game: GameState, choice: EndChoice): EndScreenView {
     return {
@@ -367,10 +739,58 @@ document.addEventListener("visibilitychange", () => {
     if (document.hidden) autoPause()
 })
 
-new KeyboardSource([PLAYER_1_KEYS, PLAYER_2_KEYS]).attach(input)
+// Taps and clicks on the overlays: a menu item or card puts player 1's
+// cursor on it and confirms (on settings that flips a toggle or runs
+// Back), a slider's ◀ or ▶ puts the cursor on it and steps it (left or
+// right), and Back is the pause action (Esc). They go through player 1's
+// input like keys, so flow handles them on the next tick, delays and all.
+// While the controls screen waits for a key or button, any tap on the
+// overlay cancels, like Escape, so a phone isn't stuck on the prompt.
+document.addEventListener("click", (event) => {
+    const tap = overlayTap(event.target)
+    if (tap && capturing()) {
+        pendingCapture = { ...pendingCapture, cancel: true }
+        return
+    }
+    if (!tap || tap.kind === "panel") return
+    if (tap.kind === "back") return tapAction("pause")
+    const next = selectItem(screen, tap.index, flowDeps(0))
+    if (next !== screen) {
+        screen = next
+        showOverlay(screen)
+    }
+    if (tap.kind === "step") tapAction(tap.delta < 0 ? "left" : "right")
+    else tapAction("confirm")
+})
+
+function tapAction(action: Action) {
+    const player = input.player(0)
+    player.press(action, "tap")
+    player.release(action, "tap")
+}
+
+// Sound (KDA-212). Browsers only start audio after a user gesture, so the
+// first key or pointer press unlocks it; later ones resume it if the browser
+// suspended it. Gamepad presses don't count as gestures. Each screen change
+// sets the tune, menu sound and volumes (screenSound); the title tune waits
+// for the unlock.
+const audio = createAudio({
+    createContext: browserAudioContext(globalThis),
+    setTimer: (callback, ms) => window.setInterval(callback, ms),
+    clearTimer: (handle) => window.clearInterval(handle),
+})
+for (const type of ["keydown", "pointerdown", "touchend"])
+    document.addEventListener(type, () => audio.unlock(), { capture: true })
+screenSound(audio, undefined, screen, settings)
+
+keys.attach(input)
+setHintBindings(bindingsOf(settings))
 pads.attach(input)
+touchSource.attach(input)
+new DpadSource(touchControls).attach(input)
 // The (empty) toast live region goes in at once, so screen readers already
 // watch it when the first toast shows.
 hideToast()
+if (recordingOn) showRecordingBadge()
 showOverlay(screen)
 loop.start()

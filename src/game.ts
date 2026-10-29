@@ -45,6 +45,7 @@ import {
     type Boss,
 } from "./boss"
 import { createCharacter, type Character } from "./character"
+import { emit, type GameEvent } from "./events"
 import { glidePos, wrapDelta, type Glider } from "./glide"
 import { slideStep, type IceMap } from "./ice"
 import { hasDots, loopPos, type Cells, type Level } from "./level"
@@ -95,6 +96,9 @@ export type GameState = {
     // Where everyone starts, and goes back to after losing a life (copied
     // from the level).
     spawns: Spawns
+    // What happened in the latest tick, in order (see events.ts). `step`
+    // empties it first.
+    events: GameEvent[]
 }
 
 // One player: its character on the board, plus everything else that is its
@@ -235,6 +239,7 @@ export function createGameState(
             players: players.map(({ character: c }) => vec2(c.pos.x, c.pos.y)),
             enemies: enemySpawns,
         },
+        events: [],
     }
 }
 
@@ -307,7 +312,8 @@ function respawn(state: GameState) {
 // ready to move, facing right, nothing buffered. Its score, energy and
 // cooldown are kept. Nobody else is touched (see respawn for everyone).
 export function bringBack(state: GameState, player: Player) {
-    const spawn = state.spawns.players[state.players.indexOf(player)]
+    const index = state.players.indexOf(player)
+    const spawn = state.spawns.players[index]
     const { character } = player
     character.pos = vec2(spawn.x, spawn.y)
     character.lastPos = vec2(spawn.x, spawn.y)
@@ -320,6 +326,11 @@ export function bringBack(state: GameState, player: Player) {
     player.respawnIn = null
     player.stunnedFor = 0
     player.stunImmuneFor = 0
+    emit(state, {
+        type: "playerRespawned",
+        player: index,
+        at: vec2(spawn.x, spawn.y),
+    })
 }
 
 // Take `player` out of play on its own (see Player.out), where it stands:
@@ -436,6 +447,11 @@ export function movePlayer(
         who.dots++
         gainEnergy(who.breather)
         ate = true
+        emit(state, {
+            type: "dotEaten",
+            player: state.players.indexOf(who),
+            at: vec2(target.x, target.y),
+        })
     }
     player.lastPos = vec2(player.pos.x, player.pos.y)
     player.pos = target
@@ -521,6 +537,9 @@ function wait(character: Glider) {
 // dots are gone with the boss still about, every energy meter refills by
 // itself (BOSS_TRICKLE per second), so the boss can always be finished.
 //
+// What happened is reported in GameState.events (see events.ts), which is
+// emptied first, so it holds this tick's events only.
+//
 // `moves` is each player's input this tick, player 1 first (see MoveInput
 // and movePlayerTick); a single MoveInput is player 1's, with the others
 // idle. `random` drives the enemy AI, so a tick is deterministic.
@@ -532,6 +551,7 @@ export function step(
 ): Outcome | null {
     const { cells, players, enemies } = state
     const inputs = "held" in moves ? [moves] : moves
+    state.events = []
     state.ticks++
     tickEffects(state, dt)
     tickPlayersOut(state, dt)
@@ -665,7 +685,11 @@ export function step(
         }
     }
 
-    return checkEnd(state, start)
+    const outcome = checkEnd(state, start)
+    if (outcome) {
+        emit(state, { type: outcome === "won" ? "gameWon" : "gameLost" })
+    }
+    return outcome
 }
 
 // The boss's next top-left position going after the nearest of `targets`
@@ -1001,6 +1025,9 @@ export function checkEnd(
 //   outcome; the game goes on, and callers can watch `lives` to notice it.
 // - coop: see coopCatch.
 // - versus: see versusCatch.
+//
+// Each caught player is reported once (a playerCaught event, see
+// events.ts), where it was caught.
 export function resolveCatch(
     state: GameState,
     caught: readonly Player[]
@@ -1008,11 +1035,11 @@ export function resolveCatch(
     if (caught.length === 0) return null
     switch (state.mode) {
         case "solo":
-            return soloCatch(state)
+            return soloCatch(state, caught)
         case "coop":
             return coopCatch(state, caught)
         case "versus":
-            return versusCatch(caught)
+            return versusCatch(state, caught)
         default: {
             // Compile-time check that every Mode is handled above.
             const unhandled: never = state.mode
@@ -1021,14 +1048,31 @@ export function resolveCatch(
     }
 }
 
-function soloCatch(state: GameState): Outcome | null {
-    if (state.lives <= 1) {
+function soloCatch(
+    state: GameState,
+    caught: readonly Player[]
+): Outcome | null {
+    const last = state.lives <= 1
+    // Reported before the respawn moves them.
+    for (const player of caught) reportCatch(state, player, last)
+    if (last) {
         state.lives = 0
         return "dead"
     }
     state.lives--
     respawn(state)
     return null
+}
+
+// A playerCaught event for `player`, on its cell.
+function reportCatch(state: GameState, player: Player, outForGood: boolean) {
+    const { pos } = player.character
+    emit(state, {
+        type: "playerCaught",
+        player: state.players.indexOf(player),
+        at: vec2(pos.x, pos.y),
+        outForGood,
+    })
 }
 
 // Co-op: the lives are a shared pool of respawns. Each caught player, in
@@ -1048,6 +1092,8 @@ function coopCatch(
         } else {
             takeOut(player, null)
         }
+        // takeOut leaves it where it was caught.
+        reportCatch(state, player, outForGood(player))
     }
     return state.players.every(outForGood) ? "dead" : null
 }
@@ -1056,10 +1102,11 @@ function coopCatch(
 // CATCH_DOTS of its dot count (not below 0) and is out for
 // PLAYER_RESPAWN_DELAY seconds, then back at its spawn. A versus game is
 // never lost: it only ends when the stage is cleared (see checkEnd).
-function versusCatch(caught: readonly Player[]): null {
+function versusCatch(state: GameState, caught: readonly Player[]): null {
     for (const player of caught) {
         loseDots(player)
         takeOut(player, PLAYER_RESPAWN_DELAY)
+        reportCatch(state, player, false)
     }
     return null
 }

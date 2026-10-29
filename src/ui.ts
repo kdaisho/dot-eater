@@ -1,4 +1,6 @@
 import confetti from "canvas-confetti"
+import { DEFAULT_BINDINGS, keyName, type Bindings } from "./bindings"
+import { ACTIONS, type Action } from "./input"
 import type { StageSlot } from "./progress"
 import type { AnimalId, AnimalInfo } from "./roster"
 import { formatTicks, starList, starText, type ClearRating } from "./stars"
@@ -36,9 +38,23 @@ export function burst() {
 // menu (on character select, a row of cards instead). At most one overlay
 // exists at a time; each show* replaces whatever is showing, and hideOverlay
 // removes it. Input is handled by the state machine (flow.ts), not here.
+//
+// Overlays can be tapped or clicked, so a phone player needs no keyboard:
+// each menu item and card carries its index (data-index), and menus that
+// can go back have a Back button (data-back). main listens for clicks and
+// reads them with overlayTap.
 
-// A locked item is shown greyed out and marked aria-disabled.
-export type MenuItem = { label: string; selected: boolean; locked?: boolean }
+// A locked item is shown greyed out and marked aria-disabled. An item with
+// a `value` (a setting's, e.g. "On") shows it after the label.
+export type MenuItem = {
+    label: string
+    selected: boolean
+    locked?: boolean
+    value?: string
+    // The value is a slider's ("◀ 7 ▶"): its arrows get tap targets of
+    // their own (data-step -1 and 1), so a tap steps it.
+    steps?: boolean
+}
 
 // What the end screens show.
 export type EndScreenView = {
@@ -63,6 +79,12 @@ type Overlay = {
     lines?: readonly string[]
     items?: readonly MenuItem[]
     cards?: readonly Card[]
+    // A Back button, for screens that go back (the pause action).
+    back?: boolean
+    // The lines only name keys: they are hidden on phones (see
+    // .overlay-hint in the CSS), where the overlay is tapped instead. A
+    // number marks only the lines from that index on.
+    keyHints?: boolean | number
 }
 
 // A character select card: emoji and name, the breath, the stat. With two
@@ -73,6 +95,33 @@ type Card = {
     players?: readonly { index: number; ready: boolean }[]
 }
 
+// The hints name each player's keys as bound (see setHintBindings):
+// keys[player][action] is the key's display name.
+let keys = hintKeys(DEFAULT_BINDINGS)
+
+function hintKeys(bindings: Bindings): Record<Action, string>[] {
+    return bindings.players.map((player) => {
+        const names = {} as Record<Action, string>
+        for (const action of ACTIONS) {
+            names[action] = keyName(player.keys[action])
+        }
+        return names
+    })
+}
+
+// Make the hints name these bindings' keys from the next overlay shown.
+// Escape, fixed to pause and back, is always "Esc".
+export function setHintBindings(bindings: Bindings) {
+    keys = hintKeys(bindings)
+}
+
+// Player `player`'s key for `action`, as the hints name it.
+const key = (action: Action, player = 0) => keys[player]![action]
+
+// "↑ ↓": player `player`'s two keys for a menu axis.
+const keyPair = (a: Action, b: Action, player = 0) =>
+    `${key(a, player)} ${key(b, player)}`
+
 // The title, with the mode select's menu when `modes` are given.
 export function showTitle(modes: readonly MenuItem[] = []) {
     show({
@@ -80,9 +129,10 @@ export function showTitle(modes: readonly MenuItem[] = []) {
         title: "Dot Eater",
         lines: [
             modes.length > 0
-                ? "↑ ↓ to choose, Space to start"
-                : "Press Space to start",
+                ? `${keyPair("up", "down")} to choose, ${key("confirm")} to start`
+                : `Press ${key("confirm")} to start`,
         ],
+        keyHints: true,
         items: modes,
     })
 }
@@ -94,7 +144,11 @@ export function showStageSelect(slots: readonly StageSlot[], selected: number) {
     show({
         id: "stage-select",
         title: "Select a stage",
-        lines: ["↑ ↓ to choose, Space to pick a character, Esc to go back"],
+        lines: [
+            `${keyPair("up", "down")} to choose, ${key("confirm")} to pick a character, Esc to go back`,
+        ],
+        keyHints: true,
+        back: true,
         items: slots.map((slot, i) => ({
             label: slotLabel(slot),
             selected: i === selected,
@@ -136,11 +190,15 @@ export function showCharacterSelect(
         title: two ? "Pick your characters" : "Pick a character",
         lines: two
             ? [
-                  "1P: ← → to choose, Space to confirm",
-                  "2P: A D to choose, E to confirm",
-                  "Esc or Q to go back",
+                  `1P: ${keyPair("left", "right")} to choose, ${key("confirm")} to confirm`,
+                  `2P: ${keyPair("left", "right", 1)} to choose, ${key("confirm", 1)} to confirm`,
+                  `Esc or ${key("pause", 1)} to go back`,
               ]
-            : ["← → to choose, Space to play, Esc to go back"],
+            : [
+                  `${keyPair("left", "right")} to choose, ${key("confirm")} to play, Esc to go back`,
+              ],
+        keyHints: true,
+        back: true,
         cards: animals.map((animal) => ({
             animal,
             selected: animal.id === picks[0],
@@ -155,16 +213,79 @@ export function showCharacterSelect(
     })
 }
 
-// The pause screen. With two players either one resumes, so the hint
-// gives player 2's keys too.
-export function showPause(players = 1) {
+// The pause screen, with its menu (Resume, Settings) when `items` are
+// given. With two players either one resumes, so the hint gives player 2's
+// keys too.
+export function showPause(players = 1, items: readonly MenuItem[] = []) {
     show({
         id: "pause",
         title: "Paused",
         lines:
             players > 1
-                ? ["1P: P, Esc or Space to resume", "2P: Q or E to resume"]
-                : ["Press P, Esc or Space to resume"],
+                ? [
+                      `${keyPair("up", "down")} to choose, ${key("confirm")} or ${key("confirm", 1)} to pick`,
+                      `Esc or ${key("pause", 1)} to resume`,
+                  ]
+                : [
+                      `${keyPair("up", "down")} to choose, ${key("confirm")} to pick, Esc to resume`,
+                  ],
+        keyHints: true,
+        items,
+    })
+}
+
+// The settings screen: one item per row that shows, each with its value
+// (see rowValue in settingsMenu.ts).
+export function showSettings(items: readonly MenuItem[]) {
+    show({
+        id: "settings",
+        title: "Settings",
+        lines: [
+            `${keyPair("up", "down")} to choose, ${keyPair("left", "right")} to change, Esc to go back`,
+        ],
+        keyHints: true,
+        items,
+    })
+}
+
+// What the controls screen shows (see the controls screen in flow.ts).
+export type ControlsView = {
+    // Whose controls show (player 1 is 0).
+    player: number
+    // One item per row, each with its key or button (see controlsMenu.ts).
+    items: readonly MenuItem[]
+    // While waiting for a key or button: the row's label, whether it
+    // takes a pad button rather than a key, and whether this is a touch
+    // device (where a tap cancels).
+    capturing?: { label: string; pad: boolean; touch?: boolean }
+}
+
+// The controls screen: one player's keys and pad buttons, or while
+// capturing, the prompt for the new one.
+export function showControls({ player, items, capturing }: ControlsView) {
+    const other = player === 0 ? 2 : 1
+    show({
+        id: "controls",
+        title: `Controls · ${player + 1}P`,
+        lines: capturing
+            ? [
+                  `Press a ${capturing.pad ? "button" : "key"} for ${capturing.label}`,
+                  // A tap cancels on touch devices; a pad-only player
+                  // cancels a key prompt with a button.
+                  capturing.touch
+                      ? "Tap to cancel"
+                      : capturing.pad
+                        ? "Esc to cancel"
+                        : "Esc or a pad button to cancel",
+              ]
+            : [
+                  `${keyPair("up", "down")} to choose, ${key("confirm")} to change`,
+                  `${keyPair("left", "right")} for ${other}P's controls, Esc to go back`,
+              ],
+        // The prompt shows everywhere, and on touch devices so does how to
+        // cancel it; the rest only name keys.
+        keyHints: !capturing ? true : capturing.touch ? false : 1,
+        items,
     })
 }
 
@@ -289,7 +410,15 @@ export function hideOverlay() {
     document.getElementById("overlay")?.remove()
 }
 
-function show({ id, title, lines = [], items = [], cards = [] }: Overlay) {
+function show({
+    id,
+    title,
+    lines = [],
+    items = [],
+    cards = [],
+    back = false,
+    keyHints = false,
+}: Overlay) {
     hideOverlay()
 
     const backdrop = document.createElement("div")
@@ -302,14 +431,26 @@ function show({ id, title, lines = [], items = [], cards = [] }: Overlay) {
     panel.className = "overlay"
     panel.dataset.screen = id
 
+    if (back) {
+        const button = document.createElement("button")
+        button.type = "button"
+        button.className = "overlay-back"
+        button.dataset.back = ""
+        button.textContent = "‹ Back"
+        panel.appendChild(button)
+    }
+
     const heading = document.createElement("h1")
     heading.className = "overlay-title"
     heading.textContent = title
     panel.appendChild(heading)
 
-    for (const line of lines) {
+    const hintFrom =
+        keyHints === true ? 0 : keyHints === false ? lines.length : keyHints
+    for (const [i, line] of lines.entries()) {
         const p = document.createElement("p")
-        p.className = "overlay-line"
+        p.className =
+            i >= hintFrom ? "overlay-line overlay-hint" : "overlay-line"
         p.textContent = line
         panel.appendChild(p)
     }
@@ -317,9 +458,17 @@ function show({ id, title, lines = [], items = [], cards = [] }: Overlay) {
     if (items.length > 0) {
         const menu = document.createElement("ul")
         menu.className = "overlay-menu"
-        for (const item of items) {
+        items.forEach((item, i) => {
             const li = document.createElement("li")
             li.textContent = item.label
+            li.dataset.index = String(i)
+            if (item.value !== undefined) {
+                const value = document.createElement("span")
+                value.className = "menu-value"
+                value.textContent = item.value
+                if (item.steps) stepTargets(value, item.value)
+                li.append(" ", value)
+            }
             if (item.selected) {
                 li.classList.add("selected")
                 li.setAttribute("aria-current", "true")
@@ -329,7 +478,7 @@ function show({ id, title, lines = [], items = [], cards = [] }: Overlay) {
                 li.setAttribute("aria-disabled", "true")
             }
             menu.appendChild(li)
-        }
+        })
         panel.appendChild(menu)
     }
 
@@ -344,10 +493,11 @@ function show({ id, title, lines = [], items = [], cards = [] }: Overlay) {
 function cardRow(cards: readonly Card[]): HTMLElement {
     const row = document.createElement("ul")
     row.className = "overlay-cards"
-    for (const { animal, selected, players = [] } of cards) {
+    cards.forEach(({ animal, selected, players = [] }, i) => {
         const li = document.createElement("li")
         li.className = "card"
         li.dataset.animal = animal.id
+        li.dataset.index = String(i)
         if (selected) {
             li.classList.add("selected")
             li.setAttribute("aria-current", "true")
@@ -378,8 +528,47 @@ function cardRow(cards: readonly Card[]): HTMLElement {
             li.appendChild(div)
         }
         row.appendChild(li)
-    }
+    })
     return row
+}
+
+// What a tap or click on the overlay hit: a menu item or card (its index
+// in the menu), the Back button, or anywhere else on the overlay or its
+// backdrop. Undefined for anything else.
+export type OverlayTap =
+    | { kind: "item"; index: number }
+    | { kind: "back" }
+    // A slider's ◀ (-1) or ▶ (1), on menu item `index`.
+    | { kind: "step"; index: number; delta: -1 | 1 }
+    | { kind: "panel" }
+
+export function overlayTap(target: EventTarget | null): OverlayTap | undefined {
+    if (!(target instanceof Element)) return undefined
+    if (!target.closest("#overlay, #backdrop")) return undefined
+    if (target.closest("[data-back]")) return { kind: "back" }
+    const item = target.closest<HTMLElement>("#overlay [data-index]")
+    if (!item) return { kind: "panel" }
+    const index = Number(item.dataset.index)
+    if (!Number.isInteger(index)) return undefined
+    const step = target.closest<HTMLElement>("[data-step]")?.dataset.step
+    if (step === "-1" || step === "1") {
+        return { kind: "step", index, delta: step === "1" ? 1 : -1 }
+    }
+    return { kind: "item", index }
+}
+
+// Fill a slider's value ("◀ 7 ▶") with its arrows as tap targets of their
+// own, the text unchanged.
+function stepTargets(el: HTMLElement, value: string) {
+    const arrow = (text: string, step: string) => {
+        const span = document.createElement("span")
+        span.className = "menu-step"
+        span.dataset.step = step
+        span.textContent = text
+        return span
+    }
+    const middle = value.replace(/^◀/, "").replace(/▶$/, "")
+    el.replaceChildren(arrow("◀", "-1"), middle, arrow("▶", "1"))
 }
 
 // A small note at the bottom of the screen (e.g. "Controller connected").
@@ -408,4 +597,36 @@ function toastRegion(): HTMLElement {
     toast.setAttribute("role", "status")
     document.body.appendChild(toast)
     return toast
+}
+
+// A small "● REC" badge in the top corner while gameplay recording is on
+// (?record, see replay.ts). It stays up for the whole session.
+export function showRecordingBadge() {
+    if (document.getElementById("rec-badge")) return
+    const badge = document.createElement("div")
+    badge.id = "rec-badge"
+    badge.className = "rec-badge"
+    badge.textContent = "● REC"
+    badge.title = "Recording gameplay: each run downloads when it ends"
+    document.body.appendChild(badge)
+}
+
+// How long a download's object URL stays valid after its click.
+export const DOWNLOAD_REVOKE_MS = 1000
+
+// Hand the player `text` as a file named `name` to save. The link goes in
+// the document for its click (Firefox ignores clicks on detached links),
+// and its URL is revoked only a while later: Safari and some Firefox
+// setups start the download after the click returns, and lose it if the
+// URL is already gone.
+export function downloadFile(name: string, text: string, type: string) {
+    const url = URL.createObjectURL(new Blob([text], { type }))
+    const link = document.createElement("a")
+    link.href = url
+    link.download = name
+    link.hidden = true
+    document.body.appendChild(link)
+    link.click()
+    link.remove()
+    setTimeout(() => URL.revokeObjectURL(url), DOWNLOAD_REVOKE_MS)
 }

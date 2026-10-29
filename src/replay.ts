@@ -13,7 +13,7 @@ import {
     type TickInput,
 } from "./flow"
 import type { GameState, MoveInput } from "./game"
-import type { Action } from "./input"
+import { DIRECTION_ACTIONS, directionStep, type Action } from "./input"
 import type { Level } from "./level"
 import { emptyProgress } from "./progress"
 import { vec2, type Vec2 } from "./vec2"
@@ -119,20 +119,6 @@ export function newSeed(random: Random): number {
 
 // ---- Ticks ----
 
-const LETTERS: Record<string, string> = {
-    "0,-1": "u",
-    "0,1": "d",
-    "-1,0": "l",
-    "1,0": "r",
-}
-
-const STEPS: Record<string, Vec2> = {
-    u: vec2(0, -1),
-    d: vec2(0, 1),
-    l: vec2(-1, 0),
-    r: vec2(1, 0),
-}
-
 const ACTION_LETTERS: Partial<Record<Action, string>> = {
     up: "u",
     down: "d",
@@ -142,10 +128,25 @@ const ACTION_LETTERS: Partial<Record<Action, string>> = {
     confirm: "c",
 }
 
+// A direction's letter, for its unit step.
 function letterOf(step: Vec2): string {
-    const letter = LETTERS[`${step.x},${step.y}`]
-    if (!letter) throw new Error(`Not a direction: ${step.x},${step.y}`)
-    return letter
+    const direction = DIRECTION_ACTIONS.find((action) => {
+        const { x, y } = directionStep(action)
+        return x === step.x && y === step.y
+    })
+    if (!direction) throw new Error(`Not a direction: ${step.x},${step.y}`)
+    return ACTION_LETTERS[direction]!
+}
+
+// A direction letter's unit step: a new vector on every call, since the
+// game keeps the steps it is given (a pressed one is buffered) and must
+// not share them between ticks.
+function stepOf(letter: string): Vec2 {
+    const direction = DIRECTION_ACTIONS.find(
+        (action) => ACTION_LETTERS[action] === letter
+    )
+    if (!direction) throw new Error(`Not a direction letter: ${letter}`)
+    return directionStep(direction)
 }
 
 // One tick of `input` for `players` players, as a recording stores it.
@@ -182,8 +183,8 @@ export function tickInputOf(tick: RecordedTick): TickInput {
         move: (player = 0): MoveInput => {
             const { h = "", p, a = "" } = tick[player] ?? {}
             return {
-                held: h.split("").map((letter) => STEPS[letter]),
-                pressed: p ? STEPS[p] : vec2(0, 0),
+                held: h.split("").map(stepOf),
+                pressed: p ? stepOf(p) : vec2(0, 0),
                 breath: a.includes("b"),
             }
         },
@@ -202,7 +203,10 @@ export function shouldRecord(before: Screen, after: Screen): boolean {
 }
 
 function sameTick(a: RecordedTick, b: RecordedTick): boolean {
-    return JSON.stringify(a) === JSON.stringify(b)
+    return (
+        a.length === b.length &&
+        a.every((t, i) => t.h === b[i].h && t.p === b[i].p && t.a === b[i].a)
+    )
 }
 
 // The ticks of `runs`, one entry per tick.
@@ -324,8 +328,9 @@ export type Replayer = {
     length: number
     // The screen after the recording's first `tick` ticks: at(0) is the
     // start, and any tick past the end holds the end screen. Fractions
-    // round down. Ticks may be asked for in any order; each call returns a
-    // copy of its own, which later calls never change.
+    // round down; a tick that isn't a finite number (NaN, Infinity) throws.
+    // Ticks may be asked for in any order; each call returns a copy of its
+    // own, which later calls never change.
     at(tick: number): Screen
 }
 
@@ -367,6 +372,9 @@ export function createReplayer(
     return {
         length: ticks.length,
         at(tick) {
+            if (!Number.isFinite(tick)) {
+                throw new Error(`Not a tick: ${String(tick)}`)
+            }
             const target = Math.min(Math.max(Math.floor(tick), 0), ticks.length)
             if (target < done) {
                 // Every multiple of SNAPSHOT_EVERY up to `done` has one.
