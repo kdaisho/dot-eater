@@ -1,9 +1,23 @@
 import { readFileSync } from "node:fs"
 import { describe, expect, it } from "vite-plus/test"
-import { gameOf } from "../../src/flow"
+import { addStatus } from "../../src/breath"
+import { FROZEN } from "../../src/breaths/penguin"
+import { Cell } from "../../src/constants"
+import { gameOf, type Screen } from "../../src/flow"
+import type { GameState } from "../../src/game"
 import { levels } from "../../src/levels"
 import { verify, type Recording } from "../../src/replay"
-import { boardOf, nearMisses, replayerFor, trackOf } from "./replayers"
+import { makeBoss, makeEnemy, makeState, OLD_MAP } from "../../src/test/helpers"
+import { playDemo } from "../scripts/bot"
+import {
+    boardOf,
+    closeCalls,
+    nearMisses,
+    replayerFor,
+    runOf,
+    threatDistance,
+    trackOf,
+} from "./replayers"
 
 // The committed demo run (read from disk: recordings/index.ts needs the
 // bundler).
@@ -19,6 +33,10 @@ describe("the demo recording", () => {
     it("clears stage 1", () => {
         expect(demo.final.kind).toBe("stageClear")
         expect(demo.level).toBe(0)
+    })
+
+    it("is what the bot records now (re-run record-demo if not)", () => {
+        expect(JSON.parse(JSON.stringify(playDemo()))).toEqual(demo)
     })
 })
 
@@ -45,6 +63,84 @@ describe("trackOf", () => {
 
     it("is built once per recording", () => {
         expect(trackOf(demo)).toBe(trackOf(demo))
+    })
+})
+
+describe("runOf", () => {
+    it("logs each tick's own events, once", () => {
+        const run = runOf(demo)
+        expect(run.ticks).toHaveLength(replayerFor(demo).length + 1)
+        expect(run.ticks[0].events).toEqual([])
+        const eaten = run.ticks.flatMap((t) =>
+            t.events.filter((e) => e.type === "dotEaten")
+        )
+        // Every dot eaten once: the outro repeats none.
+        const start = gameOf(replayerFor(demo).at(0))!
+        const dots = start.cells.flat().filter((c) => c === Cell.dot).length
+        expect(eaten).toHaveLength(dots)
+    })
+
+    it("marks the ticks that move the effects on", () => {
+        const run = runOf(demo)
+        expect(run.ticks[0].moved).toBe(false)
+        expect(run.ticks[1].moved).toBe(true)
+        expect(run.ticks.at(-1)!.kind).toBe("stageClear")
+    })
+})
+
+describe("threatDistance", () => {
+    // Player 1 at (1, 1) on the old map; something two cells to its right.
+    const playing = (game: GameState): Screen => ({
+        kind: "playing",
+        mode: "solo",
+        level: 0,
+        animals: ["dragon"],
+        game,
+    })
+
+    it("measures to the nearest enemy that can catch", () => {
+        const far = makeEnemy(7, 7)
+        const near = makeEnemy(3, 1)
+        const game = makeState(OLD_MAP, { x: 1, y: 1 }, [far, near])
+        expect(threatDistance(playing(game))).toBeCloseTo(2)
+    })
+
+    it("ignores enemies out of play or made harmless (frozen)", () => {
+        const frozen = makeEnemy(2, 1)
+        const out = makeEnemy(1, 2)
+        const game = makeState(OLD_MAP, { x: 1, y: 1 }, [frozen, out])
+        addStatus(frozen, FROZEN, 3)
+        out.respawnIn = 2
+        expect(threatDistance(playing(game))).toBe(Infinity)
+    })
+
+    it("counts the boss, by its footprint", () => {
+        // The boss's top-left at (3, 1): its nearest cell centre is 2 away.
+        const game = makeState(OLD_MAP, { x: 1, y: 1 }, [], {
+            boss: makeBoss(3, 1),
+        })
+        expect(threatDistance(playing(game))).toBeCloseTo(2)
+        game.boss!.defeated = true
+        expect(threatDistance(playing(game))).toBe(Infinity)
+    })
+
+    it("is Infinity outside play", () => {
+        const game = makeState(OLD_MAP, { x: 1, y: 1 }, [makeEnemy(2, 1)])
+        expect(threatDistance(playing(game))).toBeCloseTo(1)
+        const ending = { ...playing(game), kind: "ending" } as Screen
+        expect(threatDistance(ending)).toBe(Infinity)
+    })
+})
+
+describe("closeCalls", () => {
+    it("picks the closest tick of each pass with no life lost", () => {
+        const threat = [9, 3, 1.2, 0.8, 1.1, 4, 9, 9]
+        const ticks = threat.map((t) => ({ threat: t, lives: 3 }))
+        expect(closeCalls(ticks, { grace: 2 })).toEqual([
+            { tick: 3, distance: 0.8 },
+        ])
+        const lost = ticks.map((t, k) => ({ ...t, lives: k > 4 ? 2 : 3 }))
+        expect(closeCalls(lost, { grace: 2 })).toEqual([])
     })
 })
 

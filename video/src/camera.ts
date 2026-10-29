@@ -1,7 +1,7 @@
 import { Easing, interpolate, type EasingFunction } from "remotion"
 import { glidePos, wrapDelta, type Glider } from "../../src/glide"
 import { HUD_ROWS } from "../../src/layout"
-import { gameTimeFor, type TimeMap } from "./time"
+import { frameAtTick, gameTimeFor, type GameTime, type TimeMap } from "./time"
 
 // The camera over the game board: maths only, no React, so it is unit-tested.
 //
@@ -139,13 +139,49 @@ export type PlayerTrack = {
     board: Board
     // ticks[k][i]: player i after k ticks.
     ticks: readonly (readonly (Glider & { rate: number })[])[]
+    // moving[k]: whether the screen after k ticks moves on between ticks
+    // (playing or the ending outro), so frames between ticks glide.
+    moving: readonly boolean[]
+}
+
+// The tick and alpha a clip draws on clip frame `frame`, as main draws the
+// game: glides move on between ticks only in play and the ending outro.
+// Paused and end screens keep the alpha of the last frame drawn in play or
+// the outro (main's lastAlpha), so the picture holds still instead of
+// jumping back. A recording that ends mid-play holds its last tick at
+// alpha 0. Pure: the frame it keeps the alpha of is found from the time
+// map, not remembered.
+export function drawTime(
+    frame: number,
+    time: TimeMap,
+    track: Pick<PlayerTrack, "moving">
+): GameTime {
+    const last = track.moving.length - 1
+    const now = gameTimeFor(frame, time)
+    const tick = Math.min(Math.max(now.tick, 0), last)
+    if (track.moving[tick]) {
+        return tick < last && now.tick === tick ? now : { tick, alpha: 0 }
+    }
+    // Back through the ticks before this one, to the last frame that drew
+    // a moving one.
+    let before = tick
+    while (before > 0) {
+        const f = frameAtTick(before, time) - 1
+        if (!Number.isFinite(f) || f < 0) break
+        const then = gameTimeFor(f, time)
+        if (then.tick >= before) break
+        if (track.moving[then.tick]) return { tick, alpha: then.alpha }
+        before = then.tick
+    }
+    return { tick, alpha: 0 }
 }
 
 // The centre of player `player`'s sprite at game time `tick` + `alpha`, as
 // the renderer draws it (gliding between cells), in maze cells. Ticks past
-// the track hold its end.
+// the track hold its end. On the track's last tick and past it nothing
+// moves on, so alpha is ignored there.
 export function playerCentre(
-    track: PlayerTrack,
+    track: Pick<PlayerTrack, "board" | "ticks">,
     player: number,
     tick: number,
     alpha: number
@@ -155,8 +191,7 @@ export function playerCentre(
     const glider = track.ticks[k][player]
     if (!glider) throw new Error(`No player ${player}`)
     const { cols, rows } = track.board
-    // Past the end nothing moves on, so no alpha.
-    const p = glidePos(glider, k < tick ? 0 : alpha, cols, rows, glider.rate)
+    const p = glidePos(glider, k >= last ? 0 : alpha, cols, rows, glider.rate)
     return { x: p.x + 0.5, y: p.y + 0.5 }
 }
 
@@ -168,36 +203,84 @@ export type FollowOptions = {
     smoothing?: number
 }
 
+// How many frames the camera takes to pan across the board after the
+// player goes through a wrap tunnel.
+export const WRAP_PAN = 12
+
 // The point to follow player `player` at on clip frame `frame` of a clip
 // played with `time`: its sprite's centre averaged over the last
 // `smoothing` frames, weighted towards the latest. Pure: it looks at
 // the frames' game times, not at frames rendered before.
+//
+// Through a wrap tunnel the player leaves one edge and comes back in at
+// the other. The average is taken on the player's unwrapped path (as if
+// the board went on), so it never mixes the two sides. Then, rather than
+// cutting across the board the moment the player wraps, the point pans
+// from where it was heading (off the edge it left, which the clip clamps
+// to that edge) to the player's new side over WRAP_PAN frames, eased in
+// and out: a quick, deliberate whip pan that follows the player's way
+// through the tunnel.
 export function followPoint(
     frame: number,
     time: TimeMap,
     track: PlayerTrack,
     { player = 0, smoothing = 12 }: FollowOptions = {}
 ): { x: number; y: number } {
-    const at = (f: number) => {
-        const { tick, alpha } = gameTimeFor(f, time)
-        return playerCentre(track, player, tick, alpha)
+    const { cols, rows } = track.board
+    const from = frame - smoothing - WRAP_PAN
+    const raw: { x: number; y: number }[] = []
+    for (let f = from; f <= frame; f++) {
+        const { tick, alpha } = drawTime(f, time, track)
+        raw.push(playerCentre(track, player, tick, alpha))
     }
-    const now = at(frame)
-    let sumX = 0
-    let sumY = 0
-    let sumW = 0
+    return {
+        x: followAxis(
+            raw.map((p) => p.x),
+            cols,
+            smoothing
+        ),
+        y: followAxis(
+            raw.map((p) => p.y),
+            rows,
+            smoothing
+        ),
+    }
+}
+
+// followPoint along one axis `size` cells long: `raw` are the player's
+// positions on the frames from smoothing + WRAP_PAN frames back to now.
+function followAxis(raw: readonly number[], size: number, smoothing: number) {
+    // The unwrapped path, and how many board lengths each frame's raw
+    // position is behind it (it changes as the player wraps).
+    const path = [raw[0]]
+    for (let i = 1; i < raw.length; i++) {
+        path.push(path[i - 1] + wrapDelta(raw[i] - raw[i - 1], size))
+    }
+    const wraps = path.map((u, i) => Math.round((u - raw[i]) / size))
+    const now = raw.length - 1
+    let sum = 0
+    let weights = 0
     for (let back = 0; back <= smoothing; back++) {
-        const p = back === 0 ? now : at(frame - back)
-        // Through a wrap tunnel the point jumps a whole board; average the
-        // short way round from where it is now.
-        const dx = wrapDelta(p.x - now.x, track.board.cols)
-        const dy = wrapDelta(p.y - now.y, track.board.rows)
         const w = smoothing + 1 - back
-        sumX += dx * w
-        sumY += dy * w
-        sumW += w
+        sum += path[now - back] * w
+        weights += w
     }
-    return { x: now.x + sumX / sumW, y: now.y + sumY / sumW }
+    const smoothed = sum / weights
+    const target = smoothed - wraps[now] * size
+    // The latest wrap within the pan, if any.
+    for (let since = 0; since < WRAP_PAN; since++) {
+        const i = now - since
+        if (i < 1 || wraps[i] === wraps[i - 1]) continue
+        const left = smoothed - wraps[i - 1] * size
+        return left + (target - left) * smoothstep((since + 1) / WRAP_PAN)
+    }
+    return target
+}
+
+// Eases from 0 to 1, slow at both ends.
+function smoothstep(t: number): number {
+    const x = Math.min(Math.max(t, 0), 1)
+    return x * x * (3 - 2 * x)
 }
 
 // ---- Camera functions ----

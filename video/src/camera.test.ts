@@ -5,6 +5,7 @@ import {
     EASE_IN_OUT,
     baseCell,
     clampCamera,
+    drawTime,
     followPoint,
     keyframes,
     placement,
@@ -36,6 +37,27 @@ function walkingTrack(ticks: number, every = 15): PlayerTrack {
                 },
             ]
         }),
+        moving: Array.from({ length: ticks + 1 }, () => true),
+    }
+}
+
+// A one-player track like walkingTrack, but from x 10 along row 7 and on
+// through the tunnel at the right edge (x 16 to 0) and beyond.
+function tunnelTrack(ticks: number, every = 15): PlayerTrack {
+    const speed = 60 / every
+    const xAt = (k: number) => (10 + Math.floor(k / every)) % BOARD.cols
+    return {
+        board: BOARD,
+        ticks: Array.from({ length: ticks + 1 }, (_, k) => [
+            {
+                pos: vec2(xAt(k), 7),
+                lastPos: vec2(k < every ? xAt(k) : xAt(k - every), 7),
+                moveProgress: k < every ? 1 : (k % every) / every,
+                speed,
+                rate: 1,
+            },
+        ]),
+        moving: Array.from({ length: ticks + 1 }, () => true),
     }
 }
 
@@ -117,10 +139,46 @@ describe("playerCentre", () => {
         expect(playerCentre(track, 0, 22, 0.5).x).toBeCloseTo(2)
     })
 
+    it("ignores alpha on the track's last tick", () => {
+        // Tick 20 is a third of the way through a glide.
+        const track = walkingTrack(20)
+        expect(playerCentre(track, 0, 20, 0.5)).toEqual(
+            playerCentre(track, 0, 20, 0)
+        )
+    })
+
     it("holds the end past the track", () => {
         const track = walkingTrack(30)
         const end = playerCentre(track, 0, 30, 0)
         expect(playerCentre(track, 0, 500, 0.7)).toEqual(end)
+    })
+})
+
+describe("drawTime", () => {
+    // 0.6 ticks a frame: frame 33 is tick 19.8, frame 34 is 20.4.
+    const time: TimeMap = { fps: 30, segments: [{ fromFrame: 0, speed: 0.3 }] }
+    const moving = (end: boolean) =>
+        Array.from({ length: 21 }, (_, k) => k < 20 || end)
+
+    it("is the frame's game time while the game moves", () => {
+        const t = drawTime(11, time, { moving: moving(true) })
+        expect(t.tick).toBe(6)
+        expect(t.alpha).toBeCloseTo(0.6)
+    })
+
+    it("keeps the last alpha of play on an end screen, as main does", () => {
+        for (const frame of [34, 40, 500]) {
+            const t = drawTime(frame, time, { moving: moving(false) })
+            expect(t.tick).toBe(20)
+            expect(t.alpha).toBeCloseTo(0.8)
+        }
+    })
+
+    it("holds a recording that ends mid-play at alpha 0", () => {
+        expect(drawTime(40, time, { moving: moving(true) })).toEqual({
+            tick: 20,
+            alpha: 0,
+        })
     })
 })
 
@@ -162,26 +220,32 @@ describe("followPoint", () => {
         expect(followPoint(50, time, track)).toEqual(a)
     })
 
-    it("averages the short way round through a wrap tunnel", () => {
-        // Stepping left off x 0 onto x 16 (the board is 17 wide).
-        const track: PlayerTrack = {
-            board: BOARD,
-            ticks: Array.from({ length: 61 }, (_, k) => {
-                const x = k < 30 ? 0 : 16
-                return [
-                    {
-                        pos: vec2(x, 7),
-                        lastPos: vec2(k < 30 ? 1 : 0, 7),
-                        moveProgress: 1,
-                        speed: 4,
-                        rate: 1,
-                    },
-                ]
-            }),
-        }
-        // Frame 16 is tick 32: just through, with earlier frames at x 0.
-        const p = followPoint(16, time, track, { smoothing: 4 })
-        expect(p.x).toBeGreaterThan(16.5)
-        expect(p.x).toBeLessThan(17.6)
+    it("pans across the board through a wrap tunnel, not in one frame", () => {
+        // Through the tunnel at tick 105 (x 16 to 0), frame 52.5.
+        const track = tunnelTrack(400)
+        const camera = (f: number) =>
+            clampCamera(
+                { ...followPoint(f, time, track), zoom: 3 },
+                BOARD,
+                FRAME
+            )
+        const view = FRAME.width / (baseCell(BOARD, FRAME) * 3)
+        const xs = Array.from({ length: 60 }, (_, f) => camera(f + 30).x)
+        const steps = xs.slice(1).map((x, i) => Math.abs(x - xs[i]))
+        expect(Math.max(...steps)).toBeLessThan(3)
+        // On the right edge before, and on the left edge after.
+        expect(xs[0]).toBeCloseTo(BOARD.cols - view / 2)
+        expect(xs.at(-1)).toBeCloseTo(view / 2)
+    })
+
+    it("doesn't average across both sides of a tunnel", () => {
+        // Through at tick 105; long after, settled on the new side as if
+        // it had always been there.
+        const track = tunnelTrack(400)
+        const p = followPoint(90, time, track, { smoothing: 4 })
+        const exact = followPoint(90, time, track, { smoothing: 0 })
+        expect(p.x).toBeGreaterThan(0)
+        expect(p.x).toBeLessThan(exact.x)
+        expect(exact.x - p.x).toBeLessThan(1)
     })
 })
