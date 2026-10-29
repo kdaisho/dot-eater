@@ -92,9 +92,9 @@ export type Recording = {
 // A seeded random source (mulberry32): the same seed gives the same
 // numbers, in [0, 1) like Math.random. `state` is where it is in its
 // sequence, so a replay can save it and carry on from there later.
-type Rng = { next: Random; state: number }
+export type Rng = { next: Random; state: number }
 
-function createRng(seed: number): Rng {
+export function createRng(seed: number): Rng {
     const rng: Rng = {
         state: seed | 0,
         next: () => {
@@ -317,7 +317,7 @@ function cloneGame(game: GameState): GameState {
 }
 
 // A deep copy of a screen, so stepping the original doesn't change it.
-function cloneScreen(screen: Screen): Screen {
+export function cloneScreen(screen: Screen): Screen {
     if (!("game" in screen)) return structuredClone(screen)
     const { game, ...rest } = screen
     return { ...structuredClone(rest), game: cloneGame(game) } as Screen

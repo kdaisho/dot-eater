@@ -6,6 +6,9 @@ import {
     ToolkitDemo,
     type ToolkitDemoProps,
 } from "./ToolkitDemo"
+import { SceneCheck, type SceneCheckProps } from "./SceneCheck"
+
+const CHECK: SceneCheckProps = { scene: "dragon" }
 
 export function Root() {
     return (
@@ -28,6 +31,16 @@ export function Root() {
                 height={HEIGHT}
                 defaultProps={{ beats: null, song: null } as ToolkitDemoProps}
                 calculateMetadata={calculateToolkitDemo}
+            />
+            {/* Dev only: a directed scene's hero moment (see SceneCheck). */}
+            <Composition
+                id="SceneCheck"
+                component={SceneCheck}
+                durationInFrames={FPS * 4}
+                fps={FPS}
+                width={WIDTH}
+                height={HEIGHT}
+                defaultProps={CHECK}
             />
         </>
     )
