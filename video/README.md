@@ -38,8 +38,10 @@ lints and type-checks `video/`, and root `pnpm test` runs its `*.test.ts`
 3. Use it by file name: `recording("epic-run")` from `src/recordings`. In
    `src/Promo.tsx`, change `RUN`.
 
-The demo run is played by a bot (`scripts/record-demo.ts`) until real
-recordings replace it.
+The demo run is played by a bot (`scripts/bot.ts`, recorded by
+`scripts/record-demo.ts`) until real recordings replace it. A test checks
+that the bot still records exactly the committed `demo.json`, so when the
+game's rules change and that test fails, re-run `record-demo`.
 
 ## Music and cues
 
@@ -64,13 +66,22 @@ To set the music:
   on a beat.
 - `src/GameplayClip.tsx`: a recording, a `TimeMap` and a camera. Replays to
   each frame's tick and draws with the real renderer at high resolution
-  (`resolution`, default 4), so zooms stay sharp.
+  (`resolution`, default 4), so zooms stay sharp. The HUD, rules and effects
+  come from the game's own `src/scene.ts`, as main draws them, with a
+  default-settings player's facing guide. `room` keeps the bottom of the
+  frame clear of the board, e.g. for a caption.
+- `src/effects.ts`: particles and screen shake worked out afresh for each
+  frame from the run's events, seeded per tick, so they stay a pure
+  function of game time.
 - `src/camera.ts`: `follow({ player, smoothing, zoom })` follows a player,
-  smoothed over earlier frames; `fixed` and `overview` don't move;
+  smoothed over earlier frames, with a quick pan across the board when the
+  player goes through a tunnel; `fixed` and `overview` don't move;
   `keyframes` gives eased values (zoom) over frames. The clip clamps the
-  camera to the board.
-- `src/replayers.ts`: shared replayers and player tracks per recording, and
-  `nearMisses`, the run's closest calls, for slow motion.
+  camera to the board. `drawTime` holds the alpha on end screens as main
+  does.
+- `src/replayers.ts`: shared replayers and a run log per recording (player
+  tracks, each tick's events), and `nearMisses`, the run's closest calls
+  with enemies that can catch or the boss, for slow motion.
 - `src/TitleCard.tsx`, `src/EndCard.tsx`, `src/text.tsx` (`Pop`, `Caption`):
   big black-and-white words that pop in on beats.
 

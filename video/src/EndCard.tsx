@@ -51,7 +51,7 @@ export function EndCard({
                 at={start + 2 * beat}
                 style={{ fontSize: 48, fontWeight: 500, letterSpacing: 2 }}
             >
-                Keyboard · Gamepad
+                Keyboard · Gamepad · Touch
             </Pop>
         </AbsoluteFill>
     )

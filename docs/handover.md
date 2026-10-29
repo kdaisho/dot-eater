@@ -47,6 +47,7 @@ Last updated: 2026-10-27. Read `CLAUDE.md` first for project conventions.
 | `level.ts`, `levels/`                     | `LevelData`, `parseLevel` (`P`/`Q` spawns); `levels/index.ts` lists stages 1–5                                                                                                |
 | `input.ts`, `gamepad.ts`                  | Actions, `InputState`/`PlayerInput`, `KeyboardSource` (P1 + P2 maps); `GamepadSource` (`"shared"`/`"perPad"`, `browserPadList`)                                               |
 | `render.ts`, `glide.ts`, `layout.ts`      | Canvas renderer (maze, ice, fog, breath looks, 1P/2P/versus HUD, P1/P2 markers, 💫/🛡️ badges), glide maths, layout/DPR                                                        |
+| `scene.ts`                                | What the renderer is given for a screen (HUD, level rules, effects); pure, shared by `main.ts` and the promo video (`video/`)                                                 |
 | `ui.ts`                                   | DOM overlays (title mode menu, stage/character select, pause, end screens, round and match results), toast, confetti                                                          |
 | `constants.ts`, `character.ts`, `vec2.ts` | Cells, AI types, ids, tick rate, speeds, points, lives, `PLAYER_RESPAWN_DELAY`, `RESPAWN_CLEAR_DISTANCE`; the `Character` record                                              |
 

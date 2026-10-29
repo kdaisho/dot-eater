@@ -70,6 +70,14 @@ const CAMERA = follow({
         ]),
 })
 
+// Room under the board for the opening caption, while the whole board
+// shows; given back as the camera pushes in.
+const ROOM = (frame: number) =>
+    keyframes(frame, [
+        { frame: 58, value: 260 },
+        { frame: 80, value: 0, easing: EASE_IN_OUT },
+    ])
+
 // The demo promo: title, one run, end card, cut on the music's cues.
 export function Promo() {
     const drop = cueFrame("drop", FPS)
@@ -82,7 +90,12 @@ export function Promo() {
                 <TitleCard beat={BEAT} start={cueFrame("intro", FPS)} />
             </Sequence>
             <Sequence from={drop} durationInFrames={CLIP} name="Gameplay">
-                <GameplayClip recording={RUN} time={TIME} camera={CAMERA} />
+                <GameplayClip
+                    recording={RUN}
+                    time={TIME}
+                    camera={CAMERA}
+                    room={ROOM}
+                />
                 <Caption text="Eat every dot" at={8} until={60} />
                 <Caption
                     text="Close call"

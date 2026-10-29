@@ -32,6 +32,10 @@ export type GameplayClipProps = {
     // MAX_CELL (48) CSS pixels: 4 makes 192-pixel cells, sharp up to about
     // 3x zoom on a 1080p frame.
     resolution?: number
+    // Pixels at the bottom of the frame kept clear of the board on each
+    // frame, e.g. for a caption: the camera frames the board in the rest.
+    // None when left out.
+    room?: (frame: number) => number
 }
 
 // Real gameplay: the recording replayed to the frame's game time (through
@@ -42,6 +46,7 @@ export function GameplayClip({
     time,
     camera = overview,
     resolution = 4,
+    room,
 }: GameplayClipProps) {
     const frame = useCurrentFrame()
     const { width, height } = useVideoConfig()
@@ -54,8 +59,9 @@ export function GameplayClip({
         board,
         track: () => trackOf(recording),
     }
-    const view = clampCamera(camera(frame, context), board, { width, height })
-    const place = placement(view, board, { width, height })
+    const area = { width, height: height - (room?.(frame) ?? 0) }
+    const view = clampCamera(camera(frame, context), board, area)
+    const place = placement(view, board, area)
 
     useLayoutEffect(() => {
         const canvas = canvasRef.current
