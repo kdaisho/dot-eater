@@ -22,6 +22,7 @@ import {
     TITLE,
 } from "./plan"
 import { recording } from "./recordings"
+import { SONGS } from "./songs"
 import { AUDIO_FILES, MIX, musicVolume } from "./soundtrack"
 import { Caption } from "./text"
 import { TitleCard } from "./TitleCard"
@@ -86,7 +87,7 @@ const volume = (level: number) => (frame: number) =>
 // the run (see scripts/render-audio.ts), over your song if there is one in
 // public/music/ (see music.ts), or the game's own music if not.
 export function Promo() {
-    const song = musicTrack()
+    const song = musicTrack(SONGS.promo)
     return (
         <AbsoluteFill style={{ backgroundColor: "#fff" }}>
             {song ? (
