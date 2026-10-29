@@ -3,12 +3,15 @@ import {
     browserAudioContext,
     busGains,
     createAudio,
+    createNoise,
     DEFAULT_VOLUMES,
     LOOKAHEAD,
     MASTER_LEVEL,
     MUSIC_LEVEL,
     MUSIC_START_DELAY,
+    NOISE_SECONDS,
     SCHEDULE_MS,
+    scheduleTone,
     volumeGain,
     volumesOf,
     type AudioContextLike,
@@ -619,6 +622,45 @@ describe("pausing music", () => {
         audio.stopMusic()
         expect(audio.musicPaused).toBe(false)
         expect(audio.music).toBeUndefined()
+    })
+})
+
+describe("createNoise", () => {
+    it("fills NOISE_SECONDS of samples from random, scaled to -1–1", () => {
+        const context = fakeContext()
+        const values = [0, 0.25, 0.75]
+        let i = 0
+        const noise = createNoise(
+            context as unknown as AudioContextLike,
+            () => values[i++ % values.length]
+        )
+        const data = noise.getChannelData(0)
+        expect(data).toHaveLength(context.sampleRate * NOISE_SECONDS)
+        expect(Array.from(data.subarray(0, 4))).toEqual([-1, -0.5, 0.5, -1])
+    })
+})
+
+describe("scheduleTone", () => {
+    it("schedules a tone as playTone does, but leaves it connected", () => {
+        const context = fakeContext()
+        const ctx = context as unknown as AudioContextLike
+        const out = context.createGain()
+        const noise = createNoise(ctx, () => 0.5)
+        const [tone] = SFX.dot
+        const { source, envelope } = scheduleTone(
+            ctx,
+            tone,
+            2,
+            out as unknown as AudioNode,
+            noise
+        )
+        const [osc] = context.oscillators
+        expect(source).toBe(osc)
+        expect(osc.started).toBe(2 + tone.at)
+        expect(osc.stopped).toBe(2 + tone.at + tone.duration)
+        expect(osc.connections).toEqual([envelope])
+        expect((envelope as unknown as FakeGain).connections).toEqual([out])
+        expect(osc.onended).toBeNull()
     })
 })
 

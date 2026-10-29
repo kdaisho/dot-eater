@@ -11,16 +11,17 @@ the `--filter dot-eater-video` part.
 
 ## Preview and render
 
-| Command                                     | What it does                                        |
-| ------------------------------------------- | --------------------------------------------------- |
-| `pnpm --filter dot-eater-video studio`      | Remotion Studio: scrub and preview the video        |
-| `pnpm --filter dot-eater-video render`      | Render `Promo` to `video/out/promo.mp4`             |
-| `pnpm --filter dot-eater-video record-demo` | Re-record the demo run (`src/recordings/demo.json`) |
+| Command                                      | What it does                                              |
+| -------------------------------------------- | --------------------------------------------------------- |
+| `pnpm --filter dot-eater-video studio`       | Render the audio, then Remotion Studio: scrub and preview |
+| `pnpm --filter dot-eater-video render`       | Render the audio, then `Promo` to `video/out/promo.mp4`   |
+| `pnpm --filter dot-eater-video render-audio` | Render the game's sound to `video/public/audio/`          |
+| `pnpm --filter dot-eater-video record-demo`  | Re-record the demo run (`src/recordings/demo.json`)       |
 
 A still frame, e.g. to check a zoom:
 
 ```sh
-pnpm --filter dot-eater-video exec remotion still Promo out/frame.png --frame=270
+pnpm --filter dot-eater-video exec remotion still Promo out/frame.png --frame=443
 ```
 
 The first render downloads a headless Chrome. `video/out/` is gitignored.
@@ -35,28 +36,53 @@ lints and type-checks `video/`, and root `pnpm test` runs its `*.test.ts`
    format) and save the JSON file.
 2. Drop it in `video/src/recordings/`, e.g. `epic-run.json`. Every JSON file
    there is picked up at bundle time; there is nothing to register.
-3. Use it by file name: `recording("epic-run")` from `src/recordings`. In
-   `src/Promo.tsx`, change `RUN`.
+3. Use it by file name: `recording("epic-run")` from `src/recordings`. For
+   the promo, set `RUN = "epic-run"` in `src/plan.ts` (the audio render
+   reads the same file), and re-render the audio.
 
 The demo run is played by a bot (`scripts/bot.ts`, recorded by
 `scripts/record-demo.ts`) until real recordings replace it. A test checks
 that the bot still records exactly the committed `demo.json`, so when the
 game's rules change and that test fails, re-run `record-demo`.
 
-## Music and cues
+## Sound
 
-All timing hangs off named music cues in `src/cues.ts` (seconds into the
-track): `intro`, `drop`, `chorus`, `outro` and `end`. Scenes cut and pop on
-`cueFrame("drop", fps)` and the like instead of frame numbers, so when the
-track arrives only the cue times change.
+The video's sound is the game's own sound effects, in exact sync with the
+run, under a song.
 
-To set the music:
+**Sound effects.** Remotion only plays audio files, so
+`scripts/render-audio.ts` renders the game's sound offline to WAV files in
+`video/public/audio/` (gitignored; about 3.8 MB each, made in about a
+second). It replays the run, and each tick that stepped the game plays
+`eventSounds(events)` (`src/sound.ts`) on the first video frame that shows
+that tick (`sfxTimeline` in `src/soundtrack.ts`). In slow motion the sounds
+keep their pitch and land further apart. The tones are made by the game's
+own `scheduleTone` (`src/audio.ts`) in an `OfflineAudioContext` from
+[node-web-audio-api](https://github.com/ircam-ismm/node-web-audio-api), a
+Web Audio implementation for Node, with the noise seeded, so the same run
+renders the same bytes every time. The `render` and `studio` scripts run it
+first.
 
-1. Put the track in `video/public/`, e.g. `video/public/music.mp3`.
-2. Set `MUSIC = "music.mp3"` in `src/cues.ts`. The `<Audio>` is only added
-   when `MUSIC` is set.
-3. Set the cue times from the track (scrub it in Studio), and `BEAT` in
-   `src/Promo.tsx` to the frames per beat.
+**The song.** Drop your song (mp3, m4a, wav...) into `video/public/music/`.
+That folder is gitignored: never commit a song, the repo is public. The
+first audio file there is played under the effects from `TRACK_START`
+(`src/cues.ts`), at `MIX.song` (`src/soundtrack.ts`), with a slight dip in
+slow motion and a fade out at the end. Without a song, the game's own tunes
+play instead (`audio/music.wav`: the title tune over the title and end
+cards, the stage's over the run), so a fresh clone still renders with sound.
+
+**Cues.** All timing hangs off named cues in `src/cues.ts` (seconds into the
+video): `intro`, `play` (cut to gameplay), `drop` (the slow-motion close call
+lands on it), `outro` (cut to the end card) and `end`. They are set from the
+song's beat grid, so cuts and zoom punches land on downbeats. For the
+current song (97.43 bpm, from 0:50.055) every cue is a whole number of bars.
+For a new song, measure its tempo and downbeats (e.g. decode it with ffmpeg
+and look at the kick and snare onsets), then set `BPM`, `BAR`,
+`TRACK_START` and the cues. The composition's length follows `end`.
+
+`src/plan.ts` is the one source of truth for the scenes' frames, the run
+and its time mapping: both the composition and the audio render read it, so
+the sound can't drift from the picture.
 
 ## Building blocks
 
@@ -79,6 +105,9 @@ To set the music:
   `keyframes` gives eased values (zoom) over frames. The clip clamps the
   camera to the board. `drawTime` holds the alpha on end screens as main
   does.
+- `src/plan.ts`: the promo's frames, run and time mapping (see Sound).
+- `src/soundtrack.ts`: the effects timeline, the game music sections and
+  the music's volume per frame, all pure; `scripts/audio.ts` renders them.
 - `src/replayers.ts`: shared replayers and a run log per recording (player
   tracks, each tick's events), and `nearMisses`, the run's closest calls
   with enemies that can catch or the boss, for slow motion.
