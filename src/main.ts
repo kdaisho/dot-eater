@@ -1,3 +1,4 @@
+import type { Random } from "./ai"
 import {
     captureButton,
     captureKey,
@@ -60,6 +61,14 @@ import {
 } from "./progress"
 import { createParticles } from "./particles"
 import { createRenderer, type Effects, type Hud } from "./render"
+import {
+    createRecorder,
+    newSeed,
+    seededRandom,
+    shouldRecord,
+    type Recorder,
+    type Recording,
+} from "./replay"
 import { ANIMAL_IDS, ANIMALS, type AnimalId } from "./roster"
 import {
     bindingsOf,
@@ -72,6 +81,7 @@ import { createShake } from "./shake"
 import {
     burst,
     celebrate,
+    downloadFile,
     hideOverlay,
     hideToast,
     overlayTap,
@@ -80,6 +90,7 @@ import {
     showGameOver,
     showMatchResult,
     showPause,
+    showRecordingBadge,
     showRoundResult,
     showSettings,
     showStageClear,
@@ -122,6 +133,16 @@ function mediaQuery(query: string): MediaQueryList | undefined {
 }
 const reducedMotion = mediaQuery("(prefers-reduced-motion: reduce)")
 const touch = isTouchDevice(window)
+
+// Gameplay recording, for videos (see replay.ts), on with ?record in the
+// URL. Each run (a game from its start in `playing` to its end screen; in
+// versus, each round) gets a fresh seed, and its game randomness comes from
+// that seed; its ticks are recorded, and the recording downloads when the
+// run reaches its end screen. Without ?record nothing is recorded and the
+// game uses Math.random as always.
+const recordingOn = new URLSearchParams(location.search).has("record")
+let recorder: Recorder | undefined
+let gameRandom: Random = Math.random
 
 const canvas = document.getElementById("game")
 if (!(canvas instanceof HTMLCanvasElement)) throw new Error("No #game canvas")
@@ -346,6 +367,8 @@ function tick(dt: number) {
     const boss = game?.boss
     const wasDefeated = boss?.defeated ?? true
     const next = update(screen, tickInput, flowDeps(dt))
+    // Before endTick, which clears the presses the recorder reads.
+    if (recorder && shouldRecord(screen, next)) recorder.add(tickInput)
     input.endTick()
     pendingCapture = {}
     if (game) onGameEvents(takeEvents(game), game)
@@ -365,7 +388,8 @@ function flowDeps(dt: number): FlowDeps {
         progress,
         lastAnimal,
         dt,
-        random: Math.random,
+        // Seeded while recording (see recordRuns).
+        random: gameRandom,
         settings,
         touch,
         prefersReducedMotion: reducedMotion?.matches ?? false,
@@ -437,6 +461,7 @@ function enter(prev: Screen, next: Screen) {
         celebrate(10)
     }
     if (next.kind === "matchResult" && prev.kind === "ending") celebrate(10)
+    if (recordingOn) recordRuns(prev, next)
     // Every change on the settings and controls screens is saved, and
     // applied, at once.
     const changed = screenSettings(next)
@@ -460,6 +485,38 @@ function applyBindings(s: Settings) {
     keys.setBindings(bindings)
     pads.setBindings(bindings)
     setHintBindings(bindings)
+}
+
+// Start a recording when a run starts (play entered other than from
+// pause), and download it when the run leaves its outro for an end screen.
+function recordRuns(prev: Screen, next: Screen) {
+    if (next.kind === "playing" && prev.kind !== "paused") {
+        const seed = newSeed(Math.random)
+        gameRandom = seededRandom(seed)
+        recorder = createRecorder(next, seed)
+    } else if (prev.kind === "ending" && recorder) {
+        const recording = recorder.finish(next)
+        recorder = undefined
+        downloadFile(
+            recordingName(recording, new Date()),
+            JSON.stringify(recording),
+            "application/json"
+        )
+    }
+}
+
+// e.g. dot-eater-stage1-solo-dragon-lost-2026-10-28T19-40-05.json: easy to
+// tell apart, and in time order when sorted by name.
+function recordingName(recording: Recording, date: Date): string {
+    const { level, mode, animals, final, match = [] } = recording
+    const outcome =
+        final.kind === "stageClear"
+            ? "won"
+            : final.kind === "gameOver"
+              ? "lost"
+              : `round${match.length + 1}`
+    const time = date.toISOString().slice(0, 19).replaceAll(":", "-")
+    return `dot-eater-stage${level + 1}-${mode}-${animals.join("+")}-${outcome}-${time}.json`
 }
 
 // Interpolation only moves on during play and the ending outro (where the
@@ -734,5 +791,6 @@ new DpadSource(touchControls).attach(input)
 // The (empty) toast live region goes in at once, so screen readers already
 // watch it when the first toast shows.
 hideToast()
+if (recordingOn) showRecordingBadge()
 showOverlay(screen)
 loop.start()
