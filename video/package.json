@@ -7,7 +7,7 @@
     "scripts": {
         "studio": "remotion studio",
         "render": "remotion render Promo out/promo.mp4",
-        "record-demo": "node --import ./scripts/ts-resolve.mjs scripts/record-demo.ts"
+        "record-demo": "node --experimental-transform-types --no-warnings=ExperimentalWarning --import ./scripts/ts-resolve.mjs scripts/record-demo.ts"
     },
     "dependencies": {
         "@remotion/cli": "4.0.539",
