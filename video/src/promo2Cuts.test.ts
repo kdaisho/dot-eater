@@ -38,8 +38,8 @@ const shots = compileCuts(list, frames.beats)
 describe("promo2CutList", () => {
     it("compiles and fills the excerpt exactly", () => {
         expect(cutLength(shots)).toBe(frames.duration)
-        // Bars 32–48 at 96.968 bpm: about 39.6 s.
-        expect(frames.duration / FPS).toBeCloseTo(39.6, 1)
+        // Half-time bars 8–24 at 86.99 bpm: about 44.1 s.
+        expect(frames.duration / FPS).toBeCloseTo(44.1, 1)
         const beats = list.shots.reduce((sum, s) => sum + s.durationBeats, 0)
         expect(beats).toBe(SECTIONS.end)
     })
@@ -82,7 +82,7 @@ describe("promo2CutList", () => {
         }
     })
 
-    it("lands the boss going down on bar 45's downbeat", () => {
+    it("lands the boss going down on the excerpt's bar 13", () => {
         const boss = scenes.boss
         const down = heroMoment("boss", boss)
         expect(down?.kind).toBe("bossDefeated")
@@ -96,21 +96,25 @@ describe("promo2CutList", () => {
         expect(shot!.from + shot!.game!.hero).toBe(
             Math.round(frames.beats.beatFrame(BOSS_DOWN_BEAT))
         )
-        expect(shot!.from + shot!.game!.hero).toBe(frames.bar(45))
+        expect(shot!.from + shot!.game!.hero).toBe(
+            frames.bar(PROMO2_EXCERPT.fromBar + 13)
+        )
     })
 
     it("lands the character section and the boss on their bars", () => {
         const start = (name: string) =>
             shots.find((c) => c.shot.name === name)?.from
-        expect(start("DRAGON card")).toBe(frames.bar(35))
+        expect(start("DRAGON card")).toBe(
+            frames.bar(PROMO2_EXCERPT.fromBar + 3)
+        )
         expect(start("Boss lair")).toBe(frames.cue("hook"))
         expect(start("End card")).toBe(frames.cue("endCard"))
     })
 })
 
 describe("promo2Tracks", () => {
-    it("plays the song alone, trimmed to bar 32, with no game sound", () => {
-        const tracks = promo2Tracks("/music/great-expectations.m4a", {
+    it("plays the song alone, trimmed to its excerpt, with no game sound", () => {
+        const tracks = promo2Tracks("/music/return-of-the-8-bit-era.mp3", {
             start: frames.start,
             duration: frames.duration,
             fps: FPS,
@@ -118,8 +122,8 @@ describe("promo2Tracks", () => {
         expect(tracks.map((t) => t.name)).toEqual(["Song"])
         expect(tracks.every((t) => !t.src.includes("audio/"))).toBe(true)
         expect(tracks[0].trimBefore).toBe(Math.round(frames.start * FPS))
-        // Bar 32 is 1:19.49 into the song.
-        expect(frames.start).toBeCloseTo(79.49, 1)
+        // Half-time bar 8 is 0:22.13 into the song.
+        expect(frames.start).toBeCloseTo(22.13, 1)
         expect(tracks[0].volume(frames.duration / 2)).toBe(1)
         expect(tracks[0].volume(frames.duration)).toBe(0)
     })

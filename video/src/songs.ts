@@ -13,8 +13,10 @@ const AUDIO = /\.(mp3|m4a|aac|wav|ogg|flac)$/i
 export const SONGS = {
     // v1, cut to Slam (Bionyx Remix) at 97.43 bpm (see cues.ts).
     promo: "slam",
-    // v2 and the toolkit demo: Jurassic 5, Great Expectations.
-    promo2: "great expectations",
+    // v2: DJARTMUSIC, The Return of the 8-Bit Era (Pixabay licence).
+    promo2: "return of the 8 bit era",
+    // The toolkit demo: Jurassic 5, Great Expectations.
+    toolkit: "great expectations",
 } as const
 
 const squash = (text: string) => text.toLowerCase().replace(/[^a-z0-9]/g, "")

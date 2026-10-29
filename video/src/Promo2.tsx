@@ -27,8 +27,8 @@ import { sceneRecording } from "./recordings/scenes"
 import { SCENE_NAMES } from "./scenes"
 import { SONGS } from "./songs"
 
-// The v2 promo: the characters' trailer, cut to bars 32–48 of Jurassic 5's
-// Great Expectations (PROMO2_EXCERPT, about 40 s) from the directed scenes.
+// The v2 promo: the characters' trailer, cut to The Return of the 8-Bit Era
+// (PROMO2_EXCERPT, about 44 s) from the directed scenes.
 // The song only, no game sound. The edit is promo2Cuts.ts; this adds the
 // song and what spans shots: the boss look, the boss-down flash and
 // confetti, and the end card's emoji.

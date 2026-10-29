@@ -1,6 +1,6 @@
 import { getStaticFiles } from "remotion"
 import type { BeatsFile } from "./beats"
-import { fallbackFor } from "./excerpts"
+import { fallbackFor, SONG_GRIDS } from "./excerpts"
 import { beatsFileName, MUSIC_FOLDER, pickTrack } from "./songs"
 
 export type LoadedBeats = {
@@ -13,8 +13,8 @@ export type LoadedBeats = {
 
 // The beat grid of `song` (see SONGS): its beats file from public/music/
 // (written by `pnpm analyze-track`), or the fallback grid (fallbackFor)
-// when the song or its analysis isn't there, so a fresh clone still
-// renders. Async (it fetches the JSON): call it from a composition's
+// when the song or its analysis isn't there (or its grid is forced), so a
+// fresh clone still renders. Async (it fetches the JSON): call it from a composition's
 // calculateMetadata and pass the result down as props, so every frame
 // gets the same grid.
 export async function loadBeats(song: string): Promise<LoadedBeats> {
@@ -22,7 +22,7 @@ export async function loadBeats(song: string): Promise<LoadedBeats> {
     const track = pickTrack(files, song)
     const name = track && `${MUSIC_FOLDER}${beatsFileName(track.name)}`
     const json = name && files.find((f) => f.name === name)
-    if (track && json) {
+    if (track && json && !SONG_GRIDS[song]?.forced) {
         const response = await fetch(json.src)
         if (response.ok) {
             const file = (await response.json()) as BeatsFile

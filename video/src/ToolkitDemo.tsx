@@ -11,7 +11,7 @@ import type { BeatsFile } from "./beats"
 import { compileCuts, cutLength } from "./cutList"
 import { CutSequence } from "./CutSequence"
 import { Letterbox, PulseText, Vignette } from "./DramaFx"
-import { excerptFrames, PROMO2_EXCERPT } from "./excerpts"
+import { excerptFrames } from "./excerpts"
 import { loadBeats } from "./loadBeats"
 import { LOOKS, PAPER } from "./palette"
 import { recording } from "./recordings"
@@ -25,7 +25,8 @@ import { SONGS } from "./songs"
 // the boss look (letterbox and vignette) on the last.
 
 export const DEMO_FPS = 30
-const FROM_BAR = PROMO2_EXCERPT.cues.lift
+// Bars 36–40 of Great Expectations: the lift into its second hook.
+const FROM_BAR = 36
 const BARS = 4
 
 export type ToolkitDemoProps = {
@@ -37,7 +38,7 @@ export type ToolkitDemoProps = {
 export const calculateToolkitDemo: CalculateMetadataFunction<
     ToolkitDemoProps
 > = async () => {
-    const loaded = await loadBeats(SONGS.promo2)
+    const loaded = await loadBeats(SONGS.toolkit)
     const frames = demoFrames(loaded.file)
     return {
         durationInFrames: frames.duration,
@@ -48,7 +49,12 @@ export const calculateToolkitDemo: CalculateMetadataFunction<
 function demoFrames(file: BeatsFile) {
     return excerptFrames(
         file,
-        { ...PROMO2_EXCERPT, fromBar: FROM_BAR, toBar: FROM_BAR + BARS },
+        {
+            song: SONGS.toolkit,
+            fromBar: FROM_BAR,
+            toBar: FROM_BAR + BARS,
+            cues: {},
+        },
         DEMO_FPS
     )
 }

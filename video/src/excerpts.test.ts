@@ -36,16 +36,18 @@ describe("excerptFrames", () => {
 })
 
 describe("PROMO2_EXCERPT", () => {
-    it("runs 16 bars, about 40 s, on the measured grid without the song", () => {
+    it("runs 16 bars, about 44 s, on the half-time grid without the song", () => {
         const frames = excerptFrames(
             fallbackFor(SONGS.promo2),
             PROMO2_EXCERPT,
             30
         )
-        // Bar 32 of Great Expectations: 0.291 s + 32 bars of 2.475 s.
-        expect(frames.start).toBeCloseTo(0.291 + 32 * (240 / 96.968), 2)
-        expect(frames.duration / 30).toBeCloseTo(39.6, 1)
-        expect(frames.cue("hook")).toBe(Math.round(8 * (240 / 96.968) * 30))
+        const bar = 240 / 86.9915
+        // Half-time bar 8: 0.059 s + 8 bars of 2.759 s.
+        expect(frames.start).toBeCloseTo(0.059 + 8 * bar, 2)
+        expect(frames.duration / 30).toBeCloseTo(44.1, 1)
+        // The hook lands at 0:44.20, where the analyser found the lift.
+        expect(frames.start + frames.cue("hook") / 30).toBeCloseTo(44.2, 1)
         expect(frames.cue("endCard")).toBeLessThan(frames.cue("end"))
     })
 

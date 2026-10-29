@@ -2,44 +2,48 @@ import type { Recording } from "../../src/replay"
 import type { AnimalId } from "../../src/roster"
 import type { CardShot, CutList, GameShot, Shot } from "./cutList"
 import type { RampOptions, Transition } from "./drama"
+import { PROMO2_EXCERPT } from "./excerpts"
 import { heroMoment, highlightsOf, type Moment } from "./highlights"
 import { LOOKS, PAPER } from "./palette"
 import type { SceneName } from "./scenes"
 
-// The v2 promo's edit (see Promo2.tsx): 64 beats of Great Expectations
-// (bars 32–48, PROMO2_EXCERPT), beat 0 on bar 32's downbeat. Pure, so it is
-// tested: it compiles, fills the excerpt, shows every character and lands
-// the boss going down on bar 45.
+// The v2 promo's edit (see Promo2.tsx): the 64 beats of PROMO2_EXCERPT,
+// beat 0 on its first downbeat. Bars below count from the excerpt's start
+// (bar 0). Pure, so it is tested: it compiles, fills the excerpt, shows
+// every character and lands the boss going down on bar 13.
 //
 //   beats  0–8   HOOK: the chase, quick snippets, the near miss in slow
 //                motion with the DOT EATER slam, a half-beat montage
-//   beats  8–12  DROPOUT (bar 34): a freeze frame, 5 ANIMALS. 5 POWERS.
-//   beats 12–32  CHARACTERS (bars 35–40): a slam card then the ability in
+//   beats  8–12  DROPOUT (bar 2): a freeze frame, 5 ANIMALS. 5 POWERS.
+//   beats 12–32  CHARACTERS (bars 3–8): a slam card then the ability in
 //                slow motion, a bar each; quicker cards from the lift
-//   beats 32–56  BOSS (bars 40–46): hits on the snares, a stutter, the
-//                boss down on bar 45
-//   beats 56–64  END CARD (bars 46–48)
+//   beats 32–56  BOSS (bars 8–14): hits on the backbeat, a stutter, the
+//                boss down on bar 13
+//   beats 56–64  END CARD (bars 14–16)
 //
-// The song's snare is on beats 2 and 4 of each bar: odd beats here.
+// The backbeat is on beats 2 and 4 of each bar: odd beats here.
 
 export type Scenes = Readonly<Record<SceneName, Recording>>
 
-// Song bar `bar` (fractions are beats) as a beat of the edit.
-export const beatOfBar = (bar: number) => (bar - 32) * 4
+// Bar `bar` of the excerpt (fractions are beats) as a beat of the edit.
+export const beatOfBar = (bar: number) => bar * 4
+
+const cueBar = (cue: keyof typeof PROMO2_EXCERPT.cues) =>
+    PROMO2_EXCERPT.cues[cue] - PROMO2_EXCERPT.fromBar
 
 // Where each section starts, in beats.
 export const SECTIONS = {
-    hook: beatOfBar(32),
-    dropout: beatOfBar(34),
-    characters: beatOfBar(35),
-    lift: beatOfBar(36),
-    boss: beatOfBar(40),
-    endCard: beatOfBar(46),
-    end: beatOfBar(48),
+    hook: beatOfBar(cueBar("open")),
+    dropout: beatOfBar(cueBar("dropout")),
+    characters: beatOfBar(cueBar("dropout") + 1),
+    lift: beatOfBar(cueBar("lift")),
+    boss: beatOfBar(cueBar("hook")),
+    endCard: beatOfBar(cueBar("endCard")),
+    end: beatOfBar(cueBar("end")),
 } as const
 
-// The beat the boss goes down on: the downbeat of bar 45.
-export const BOSS_DOWN_BEAT = beatOfBar(45)
+// The beat the boss goes down on: the downbeat of bar 13.
+export const BOSS_DOWN_BEAT = beatOfBar(13)
 
 // The characters in the order they're shown.
 export const CHARACTER_ORDER: readonly AnimalId[] = [
@@ -95,7 +99,7 @@ const ABILITY_RAMP: RampOptions = { slow: 0.1, hold: 18 }
 
 // The character run-through: a card, then the ability shot with its hero
 // moment on the snare, in slow motion, with its colour and caption. The
-// dragon's card is two beats; from the lift (bar 36) cards are a beat and
+// dragon's card is two beats; from the lift (bar 4) cards are a beat and
 // a half and the shots punch harder.
 function characterShots(scenes: Scenes): Shot[] {
     const ways: Transition[] = ["flash", "whip", "wipe", "flash", "whip"]
@@ -190,7 +194,7 @@ function hookShots(scenes: Scenes): Shot[] {
             shake: 0.8,
         }),
         on(scenes, "hook", close, {
-            // The near miss lands on bar 33's downbeat and all but
+            // The near miss lands on bar 1's downbeat and all but
             // freezes, and the title slams over it.
             name: "Near miss",
             durationBeats: 2.5,
@@ -339,7 +343,7 @@ function bossShots(scenes: Scenes): Shot[] {
             }
         ),
         on(scenes, "boss", down, {
-            // Down on bar 45's downbeat, in super slow motion.
+            // Down on bar 13's downbeat, in super slow motion.
             name: "Boss down",
             durationBeats: 3.5,
             heroBeat: 1.5,
@@ -352,7 +356,7 @@ function bossShots(scenes: Scenes): Shot[] {
             shake: 2.6,
         }),
         on(scenes, "boss", down, {
-            // Again, pulling out, on bar 45's third beat.
+            // Again, pulling out, on bar 13's third beat.
             name: "Boom",
             durationBeats: 2,
             heroBeat: 0,

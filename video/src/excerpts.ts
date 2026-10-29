@@ -20,32 +20,42 @@ export type Excerpt<Cue extends string = string> = {
 
 // A song's grid as measured by analyze-track, for when its beats file
 // isn't there (a fresh clone): the fallback grid then matches it.
-export type SongGrid = { bpm: number; offset: number; bars: number }
+// `forced` keeps it even when an analysis exists: for a song the analyser
+// reads at double time.
+export type SongGrid = {
+    bpm: number
+    offset: number
+    bars: number
+    forced?: boolean
+}
 
 export const SONG_GRIDS: Readonly<Record<string, SongGrid>> = {
     // Slam (Bionyx Remix): 97.431 bpm, first downbeat 0.778 s.
     [SONGS.promo]: { bpm: 97.431, offset: 0.778, bars: 89 },
     // Great Expectations: 96.968 bpm, first downbeat 0.291 s.
-    [SONGS.promo2]: { bpm: 96.968, offset: 0.291, bars: 88 },
+    [SONGS.toolkit]: { bpm: 96.968, offset: 0.291, bars: 88 },
+    // The Return of the 8-Bit Era: the analyser reads 173.983 bpm with its
+    // first downbeat at 0.059 s; the edit cuts on the half-time feel
+    // (86.99 bpm, 2.759 s bars), so this grid always wins.
+    [SONGS.promo2]: { bpm: 86.9915, offset: 0.059, bars: 26, forced: true },
 }
 
-// The v2 promo's excerpt of Great Expectations, picked with the user:
-// bars 32–48 (1:19.49–1:59.09, 39.6 s). Verse 2 opens it; a one-bar
-// dropout at bar 34 and a lift at 36 carry the character run-through;
-// the second hook lands on bar 40 (the song's strongest lift) for the boss
-// climax; the end card holds the hook's last two bars, which end just
-// before verse 3.
+// The v2 promo's excerpt of The Return of the 8-Bit Era, on its half-time
+// grid: bars 8–24 (0:22.13–1:06.27, 44.1 s). The build opens it, the
+// dropout and lift keep v2's shape, the hook lands on bar 16 (0:44.20, the
+// song's strongest lift) for the boss climax, and the end card holds the
+// hook's last two bars, which end where the outro starts.
 export const PROMO2_EXCERPT = {
     song: SONGS.promo2,
-    fromBar: 32,
-    toBar: 48,
+    fromBar: 8,
+    toBar: 24,
     cues: {
-        open: 32,
-        dropout: 34,
-        lift: 36,
-        hook: 40,
-        endCard: 46,
-        end: 48,
+        open: 8,
+        dropout: 10,
+        lift: 12,
+        hook: 16,
+        endCard: 22,
+        end: 24,
     },
 } as const satisfies Excerpt
 

@@ -22,7 +22,7 @@ describe("pickTrack", () => {
             file("music/03 Great Expectations.m4a"),
             file("music/03 Great Expectations.beats.json"),
         ]
-        expect(pickTrack(files, SONGS.promo2)).toEqual(files[1])
+        expect(pickTrack(files, SONGS.toolkit)).toEqual(files[1])
         expect(pickTrack(files, SONGS.promo)).toEqual(files[0])
         expect(pickTrack(files, "other song")).toBeUndefined()
     })

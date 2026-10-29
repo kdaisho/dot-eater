@@ -15,7 +15,7 @@ describe("demoCutList", () => {
     it("fits the demo run on the song's grid, without the song", () => {
         const lift = PROMO2_EXCERPT.cues.lift
         const frames = excerptFrames(
-            fallbackFor(SONGS.promo2),
+            fallbackFor(SONGS.toolkit),
             { ...PROMO2_EXCERPT, fromBar: lift, toBar: lift + 4 },
             30
         )
