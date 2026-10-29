@@ -3,10 +3,10 @@ import { describe, expect, it, vi } from "vite-plus/test"
 import { levels } from "./levels"
 import { tickCount, verify, type Recording } from "./replay"
 
-// main with ?record: a real game of stage 1, paused for a while midway,
-// played until it is lost. The recording must download as JSON when the
-// game over screen comes up, leave out the paused ticks and replay to the
-// same end. (A separate file, since main is imported once per module graph
+// main with ?record: a real game of stage 1, paused for a while midway
+// (with a visit to the settings), played until it is lost. The recording
+// must download as JSON when the game over screen comes up, leave out the
+// paused ticks and replay to the same end. (A separate file, since main is imported once per module graph
 // and reads the URL on import.)
 
 vi.mock("canvas-confetti", () => ({ default: vi.fn() }))
@@ -50,13 +50,21 @@ describe("main with ?record", () => {
         pressAndTick("Space")
         expect(screen()).toBe("playing")
 
-        // Walk a little, pause for two seconds, walk again.
+        // Walk a little, pause for two seconds or so, walk again.
         keydown("ArrowLeft")
         vi.advanceTimersByTime(1000)
         keyup("ArrowLeft")
         pressAndTick("Escape")
         expect(screen()).toBe("pause")
-        vi.advanceTimersByTime(2000)
+        vi.advanceTimersByTime(1000)
+        // Settings from pause come back to the same paused game, which
+        // carries on the same run (and recording) when resumed.
+        pressAndTick("ArrowDown")
+        pressAndTick("Space")
+        expect(screen()).toBe("settings")
+        vi.advanceTimersByTime(1000)
+        pressAndTick("Escape")
+        expect(screen()).toBe("pause")
         pressAndTick("Escape")
         expect(screen()).toBe("playing")
         keydown("ArrowRight")
@@ -77,7 +85,7 @@ describe("main with ?record", () => {
         expect(recording.final.kind).toBe("gameOver")
         expect(recording.final.ticks).toBeGreaterThan(0)
         // Beyond the game's own ticks, only the short ending outro: none
-        // of the 2 s of pause.
+        // of the time paused or in the settings.
         const extra = tickCount(recording) - recording.final.ticks
         expect(extra).toBeGreaterThan(0)
         expect(extra).toBeLessThan(60)

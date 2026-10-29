@@ -85,7 +85,7 @@ describe("main with two players", () => {
             [...(overlay()?.querySelectorAll("li") ?? [])].map(
                 (li) => li.textContent
             )
-        ).toEqual(["1 player", "Co-op", "Versus"])
+        ).toEqual(["1 player", "Co-op", "Versus", "Settings"])
         expect(selectedItem()).toBe("1 player")
         pressAndTick("ArrowDown")
         expect(selectedItem()).toBe("Co-op")
@@ -155,7 +155,7 @@ describe("main with two players", () => {
             [...(overlay()?.querySelectorAll(".overlay-line") ?? [])].map(
                 (p) => p.textContent
             )
-        ).toEqual(["1P: P, Esc or Space to resume", "2P: Q or E to resume"])
+        ).toEqual(["↑ ↓ to choose, Space or E to pick", "Esc or Q to resume"])
         pressAndTick("KeyE")
         expect(screen()).toBe("playing")
 

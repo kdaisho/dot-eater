@@ -7,8 +7,10 @@ import {
     KeyboardSource,
     PLAYER_1_KEYS,
     PLAYER_2_KEYS,
+    keyMapsFor,
     type Action,
 } from "./input"
+import { DEFAULT_BINDINGS, rebind } from "./bindings"
 import { vec2 } from "./vec2"
 
 describe("directionStep", () => {
@@ -361,5 +363,67 @@ describe("KeyboardSource", () => {
         expect(solo.player(0).isDown("up")).toBe(true)
         expect(solo.player(1).isDown("up")).toBe(false)
         defaults.detach()
+    })
+
+    describe("bindings", () => {
+        it("derives the default maps from DEFAULT_BINDINGS", () => {
+            expect(keyMapsFor(DEFAULT_BINDINGS)).toEqual([
+                PLAYER_1_KEYS,
+                PLAYER_2_KEYS,
+            ])
+        })
+
+        it("follows new bindings, swaps included", () => {
+            let bindings = rebind(DEFAULT_BINDINGS, 0, "breath", "KeyX")
+            // P2's up takes P1's up key; P1's up gets KeyW.
+            bindings = rebind(bindings, 1, "up", "ArrowUp")
+            source.setBindings(bindings)
+            key("keydown", "KeyX")
+            key("keydown", "ShiftRight")
+            expect(p1().isDown("breath")).toBe(true)
+            key("keyup", "KeyX")
+            expect(p1().isDown("breath")).toBe(false)
+            key("keydown", "ArrowUp")
+            expect(p2().isDown("up")).toBe(true)
+            expect(p1().isDown("up")).toBe(false)
+            key("keydown", "KeyW")
+            expect(p1().isDown("up")).toBe(true)
+        })
+
+        it("keeps Escape on player 1's pause whatever pause is bound to", () => {
+            source.setBindings(rebind(DEFAULT_BINDINGS, 0, "pause", "KeyZ"))
+            key("keydown", "Escape")
+            expect(p1().wasPressed("pause")).toBe(true)
+            key("keydown", "KeyZ")
+            expect(p1().isDown("pause")).toBe(true)
+            key("keyup", "Escape")
+            key("keyup", "KeyZ")
+            key("keydown", "KeyP")
+            expect(p1().isDown("pause")).toBe(false)
+        })
+
+        it("releases what keys held when the bindings change", () => {
+            key("keydown", "ArrowUp")
+            source.setBindings(rebind(DEFAULT_BINDINGS, 0, "up", "KeyZ"))
+            expect(p1().isDown("up")).toBe(false)
+        })
+
+        // The key just bound in a remap prompt is still down when the new
+        // bindings arrive; its auto-repeat must not fire the new action.
+        it("doesn't press a key held through the change until pressed again", () => {
+            key("keydown", "KeyZ")
+            source.setBindings(rebind(DEFAULT_BINDINGS, 0, "confirm", "KeyZ"))
+            key("keydown", "KeyZ", { repeat: true })
+            expect(p1().wasPressed("confirm")).toBe(false)
+            key("keyup", "KeyZ")
+            key("keydown", "KeyZ")
+            expect(p1().wasPressed("confirm")).toBe(true)
+        })
+
+        it("leaves unbound keys to the page", () => {
+            source.setBindings(rebind(DEFAULT_BINDINGS, 0, "confirm", "KeyZ"))
+            expect(key("keydown", "Space").defaultPrevented).toBe(false)
+            expect(p1().isDown("confirm")).toBe(false)
+        })
     })
 })

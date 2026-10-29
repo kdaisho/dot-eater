@@ -86,7 +86,7 @@ describe("main in versus", () => {
         const setItem = vi.spyOn(localStorage, "setItem")
         expect(document.getElementById("rec-badge")).toBeNull()
 
-        expect(menu()).toEqual(["1 player", "Co-op", "Versus"])
+        expect(menu()).toEqual(["1 player", "Co-op", "Versus", "Settings"])
         pressAndTick("ArrowDown")
         pressAndTick("ArrowDown")
         pressAndTick("Space")

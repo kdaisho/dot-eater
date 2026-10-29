@@ -5,9 +5,11 @@ import {
     celebrate,
     hideOverlay,
     hideToast,
+    overlayTap,
     showCharacterSelect,
     showGameOver,
     showPause,
+    showSettings,
     showStageClear,
     showStageSelect,
     showTitle,
@@ -236,15 +238,46 @@ describe("showPause", () => {
         expectSingle()
         expect(overlay()?.dataset.screen).toBe("pause")
         expect(title()).toBe("Paused")
-        expect(lines()).toEqual(["Press P, Esc or Space to resume"])
+        expect(lines()).toEqual(["↑ ↓ to choose, Space to pick, Esc to resume"])
+        // Key hints, hidden on phones.
+        expect(overlay()?.querySelector("p.overlay-hint")).not.toBeNull()
     })
 
     it("gives player 2's keys too with two players", () => {
         showPause(2)
         expect(lines()).toEqual([
-            "1P: P, Esc or Space to resume",
-            "2P: Q or E to resume",
+            "↑ ↓ to choose, Space or E to pick",
+            "Esc or Q to resume",
         ])
+    })
+
+    it("shows its menu when given one", () => {
+        showPause(1, [
+            { label: "Resume", selected: false },
+            { label: "Settings", selected: true },
+        ])
+        expect(items()).toEqual(["Resume", "Settings"])
+        expect(selected()).toEqual(["Settings"])
+    })
+})
+
+describe("showSettings", () => {
+    it("shows each row with its value after the label", () => {
+        showSettings([
+            { label: "Music volume", value: "◀ 7 ▶", selected: true },
+            { label: "Mute", value: "Off", selected: false },
+            { label: "Back", selected: false },
+        ])
+        expectSingle()
+        expect(overlay()?.dataset.screen).toBe("settings")
+        expect(title()).toBe("Settings")
+        expect(lines()).toEqual([
+            "↑ ↓ to choose, ← → to change, Esc to go back",
+        ])
+        expect(items()).toEqual(["Music volume ◀ 7 ▶", "Mute Off", "Back"])
+        expect(selected()).toEqual(["Music volume ◀ 7 ▶"])
+        const values = [...overlay()!.querySelectorAll(".menu-value")]
+        expect(values.map((v) => v.textContent)).toEqual(["◀ 7 ▶", "Off"])
     })
 })
 
@@ -481,5 +514,113 @@ describe("toast", () => {
         expect(toasts()).toEqual([region])
         expect(region?.isConnected).toBe(true)
         expect(region?.textContent).toBe("Controller disconnected")
+    })
+})
+
+describe("overlayTap", () => {
+    const menu = (n: number) =>
+        Array.from({ length: n }, (_, i) => ({
+            label: `Item ${i}`,
+            selected: i === 0,
+        }))
+    const el = (selector: string) =>
+        document.querySelector<HTMLElement>(selector)
+
+    it("reads a tapped menu item's index", () => {
+        showTitle(menu(3))
+        const items = [...document.querySelectorAll("#overlay li")]
+        expect(items.map((li) => overlayTap(li))).toEqual([
+            { kind: "item", index: 0 },
+            { kind: "item", index: 1 },
+            { kind: "item", index: 2 },
+        ])
+    })
+
+    it("reads a stage slot's index, locked ones too", () => {
+        showStageSelect(
+            [
+                { kind: "open", name: "One" },
+                { kind: "locked", name: "Two" },
+            ],
+            0
+        )
+        expect(overlayTap(el("#overlay li.locked"))).toEqual({
+            kind: "item",
+            index: 1,
+        })
+    })
+
+    it("reads a character card's index from anywhere on it", () => {
+        const animals = ANIMAL_IDS.map((id) => ANIMALS[id])
+        showCharacterSelect(animals, ANIMAL_IDS[0])
+        const card = document.querySelectorAll("#overlay li.card")[2]
+        expect(overlayTap(card.querySelector(".card-name"))).toEqual({
+            kind: "item",
+            index: 2,
+        })
+    })
+
+    it("has a Back button on stage and character select only", () => {
+        showStageSelect([{ kind: "open", name: "One" }], 0)
+        expect(overlayTap(el("#overlay [data-back]"))).toEqual({
+            kind: "back",
+        })
+        showCharacterSelect([ANIMALS[ANIMAL_IDS[0]]], ANIMAL_IDS[0])
+        expect(el("#overlay [data-back]")?.textContent).toBe("‹ Back")
+        showTitle(menu(3))
+        expect(el("#overlay [data-back]")).toBeNull()
+        showPause()
+        expect(el("#overlay [data-back]")).toBeNull()
+    })
+
+    it("reads anywhere else on the overlay or backdrop as the panel", () => {
+        showPause()
+        expect(overlayTap(el("#overlay"))).toEqual({ kind: "panel" })
+        expect(overlayTap(el("#overlay p"))).toEqual({ kind: "panel" })
+        expect(overlayTap(el("#backdrop"))).toEqual({ kind: "panel" })
+    })
+
+    it("ignores everything off the overlay", () => {
+        showPause()
+        const outside = document.createElement("div")
+        document.body.appendChild(outside)
+        expect(overlayTap(outside)).toBeUndefined()
+        expect(overlayTap(document.body)).toBeUndefined()
+        expect(overlayTap(null)).toBeUndefined()
+    })
+
+    it("gives a slider's arrows tap targets of their own", () => {
+        showSettings([
+            {
+                label: "Music volume",
+                value: "◀ 7 ▶",
+                steps: true,
+                selected: true,
+            },
+            { label: "Mute", value: "Off", selected: false },
+        ])
+        const [music, mute] = document.querySelectorAll("#overlay li")
+        // The text reads as before.
+        expect(music.textContent).toBe("Music volume ◀ 7 ▶")
+        const [less, more] = music.querySelectorAll("[data-step]")
+        expect(overlayTap(less)).toEqual({ kind: "step", index: 0, delta: -1 })
+        expect(overlayTap(more)).toEqual({ kind: "step", index: 0, delta: 1 })
+        expect(overlayTap(music.querySelector(".menu-value"))).toEqual({
+            kind: "item",
+            index: 0,
+        })
+        // A toggle has none: tapping it is tapping the item.
+        expect(mute.querySelector("[data-step]")).toBeNull()
+        expect(overlayTap(mute.querySelector(".menu-value"))).toEqual({
+            kind: "item",
+            index: 1,
+        })
+    })
+
+    it("marks key hints, so phones can hide them, and leaves other lines", () => {
+        showSettings([])
+        expect(document.querySelector("#overlay p.overlay-hint")).not.toBeNull()
+        showGameOver({ score: 10, items: [] })
+        expect(document.querySelector("#overlay p.overlay-hint")).toBeNull()
     })
 })

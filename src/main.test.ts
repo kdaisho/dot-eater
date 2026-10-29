@@ -330,7 +330,8 @@ describe("main", () => {
             expect(lastStartedLevel()).toBe(levels[0])
             expect(screen()).toBe("playing")
         }
-        expect(keydownListeners.size).toBe(1)
+        // The keyboard source's, and the controls screen's capture.
+        expect(keydownListeners.size).toBe(2)
     })
 
     it("does nothing on Space during play", () => {

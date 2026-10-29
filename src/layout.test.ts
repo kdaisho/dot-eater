@@ -1,5 +1,13 @@
 import { describe, expect, it } from "vite-plus/test"
-import { computeLayout, HUD_ROWS, MAX_CELL, MIN_CELL, PADDING } from "./layout"
+import {
+    computeLayout,
+    controlsSpace,
+    DPAD_SPACE,
+    HUD_ROWS,
+    MAX_CELL,
+    MIN_CELL,
+    PADDING,
+} from "./layout"
 
 describe("computeLayout", () => {
     it("fits the maze plus the HUD strip into the height", () => {
@@ -40,5 +48,28 @@ describe("computeLayout", () => {
     it("treats a missing or zero ratio as 1", () => {
         expect(computeLayout(1000, 400, 9, 9).dpr).toBe(1)
         expect(computeLayout(1000, 400, 9, 9, 0).pixelWidth).toBe(36 * 9)
+    })
+})
+
+describe("controlsSpace", () => {
+    it("keeps no room without the D-pad", () => {
+        expect(controlsSpace(390, 844, false)).toEqual({ width: 0, height: 0 })
+        expect(controlsSpace(844, 390, false)).toEqual({ width: 0, height: 0 })
+    })
+
+    it("keeps a band below the maze in portrait", () => {
+        expect(controlsSpace(390, 844, true)).toEqual({
+            width: 0,
+            height: DPAD_SPACE,
+        })
+        // A square viewport counts as portrait.
+        expect(controlsSpace(500, 500, true).height).toBe(DPAD_SPACE)
+    })
+
+    it("keeps a band on each side of the maze in landscape", () => {
+        expect(controlsSpace(844, 390, true)).toEqual({
+            width: 2 * DPAD_SPACE,
+            height: 0,
+        })
     })
 })

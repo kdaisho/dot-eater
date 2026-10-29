@@ -2,12 +2,16 @@ import { beforeEach, describe, expect, it, vi } from "vite-plus/test"
 import {
     browserPadList,
     GamepadSource,
+    PAD_BUTTONS,
+    padButtonsFor,
     padControls,
+    pressedButtons,
     stickAction,
     STICK_DEAD_ZONE,
     type Pad,
     type PadChange,
 } from "./gamepad"
+import { DEFAULT_BINDINGS, PAD_A, rebind } from "./bindings"
 import { InputState, KeyboardSource, type Action } from "./input"
 import { vec2 } from "./vec2"
 
@@ -24,6 +28,9 @@ function pad(index: number, buttons: number[] = [], x = 0, y = 0): Pad {
 }
 
 const A = 0
+const X = 2
+const Y = 3
+const BACK = 8
 const START = 9
 const UP = 12
 const DOWN = 13
@@ -84,6 +91,52 @@ describe("padControls", () => {
         expect(Object.fromEntries(padControls(pad(2, [], -1, 0)))).toEqual({
             "pad:2:stick": ["left"],
         })
+    })
+
+    it("reads the buttons it's given", () => {
+        const buttons = padButtonsFor(
+            rebind(DEFAULT_BINDINGS, 0, "breath", X).players[0]
+        )
+        expect(
+            Object.fromEntries(padControls(pad(0, [A, X]), buttons))
+        ).toEqual({ "pad:0:0": ["confirm"], "pad:0:2": ["breath"] })
+    })
+})
+
+describe("padButtonsFor", () => {
+    it("gives today's buttons for the defaults, for either player", () => {
+        const today = {
+            0: ["breath", "confirm"],
+            9: ["pause"],
+            12: ["up"],
+            13: ["down"],
+            14: ["left"],
+            15: ["right"],
+        }
+        expect(PAD_BUTTONS).toEqual(today)
+        expect(padButtonsFor(DEFAULT_BINDINGS.players[1])).toEqual(today)
+    })
+
+    it("keeps the D-pad fixed", () => {
+        const buttons = padButtonsFor(
+            rebind(DEFAULT_BINDINGS, 0, "pause", PAD_A).players[0]
+        )
+        expect(buttons).toEqual({
+            0: ["pause"],
+            9: ["breath", "confirm"],
+            12: ["up"],
+            13: ["down"],
+            14: ["left"],
+            15: ["right"],
+        })
+    })
+})
+
+describe("pressedButtons", () => {
+    it("lists every pressed button, bound or not", () => {
+        expect(pressedButtons(pad(0, [A, 1, 16, UP]))).toEqual([0, 1, 12, 16])
+        expect(pressedButtons({ index: 0, buttons: [null] })).toEqual([])
+        expect(pressedButtons({ index: 0 })).toEqual([])
     })
 })
 
@@ -494,6 +547,88 @@ describe("GamepadSource", () => {
             source.poll()
             expect(p1().isDown("breath")).toBe(false)
             expect(changes).toHaveLength(1)
+        })
+    })
+
+    describe("bindings", () => {
+        // P1: breath on X (confirm stays on A), pause on Back. P2: pause on
+        // Y.
+        const remapped = rebind(
+            rebind(rebind(DEFAULT_BINDINGS, 0, "breath", X), 0, "pause", BACK),
+            1,
+            "pause",
+            Y
+        )
+
+        it("takes bindings in the constructor", () => {
+            source.detach()
+            source = new GamepadSource(() => pads, target, undefined, remapped)
+            source.attach(input)
+            plugIn()
+            pads = [pad(0, [X, BACK])]
+            expect(tick().pressed).toEqual(["breath", "pause"])
+        })
+
+        it("follows new bindings", () => {
+            source.setBindings(remapped)
+            plugIn()
+            pads = [pad(0, [A])]
+            expect(tick().pressed).toEqual(["confirm"])
+            pads = [pad(0, [X, START])]
+            expect(tick().pressed).toEqual(["breath"])
+        })
+
+        it("gives each player in perPad their own buttons", () => {
+            source.setBindings(remapped)
+            source.setAssignment("perPad")
+            plugIn(2)
+            pads = [pad(0, [Y, BACK]), pad(1, [Y, BACK])]
+            source.poll()
+            expect(p1().isDown("pause")).toBe(true)
+            expect(p2().isDown("pause")).toBe(true)
+            pads = [pad(0, [Y]), pad(1, [Y])]
+            source.poll()
+            expect(p1().isDown("pause")).toBe(false)
+            expect(p2().isDown("pause")).toBe(true)
+        })
+
+        it("drives player 1 with player 1's buttons from every shared pad", () => {
+            source.setBindings(remapped)
+            plugIn(2)
+            pads = [pad(0), pad(1, [BACK])]
+            expect(tick().pressed).toEqual(["pause"])
+            expect(p2().isDown("pause")).toBe(false)
+        })
+
+        it("releases held buttons when the bindings change", () => {
+            plugIn()
+            pads = [pad(0, [A])]
+            tick()
+            source.setBindings(remapped)
+            expect(p1().isDown("breath")).toBe(false)
+            expect(p1().isDown("confirm")).toBe(false)
+        })
+
+        // The button just bound in a remap prompt is still down when the
+        // new bindings arrive; it must not fire its new action.
+        it("doesn't press a button held through the change until pressed again", () => {
+            plugIn()
+            pads = [pad(0, [X])]
+            expect(tick().pressed).toEqual([])
+            source.setBindings(remapped)
+            expect(tick()).toEqual({ pressed: [], down: [] })
+            pads = [pad(0)]
+            tick()
+            pads = [pad(0, [X])]
+            expect(tick().pressed).toEqual(["breath"])
+        })
+
+        it("restores today's buttons with the defaults", () => {
+            source.setBindings(remapped)
+            source.setBindings(DEFAULT_BINDINGS)
+            plugIn()
+            pads = [pad(0, [A, START])]
+            expect(tick().pressed).toEqual(["breath", "confirm", "pause"])
         })
     })
 })
