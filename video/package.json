@@ -8,7 +8,8 @@
         "studio": "pnpm render-audio && remotion studio",
         "render": "pnpm render-audio && remotion render Promo out/promo.mp4",
         "render-audio": "node --experimental-transform-types --no-warnings=ExperimentalWarning --import ./scripts/ts-resolve.mjs scripts/render-audio.ts",
-        "record-demo": "node --experimental-transform-types --no-warnings=ExperimentalWarning --import ./scripts/ts-resolve.mjs scripts/record-demo.ts"
+        "record-demo": "node --experimental-transform-types --no-warnings=ExperimentalWarning --import ./scripts/ts-resolve.mjs scripts/record-demo.ts",
+        "record-scenes": "node --experimental-transform-types --no-warnings=ExperimentalWarning --import ./scripts/ts-resolve.mjs scripts/record-scenes.ts"
     },
     "dependencies": {
         "@remotion/cli": "4.0.539",

@@ -11,12 +11,13 @@ the `--filter dot-eater-video` part.
 
 ## Preview and render
 
-| Command                                      | What it does                                              |
-| -------------------------------------------- | --------------------------------------------------------- |
-| `pnpm --filter dot-eater-video studio`       | Render the audio, then Remotion Studio: scrub and preview |
-| `pnpm --filter dot-eater-video render`       | Render the audio, then `Promo` to `video/out/promo.mp4`   |
-| `pnpm --filter dot-eater-video render-audio` | Render the game's sound to `video/public/audio/`          |
-| `pnpm --filter dot-eater-video record-demo`  | Re-record the demo run (`src/recordings/demo.json`)       |
+| Command                                       | What it does                                              |
+| --------------------------------------------- | --------------------------------------------------------- |
+| `pnpm --filter dot-eater-video studio`        | Render the audio, then Remotion Studio: scrub and preview |
+| `pnpm --filter dot-eater-video render`        | Render the audio, then `Promo` to `video/out/promo.mp4`   |
+| `pnpm --filter dot-eater-video render-audio`  | Render the game's sound to `video/public/audio/`          |
+| `pnpm --filter dot-eater-video record-demo`   | Re-record the demo run (`src/recordings/demo.json`)       |
+| `pnpm --filter dot-eater-video record-scenes` | Re-record the directed scenes (`src/recordings/scenes/`)  |
 
 A still frame, e.g. to check a zoom:
 
@@ -44,6 +45,36 @@ The demo run is played by a bot (`scripts/bot.ts`, recorded by
 `scripts/record-demo.ts`) until real recordings replace it. A test checks
 that the bot still records exactly the committed `demo.json`, so when the
 game's rules change and that test fails, re-run `record-demo`.
+
+## Directed scenes
+
+Short runs, each set up to show off one thing, for fast cuts: `hook` (a
+close call in a chase), `dragon`, `penguin`, `owl`, `skunk`, `boar` (each
+animal's breath doing its thing) and `boss` (two dragons bringing the boss
+down). The names and each scene's hero moment kind are in `src/scenes.ts`;
+use a scene with `sceneRecording("dragon")` from `src/recordings/scenes`.
+
+They are played by the director (`scripts/director.ts`): bots with a goal,
+e.g. charge up on dots, walk to where an enemy is lined up in a corridor and
+breathe as soon as a breath (tried on a copy of the game) would defeat it.
+Each scene's stage, animals, seed and goal are in `SCENES` there; the
+recording stops a little after the scene's key moment. The seeds were
+picked by search: `record-scenes --search [n] [scene...]` tries seeds 1 to
+n and prints the best by the scene's score. A test checks that the
+director still records exactly the committed files, so when the game's
+rules change and that test fails, re-run `record-scenes` (and check the
+hero moments still look right).
+
+`src/highlights.ts` lists a recording's key moments (`highlightsOf`):
+breaths, defeats, enemies frozen, blown back or turned back at a cloud,
+broken walls, boss hits and near misses, each with its tick, cell and a
+`focus` point for the camera. `heroMoment(scene, recording)` is the one
+tick the edit should land on a beat. To look at one, render the dev-only
+`SceneCheck` composition:
+
+```sh
+pnpm --filter dot-eater-video exec remotion still SceneCheck out/dragon.png --props='{"scene":"dragon"}' --frame=1
+```
 
 ## Sound
 

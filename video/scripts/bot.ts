@@ -58,7 +58,7 @@ function dangerOf(game: GameState): Set<string> {
 
 // Breadth-first search from `from`, avoiding `avoid`, for the nearest cell
 // `goal` accepts. The first step towards it, or null.
-function firstStepTo(
+export function firstStepTo(
     game: GameState,
     from: Vec2,
     avoid: Set<string>,

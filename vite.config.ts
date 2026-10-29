@@ -10,7 +10,7 @@ export default defineConfig(({ command, isPreview }) => ({
         ignorePatterns: [
             "dist/**",
             "video/out/**",
-            "video/src/recordings/*.json",
+            "video/src/recordings/**/*.json",
         ],
         tabWidth: 4,
         semi: false,
