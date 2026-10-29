@@ -141,6 +141,29 @@ describe("recordTick and tickInputOf", () => {
         expect(replayed.wasPressed("pause", 1)).toBe(false)
         expect(replayed.wasPressed("confirm")).toBe(false)
     })
+
+    it("hands out vectors of its own, so changing one changes no other tick", () => {
+        // The game keeps the steps it's given (a press is buffered), so a
+        // vector shared between ticks could be changed under a later one.
+        const tick = recordTick(
+            {
+                wasPressed: () => false,
+                move: () => ({ held: [vec2(-1, 0)], pressed: vec2(-1, 0) }),
+            },
+            1
+        )
+        const first = tickInputOf(tick).move()
+        first.pressed.x = 5
+        first.held[0].y = 5
+        expect(tickInputOf(tick).move()).toEqual({
+            held: [vec2(-1, 0)],
+            pressed: vec2(-1, 0),
+            breath: false,
+        })
+        // Nor within a tick: each call is fresh.
+        const replayed = tickInputOf(tick)
+        expect(replayed.move().pressed).not.toBe(replayed.move().pressed)
+    })
 })
 
 describe("recording and replaying", () => {
@@ -177,6 +200,16 @@ describe("recording and replaying", () => {
         expect(checksumOf(replayer.at(replayer.length))).toEqual(
             solo.recording.final
         )
+    })
+
+    it("throws for a tick that isn't a finite number", () => {
+        const replayer = createReplayer(solo.recording, levels)
+        replayer.at(50)
+        for (const tick of [NaN, Infinity, -Infinity]) {
+            expect(() => replayer.at(tick)).toThrow(`Not a tick: ${tick}`)
+        }
+        // And it carries on as before.
+        expect(checksumOf(replayer.at(51))).toEqual(solo.seen[50])
     })
 
     it("gives the same screens when ticks are asked for out of order", () => {
