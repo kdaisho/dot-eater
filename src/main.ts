@@ -7,7 +7,6 @@ import {
 } from "./bindings"
 import { browserAudioContext, createAudio } from "./audio"
 import { playEventSounds, screenSound } from "./sound"
-import { energyHud } from "./breath"
 import { MAX_FRAME_MS, TICK_MS } from "./constants"
 import { createTouchControls, DpadSource, setControls } from "./dpad"
 import { applyMotion, effectsForEvents } from "./eventEffects"
@@ -60,7 +59,7 @@ import {
     type Progress,
 } from "./progress"
 import { createParticles } from "./particles"
-import { createRenderer, type Effects, type Hud } from "./render"
+import { createRenderer, type Effects } from "./render"
 import {
     createRecorder,
     newSeed,
@@ -76,6 +75,7 @@ import {
     saveSettings,
     type Settings,
 } from "./settings"
+import { hudOf, rulesOf, screenEffects } from "./scene"
 import { rowValue, settingsRows } from "./settingsMenu"
 import { createShake } from "./shake"
 import {
@@ -101,7 +101,7 @@ import {
     type EndScreenView,
 } from "./ui"
 import { isTouchDevice, TouchSource } from "./touch"
-import { roundWins, stunned, tallyText } from "./versus"
+import { roundWins } from "./versus"
 
 let screen: Screen = initialScreen()
 
@@ -214,23 +214,12 @@ const effects = {
         shake.clear()
     },
     of(s: Screen): Effects {
-        if (
-            s.kind !== "playing" &&
-            s.kind !== "ending" &&
-            s.kind !== "paused"
-        ) {
-            return {}
-        }
-        const moving = s.kind !== "paused"
-        return {
+        // The facing guide the settings pick (KDA-247); see screenEffects.
+        return screenEffects(s, {
             particles: particles.list,
-            ...(moving ? { shake: shake.offset(Math.random) } : {}),
-            // The facing guide the settings pick (KDA-247). The arrow shows
-            // with the rings, paused and ending too; the aim preview only
-            // while playing.
+            shake: () => shake.offset(Math.random),
             guide: settings.facingGuide,
-            ...(s.kind === "playing" ? { aim: true } : {}),
-        }
+        })
     },
 }
 effects.motion()
@@ -532,51 +521,13 @@ function render(alpha: number) {
     if (shown.kind === "playing" || shown.kind === "ending") {
         lastAlpha = alpha
     }
-    // Every screen with a game also says which level it is.
-    const rules = "level" in shown ? levels[shown.level]?.rules : undefined
-    const hud = game.mode === "versus" ? versusHud(game, shown) : hudOf(game)
-    renderer.draw(game, lastAlpha, hud, rules, effects.of(shown))
-}
-
-// The versus HUD: each player's dots, meter, stun or respawn countdown, and
-// the round tally (no lives). The result screens keep showing the round
-// just played as it was during play.
-function versusHud(game: GameState, s: Screen): Hud {
-    const match =
-        s.kind === "roundResult" || s.kind === "matchResult"
-            ? s.match.slice(0, -1)
-            : "match" in s
-              ? (s.match ?? [])
-              : []
-    return {
-        round: tallyText(match),
-        players: game.players.map((p, i) => ({
-            score: p.score,
-            dots: p.dots,
-            energy: energyHud(game, i),
-            ...(p.out ? { out: { respawnIn: p.respawnIn } } : {}),
-            ...(stunned(p) ? { stunned: p.stunnedFor } : {}),
-        })),
-    }
-}
-
-// The HUD: with one player its score and meter; with two, each one's.
-function hudOf(game: GameState): Hud {
-    if (game.players.length === 1) {
-        return {
-            score: totalScore(game),
-            lives: game.lives,
-            energy: energyHud(game),
-        }
-    }
-    return {
-        lives: game.lives,
-        players: game.players.map((p, i) => ({
-            score: p.score,
-            energy: energyHud(game, i),
-            ...(p.out ? { out: { respawnIn: p.respawnIn } } : {}),
-        })),
-    }
+    renderer.draw(
+        game,
+        lastAlpha,
+        hudOf(game, shown),
+        rulesOf(shown, levels),
+        effects.of(shown)
+    )
 }
 
 function showOverlay(s: Screen) {
