@@ -55,7 +55,8 @@ export function TitleCard({
             <div style={{ display: "flex", gap: 48 }}>
                 {words.map((word, i) => (
                     <Pop
-                        key={word}
+                        // By place: a word may come twice.
+                        key={i}
                         at={start + i * beat}
                         style={{
                             fontSize: 260,

@@ -1,18 +1,25 @@
 import { useLayoutEffect, useMemo, useRef } from "react"
 import { AbsoluteFill, useCurrentFrame, useVideoConfig } from "remotion"
 import { gameOf } from "../../src/flow"
+import { levels } from "../../src/levels"
 import type { Recording } from "../../src/replay"
-import { createRenderer, type Renderer } from "../../src/render"
+import { hudOf, rulesOf, screenEffects } from "../../src/scene"
+import { defaultSettings } from "../../src/settings"
 import {
     clampCamera,
+    drawTime,
     overview,
     placement,
     type CameraContext,
     type CameraFn,
 } from "./camera"
-import { hudFor, rulesOf } from "./hud"
-import { boardOf, replayerFor, trackOf } from "./replayers"
-import { gameTimeFor, type TimeMap } from "./time"
+import { effectsAt } from "./effects"
+import { rendererFor, type RendererSlot } from "./rendererSlot"
+import { boardOf, replayerFor, runOf, trackOf } from "./replayers"
+import type { TimeMap } from "./time"
+
+// The facing guide a player with default settings sees (see settings.ts).
+const GUIDE = defaultSettings().facingGuide
 
 export type GameplayClipProps = {
     // The run to show.
@@ -39,7 +46,7 @@ export function GameplayClip({
     const frame = useCurrentFrame()
     const { width, height } = useVideoConfig()
     const canvasRef = useRef<HTMLCanvasElement>(null)
-    const rendererRef = useRef<Renderer | null>(null)
+    const slot = useRef<RendererSlot["current"]>(null)
     const board = useMemo(() => boardOf(recording), [recording])
 
     const context: CameraContext = {
@@ -53,36 +60,36 @@ export function GameplayClip({
     useLayoutEffect(() => {
         const canvas = canvasRef.current
         if (!canvas) return
-        let renderer = rendererRef.current
-        if (!renderer) {
-            // A huge window, so the cells come out at MAX_CELL, and the
-            // resolution as its pixel ratio.
-            renderer = createRenderer(canvas, {
-                view: {
-                    innerWidth: 1e5,
-                    innerHeight: 1e5,
-                    devicePixelRatio: resolution,
-                },
-            })
-            rendererRef.current = renderer
-        }
+        const renderer = rendererFor(slot, canvas, resolution)
         const replayer = replayerFor(recording)
-        const { tick, alpha } = gameTimeFor(frame, time)
+        const run = runOf(recording)
+        // Paused and end screens keep the last alpha of play (see drawTime).
+        const { tick, alpha } = drawTime(frame, time, run.track)
         const screen = replayer.at(tick)
         const game = gameOf(screen)
         if (!game) {
             renderer.clear()
         } else {
-            // Glides only move on during play and the ending outro, and not
-            // past the recording's end, which holds still (as main does).
-            const moving =
-                tick < replayer.length &&
-                (screen.kind === "playing" || screen.kind === "ending")
+            // What main's render() draws, with a default-settings player's
+            // facing guide, and the particles and shake worked out for
+            // this moment (see effects.ts).
+            const effects = effectsAt(
+                run.ticks,
+                recording.seed,
+                game,
+                tick,
+                alpha
+            )
             renderer.draw(
                 game,
-                moving ? alpha : 0,
-                hudFor(game, screen),
-                rulesOf(screen)
+                alpha,
+                hudOf(game, screen),
+                rulesOf(screen, levels),
+                screenEffects(screen, {
+                    particles: effects.particles,
+                    shake: () => effects.shake,
+                    guide: GUIDE,
+                })
             )
         }
         // The renderer sizes the canvas for a window; the wrapper sizes it
