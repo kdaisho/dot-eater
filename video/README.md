@@ -236,6 +236,9 @@ Measured so far:
       `ColourWipe`, and a 1-frame flash cut.
     - `slamAt` / `Slam` / `SlamCard` (the character name slam), `SlamCaption`,
       `PulseText`, `Letterbox` and `Vignette`.
+    - `TitleSlam`: bold lines slamming in on their beats (a cut list's
+      `kind: "title"` shot, optionally over a darkened freeze frame).
+    - `confettiAt` / `Confetti`: a seeded confetti burst, pure per frame.
 - `src/CutSequence.tsx`: draws a compiled cut list.
 - `src/palette.ts`: the look. It's black and white plus one colour per
   character:
@@ -246,3 +249,31 @@ Measured so far:
     - boar earth `#A8642A`
 
     Each character also has a name, an ability word and an emoji.
+
+## The character promo (Promo2)
+
+`Promo2` is the v2 promo: 1920x1080 at 30 fps, cut to bars 32–48 of
+Great Expectations (`PROMO2_EXCERPT`, about 39.6 s) from the directed
+scenes, with the song alone (no game sound effects, see `src/promo2Sound.ts`).
+Its edit is `src/promo2Cuts.ts`, one cut list in five sections:
+
+- **Hook** (bars 32–33): the chase, quick snippets, the near miss landing
+  on bar 33 in near-freeze under a DOT EATER slam, then four characters
+  in half a beat each.
+- **Dropout** (bar 34): a freeze frame, then 5 ANIMALS. 5 POWERS.
+- **Characters** (bars 35–39): per character a slam card, then its
+  ability in hard slow motion landing on a snare, with its colour and
+  caption. From the lift (bar 36) the cards are shorter.
+- **Boss** (bars 40–45): letterboxed, the boss hits on the snares, a
+  stutter on the fourth, and the boss going down on bar 45 with a flash,
+  confetti and BOSS DOWN.
+- **End card** (bars 46–47).
+
+`src/Promo2.tsx` adds what spans shots: the boss look, the boss-down
+flash and confetti and the end card's emoji. `promo2Cuts.test.ts` checks
+that the edit compiles on the fallback grid, fills the excerpt, shows
+every character and lands the boss going down on bar 45.
+
+```sh
+pnpm --filter dot-eater-video exec remotion render Promo2 out/promo2.mp4
+```

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vite-plus/test"
 import {
+    confettiAt,
     flashAt,
     punchZoom,
     shakeAt,
@@ -111,5 +112,25 @@ describe("slamAt", () => {
         // Below 1 at some point: the overshoot.
         expect(Math.min(...scales)).toBeLessThan(1)
         expect(scales[29]).toBeCloseTo(1, 1)
+    })
+})
+
+describe("confettiAt", () => {
+    const options = { colours: ["#f00", "#0f0"], count: 50 }
+
+    it("is nothing before the burst and the same on every render", () => {
+        expect(confettiAt(9, 10, 30, options)).toEqual([])
+        expect(confettiAt(25, 10, 30, options)).toEqual(
+            confettiAt(25, 10, 30, options)
+        )
+    })
+
+    it("bursts up from its origin, then falls off the bottom", () => {
+        const start = confettiAt(10, 10, 30, options)
+        expect(start).toHaveLength(50)
+        expect(start.every((p) => p.x === 0.5 && p.y === 0.6)).toBe(true)
+        const up = confettiAt(18, 10, 30, options)
+        expect(up.filter((p) => p.y < 0.6).length).toBeGreaterThan(40)
+        expect(confettiAt(10 + 30 * 8, 10, 30, options)).toEqual([])
     })
 })

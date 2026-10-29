@@ -195,3 +195,76 @@ export function slamAt(
         opacity: 1,
     }
 }
+
+// ---- Confetti ----
+
+export type ConfettiPiece = {
+    // Position as fractions of the frame's width and height.
+    x: number
+    y: number
+    // Degrees, and how much of its face shows as it tumbles (-1 to 1).
+    rotate: number
+    flip: number
+    colour: string
+    // Its size in pixels.
+    size: number
+}
+
+export type ConfettiOptions = {
+    // How many pieces.
+    count?: number
+    // Their colours, picked per piece.
+    colours: readonly string[]
+    // Where they burst from, as fractions of the frame.
+    origin?: { x: number; y: number }
+    // A different burst for a different seed.
+    seed?: number
+}
+
+// A confetti burst on frame `at`, worked out afresh for frame `frame`: each
+// piece shoots up and out from `origin`, slows in the air, falls and
+// tumbles. Pure (seeded per piece), so any frame renders the same in any
+// order. Empty before the burst; pieces that have fallen off the bottom
+// are left out.
+export function confettiAt(
+    frame: number,
+    at: number,
+    fps: number,
+    {
+        count = 140,
+        colours,
+        origin = { x: 0.5, y: 0.6 },
+        seed = 1,
+    }: ConfettiOptions
+): ConfettiPiece[] {
+    const t = (frame - at) / fps
+    if (t < 0 || colours.length === 0) return []
+    const pieces: ConfettiPiece[] = []
+    // Air drag (per second) and gravity (frame heights per second squared).
+    const drag = 1.9
+    const gravity = 0.9
+    // Under drag a speed v0 covers v0 (1 - e^(-kt)) / k by time t.
+    const decay = (1 - Math.exp(-drag * t)) / drag
+    for (let i = 0; i < count; i++) {
+        const r = (k: number) => hash01(seed * 7919 + i * 31 + k)
+        // Up and out, in a wide cone.
+        const angle = -Math.PI / 2 + (r(1) - 0.5) * Math.PI * 1.1
+        const speed = 1.1 + 1.9 * r(2)
+        const x = origin.x + Math.cos(angle) * speed * 0.62 * decay
+        // Gravity pulls towards a terminal fall of gravity / drag.
+        const y =
+            origin.y +
+            Math.sin(angle) * speed * decay +
+            (gravity / drag) * (t - decay)
+        if (y > 1.1) continue
+        pieces.push({
+            x,
+            y,
+            rotate: r(4) * 360 + (r(3) - 0.5) * 900 * t,
+            flip: Math.cos(t * (6 + 10 * r(5)) + r(6) * 6.283),
+            colour: colours[Math.floor(r(7) * colours.length)] ?? colours[0],
+            size: 16 + 18 * r(8),
+        })
+    }
+    return pieces
+}

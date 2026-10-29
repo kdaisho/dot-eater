@@ -1,7 +1,9 @@
 import { useId, type CSSProperties, type ReactNode } from "react"
 import { AbsoluteFill, useCurrentFrame, useVideoConfig } from "remotion"
 import {
+    confettiAt,
     flashAt,
+    type ConfettiOptions,
     shakeAt,
     slamAt,
     whipAt,
@@ -219,29 +221,41 @@ export function SlamCaption({
     at,
     colour,
     position = "bottom",
+    size = 150,
+    inset = 80,
 }: {
     text: string
     at: number
     colour: string
-    position?: "top" | "bottom"
+    position?: "top" | "bottom" | "center"
+    // The font size in pixels.
+    size?: number
+    // Pixels from the frame's edge, e.g. more to clear a letterbox.
+    inset?: number
 }) {
     const frame = useCurrentFrame()
     if (frame < at) return null
     return (
         <AbsoluteFill
             style={{
-                justifyContent: position === "top" ? "flex-start" : "flex-end",
+                justifyContent:
+                    position === "top"
+                        ? "flex-start"
+                        : position === "center"
+                          ? "center"
+                          : "flex-end",
                 alignItems: "center",
-                padding: 80,
+                padding: inset,
                 pointerEvents: "none",
             }}
         >
-            <Slam at={at} from={1.9} tilt={-4}>
+            <Slam at={at} from={position === "center" ? 3 : 1.9} tilt={-4}>
                 <div
                     style={{
                         fontFamily: DISPLAY,
                         fontWeight: 900,
-                        fontSize: 150,
+                        fontSize: size,
+                        whiteSpace: "nowrap",
                         lineHeight: 1,
                         letterSpacing: "-0.04em",
                         textTransform: "uppercase",
@@ -268,15 +282,18 @@ export function SlamCard({
     at = 0,
     beat,
     pulse = 0,
+    steps = [0, 1, 2],
 }: {
     look: CharacterLook
     at?: number
     // Frames per beat.
     beat: number
     pulse?: number
+    // The beats after `at` the emoji, name and ability word slam in on.
+    steps?: readonly [number, number, number]
 }) {
     const frame = useCurrentFrame()
-    const hits = [at, at + beat, at + 2 * beat].map(Math.round)
+    const hits = steps.map((s) => Math.round(at + s * beat))
     // The ability word turns the card to the character's colour.
     const flipped = frame >= hits[2]
     return (
@@ -375,6 +392,109 @@ export function Letterbox({ amount }: { amount: number }) {
         <AbsoluteFill style={{ pointerEvents: "none" }}>
             <div style={{ ...style, top: 0 }} />
             <div style={{ ...style, bottom: 0 }} />
+        </AbsoluteFill>
+    )
+}
+
+// A confetti burst on frame `at` (see confettiAt).
+export function Confetti({ at, ...options }: { at: number } & ConfettiOptions) {
+    const frame = useCurrentFrame()
+    const { fps, width, height } = useVideoConfig()
+    const pieces = confettiAt(frame, at, fps, options)
+    if (pieces.length === 0) return null
+    return (
+        <AbsoluteFill style={{ pointerEvents: "none" }}>
+            {pieces.map((p, i) => (
+                <div
+                    key={i}
+                    style={{
+                        position: "absolute",
+                        left: p.x * width - p.size / 2,
+                        top: p.y * height - p.size / 4,
+                        width: p.size,
+                        height: p.size / 2,
+                        backgroundColor: p.colour,
+                        border: `3px solid ${INK}`,
+                        transform: `rotate(${p.rotate}deg) scaleY(${p.flip})`,
+                    }}
+                />
+            ))}
+        </AbsoluteFill>
+    )
+}
+
+export type TitleSlamLine = {
+    text: string
+    // The frame it slams in on.
+    at: number
+    colour?: string
+    size?: number
+    block?: string
+    mono?: boolean
+}
+
+// Bold lines slamming in one after another, centred, each with a jolt
+// and a hard frame of flash: hip-hop lower-third energy, full frame.
+export function TitleSlam({
+    lines,
+    pulse = 0,
+    offset = 0,
+}: {
+    lines: readonly TitleSlamLine[]
+    pulse?: number
+    // Pixels to move the lines up (negative) or down from the centre.
+    offset?: number
+}) {
+    return (
+        <AbsoluteFill>
+            <Shake
+                impacts={lines.map((l, i) => ({
+                    frame: l.at,
+                    strength: 0.5 + 0.25 * i,
+                }))}
+            >
+                <AbsoluteFill
+                    style={{
+                        justifyContent: "center",
+                        alignItems: "center",
+                        gap: 28,
+                        transform: `translateY(${offset}px) scale(${1 + 0.03 * pulse})`,
+                    }}
+                >
+                    {lines.map((l, i) => (
+                        <Slam
+                            key={i}
+                            at={l.at}
+                            from={2.8}
+                            tilt={i % 2 ? 5 : -5}
+                        >
+                            <div
+                                style={{
+                                    fontFamily: l.mono ? MONO : DISPLAY,
+                                    fontWeight: 900,
+                                    fontSize: l.size ?? 220,
+                                    lineHeight: 0.95,
+                                    letterSpacing: l.mono
+                                        ? "-0.02em"
+                                        : "-0.05em",
+                                    whiteSpace: "nowrap",
+                                    color: l.colour ?? PAPER,
+                                    ...(l.block && {
+                                        backgroundColor: l.block,
+                                        padding: "8px 40px 18px",
+                                        transform: "skewX(-8deg)",
+                                    }),
+                                }}
+                            >
+                                {l.text}
+                            </div>
+                        </Slam>
+                    ))}
+                </AbsoluteFill>
+            </Shake>
+            {lines.map((l, i) => (
+                <Flash key={i} at={l.at} colour={PAPER} hold={1} fade={0} />
+            ))}
         </AbsoluteFill>
     )
 }

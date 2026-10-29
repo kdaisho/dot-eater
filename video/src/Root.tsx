@@ -1,5 +1,6 @@
 import { Composition } from "remotion"
 import { DURATION, FPS, HEIGHT, Promo, WIDTH } from "./Promo"
+import { calculatePromo2, Promo2, PROMO2_FPS, type Promo2Props } from "./Promo2"
 import {
     calculateToolkitDemo,
     DEMO_FPS,
@@ -20,6 +21,17 @@ export function Root() {
                 fps={FPS}
                 width={WIDTH}
                 height={HEIGHT}
+            />
+            <Composition
+                id="Promo2"
+                component={Promo2}
+                // Set from the song's beat grid (see calculatePromo2).
+                durationInFrames={1188}
+                fps={PROMO2_FPS}
+                width={WIDTH}
+                height={HEIGHT}
+                defaultProps={{ beats: null, song: null } as Promo2Props}
+                calculateMetadata={calculatePromo2}
             />
             <Composition
                 id="ToolkitDemo"

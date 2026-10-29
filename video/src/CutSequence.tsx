@@ -8,8 +8,10 @@ import {
     Shake,
     SlamCaption,
     SlamCard,
+    TitleSlam,
     Whip,
 } from "./DramaFx"
+import { fixed } from "./camera"
 import { GameplayClip } from "./GameplayClip"
 import { INK, LOOKS, PAPER } from "./palette"
 
@@ -105,7 +107,56 @@ function ShotView({
                     at={c.beats[0] ?? 0}
                     beat={beats.beatFrames}
                     pulse={beats.pulse(frame + c.from)}
+                    {...(shot.hits && { steps: shot.hits })}
                 />
+            </Whip>
+        )
+    }
+    if (shot.kind === "title") {
+        const freeze = shot.freeze
+        const until =
+            freeze?.untilBeat === undefined
+                ? c.duration
+                : Math.round(freeze.untilBeat * beats.beatFrames)
+        return (
+            <Whip duration={c.duration} enter={c.enter} exit={c.exit}>
+                <AbsoluteFill
+                    style={{ backgroundColor: shot.background ?? INK }}
+                >
+                    {freeze && frame < until && (
+                        <>
+                            <GameplayClip
+                                recording={freeze.recording}
+                                time={{
+                                    fps: beats.fps,
+                                    startTick: freeze.tick,
+                                    segments: [{ fromFrame: 0, speed: 0 }],
+                                }}
+                                camera={fixed(
+                                    freeze.at.x,
+                                    freeze.at.y,
+                                    // A slow push in on the held frame.
+                                    (f) => (freeze.zoom ?? 2.2) * (1 + f / 400)
+                                )}
+                                resolution={resolution}
+                            />
+                            <AbsoluteFill
+                                style={{
+                                    backgroundColor: shot.background ?? INK,
+                                    opacity: Math.min(0.78, 0.25 + frame / 20),
+                                }}
+                            />
+                        </>
+                    )}
+                    <TitleSlam
+                        pulse={beats.pulse(frame + c.from)}
+                        offset={shot.offset ?? 0}
+                        lines={shot.lines.map((l) => ({
+                            ...l,
+                            at: Math.round(l.beat * beats.beatFrames),
+                        }))}
+                    />
+                </AbsoluteFill>
             </Whip>
         )
     }
@@ -142,6 +193,13 @@ function ShotView({
                         text={shot.caption}
                         at={game.hero}
                         colour={colour}
+                        {...(shot.captionPosition && {
+                            position: shot.captionPosition,
+                        })}
+                        {...(shot.captionSize && { size: shot.captionSize })}
+                        {...(shot.captionInset && {
+                            inset: shot.captionInset,
+                        })}
                     />
                 )}
             </Whip>

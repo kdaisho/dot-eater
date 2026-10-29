@@ -71,6 +71,14 @@ export type GameShot = ShotBase & {
     camera?: CameraMove
     // A word or two over the shot, slamming in on the hero beat.
     caption?: string
+    // Where the caption sits ("bottom" when left out) and how big it is,
+    // in pixels (150 when left out): a centred, giant caption makes a
+    // freeze-frame title slam.
+    captionPosition?: "top" | "bottom" | "center"
+    captionSize?: number
+    // Pixels between the caption and the frame's edge (80 when left out),
+    // e.g. more to clear a letterbox.
+    captionInset?: number
     // How hard the camera shakes on the hero frame (0 for none; 1 when
     // left out).
     shake?: number
@@ -80,9 +88,53 @@ export type CardShot = ShotBase & {
     kind: "card"
     // The character whose name slams in, one beat at a time.
     animal: AnimalId
+    // The beats of the shot its emoji, name and ability word slam in on
+    // ([0, 1, 2] when left out): e.g. [0, 0.25, 0.5] for a quick card.
+    hits?: readonly [number, number, number]
 }
 
-export type Shot = GameShot | CardShot
+// A line of a title card, slamming in on its beat.
+export type TitleLine = {
+    text: string
+    // The beat of the shot (0 is its first; fractions allowed) it slams in
+    // on.
+    beat: number
+    // Its colour (paper when left out) and size in pixels (220).
+    colour?: string
+    size?: number
+    // A block of colour behind it, slanted, like a caption.
+    block?: string
+    // Heavy monospace (the ability words' face) instead of the display face.
+    mono?: boolean
+}
+
+export type TitleShot = ShotBase & {
+    kind: "title"
+    // Lines, top to bottom, each slamming in on its beat.
+    lines: readonly TitleLine[]
+    // The card's colour (ink when left out).
+    background?: string
+    // Pixels to move the lines up (negative) or down from the centre.
+    offset?: number
+    // A frozen game frame behind the lines, darkened: a freeze frame.
+    freeze?: {
+        recording: Recording
+        tick: number
+        at: BoardPoint
+        // 2.2 when left out.
+        zoom?: number
+        // The beat (of the shot) the freeze gives way to the plain
+        // background; the shot's end when left out.
+        untilBeat?: number
+    }
+}
+
+export type Shot = GameShot | CardShot | TitleShot
+
+// Whether `shot` is a gameplay shot.
+export function isGameShot(shot: Shot): shot is GameShot {
+    return shot.kind === undefined || shot.kind === "game"
+}
 
 export type CutList = {
     // The beat the first shot starts on (0 when left out).
@@ -212,7 +264,7 @@ export function compileCuts(list: CutList, beats: Beats): CompiledShot[] {
             exit: next?.transition ?? "cut",
             beats: shotBeats,
         }
-        if (shot.kind !== "card") {
+        if (isGameShot(shot)) {
             const heroBeat = shot.heroBeat ?? Math.floor(shot.durationBeats / 2)
             if (heroBeat < 0 || heroBeat >= shot.durationBeats) {
                 problems.push(
