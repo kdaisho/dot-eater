@@ -54,7 +54,19 @@ describe("volumeGain", () => {
 })
 
 describe("busGains", () => {
-    it("sets music under effects and the master to its level", () => {
+    // Regression: at the default volumes the music was too faint to hear.
+    it("keeps the title melody audible next to the effects at the defaults", () => {
+        const gains = busGains(DEFAULT_VOLUMES)
+        const melody = TRACKS.title.voices[0]
+        const effect = Math.max(
+            ...Object.values(SFX).flatMap((tones) => tones.map((t) => t.volume))
+        )
+        expect(melody.volume * gains.music).toBeGreaterThanOrEqual(
+            (effect * gains.effects) / 4
+        )
+    })
+
+    it("sets the music and effects buses and the master to their levels", () => {
         expect(busGains({ music: 10, effects: 10, muted: false })).toEqual({
             master: MASTER_LEVEL,
             music: MUSIC_LEVEL,

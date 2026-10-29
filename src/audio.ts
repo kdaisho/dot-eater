@@ -71,8 +71,11 @@ export const DEFAULT_VOLUMES: Volumes = volumesOf(defaultSettings())
 // The master gain when not muted: headroom, so several sounds at once don't
 // clip.
 export const MASTER_LEVEL = 0.5
-// Music at full volume sits this far under effects at full volume.
-export const MUSIC_LEVEL = 0.5
+// The music bus's gain at full music volume. The tunes' voices are written
+// quiet (a melody at 0.1, under effects at up to 0.6) so they mix under the
+// effects, so the bus lifts them back up; at 0.5 the title melody was too
+// faint to hear on laptop speakers.
+export const MUSIC_LEVEL = 2
 
 // Music scheduling: every SCHEDULE_MS the engine schedules the notes that
 // start in the next LOOKAHEAD seconds on the AudioContext clock, so timer
