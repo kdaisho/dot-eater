@@ -611,12 +611,22 @@ export function showRecordingBadge() {
     document.body.appendChild(badge)
 }
 
-// Hand the player `text` as a file named `name` to save.
+// How long a download's object URL stays valid after its click.
+export const DOWNLOAD_REVOKE_MS = 1000
+
+// Hand the player `text` as a file named `name` to save. The link goes in
+// the document for its click (Firefox ignores clicks on detached links),
+// and its URL is revoked only a while later: Safari and some Firefox
+// setups start the download after the click returns, and lose it if the
+// URL is already gone.
 export function downloadFile(name: string, text: string, type: string) {
     const url = URL.createObjectURL(new Blob([text], { type }))
     const link = document.createElement("a")
     link.href = url
     link.download = name
+    link.hidden = true
+    document.body.appendChild(link)
     link.click()
-    URL.revokeObjectURL(url)
+    link.remove()
+    setTimeout(() => URL.revokeObjectURL(url), DOWNLOAD_REVOKE_MS)
 }
