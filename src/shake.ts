@@ -21,6 +21,8 @@ export const SHAKES = {
     hit: 0.35,
     // Versus: a player stunned by the other's breath.
     stun: 0.2,
+    // A punch landing: a very small jolt (KDA-258).
+    punch: 0.15,
     // A player hurt with health left (KDA-257).
     hurt: 0.3,
     // A player knocked out: its health gone.

@@ -125,8 +125,18 @@ describe("main with two players", () => {
         vi.advanceTimersByTime(100)
         const moves = vi.mocked(step).mock.lastCall?.[2]
         expect(moves).toEqual([
-            { held: [vec2(-1, 0)], pressed: vec2(0, 0), breath: false },
-            { held: [vec2(0, 1)], pressed: vec2(0, 0), breath: false },
+            {
+                held: [vec2(-1, 0)],
+                pressed: vec2(0, 0),
+                breath: false,
+                punch: false,
+            },
+            {
+                held: [vec2(0, 1)],
+                pressed: vec2(0, 0),
+                breath: false,
+                punch: false,
+            },
         ])
         keyup("ArrowLeft")
         keyup("KeyS")
