@@ -1,5 +1,6 @@
 // @vitest-environment happy-dom
 import { afterEach, describe, expect, it, vi } from "vite-plus/test"
+import { BOSS_BREATH } from "./bossBreath"
 import { addStatus, addTileEffect, defeatEnemy, type BreathDef } from "./breath"
 import { BREATHS } from "./breaths"
 import {
@@ -701,6 +702,36 @@ describe("createRenderer", () => {
             expect(texts()).toEqual(["🐉", "👺", "❄️"])
         })
 
+        // Regression (PR #74 review): the sprite and badge were drawn with
+        // the look's translucent fill still set, and canvas draws colour
+        // emoji with the fill's alpha, so they came out see-through.
+        it("draws a sprite with a look opaque, not in its disc's colour", () => {
+            const enemy = makeEnemy(3, 1)
+            const state = makeState(
+                [
+                    [1, 1, 1, 1, 1],
+                    [1, 0, 0, 0, 1],
+                    [1, 1, 1, 1, 1],
+                ],
+                { x: 1, y: 1 },
+                [enemy]
+            )
+            const color = "rgba(255, 110, 20, 0.45)"
+            addStatus(
+                enemy,
+                { name: "test.burning", look: { color, emoji: "🔥" } },
+                1
+            )
+            const { renderer, calls } = setup()
+            renderer.draw(state, 0)
+            for (const text of ["👺", "🔥"]) {
+                const drawn = calls.find(
+                    (c) => c.name === "fillText" && c.args[0] === text
+                )!
+                expect(drawn.fillStyle, text).toBe("#000")
+            }
+        })
+
         // Regression (KDA-260): a player that walked onto a frozen enemy was
         // hidden under its disc, sprite and badge.
         it("draws a held enemy under the players, the others over them", () => {
@@ -898,6 +929,90 @@ describe("createRenderer", () => {
             const hit = setup()
             hit.renderer.draw(state, 0)
             expect(flashes(hit.calls)).toHaveLength(1)
+        })
+
+        // The boss winding up its breath (see bossBreath.ts) at the player,
+        // to its left.
+        function windingUp() {
+            const state = bossState()
+            state.boss!.breath.windingUp = 10
+            state.boss!.breath.facing = vec2(-1, 0)
+            return state
+        }
+        // On the board in play, paused or ending (see Effects.bossBreath).
+        const IN_GAME = { bossBreath: true } as const
+
+        // The cells (as "x,y") filled in the warning colour.
+        const tinted = ({ calls, canvas }: ReturnType<typeof setup>) =>
+            calls
+                .filter(
+                    (c) =>
+                        c.name === "fillRect" &&
+                        c.fillStyle === BOSS_BREATH.warning
+                )
+                .map((c) => {
+                    const cell = cellOf(canvas)
+                    const [x, y] = c.args as number[]
+                    return `${Math.round(x / cell)},${Math.round(y / cell)}`
+                })
+        // The first fill of its glow, or -1.
+        const glows = (calls: ReturnType<typeof setup>["calls"]) =>
+            calls.findIndex(
+                (c) =>
+                    c.name === "fill" &&
+                    String(c.fillStyle).startsWith(`rgba(${BOSS_BREATH.glow},`)
+            )
+
+        it("tints the cells its breath will strike while it winds up", () => {
+            const calm = setup()
+            calm.renderer.draw(bossState(), 0, {}, {}, IN_GAME)
+            expect(tinted(calm)).toEqual([])
+            // Whatever the facing guide: it is a warning, not a guide.
+            const warned = setup()
+            warned.renderer.draw(windingUp(), 0, {}, {}, IN_GAME)
+            expect(tinted(warned).sort()).toEqual(["1,1", "1,2", "2,1", "2,2"])
+            // With an edge round it in the same colour, as an aim's.
+            expect(
+                warned.calls.some(
+                    (c) =>
+                        c.name === "stroke" &&
+                        c.strokeStyle === BOSS_BREATH.warning
+                )
+            ).toBe(true)
+        })
+
+        it("glows behind it while it winds up", () => {
+            const calm = setup()
+            calm.renderer.draw(bossState(), 0, {}, {}, IN_GAME)
+            expect(glows(calm.calls)).toBe(-1)
+            const { calls, renderer } = setup()
+            renderer.draw(windingUp(), 0, {}, {}, IN_GAME)
+            const glow = glows(calls)
+            const sprite = calls.findIndex(
+                (c) => c.name === "fillText" && c.args[0] === BOSS_SPRITE
+            )
+            expect(glow).toBeGreaterThanOrEqual(0)
+            expect(glow).toBeLessThan(sprite)
+        })
+
+        // Regression (PR #74 review): the sprite was drawn with the glow's
+        // translucent fill still set, and canvas draws colour emoji with
+        // the fill's alpha, so the boss faded out as it wound up.
+        it("draws its sprite opaque over the glow", () => {
+            const { calls, renderer } = setup()
+            renderer.draw(windingUp(), 0, {}, {}, IN_GAME)
+            const sprite = calls.find(
+                (c) => c.name === "fillText" && c.args[0] === BOSS_SPRITE
+            )!
+            expect(sprite.fillStyle).toBe("#000")
+        })
+
+        it("shows no wind-up on end screens", () => {
+            const end = setup()
+            end.renderer.draw(windingUp(), 0, {}, {}, {})
+            expect(tinted(end)).toEqual([])
+            expect(glows(end.calls)).toBe(-1)
+            expect(end.texts()).toContain(BOSS_SPRITE)
         })
 
         it("doesn't draw it once defeated", () => {

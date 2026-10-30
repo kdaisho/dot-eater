@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vite-plus/test"
-import { AiType, Cell, MAX_ENEMIES, TICK_RATE } from "./constants"
+import { AiType, Cell, MAX_ENEMIES, MAX_HEALTH, TICK_RATE } from "./constants"
 import {
     DIFFICULTIES,
     ENEMY_COUNT,
@@ -899,6 +899,70 @@ describe("parseLevel with a boss", () => {
         expect(problemsOf(withBoss(2))).toEqual([
             "boss must be an object, got 2",
         ])
+    })
+
+    it("takes the boss's breath tuning from its settings", () => {
+        const breath = { every: 2.5, windUp: 0.5, range: 8, damage: 45 }
+        const level = parseFlat(withBoss({ speed: 2, breath }))
+        expect(level.boss).toEqual({ pos: vec2(3, 2), speed: 2, breath })
+        // A copy, not the level data's own object.
+        expect(level.boss!.breath).not.toBe(breath)
+        // Any part may be left out (the defaults apply).
+        expect(parseFlat(withBoss({ breath: {} })).boss).toEqual({
+            pos: vec2(3, 2),
+            breath: {},
+        })
+        expect(parseFlat(withBoss({ breath: { range: 1 } })).boss).toEqual({
+            pos: vec2(3, 2),
+            breath: { range: 1 },
+        })
+    })
+
+    it("accepts breath settings at the ends of their ranges", () => {
+        for (const breath of [
+            { every: 1, windUp: 0.25, range: 1, damage: 1 },
+            { every: 60, windUp: 5, range: 30, damage: MAX_HEALTH },
+        ]) {
+            expect(problemsOf(withBoss({ breath }))).toEqual([])
+        }
+    })
+
+    it("rejects bad breath settings", () => {
+        const problems = (breath: unknown) => problemsOf(withBoss({ breath }))
+        expect(problems(3)).toEqual(["boss.breath must be an object, got 3"])
+        expect(problems([])).toEqual(["boss.breath must be an object, got []"])
+        expect(problems({ cooldown: 2 })).toEqual([
+            'unknown boss.breath setting "cooldown"',
+        ])
+        expect(problems({ every: 0 })).toEqual([
+            "boss.breath.every must be a number of seconds from 1 to 60, got 0",
+        ])
+        expect(problems({ every: 61 })).toEqual([
+            "boss.breath.every must be a number of seconds from 1 to 60, got 61",
+        ])
+        expect(problems({ every: "4" })).toEqual([
+            'boss.breath.every must be a number of seconds from 1 to 60, got "4"',
+        ])
+        expect(problems({ windUp: 0.1 })).toEqual([
+            "boss.breath.windUp must be a number of seconds from 0.25 to 5, got 0.1",
+        ])
+        expect(problems({ windUp: -1 })).toEqual([
+            "boss.breath.windUp must be a number of seconds from 0.25 to 5, got -1",
+        ])
+        expect(problems({ range: 2.5 })).toEqual([
+            "boss.breath.range must be a whole number of cells from 1 to 30, got 2.5",
+        ])
+        expect(problems({ range: 0 })).toEqual([
+            "boss.breath.range must be a whole number of cells from 1 to 30, got 0",
+        ])
+        expect(problems({ damage: MAX_HEALTH + 1 })).toEqual([
+            `boss.breath.damage must be a whole number of health from 1 to ${MAX_HEALTH}, got ${MAX_HEALTH + 1}`,
+        ])
+        expect(problems({ damage: Number.NaN })).toEqual([
+            "boss.breath.damage must be a whole number of health from 1 to 100, got null",
+        ])
+        // Every problem is listed.
+        expect(problems({ every: 0, damage: 0 })).toHaveLength(2)
     })
 
     it("rejects boss settings without a boss", () => {

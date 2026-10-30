@@ -215,6 +215,9 @@ const effects = {
             // while playing.
             guide: settings.facingGuide,
             ...(s.kind === "playing" ? { aim: true } : {}),
+            // The boss's wind-up (its glow and warning tint), on the board
+            // in play, paused and ending, as the rings are.
+            bossBreath: true,
         }
     },
 }
