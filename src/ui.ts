@@ -54,10 +54,14 @@ export type MenuItem = {
     // The value is a slider's ("◀ 7 ▶"): its arrows get tap targets of
     // their own (data-step -1 and 1), so a tap steps it.
     steps?: boolean
+    // A short description, on a smaller line under the label.
+    detail?: string
 }
 
 // What the end screens show.
 export type EndScreenView = {
+    // The difficulty's name (e.g. "Hard"), shown first.
+    difficulty?: string
     // The final score.
     score: number
     // With two players, each one's share of it, player 1 first.
@@ -139,15 +143,22 @@ export function showTitle(modes: readonly MenuItem[] = []) {
 
 // Stage select: one item per slot. Locked stages keep their name behind a
 // lock; slots with no level yet read "Coming soon". Both are greyed out. A
-// cleared stage shows its best stars and best time after its name.
-export function showStageSelect(slots: readonly StageSlot[], selected: number) {
+// cleared stage shows its best stars and best time after its name, at the
+// difficulty named by `difficulty` (e.g. "Hard"), which a line says.
+export function showStageSelect(
+    slots: readonly StageSlot[],
+    selected: number,
+    difficulty?: string
+) {
+    const bestsOn = difficulty === undefined ? [] : [`Bests on ${difficulty}`]
     show({
         id: "stage-select",
         title: "Select a stage",
         lines: [
-            `${keyPair("up", "down")} to choose, ${key("confirm")} to pick a character, Esc to go back`,
+            ...bestsOn,
+            `${keyPair("up", "down")} to choose, ${key("confirm")} to pick a difficulty, Esc to go back`,
         ],
-        keyHints: true,
+        keyHints: bestsOn.length,
         back: true,
         items: slots.map((slot, i) => ({
             label: slotLabel(slot),
@@ -171,6 +182,21 @@ function slotLabel(slot: StageSlot): string {
         case "comingSoon":
             return "Coming soon"
     }
+}
+
+// Difficulty select: one item per difficulty, easiest first, each with a
+// short description of how it plays.
+export function showDifficultySelect(items: readonly MenuItem[]) {
+    show({
+        id: "difficulty-select",
+        title: "Select a difficulty",
+        lines: [
+            `${keyPair("up", "down")} to choose, ${key("confirm")} to pick a character, Esc to go back`,
+        ],
+        keyHints: true,
+        back: true,
+        items,
+    })
 }
 
 // Character select: one card per character, in the order given, with the
@@ -312,9 +338,10 @@ export function showGameOver(view: EndScreenView) {
     show({ id: "game-over", title: "💀 Game over", ...endScreen(view) })
 }
 
-// The score, then with two players each one's share: on one line, or a
-// line each with the dots it ate when playerDots are given.
+// The difficulty, the score, then with two players each one's share: on
+// one line, or a line each with the dots it ate when playerDots are given.
 function endScreen({
+    difficulty,
     score,
     playerScores = [],
     playerDots,
@@ -328,11 +355,21 @@ function endScreen({
                     (s, i) => `${i + 1}P ${s} · ${dotCount(playerDots[i] ?? 0)}`
                 )
               : [playerScores.map((s, i) => `${i + 1}P ${s}`).join(" · ")]
-    return { lines: [`Score ${score}`, ...shares], items }
+    return {
+        lines: [...difficultyLine(difficulty), `Score ${score}`, ...shares],
+        items,
+    }
+}
+
+// The line naming the difficulty on an end or result screen, if given.
+function difficultyLine(difficulty: string | undefined): string[] {
+    return difficulty === undefined ? [] : [`Difficulty ${difficulty}`]
 }
 
 // What a versus round's result shows (see roundResult in flow.ts).
 export type RoundResultView = {
+    // The difficulty's name (e.g. "Hard"), shown first.
+    difficulty?: string
     // Which round it was, from 1 (replayed rounds count).
     round: number
     // The round's winner (player 1 is 0), or null for an exact tie.
@@ -357,6 +394,7 @@ export function showRoundResult(view: RoundResultView) {
                 ? `Round ${round}: a draw`
                 : `Round ${round}: ${winner + 1}P wins!`,
         lines: [
+            ...difficultyLine(view.difficulty),
             perPlayer("Dots", view.dots),
             perPlayer("Score", view.scores),
             ...(winner === null ? ["A draw doesn't count: play it again"] : []),
@@ -368,6 +406,8 @@ export function showRoundResult(view: RoundResultView) {
 
 // What a versus match's result shows (see matchResult in flow.ts).
 export type MatchResultView = {
+    // The difficulty's name (e.g. "Hard"), shown first.
+    difficulty?: string
     // The match winner (player 1 is 0).
     winner: number
     // Every round played, in order, replayed ones included.
@@ -384,6 +424,7 @@ export function showMatchResult(view: MatchResultView) {
         id: "match-result",
         title: `🏆 ${view.winner + 1}P wins the match!`,
         lines: [
+            ...difficultyLine(view.difficulty),
             `Rounds ${view.wins.join("–")}`,
             ...view.rounds.map(
                 ({ winner, dots }, i) =>
@@ -468,6 +509,12 @@ function show({
                 value.textContent = item.value
                 if (item.steps) stepTargets(value, item.value)
                 li.append(" ", value)
+            }
+            if (item.detail !== undefined) {
+                const detail = document.createElement("span")
+                detail.className = "menu-detail"
+                detail.textContent = item.detail
+                li.append(" ", detail)
             }
             if (item.selected) {
                 li.classList.add("selected")

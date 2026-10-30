@@ -1,19 +1,24 @@
 import { describe, expect, it } from "vite-plus/test"
 import { AiType, Cell } from "../constants"
 import { DIFFICULTIES, ENEMY_COUNT, MAP_SIZE } from "../difficulty"
-import { loopPos, parseStage, type Cells } from "../level"
+import { loopPos, type Cells } from "../level"
 import { distanceMap, openNeighbours } from "../path"
 import { vec2, type Vec2 } from "../vec2"
 import { EACH_MAP } from "../test/helpers"
+import { stages } from "./index"
 import { stage9 } from "./stage9"
 
-// Parsed on its own until it is registered after stages 6 and 7.
-const stage = parseStage(stage9)
+const stage = stages[8]
 
 // The hunters' speed, a little above the default.
 const HUNTER_SPEED = 2.25
 
 describe("stage 9", () => {
+    it("is the ninth level, Gauntlet, with a map for each size", () => {
+        expect(stage.medium.name).toBe("Gauntlet")
+        expect(stage9.large).not.toBe(stage9.medium)
+    })
+
     it("brings out every enemy type, all six from Hard on", () => {
         const all = Object.values(AiType)
         for (const d of DIFFICULTIES) {

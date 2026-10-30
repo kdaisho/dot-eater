@@ -2,14 +2,14 @@ import { describe, expect, it } from "vite-plus/test"
 import { AiType, Cell } from "../constants"
 import { DIFFICULTIES, ENEMY_COUNT, MAP_SIZE } from "../difficulty"
 import { canStopAt, FREE, nextStates, slideReach, type MoveState } from "../ice"
-import { parseStage, type Cells } from "../level"
+import { type Cells } from "../level"
 import { distanceMap, openNeighbours } from "../path"
 import { vec2, type Vec2 } from "../vec2"
 import { EACH_MAP } from "../test/helpers"
+import { stages } from "./index"
 import { stage8 } from "./stage8"
 
-// Parsed on its own until it is registered after stages 6 and 7.
-const stage = parseStage(stage8)
+const stage = stages[7]
 
 // The longest a slide may be, in moves (the step onto the ice included): as
 // far as the fog's light reaches, plus two.
@@ -46,8 +46,9 @@ describe.each(EACH_MAP)("stage 8 (%s)", (difficulty) => {
         }
     }
 
-    it("is named Frozen fog, with fog", () => {
+    it("is the eighth level, Frozen fog, with fog and a map for each size", () => {
         expect(level.name).toBe("Frozen fog")
+        expect(stage8.large).not.toBe(stage8.medium)
         expect(level.rules).toEqual({ fog: { radius: 4 } })
     })
 

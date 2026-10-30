@@ -11,11 +11,16 @@ import type { Settings } from "./settings"
 import { breathSfx, SfxId } from "./sfx"
 
 // The effect a game event plays, if any. playerRespawned plays nothing: a
-// versus player coming back makes no sound.
+// versus player coming back makes no sound. Nor does a dot growing back
+// (KDA-269): dots regrow about as often as they are eaten, so a sound for
+// it would echo every dot blip a few seconds later, often off screen; its
+// sparkle is enough.
 export function soundForEvent(event: GameEvent): SfxId | undefined {
     switch (event.type) {
         case "dotEaten":
             return SfxId.dot
+        case "dotDropped":
+            return SfxId.dotDropped
         case "breathed":
             return breathSfx(event.animal)
         case "enemyDefeated":
@@ -24,6 +29,10 @@ export function soundForEvent(event: GameEvent): SfxId | undefined {
             return SfxId.bossHit
         case "bossDefeated":
             return SfxId.bossDefeated
+        case "bossWindUp":
+            return SfxId.bossWindUp
+        case "bossBreathed":
+            return SfxId.bossBreath
         case "hurt":
             return SfxId.hurt
         case "playerCaught":
@@ -39,6 +48,7 @@ export function soundForEvent(event: GameEvent): SfxId | undefined {
         case "gameLost":
             return SfxId.gameOver
         case "playerRespawned":
+        case "dotRegrown":
             return undefined
     }
 }
@@ -86,6 +96,7 @@ export function musicForScreen(screen: Screen): MusicCue | undefined {
     switch (screen.kind) {
         case "title":
         case "stageSelect":
+        case "difficultySelect":
         case "characterSelect":
             return { track: MusicTrackId.title, paused: false }
         case "settings":
@@ -109,7 +120,8 @@ export function musicForScreen(screen: Screen): MusicCue | undefined {
 function isBack(prev: Screen, next: Screen): boolean {
     return (
         (prev.kind === "stageSelect" && next.kind === "title") ||
-        (prev.kind === "characterSelect" && next.kind === "stageSelect") ||
+        (prev.kind === "difficultySelect" && next.kind === prev.back.kind) ||
+        (prev.kind === "characterSelect" && next.kind === "difficultySelect") ||
         (prev.kind === "settings" && next.kind !== "controls") ||
         prev.kind === "controls"
     )
@@ -142,6 +154,8 @@ function sameScreenSound(prev: Screen, next: Screen): SfxId | undefined {
     }
     if (prev.kind === "stageSelect" && next.kind === "stageSelect")
         return prev.selected !== next.selected ? SfxId.menuMove : undefined
+    if (prev.kind === "difficultySelect" && next.kind === "difficultySelect")
+        return prev.difficulty !== next.difficulty ? SfxId.menuMove : undefined
     if (prev.kind === "characterSelect" && next.kind === "characterSelect") {
         const was = readyCount(prev.ready)
         const now = readyCount(next.ready)
