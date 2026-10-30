@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vite-plus/test"
 import {
+    BUTTONS_SPACE,
     computeLayout,
     controlsSpace,
+    type ControlsShown,
     DPAD_SPACE,
     HUD_ROWS,
     MAX_CELL,
@@ -48,8 +50,40 @@ describe("computeLayout", () => {
             expect(computeLayout(360, 740, 17, 15)).toMatchObject(whole(19))
         })
 
+        // A phone's viewport less the touch controls' band.
+        const onPhone = (
+            width: number,
+            height: number,
+            shown: ControlsShown
+        ) => {
+            const room = controlsSpace(width, height, shown)
+            return computeLayout(
+                width - room.width,
+                height - room.height,
+                17,
+                15
+            )
+        }
+
+        // An iPhone 12-15 (390x844) and an Android phone (360x740), each
+        // way up: the punch and breath buttons' band, and the D-pad's,
+        // cost the maze nothing there.
+        it.each([
+            [390, 844, 21],
+            [844, 390, 22],
+            [360, 740, 19],
+            [740, 360, 20],
+        ])(
+            "keep their size beside the touch controls at %ix%i",
+            (w, h, cell) => {
+                expect(computeLayout(w, h, 17, 15)).toMatchObject(whole(cell))
+                expect(onPhone(w, h, "buttons")).toMatchObject(whole(cell))
+                expect(onPhone(w, h, "dpad")).toMatchObject(whole(cell))
+            }
+        )
+
         it("stay whole on an iPhone SE in landscape with the D-pad", () => {
-            const room = controlsSpace(667, 375, true)
+            const room = controlsSpace(667, 375, "dpad")
             const layout = computeLayout(
                 667 - room.width,
                 375 - room.height,
@@ -128,22 +162,35 @@ describe("computeLayout", () => {
 })
 
 describe("controlsSpace", () => {
-    it("keeps no room without the D-pad", () => {
-        expect(controlsSpace(390, 844, false)).toEqual({ width: 0, height: 0 })
-        expect(controlsSpace(844, 390, false)).toEqual({ width: 0, height: 0 })
+    it("keeps no room without a touch screen", () => {
+        expect(controlsSpace(390, 844, "none")).toEqual({ width: 0, height: 0 })
+        expect(controlsSpace(844, 390, "none")).toEqual({ width: 0, height: 0 })
     })
 
-    it("keeps a band below the maze in portrait", () => {
-        expect(controlsSpace(390, 844, true)).toEqual({
+    it("keeps a band for punch and breath on a touch screen without the D-pad", () => {
+        // Below the maze in portrait (a square viewport counts as
+        // portrait), right of it in landscape.
+        expect(controlsSpace(390, 844, "buttons")).toEqual({
+            width: 0,
+            height: BUTTONS_SPACE,
+        })
+        expect(controlsSpace(500, 500, "buttons").height).toBe(BUTTONS_SPACE)
+        expect(controlsSpace(844, 390, "buttons")).toEqual({
+            width: BUTTONS_SPACE,
+            height: 0,
+        })
+    })
+
+    it("keeps the D-pad's band below the maze in portrait", () => {
+        expect(controlsSpace(390, 844, "dpad")).toEqual({
             width: 0,
             height: DPAD_SPACE,
         })
-        // A square viewport counts as portrait.
-        expect(controlsSpace(500, 500, true).height).toBe(DPAD_SPACE)
+        expect(controlsSpace(500, 500, "dpad").height).toBe(DPAD_SPACE)
     })
 
-    it("keeps a band on each side of the maze in landscape", () => {
-        expect(controlsSpace(844, 390, true)).toEqual({
+    it("keeps the D-pad's band on each side of the maze in landscape", () => {
+        expect(controlsSpace(844, 390, "dpad")).toEqual({
             width: 2 * DPAD_SPACE,
             height: 0,
         })

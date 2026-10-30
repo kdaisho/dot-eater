@@ -6,9 +6,6 @@ import {
     DIFFICULTIES,
     ENEMY_COUNT,
     MAP_SIZE,
-    MAP_SIZES,
-    type Difficulty,
-    type MapSize,
 } from "../difficulty"
 import { wrapDelta } from "../glide"
 import { DEFAULT_ANIMAL } from "../roster"
@@ -55,42 +52,31 @@ describe("levels", () => {
     })
 
     // Until a stage is remade with a medium and a large map, its one map
-    // stands in for both, so every difficulty plays today's game: it lists
-    // no more enemies than the fewest any difficulty brings out.
-    const shared = STAGE_DATA.flatMap((data, i) =>
-        data.large === data.medium ? [[i + 1, data] as const] : []
-    )
-    it.each(shared)(
-        "stage %i uses one map for both sizes, with every enemy at every difficulty",
+    // stands in for both (sameForBoth), so every difficulty plays today's
+    // game: it lists no more enemies than the fewest any difficulty brings
+    // out. Each remade stage's own tests check it has two maps.
+    it.each(
+        STAGE_DATA.map((data, i) => [i + 1, data] as const).filter(
+            ([, data]) => data.large === data.medium
+        )
+    )(
+        "stage %i, not yet remade, has every enemy at every difficulty",
         (_n, data) => {
             const fewest = Math.min(...DIFFICULTIES.map((d) => ENEMY_COUNT[d]))
             expect(data.medium.enemies.length).toBeLessThanOrEqual(fewest)
         }
     )
 
-    // A remade stage has a map of each size, around 21x17 and 29x21, each
-    // listing an enemy for every one its difficulties bring out.
-    const remade = STAGE_DATA.flatMap((data, i) =>
-        data.large === data.medium ? [] : [[i + 1, data] as const]
-    )
-    it.each(remade)(
-        "stage %i has a medium and a large map, with enemies for each difficulty",
-        (_n, data) => {
-            expect(data.large.map).not.toEqual(data.medium.map)
-            for (const size of MAP_SIZES) {
-                const { map, enemies } = data[size]
-                const [width, height] = size === "medium" ? [21, 17] : [29, 21]
-                expect(Math.abs(map[0].length - width)).toBeLessThanOrEqual(2)
-                expect(Math.abs(map.length - height)).toBeLessThanOrEqual(2)
-                const most = Math.max(
-                    ...DIFFICULTIES.filter((d) => MAP_SIZE[d] === size).map(
-                        (d) => ENEMY_COUNT[d]
-                    )
-                )
-                expect(enemies).toHaveLength(most)
-            }
-        }
-    )
+    it.each(
+        STAGE_DATA.map((data, i) => [i + 1, data] as const).filter(
+            ([, data]) => data.large !== data.medium
+        )
+    )("stage %i, remade, has a large map bigger than its medium one", (n) => {
+        const medium = stages[n - 1].medium
+        const large = stages[n - 1].hard
+        expect(large.width).toBeGreaterThan(medium.width)
+        expect(large.height).toBeGreaterThan(medium.height)
+    })
 
     it.each(everyLevel)(
         "stage %i (%s) shares its name and rules with the default difficulty",
@@ -176,33 +162,23 @@ describe("levels", () => {
         }
     )
 
-    // Player 2's spawn holds a dot in 1-player games, so they have the
-    // same dots as before 2-player games existed (these counts); with a
-    // player 2 it starts empty, as player 1's does.
-    // Per stage: one count for a stage with one map, else one per map size.
-    const SOLO_DOTS: readonly (number | Readonly<Record<MapSize, number>>)[] = [
-        129,
-        141,
-        133,
-        125,
-        145,
-        { medium: 154, large: 230 },
-    ]
-    const soloDots = (n: number, difficulty: Difficulty) => {
-        const count = SOLO_DOTS[n - 1]
-        return typeof count === "number" ? count : count[MAP_SIZE[difficulty]]
-    }
+    // Player 2's spawn holds a dot in 1-player games, so they have every
+    // dot the map has (counted from its text: every dot character, ice
+    // dots, enemy and boss spawns and the "Q" included); with a player 2
+    // it starts empty, as player 1's does.
     const dots = (cells: readonly (readonly Cell[])[]) =>
         cells.flat().filter((c) => c === Cell.dot).length
     it.each(everyLevel)(
         "stage %i (%s) keeps every dot in 1-player, the spawn's too",
         (n, difficulty, level) => {
+            const { map } = STAGE_DATA[n - 1][MAP_SIZE[difficulty]]
+            const mapDots = map.join("").match(/[.:EBQ]/g)?.length ?? 0
             const [p1, p2] = level.playerSpawns
             const solo = createGameState(level, DEFAULT_ANIMAL)
-            expect(dots(solo.cells)).toBe(soloDots(n, difficulty))
+            expect(dots(solo.cells)).toBe(mapDots)
             expect(solo.cells[p2.y][p2.x]).toBe(Cell.dot)
             const duo = createGameState(level, [DEFAULT_ANIMAL, DEFAULT_ANIMAL])
-            expect(dots(duo.cells)).toBe(soloDots(n, difficulty) - 1)
+            expect(dots(duo.cells)).toBe(mapDots - 1)
             expect(duo.cells[p2.y][p2.x]).toBe(Cell.none)
             expect(duo.cells[p1.y][p1.x]).toBe(Cell.none)
         }
@@ -239,22 +215,29 @@ describe.each(EACH_MAP)("stage 1 (%s)", (difficulty) => {
         expect(level.name).toBe("Classic")
     })
 
-    it("has one random and one chase enemy at the default speed", () => {
-        expect(level.enemies.map((e) => e.ai)).toEqual([
+    // Wanderers and a chaser first, so Easy's three are the gentlest mix;
+    // the ambusher only from the fourth enemy on.
+    it("brings out wanderers and a chaser first, ambushers later, at the default speed", () => {
+        const ais = level.enemies.map((e) => e.ai)
+        expect(ais.slice(0, 3)).toEqual([
             AiType.random,
             AiType.chase,
+            AiType.random,
         ])
+        expect(ais[3]).toBe(AiType.ambusher)
+        for (const ai of ais) {
+            expect([AiType.random, AiType.chase, AiType.ambusher]).toContain(ai)
+        }
         for (const enemy of level.enemies) {
             expect(enemy.speed).toBeUndefined()
         }
         expect(level.playerSpeed).toBeUndefined()
     })
 
-    it("is bigger than the old 9x9 map, with odd sides", () => {
-        expect(level.width).toBeGreaterThan(9)
-        expect(level.height).toBeGreaterThan(9)
-        expect(level.width % 2).toBe(1)
-        expect(level.height % 2).toBe(1)
+    it("has the size of its map", () => {
+        expect([level.width, level.height]).toEqual(
+            MAP_SIZE[difficulty] === "medium" ? [21, 17] : [29, 21]
+        )
     })
 
     it("has walls mirrored left to right", () => {
@@ -289,7 +272,7 @@ describe.each(EACH_MAP)("stage 1 (%s)", (difficulty) => {
     it("starts the enemies well away from the player", () => {
         const dist = distanceMap(cells, level.playerSpawns[0])
         for (const { pos } of level.enemies) {
-            expect(dist[pos.y][pos.x]).toBeGreaterThanOrEqual(10)
+            expect(dist[pos.y][pos.x]).toBeGreaterThanOrEqual(15)
         }
     })
 })
