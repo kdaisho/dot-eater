@@ -14,7 +14,8 @@ import type { LevelData } from "../level"
 // and taller in the same style, with eight enemies: the medium map's four,
 // then a patroller circling the middle of the maze (a route the player can
 // learn but not see) and a second chaser (Hard), then a wanderer and a
-// second phantom in the corner opposite the first (Super Hard).
+// second phantom on the right edge, across the map from the first in the
+// top left (Super Hard).
 //
 // The light's radius is 4 cells on both maps (the rules are shared): half a
 // cell more than the old one-map stage had, so with more enemies coming
@@ -51,7 +52,7 @@ export const stage4: LevelData = {
         ],
     },
     large: {
-        parTime: 205,
+        parTime: 192,
         map: [
             "#############################",
             "#E............E............E#",
