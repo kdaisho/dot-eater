@@ -1,6 +1,6 @@
-import type { Random } from "./ai"
+import { stacksOn, type Random } from "./ai"
 import { addStatus, hasStatus, inPlay, type EnemyStatus } from "./breath"
-import type { Character } from "./character"
+import { skipKnockTurn, type Character } from "./character"
 import { Cell, PUNCH_ACROSS, PUNCH_REACH } from "./constants"
 import { emit } from "./events"
 import { drawnPos, knockBack, type GameState, type Player } from "./game"
@@ -232,9 +232,21 @@ function knockEnemy(
 // knocked towards, with any progress past the turn carried on. Called after
 // its progress moves on (see step and settle in game.ts). Returns whether
 // it turned.
-export function turnKnock(enemy: Character): boolean {
+//
+// Turning back is a move like any other for the spread rule: if it would
+// stack on one of its kind in `crowd` (see stacksOn in ai.ts), it doesn't
+// turn but carries on as a full knock would (see skipKnockTurn), so twins
+// stay apart.
+export function turnKnock(
+    enemy: Character,
+    crowd: readonly Character[] = []
+): boolean {
     const turn = enemy.knockTurn
     if (turn === null || enemy.moveProgress < turn - EPSILON) return false
+    if (stacksOn(crowd, enemy, enemy.lastPos)) {
+        skipKnockTurn(enemy)
+        return false
+    }
     const past = Math.max(0, enemy.moveProgress - turn)
     const from = enemy.pos
     enemy.pos = enemy.lastPos

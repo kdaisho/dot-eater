@@ -108,6 +108,16 @@ export function endKnock(character: Character) {
     character.turnsBack = false
 }
 
+// Call off the turn a short knock (see punch.ts) has `character` make, for
+// when the cell it would turn back into won't do: it carries on into the
+// cell it was knocked towards as a full knock would, and may turn back on
+// its next move (turnsBack), if that cell is open then.
+export function skipKnockTurn(character: Character) {
+    if (character.knockTurn === null) return
+    character.knockTurn = null
+    character.turnsBack = true
+}
+
 // Forget the punches `character` has taken (see punch.ts) and its guard
 // roll, as when it is defeated: it comes back fresh and rolls again.
 export function freshFromPunches(character: Character) {

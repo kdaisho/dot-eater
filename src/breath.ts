@@ -7,7 +7,12 @@ import {
     RESPAWN_DELAY,
 } from "./constants"
 import { bossDamage, damageBoss, inFootprint, tickBoss } from "./boss"
-import { endKnock, freshFromPunches, type Character } from "./character"
+import {
+    endKnock,
+    freshFromPunches,
+    skipKnockTurn,
+    type Character,
+} from "./character"
 import { emit } from "./events"
 import type { ParticleLook } from "./particles"
 import type { GameState, Player } from "./game"
@@ -793,7 +798,9 @@ export function tickEffects(state: GameState, dt: number) {
 // wall, so it often waits right where they came from, and landing there
 // would be a catch they did nothing to earn. When players bump
 // (GameState.playersBump), a player isn't put on another player in play's
-// cell either, so the two never stack.
+// cell either, so the two never stack. An enemy a short punch knocks out
+// of it (KDA-288) doesn't turn back into it, but carries on (see
+// skipKnockTurn).
 function regrowWall(state: GameState, pos: Vec2) {
     state.cells[pos.y][pos.x] = Cell.wall
     const boss = state.boss && !state.boss.defeated ? state.boss : null
@@ -809,6 +816,9 @@ function regrowWall(state: GameState, pos: Vec2) {
     // Players out of play too, so none is left inside the wall (enemies
     // may go after where an out player stands).
     const players = state.players.map((p) => p.character)
+    for (const enemy of state.enemies) {
+        if (samePos(enemy.lastPos, pos)) skipKnockTurn(enemy)
+    }
     for (const c of [...players, ...state.enemies]) {
         if (!samePos(c.pos, pos)) continue
         const free = players.includes(c)

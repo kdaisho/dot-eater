@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test"
 import { defeatEnemy } from "./breath"
-import { AiType, ENEMY_IDS, RESPAWN_DELAY, TICK_RATE } from "./constants"
+import { AiType, Cell, ENEMY_IDS, RESPAWN_DELAY, TICK_RATE } from "./constants"
 import { GUARD } from "./difficulty"
 import type { GameEvent } from "./events"
 import { drawnPos, IDLE, step, type GameState, type MoveInput } from "./game"
@@ -327,6 +327,60 @@ describe("a knocked-back enemy", () => {
             health: 1000,
         })
         tick(state)
+        for (let i = 0; i < 2 * TICK_RATE; i++) {
+            tick(state, IDLE)
+            const stacked =
+                samePos(first.pos, twin.pos) &&
+                samePos(first.lastPos, twin.lastPos)
+            expect(stacked).toBe(false)
+        }
+    })
+
+    // Regression (PR #98 review): a wall growing back on the cell a short
+    // knock turns back into left the enemy turning round into the wall.
+    it("never turns a short knock back into a wall that grew back", () => {
+        const { map } = textMap([
+            "#########",
+            "#  #    #",
+            "#########",
+            "#.#######",
+        ])
+        const enemy = makeEnemy(3, 1, AiType.chase)
+        enemy.knocks = 1
+        const state = makeState(map, { x: 2, y: 1 }, [enemy], {
+            health: 1000,
+        })
+        // (3, 1) opened, growing back in 3 ticks.
+        state.cells[1][3] = Cell.none
+        state.tiles.push({
+            pos: vec2(3, 1),
+            effect: { name: "test.open", opensWall: true },
+            left: 3 * TICK,
+        })
+        const walled = () => state.cells[1][3] === Cell.wall
+        tick(state)
+        expect(enemy.knockTurn).toBeCloseTo(0.7)
+        for (let i = 0; i < TICK_RATE; i++) {
+            tick(state, IDLE)
+            if (walled()) expect(enemy.pos).not.toEqual(vec2(3, 1))
+        }
+        expect(walled()).toBe(true)
+    })
+
+    // Regression (PR #98 review): a short knock turning round moved the
+    // enemy without the spread rule, onto a twin's move.
+    it("doesn't turn a short knock round onto a twin's move", () => {
+        // At rest on (2, 1), in from (3, 1).
+        const first = makeEnemy(2, 1, AiType.chase, { x: 3, y: 1 })
+        first.moveProgress = 1
+        first.knocks = 1
+        const twin = makeEnemy(3, 1, AiType.chase, { x: 4, y: 1 }, ENEMY_IDS[1])
+        twin.moveProgress = 0.5
+        const state = makeState(corridor, { x: 1, y: 1 }, [first, twin], {
+            health: 1000,
+        })
+        tick(state)
+        expect(first.knockTurn).toBeCloseTo(0.7)
         for (let i = 0; i < 2 * TICK_RATE; i++) {
             tick(state, IDLE)
             const stacked =

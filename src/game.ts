@@ -969,7 +969,7 @@ export function step(
         // count against the next. A short knock turns round as its
         // progress moves on (see turnKnock in punch.ts).
         advance(enemy, dt)
-        turnKnock(enemy)
+        turnKnock(enemy, crowd)
         if (enemy.moveProgress < 1 - EPSILON) {
             enemy.heldFor = 0
             return []
@@ -1108,7 +1108,8 @@ export function settle(state: GameState, dt: number): boolean {
     }
     // An enemy a short knock glides out turns round as in play (see
     // turnKnock in punch.ts).
-    for (const enemy of state.enemies) turnKnock(enemy)
+    const crowd = state.enemies.filter(inPlay)
+    for (const enemy of crowd) turnKnock(enemy, crowd)
     return state.players.every((p) => p.character.moveProgress >= 1 - EPSILON)
 }
 
