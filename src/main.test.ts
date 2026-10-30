@@ -169,7 +169,12 @@ describe("main", () => {
         expect(starts()).toBe(0)
         expect(steps()).toBe(0)
 
-        // Space: the stage list, with the first stage selected.
+        // Space: story or stage mode, on Story; Down, Space: the stage
+        // list, with the first stage selected.
+        pressAndTick("Space")
+        expect(screen()).toBe("play-select")
+        expect(selectedItem()).toBe("Story")
+        pressAndTick("ArrowDown")
         pressAndTick("Space")
         expect(screen()).toBe("stage-select")
         expect(selectedItem()).toBe(levels[0].name)
@@ -358,8 +363,9 @@ describe("main", () => {
             expect(lastStartedLevel()).toBe(levels[0])
             expect(screen()).toBe("playing")
         }
-        // The keyboard source's, and the controls screen's capture.
-        expect(keydownListeners.size).toBe(2)
+        // The keyboard source's, the controls screen's capture, and the
+        // focus tracker (a key press means the window has focus).
+        expect(keydownListeners.size).toBe(3)
     })
 
     it("does nothing on Space during play", () => {

@@ -46,6 +46,8 @@ describe("main with storage blocked", () => {
 
         expect(screen()).toBe("title")
         pressAndTick("Space")
+        pressAndTick("ArrowDown")
+        pressAndTick("Space")
         expect(screen()).toBe("stage-select")
         pressAndTick("Space")
         expect(screen()).toBe("difficulty-select")
