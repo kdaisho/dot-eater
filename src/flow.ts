@@ -10,7 +10,7 @@ import {
     type MoveInput,
     type Outcome,
 } from "./game"
-import { DEFAULT_DIFFICULTY, type Difficulty } from "./difficulty"
+import { DEFAULT_DIFFICULTY, DIFFICULTIES, type Difficulty } from "./difficulty"
 import type { Action } from "./input"
 import type { Stage } from "./level"
 import { isPlayable, STAGE_COUNT, type Progress } from "./progress"
@@ -27,16 +27,19 @@ import { matchWinner, roundResult, type RoundResult } from "./versus"
 
 // The game's screens and the transitions between them:
 //
-//   title <-> stageSelect <-> characterSelect -> playing <-> paused
-//                 ^                                 |
-//                 |                                 +-> ending
+//   title <-> stageSelect <-> difficultySelect <-> characterSelect
+//                 ^                                       |
+//                 |                          playing <-> paused
 //                 |                                       |
-//                 |                         stageClear / gameOver
-//                 |                                       |
-//                 +---------------------------------------+-> retry
+//                 |                                       +-> ending
+//                 |                                             |
+//                 |                               stageClear / gameOver
+//                 |                                             |
+//                 +---------------------------------------------+-> retry
 //
 // Back (the pause action, P or Escape) goes one menu up: character select
-// to stage select, stage select to the title.
+// to difficulty select, difficulty select to stage select, stage select to
+// the title.
 //
 // Settings open from the title's menu (its last entry, after the modes;
 // TITLE_CHOICES) and from the pause menu (PAUSE_CHOICES), and Back returns
@@ -84,10 +87,18 @@ import { matchWinner, roundResult, type RoundResult } from "./versus"
 // MODE_CHOICES). Every screen after it carries the `mode` picked there, up
 // to the end screens and back to stage select, so Retry keeps it.
 //
-// Character select and every game screen carry the `difficulty` the stage
-// is played at (see difficulty.ts), so Retry, Next round and a rematch keep
-// it. For now it is always DEFAULT_DIFFICULTY; the player can't pick one
-// yet.
+// Difficulty select (KDA-265) picks the `difficulty` a game is played at
+// (see difficulty.ts), in every mode. It knows where confirm goes (`next`)
+// and where Back goes (`back`), so other ways into a game, such as the
+// story mode (KDA-271), can use it too; from stage select, confirm goes on
+// to character select for the stage, and Back returns to stage select on
+// the same stage. Up/down or left/right move over DIFFICULTIES, stopping at
+// either end; player 1 drives it, like the other menus. Its cursor starts
+// on the difficulty picked last (FlowDeps.lastDifficulty, which main loads
+// from storage and saves on a 1-player pick), else DEFAULT_DIFFICULTY.
+// Character select and every game screen carry the difficulty, so Retry,
+// Next round and a rematch keep it, and Back from character select returns
+// to difficulty select on it.
 //
 // The game is only ever stepped in `playing`. Once a game ends the machine
 // leaves `playing` on that same tick, so the game itself (cells, score,
@@ -104,19 +115,20 @@ import { matchWinner, roundResult, type RoundResult } from "./versus"
 // 1-player games only (see recordsProgress). A 2-player game can play any
 // stage unlocked in 1-player.
 //
-// Confirming an open stage goes to character select, with every cursor on
-// the character picked last (FlowDeps.lastAnimal, which main loads from
-// storage and saves on every pick). Character select keeps one cursor per
+// Confirming an open stage goes to difficulty select, then character
+// select, with every cursor on the character picked last
+// (FlowDeps.lastAnimal, which main loads from storage and saves on every
+// 1-player pick). Character select keeps one cursor per
 // player (`picks`, player 1 first), each moved with that player's own keys;
 // both players may pick the same character. A player confirms its pick
 // (`ready`); once every player has, the game starts. Back from a player who
 // has confirmed takes the confirmation back; from one who hasn't, it goes
-// back to stage select. Every game screen carries its `animals`, so Retry
-// plays the same characters again.
+// back to difficulty select. Every game screen carries its `animals`, so
+// Retry plays the same characters again.
 //
-// Menus other than character select (title, stage select, the end screens)
-// follow player 1. During a 2-player game either player can pause, and
-// either can resume.
+// Menus other than character select (title, stage select, difficulty
+// select, the end screens) follow player 1. During a 2-player game either
+// player can pause, and either can resume.
 //
 // Versus (see versus.ts) is a best-of-3 match on one stage. Its game
 // screens carry `match`, the rounds finished so far. A cleared round goes
@@ -232,6 +244,16 @@ export type Screen =
       }
     | { kind: "stageSelect"; mode: Mode; selected: number }
     | {
+          kind: "difficultySelect"
+          mode: Mode
+          // The difficulty under the cursor.
+          difficulty: Difficulty
+          // Where confirm goes, at the difficulty picked.
+          next: DifficultyNext
+          // Where Back returns to, as it was.
+          back: StageSelectScreen
+      }
+    | {
           kind: "characterSelect"
           mode: Mode
           // The stage that starts once a character is picked.
@@ -330,6 +352,12 @@ type TitleScreen = Extract<Screen, { kind: "title" }>
 type PausedScreen = Extract<Screen, { kind: "paused" }>
 type SettingsScreen = Extract<Screen, { kind: "settings" }>
 type ControlsScreen = Extract<Screen, { kind: "controls" }>
+type StageSelectScreen = Extract<Screen, { kind: "stageSelect" }>
+type DifficultySelectScreen = Extract<Screen, { kind: "difficultySelect" }>
+
+// Where difficulty select's confirm goes: so far only character select for
+// stage `level`. The story mode (KDA-271) can add its own.
+export type DifficultyNext = { kind: "characterSelect"; level: number }
 
 // One tick of input. `player` is the player's index, player 1 (0) unless
 // given.
@@ -363,6 +391,9 @@ export type FlowDeps = {
     random: Random
     // Where character select's cursors start; DEFAULT_ANIMAL when left out.
     lastAnimal?: AnimalId
+    // Where difficulty select's cursor starts; DEFAULT_DIFFICULTY when left
+    // out.
+    lastDifficulty?: Difficulty
     // Injected so tests can watch it; defaults to the real game step.
     step?: typeof step
     // The saved settings, which the settings screen starts from; the
@@ -423,6 +454,8 @@ export function update(
             return updateControls(screen, input)
         case "stageSelect":
             return updateStageSelect(screen, input, deps)
+        case "difficultySelect":
+            return updateDifficultySelect(screen, input, deps)
         case "characterSelect":
             return updateCharacterSelect(screen, input, deps)
         case "playing":
@@ -504,6 +537,11 @@ export function selectItem(
         case "stageSelect":
             return within(STAGE_COUNT) && index !== screen.selected
                 ? { ...screen, selected: index }
+                : screen
+        case "difficultySelect":
+            return within(DIFFICULTIES.length) &&
+                DIFFICULTIES[index] !== screen.difficulty
+                ? { ...screen, difficulty: DIFFICULTIES[index] }
                 : screen
         case "characterSelect": {
             const animal = ANIMAL_IDS[index]
@@ -727,7 +765,7 @@ function updateControls(screen: ControlsScreen, input: TickInput): Screen {
 const CONTROLS_PLAYERS = 2
 
 function updateStageSelect(
-    screen: Extract<Screen, { kind: "stageSelect" }>,
+    screen: StageSelectScreen,
     input: TickInput,
     deps: FlowDeps
 ): Screen {
@@ -737,31 +775,83 @@ function updateStageSelect(
         if (!isPlayable(deps.progress, deps.levels.length, screen.selected)) {
             return screen
         }
-        const count = playerCount(mode)
-        const pick = deps.lastAnimal ?? DEFAULT_ANIMAL
-        return {
-            kind: "characterSelect",
-            mode,
-            level: screen.selected,
-            // Until the player can pick one (KDA-265).
-            difficulty: DEFAULT_DIFFICULTY,
-            picks: [pick, ...Array<AnimalId>(count - 1).fill(pick)],
-            ready: Array<boolean>(count).fill(false),
-        }
+        const difficulty = deps.lastDifficulty ?? DEFAULT_DIFFICULTY
+        return stageDifficultySelect(mode, screen.selected, difficulty)
     }
     if (input.wasPressed("pause")) return { kind: "title", mode }
     const selected = moveCursor(screen.selected, STAGE_COUNT, input)
     return selected === screen.selected ? screen : { ...screen, selected }
 }
 
+// Difficulty select for stage `level`, its cursor on `difficulty`: confirm
+// goes on to character select, Back to stage select on the stage.
+function stageDifficultySelect(
+    mode: Mode,
+    level: number,
+    difficulty: Difficulty
+): DifficultySelectScreen {
+    return {
+        kind: "difficultySelect",
+        mode,
+        difficulty,
+        next: { kind: "characterSelect", level },
+        back: { kind: "stageSelect", mode, selected: level },
+    }
+}
+
+// Player 1's up/down or left/right move the cursor over DIFFICULTIES,
+// stopping at either end; confirm goes on to `next` at the difficulty
+// under it, and Back returns to `back`.
+function updateDifficultySelect(
+    screen: DifficultySelectScreen,
+    input: TickInput,
+    deps: FlowDeps
+): Screen {
+    const { mode, difficulty, next } = screen
+    if (input.wasPressed("confirm")) {
+        return characterSelect(mode, next.level, difficulty, deps)
+    }
+    if (input.wasPressed("pause")) return screen.back
+    const index = DIFFICULTIES.indexOf(difficulty)
+    const back = input.wasPressed("up") || input.wasPressed("left")
+    const forward = input.wasPressed("down") || input.wasPressed("right")
+    const moved = Math.min(
+        Math.max(index + Number(forward) - Number(back), 0),
+        DIFFICULTIES.length - 1
+    )
+    return moved === index
+        ? screen
+        : { ...screen, difficulty: DIFFICULTIES[moved] }
+}
+
+// Character select for stage `level` at `difficulty`, with every player's
+// cursor on the character picked last and nobody ready.
+function characterSelect(
+    mode: Mode,
+    level: number,
+    difficulty: Difficulty,
+    deps: FlowDeps
+): Screen {
+    const count = playerCount(mode)
+    const pick = deps.lastAnimal ?? DEFAULT_ANIMAL
+    return {
+        kind: "characterSelect",
+        mode,
+        level,
+        difficulty,
+        picks: [pick, ...Array<AnimalId>(count - 1).fill(pick)],
+        ready: Array<boolean>(count).fill(false),
+    }
+}
+
 // Each player's left/right move its own cursor over ANIMAL_IDS, stopping at
 // either end, until it confirms; confirm marks its pick ready, and the
 // stage starts once every player is ready. Back takes that player's
-// confirmation back or, if it hasn't confirmed, returns to stage select on
-// the same stage. A player pressing both confirm and back on one tick
-// confirms. Players are handled in order, player 1 first, so on a tick
-// where both act, player 1's back to stage select wins over anything
-// player 2 does.
+// confirmation back or, if it hasn't confirmed, returns to difficulty
+// select on the same difficulty. A player pressing both confirm and back on
+// one tick confirms. Players are handled in order, player 1 first, so on a
+// tick where both act, player 1's back to difficulty select wins over
+// anything player 2 does.
 function updateCharacterSelect(
     screen: Extract<Screen, { kind: "characterSelect" }>,
     input: TickInput,
@@ -776,11 +866,8 @@ function updateCharacterSelect(
             ready[i] = true
         } else if (input.wasPressed("pause", i)) {
             if (!ready[i]) {
-                return {
-                    kind: "stageSelect",
-                    mode: screen.mode,
-                    selected: screen.level,
-                }
+                const { mode, level, difficulty } = screen
+                return stageDifficultySelect(mode, level, difficulty)
             }
             ready[i] = false
             changed = true

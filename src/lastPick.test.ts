@@ -1,8 +1,13 @@
 import { describe, expect, it, vi } from "vite-plus/test"
+import { DEFAULT_DIFFICULTY, DIFFICULTIES } from "./difficulty"
 import {
+    LAST_DIFFICULTY_KEY,
     LAST_PICK_KEY,
+    loadLastDifficulty,
     loadLastPick,
+    parseLastDifficulty,
     parseLastPick,
+    saveLastDifficulty,
     saveLastPick,
     type PickStorage,
 } from "./lastPick"
@@ -99,5 +104,45 @@ describe("saveLastPick", () => {
         saveLastPick(storage, AnimalId.boar)
         expect(storage.setItem).toHaveBeenCalledTimes(1)
         expect(storage.data.get(PROGRESS_KEY)).toBe("saved")
+    })
+})
+
+describe("the last difficulty", () => {
+    it("has its own versioned key, apart from the character and progress", () => {
+        expect(LAST_DIFFICULTY_KEY).toBe("dot-eater:difficulty:v1")
+        expect(LAST_DIFFICULTY_KEY).not.toBe(LAST_PICK_KEY)
+        expect(LAST_DIFFICULTY_KEY).not.toBe(PROGRESS_KEY)
+    })
+
+    it("reads back every difficulty", () => {
+        for (const d of DIFFICULTIES) expect(parseLastDifficulty(d)).toBe(d)
+    })
+
+    it.each([null, "", "nightmare", "Hard", '"hard"', "toString"])(
+        "falls back to Medium on %j",
+        (raw) => {
+            expect(parseLastDifficulty(raw)).toBe(DEFAULT_DIFFICULTY)
+            expect(DEFAULT_DIFFICULTY).toBe("medium")
+        }
+    )
+
+    it("loads what saveLastDifficulty wrote, under its own key only", () => {
+        const storage = memoryStorage({ [LAST_PICK_KEY]: "owl" })
+        expect(saveLastDifficulty(storage, "superHard")).toBe(true)
+        expect(storage.setItem).toHaveBeenCalledTimes(1)
+        expect(storage.data.get(LAST_DIFFICULTY_KEY)).toBe("superHard")
+        expect(storage.data.get(LAST_PICK_KEY)).toBe("owl")
+        expect(loadLastDifficulty(storage)).toBe("superHard")
+    })
+
+    it("gives Medium with nothing saved, no storage or storage that throws", () => {
+        expect(loadLastDifficulty(memoryStorage())).toBe(DEFAULT_DIFFICULTY)
+        expect(loadLastDifficulty(undefined)).toBe(DEFAULT_DIFFICULTY)
+        expect(loadLastDifficulty(throwing)).toBe(DEFAULT_DIFFICULTY)
+    })
+
+    it("reports a failed save instead of throwing", () => {
+        expect(saveLastDifficulty(undefined, "easy")).toBe(false)
+        expect(saveLastDifficulty(throwing, "easy")).toBe(false)
     })
 })

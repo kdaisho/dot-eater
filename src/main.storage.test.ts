@@ -48,6 +48,9 @@ describe("main with storage blocked", () => {
         pressAndTick("Space")
         expect(screen()).toBe("stage-select")
         pressAndTick("Space")
+        expect(screen()).toBe("difficulty-select")
+        pressAndTick("ArrowDown")
+        pressAndTick("Space")
         expect(screen()).toBe("character-select")
         expect(pick()).toBe("dragon")
         pressAndTick("ArrowRight")
@@ -61,8 +64,18 @@ describe("main with storage blocked", () => {
         pressAndTick("ArrowDown")
         pressAndTick("Space")
         expect(screen()).toBe("stage-select")
+        // The picks couldn't be saved, but hold for the session: Hard
+        // shows on stage select and difficulty select opens on it.
+        expect(document.querySelector("#overlay p")?.textContent).toBe(
+            "Bests on Hard"
+        )
         pressAndTick("Space")
-        // The pick couldn't be saved, but holds for the session.
+        expect(screen()).toBe("difficulty-select")
+        expect(
+            document.querySelector("#overlay li.selected")?.firstChild
+                ?.textContent
+        ).toBe("Hard")
+        pressAndTick("Space")
         expect(screen()).toBe("character-select")
         expect(pick()).toBe("penguin")
         pressAndTick("Space")
