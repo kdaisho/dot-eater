@@ -29,6 +29,7 @@ function pad(index: number, buttons: number[] = [], x = 0, y = 0): Pad {
 
 const A = 0
 const X = 2
+const RB = 5
 const Y = 3
 const BACK = 8
 const START = 9
@@ -75,8 +76,14 @@ describe("padControls", () => {
         })
     })
 
+    it("punches on X", () => {
+        expect(Object.fromEntries(padControls(pad(0, [X])))).toEqual({
+            "pad:0:2": ["punch"],
+        })
+    })
+
     it("ignores unmapped buttons", () => {
-        expect(padControls(pad(0, [1, 2, 3, 16])).size).toBe(0)
+        expect(padControls(pad(0, [1, 3, 16])).size).toBe(0)
     })
 
     // Regression: a malformed pad entry threw, stopping the frame loop.
@@ -95,11 +102,11 @@ describe("padControls", () => {
 
     it("reads the buttons it's given", () => {
         const buttons = padButtonsFor(
-            rebind(DEFAULT_BINDINGS, 0, "breath", X).players[0]
+            rebind(DEFAULT_BINDINGS, 0, "breath", RB).players[0]
         )
         expect(
-            Object.fromEntries(padControls(pad(0, [A, X]), buttons))
-        ).toEqual({ "pad:0:0": ["confirm"], "pad:0:2": ["breath"] })
+            Object.fromEntries(padControls(pad(0, [A, RB]), buttons))
+        ).toEqual({ "pad:0:0": ["confirm"], "pad:0:5": ["breath"] })
     })
 })
 
@@ -107,6 +114,7 @@ describe("padButtonsFor", () => {
     it("gives today's buttons for the defaults, for either player", () => {
         const today = {
             0: ["breath", "confirm"],
+            2: ["punch"],
             9: ["pause"],
             12: ["up"],
             13: ["down"],
@@ -123,6 +131,7 @@ describe("padButtonsFor", () => {
         )
         expect(buttons).toEqual({
             0: ["pause"],
+            2: ["punch"],
             9: ["breath", "confirm"],
             12: ["up"],
             13: ["down"],
@@ -551,10 +560,10 @@ describe("GamepadSource", () => {
     })
 
     describe("bindings", () => {
-        // P1: breath on X (confirm stays on A), pause on Back. P2: pause on
+        // P1: breath on RB (confirm stays on A), pause on Back. P2: pause on
         // Y.
         const remapped = rebind(
-            rebind(rebind(DEFAULT_BINDINGS, 0, "breath", X), 0, "pause", BACK),
+            rebind(rebind(DEFAULT_BINDINGS, 0, "breath", RB), 0, "pause", BACK),
             1,
             "pause",
             Y
@@ -565,7 +574,7 @@ describe("GamepadSource", () => {
             source = new GamepadSource(() => pads, target, undefined, remapped)
             source.attach(input)
             plugIn()
-            pads = [pad(0, [X, BACK])]
+            pads = [pad(0, [RB, BACK])]
             expect(tick().pressed).toEqual(["breath", "pause"])
         })
 
@@ -574,7 +583,7 @@ describe("GamepadSource", () => {
             plugIn()
             pads = [pad(0, [A])]
             expect(tick().pressed).toEqual(["confirm"])
-            pads = [pad(0, [X, START])]
+            pads = [pad(0, [RB, START])]
             expect(tick().pressed).toEqual(["breath"])
         })
 
@@ -613,13 +622,13 @@ describe("GamepadSource", () => {
         // new bindings arrive; it must not fire its new action.
         it("doesn't press a button held through the change until pressed again", () => {
             plugIn()
-            pads = [pad(0, [X])]
+            pads = [pad(0, [RB])]
             expect(tick().pressed).toEqual([])
             source.setBindings(remapped)
             expect(tick()).toEqual({ pressed: [], down: [] })
             pads = [pad(0)]
             tick()
-            pads = [pad(0, [X])]
+            pads = [pad(0, [RB])]
             expect(tick().pressed).toEqual(["breath"])
         })
 

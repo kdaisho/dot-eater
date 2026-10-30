@@ -65,6 +65,7 @@ export type BurstKind =
     | "caught"
     | "bossHit"
     | "bossDefeat"
+    | "punch"
     | "regrow"
     | "drop"
 
@@ -121,6 +122,17 @@ export const BURSTS: Readonly<Record<BurstKind, ParticleLook>> = {
         size: 0.12,
         jitter: 0.4,
         drag: 2,
+    },
+    // A tiny pop of sparks where a punch lands (a placeholder to tune at
+    // preview).
+    punch: {
+        colors: ["#fbbf24", "#f59e0b", "#9ca3af"],
+        count: 6,
+        life: 0.25,
+        speed: 2.5,
+        spread: Math.PI * 2,
+        size: 0.09,
+        drag: 3,
     },
     // A faint green sparkle where an eaten dot grows back (KDA-269): a few
     // specks, short and slow, since many dots regrow.
