@@ -76,8 +76,14 @@ export type GameState = {
     // Timed effects on cells from breaths (see TileEffect in breath.ts).
     tiles: ActiveTile[]
     // One or two players, player 1 first. Each has its own character,
-    // breath, energy, score and tap buffer. Players pass through each other.
+    // breath, energy, score and tap buffer. Players pass through each other
+    // unless playersBump is set.
     players: Player[]
+    // Whether players bump into each other (KDA-262, the Players setting):
+    // a player can't move into another's cell (see playerBlocks). Off,
+    // they pass through each other. With one player it changes nothing.
+    // createGameState leaves it off; flow.ts sets it from the settings.
+    playersBump: boolean
     enemies: Character[]
     // The level's boss (see boss.ts), or null on a level without one. Not
     // an enemy: it has no enemy slot, and breath hooks never see it.
@@ -231,6 +237,7 @@ export function createGameState(
         floorIce: ice,
         tiles: [],
         players,
+        playersBump: false,
         enemies,
         boss: level.boss ? createBoss(level.boss.pos, level.boss.speed) : null,
         ticks: 0,
@@ -377,9 +384,12 @@ function tickPlayersOut(state: GameState, dt: number) {
 // RESPAWN_CLEAR_DISTANCE of it (the boss by its footprint's square), or is
 // in a move that ends on it or next to it. So nothing gliding in can catch
 // it on the tick it is back or the next; checking only for a catch at once
-// let an enemy just out of reach catch it a tick later.
+// let an enemy just out of reach catch it a tick later. When players bump,
+// the other player standing on the spawn, or moving onto it, holds it up
+// too (see playerBlocks), so the two never share a cell.
 function spawnClear(state: GameState, index: number): boolean {
     const spawn = state.spawns.players[index]
+    if (playerBlocks(state, state.players[index], spawn)) return false
     const cols = state.cells[0].length
     const rows = state.cells.length
     // `spawn` relative to `at`, the short way round.
@@ -408,10 +418,11 @@ function spawnClear(state: GameState, index: number): boolean {
 // Try to move `who` (player 1 unless given) one step, eating (and scoring)
 // any dot there and recording it in its eatenAt (cleared when the step eats
 // nothing), and filling its energy meter. The player then faces that way.
-// Returns true if the player moved; false if a wall or a solid enemy (see
-// EnemyStatus) blocked the step or the step was zero. Other players never
-// block it: players pass through each other. It doesn't know about sliding:
-// that is up to the caller (movePlayerTick).
+// Returns true if the player moved; false if a wall, a solid enemy (see
+// EnemyStatus) or, when players bump, another player (see playerBlocks)
+// blocked the step or the step was zero. Otherwise players pass through
+// each other. It doesn't know about sliding: that is up to the caller
+// (movePlayerTick).
 export function movePlayer(
     state: GameState,
     step: Vec2,
@@ -441,6 +452,7 @@ export function movePlayer(
         }
     }
     if (solidAt(state, target)) return false
+    if (playerBlocks(state, who, target)) return false
     if (value === Cell.dot) {
         cells[target.y][target.x] = Cell.none
         who.score += DOT_POINTS
@@ -465,6 +477,23 @@ export function movePlayer(
 function solidAt(state: GameState, cell: Vec2): boolean {
     return state.enemies.some(
         (e) => inPlay(e) && hasStatus(e, "solid") && samePos(e.pos, cell)
+    )
+}
+
+// Whether, when players bump (GameState.playersBump), another player in play
+// is on `cell` or moving into it (its logical cell, pos): `who` can't go
+// there, as if it were a wall. Only pos counts, not the cell a player is
+// gliding out of, so one player can follow right behind the other. A
+// player out of play never blocks, and enemies and the boss ignore players
+// either way. Players move in order, so of two heading into one cell on a
+// tick player 1 gets there and player 2 is blocked; and two players next to
+// each other can't swap cells, as each is on the cell the other wants.
+function playerBlocks(state: GameState, who: Player, cell: Vec2): boolean {
+    return (
+        state.playersBump &&
+        state.players.some(
+            (p) => p !== who && !p.out && samePos(p.character.pos, cell)
+        )
     )
 }
 
@@ -504,7 +533,9 @@ function wait(character: Glider) {
 // nothing changes after the game ends.
 //
 // Players move in order, player 1 first (so on a dot both step onto in the
-// same tick, player 1 eats it), and pass through each other. Each enemy, and
+// same tick, player 1 eats it), and pass through each other, unless they
+// bump (GameState.playersBump): then a player can't move into the other's
+// cell and waits there as at a wall (see playerBlocks). Each enemy, and
 // the boss, goes after the nearest player (see nearestTarget and
 // bossTarget).
 //
@@ -753,7 +784,8 @@ export function settle(state: GameState, dt: number): boolean {
 // isn't the player's opportunity, so the buffer is left alone: a tap made
 // during a slide is used at the first opportunity after it ends (a newer tap
 // replaces it, as always). A solid enemy ahead ends a slide as a wall would,
-// so the player is then free to move. The glide of a slide step (and only of
+// so the player is then free to move, and so does another player ahead when
+// players bump (see playerBlocks). The glide of a slide step (and only of
 // a slide step) runs at the breath's slideSpeedScale (Player.rate).
 function movePlayerTick(
     state: GameState,
@@ -776,8 +808,9 @@ function movePlayerTick(
 }
 
 // Player's slide step, if it is sliding (see movePlayerTick): whether it
-// moved, or null if it isn't sliding (or a solid enemy ahead ended the
-// slide), so it is free to make a move of its own.
+// moved, or null if it isn't sliding (or a solid enemy or, when players
+// bump, another player ahead ended the slide), so it is free to make a move
+// of its own.
 function slideTick(state: GameState, player: Player): boolean | null {
     const { cells } = state
     const { character } = player
@@ -785,6 +818,7 @@ function slideTick(state: GameState, player: Player): boolean | null {
     if (!slide) return null
     const ahead = vec2(character.pos.x + slide.x, character.pos.y + slide.y)
     if (solidAt(state, loopPos(cells, ahead))) return null
+    if (playerBlocks(state, player, loopPos(cells, ahead))) return null
     if (!movePlayer(state, slide, player)) return false
     player.rate = player.breather.breath.slideSpeedScale ?? 1
     return true
