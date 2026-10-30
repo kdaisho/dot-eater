@@ -9,7 +9,7 @@ import {
 } from "./eventEffects"
 import { takeEvents, type GameEvent } from "./events"
 import { step, type GameState, type MoveInput } from "./game"
-import { createParticles, type ParticleLook } from "./particles"
+import { BURSTS, createParticles, type ParticleLook } from "./particles"
 import { defaultSettings } from "./settings"
 import { createShake, SHAKES } from "./shake"
 import { fixedRandom, makeBoss, makeState, testBreath } from "./test/helpers"
@@ -91,7 +91,15 @@ describe("effectsForEvent", () => {
         expect(r.shakes).toEqual([SHAKES.bossDefeat])
     })
 
-    it("a caught burst and the caught shake when a player is caught", () => {
+    it("a small red burst and a small shake when a player is hurt", () => {
+        const r = run({ type: "hurt", player: 1, at: vec2(4, 1), damage: 25 })
+        expect(r.bursts).toEqual([{ kind: "hurt", at: vec2(4, 1) }])
+        expect(r.shakes).toEqual([SHAKES.hurt])
+        expect(BURSTS.hurt.count).toBeLessThan(BURSTS.caught.count)
+        expect(SHAKES.hurt).toBeLessThan(SHAKES.caught)
+    })
+
+    it("a caught burst and the caught shake when a player is knocked out", () => {
         for (const outForGood of [false, true]) {
             const r = run({
                 type: "playerCaught",

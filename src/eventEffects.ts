@@ -51,6 +51,10 @@ export function effectsForEvent(
             particles.burst("bossDefeat", bossCentre(event.at))
             shake.add(SHAKES.bossDefeat)
             return
+        case "hurt":
+            particles.burst("hurt", event.at)
+            shake.add(SHAKES.hurt)
+            return
         case "playerCaught":
             particles.burst("caught", event.at)
             shake.add(SHAKES.caught)
