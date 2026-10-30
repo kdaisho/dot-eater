@@ -18,7 +18,9 @@ export const SfxId = {
     enemyDefeated: "enemyDefeated",
     bossHit: "bossHit",
     bossDefeated: "bossDefeated",
-    // A player caught: a life lost, or taken out in co-op or versus.
+    // A player hurt with health left (KDA-257): a short knock.
+    hurt: "hurt",
+    // A player knocked out: its health gone.
     caught: "caught",
     // Versus: a player stunned by the other's breath.
     stunned: "stunned",
@@ -230,6 +232,26 @@ export const SFX: Readonly<Record<SfxId, readonly Tone[]>> = {
         },
     ],
     // The classic falling "caught" wail.
+    // A short, dull thump with a crunch: less dramatic than the knockout's
+    // long fall.
+    hurt: [
+        {
+            wave: "square",
+            at: 0,
+            duration: 0.12,
+            freq: 330,
+            freqEnd: 140,
+            volume: 0.25,
+            attack: 0.005,
+        },
+        {
+            wave: "noise",
+            at: 0,
+            duration: 0.08,
+            freq: 1200,
+            volume: 0.2,
+        },
+    ],
     caught: [
         {
             wave: "square",

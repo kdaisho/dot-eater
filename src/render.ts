@@ -8,6 +8,7 @@ import {
     type EnergyHud,
     type Look,
 } from "./breath"
+import type { Character } from "./character"
 import { AiType, Cell, CharacterId, SPRITE_SCALE } from "./constants"
 import {
     fogDistance,
@@ -16,7 +17,12 @@ import {
     lightCentres,
     type FogWrap,
 } from "./fog"
-import type { GameState, Player } from "./game"
+import {
+    playerVisible,
+    type GameState,
+    type HealthHud,
+    type Player,
+} from "./game"
 import { eatenDotVisible, glidePos, wrapCopies } from "./glide"
 import { jabLunge, type Jab } from "./jab"
 import { computeLayout, type Layout } from "./layout"
@@ -31,21 +37,24 @@ import { stunImmune, stunned } from "./versus"
 // What the HUD strip above the maze shows. Fields left out aren't drawn.
 export type Hud = {
     score?: number
-    lives?: number
+    // The player's health gauge, on the right (KDA-257).
+    health?: HealthHud
     // The energy meter, in the middle (see energyHud in breath.ts).
     energy?: EnergyHud
-    // With two players, each one's score and meter, player 1 first: drawn
-    // in place of `score` and `energy`, player 1 on the left and player 2
-    // on the right, in their marker colours, with the shared lives between.
+    // With two players, each one's score, meter and health, player 1
+    // first: drawn in place of `score`, `energy` and `health`, player 1 on
+    // the left and player 2 on the right, in their marker colours.
     players?: readonly PlayerHud[]
     // Versus: the round and tally (e.g. "Round 2 · 1–0"), drawn in the
-    // middle in place of the lives, which versus doesn't have.
+    // middle.
     round?: string
 }
 
 export type PlayerHud = {
     score: number
     energy: EnergyHud
+    // Its health gauge, drawn under its meter in its marker colour.
+    health?: HealthHud
     // Set while the player is out of play (see takeOut in game.ts): the
     // seconds until it is back, or null if it is out for good. Drawn in
     // place of its meter.
@@ -112,6 +121,9 @@ const COLORS = {
     meter: "#000",
     meterReady: "#f59e0b",
     meterCharging: "#9ca3af",
+    // The solo player's health gauge (with two players each one's is in
+    // its marker colour).
+    health: "#16a34a",
     // The boss's health bar: health left over a dark track, framed; and
     // its flash when hit.
     bossHealth: "#dc2626",
@@ -130,8 +142,7 @@ const FOG_SOFT_EDGE = 1.5
 // player nears rather than popping in.
 const FOG_REACH = Math.SQRT1_2
 
-// Each player is drawn as its character's emoji (ANIMALS in roster.ts), as
-// are the HUD's lives (player 1's).
+// Each player is drawn as its character's emoji (ANIMALS in roster.ts).
 function playerSprite(player: Player): string {
     return ANIMALS[player.breather.breath.animal].emoji
 }
@@ -272,7 +283,7 @@ export function createRenderer(
         ctx.fillStyle = COLORS.background
         ctx.fillRect(0, 0, width, height)
 
-        drawHud(ctx, hud, playerSprite(state.players[0]), width, hudHeight)
+        drawHud(ctx, hud, width, hudHeight)
 
         ctx.save()
         ctx.translate(0, hudHeight)
@@ -682,8 +693,9 @@ function drawCharacters(
 ) {
     ctx.textAlign = "center"
     ctx.textBaseline = "middle"
-    // Later characters are drawn on top of earlier ones: the players (player
-    // 1 first), then the enemies. In fog, enemies outside the light are
+    // Later characters are drawn on top of earlier ones: the held enemies
+    // (e.g. frozen, which players walk onto), the players (player 1 first),
+    // then the other enemies. In fog, enemies outside the light are
     // hidden; the players are always in it. A defeated enemy is hidden until
     // it blinks before coming back (enemyVisible). Statuses are drawn by
     // their Look: the colour as a disc behind the sprite, the emoji as a
@@ -697,10 +709,23 @@ function drawCharacters(
     // drawArrow). A player with a jab under way (see jab.ts) lunges along
     // it, with a fist just ahead (see drawFist).
     const marked = state.players.length > 1
-    // A player out of play (see takeOut in game.ts) isn't drawn.
+    const enemySprite = (enemy: Character) => ({
+        character: enemy,
+        sprite: ENEMY_SPRITES[enemy.ai],
+        rate: 1,
+        marker: null,
+        badge: null,
+        arrow: null,
+        jab: null,
+    })
+    const held = state.enemies.filter((e) => hasStatus(e, "holds"))
+    const free = state.enemies.filter((e) => !hasStatus(e, "holds"))
+    // A player out of play (see takeOut in game.ts) isn't drawn, and one
+    // invulnerable after a hit blinks (see playerVisible).
     const sprites = [
+        ...held.map(enemySprite),
         ...state.players.flatMap((player, i) =>
-            player.out
+            !playerVisible(player)
                 ? []
                 : [
                       {
@@ -719,15 +744,7 @@ function drawCharacters(
                       },
                   ]
         ),
-        ...state.enemies.map((enemy) => ({
-            character: enemy,
-            sprite: ENEMY_SPRITES[enemy.ai],
-            rate: 1,
-            marker: null,
-            badge: null,
-            arrow: null,
-            jab: null,
-        })),
+        ...free.map(enemySprite),
     ]
     // Fists are drawn after every character, so one isn't hidden under the
     // enemy it hits (players are drawn before enemies).
@@ -889,14 +906,13 @@ function drawArrow(
     ctx.restore()
 }
 
-// Score on the left, lives (as the player's emoji) on the right, the energy
-// meter in the middle. With two players (hud.players): player 1's score and
-// meter on the left, player 2's on the right, each in its marker colour,
-// and the shared lives (as hearts) in the middle.
+// Score on the left, the health gauge on the right, the energy meter in the
+// middle. With two players (hud.players): player 1's score, meter and
+// health on the left, player 2's on the right, each in its marker colour,
+// and in versus the round in the middle.
 function drawHud(
     ctx: CanvasRenderingContext2D,
     hud: Hud,
-    sprite: string,
     width: number,
     height: number
 ) {
@@ -912,18 +928,23 @@ function drawHud(
         ctx.textAlign = "left"
         ctx.fillText(`Score ${hud.score}`, pad, height / 2)
     }
-    if (hud.lives !== undefined) {
-        ctx.textAlign = "right"
-        ctx.fillText(
-            sprite.repeat(Math.max(0, hud.lives)),
-            width - pad,
-            height / 2
-        )
+    const h = height * METER_HEIGHT
+    const top = (height - h) / 2
+    if (hud.health) {
+        const w = width * HEALTH_WIDTH
+        const left = width - pad - w
+        drawGauge(ctx, hud.health, left, top, w, h, COLORS.health)
     }
     if (hud.energy) {
-        drawMeter(ctx, hud.energy, (width - width / 4) / 2, width / 4, height)
+        const w = width / 4
+        drawMeter(ctx, hud.energy, (width - w) / 2, top, w, h)
     }
 }
+
+// The bars' height, as a fraction of the HUD strip's.
+const METER_HEIGHT = 0.4
+// The solo health gauge's width, as a fraction of the HUD's.
+const HEALTH_WIDTH = 0.2
 
 // The HUD's share of each player's meter, as a fraction of its width.
 const PLAYER_METER = 0.15
@@ -955,19 +976,48 @@ function drawPlayersHud(
             // Squeezed into the meter's width, so it never runs into the
             // score on a narrow screen.
             ctx.fillText(outLabel(player.out), meterLeft + w / 2, height / 2, w)
-        } else if (player.stunned !== undefined) {
+            return
+        }
+        // With a health gauge, the meter (or the stun countdown) takes the
+        // top of the slot and the gauge the bottom.
+        const meter = player.health
+            ? { top: height * 0.1, h: height * 0.38 }
+            : { top: height * 0.3, h: height * METER_HEIGHT }
+        if (player.stunned !== undefined) {
             ctx.textAlign = "center"
             const label = stunLabel(player.stunned)
-            ctx.fillText(label, meterLeft + w / 2, height / 2)
+            const y = meter.top + meter.h / 2
+            ctx.save()
+            // Sized to the meter's band, so it stays clear of the gauge.
+            if (player.health) {
+                ctx.font = `${Math.round(meter.h * 1.1)}px monospace`
+            }
+            ctx.fillText(label, meterLeft + w / 2, y, w)
+            ctx.restore()
         } else {
-            drawMeter(ctx, player.energy, meterLeft, w, height, color)
+            drawMeter(
+                ctx,
+                player.energy,
+                meterLeft,
+                meter.top,
+                w,
+                meter.h,
+                color
+            )
+        }
+        if (player.health) {
+            const top = height * 0.6
+            drawGauge(
+                ctx,
+                player.health,
+                meterLeft,
+                top,
+                w,
+                height * 0.28,
+                color
+            )
         }
     })
-    if (hud.lives !== undefined) {
-        ctx.fillStyle = COLORS.text
-        ctx.textAlign = "center"
-        ctx.fillText(LIFE.repeat(Math.max(0, hud.lives)), width / 2, height / 2)
-    }
     if (hud.round !== undefined) {
         ctx.fillStyle = COLORS.text
         ctx.textAlign = "center"
@@ -1007,23 +1057,39 @@ export function outLabel(out: { respawnIn: number | null }): string {
     return `back in ${Math.max(1, Math.ceil(out.respawnIn - 1e-9))}`
 }
 
-// The shared lives of a 2-player game, which aren't any one character's.
-const LIFE = "❤️"
+// A health gauge: a bar `w` by `h` from (`left`, `top`), filled in `color`
+// up to the health left, framed in it too.
+function drawGauge(
+    ctx: CanvasRenderingContext2D,
+    gauge: HealthHud,
+    left: number,
+    top: number,
+    w: number,
+    h: number,
+    color: string
+) {
+    const fraction =
+        gauge.max > 0 ? Math.max(0, Math.min(1, gauge.health / gauge.max)) : 0
+    ctx.fillStyle = color
+    ctx.fillRect(left, top, w * fraction, h)
+    ctx.strokeStyle = color
+    ctx.lineWidth = 1
+    ctx.strokeRect(left, top, w, h)
+}
 
-// The energy meter: a framed bar `w` wide from `left`, filled up to the
-// energy, with a mark at every multiple of the breath's cost (so the player
-// sees how many breaths it holds). The fill is bright while a breath is
-// ready and grey otherwise. `frame` colours the frame (and the marks).
+// The energy meter: a framed bar `w` by `h` from (`left`, `top`), filled up
+// to the energy, with a mark at every multiple of the breath's cost (so the
+// player sees how many breaths it holds). The fill is bright while a breath
+// is ready and grey otherwise. `frame` colours the frame (and the marks).
 function drawMeter(
     ctx: CanvasRenderingContext2D,
     meter: EnergyHud,
     left: number,
+    top: number,
     w: number,
-    height: number,
+    h: number,
     frame: string = COLORS.meter
 ) {
-    const h = height * 0.4
-    const top = (height - h) / 2
     const fraction = meter.max > 0 ? Math.min(1, meter.energy / meter.max) : 0
     ctx.fillStyle = meter.ready ? COLORS.meterReady : COLORS.meterCharging
     ctx.fillRect(left, top, w * fraction, h)

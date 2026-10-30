@@ -53,13 +53,12 @@ export type GameEvent =
     // hit, before the knockback) and lost `damage` health, with some left.
     // A hit that takes its last health reports a playerCaught instead.
     | { type: "hurt"; player: number; at: Vec2; damage: number }
-    // An enemy or the boss caught a player on `at` (its cell). `outForGood`
-    // is true when the player won't be back: the solo game's last life, or
-    // co-op with the shared lives spent. A solo catch with lives left is
-    // followed by a playerRespawned for every player.
+    // A player was knocked out on `at` (its cell): a hit took its last
+    // health. `outForGood` is true when the player won't be back: in solo
+    // (the game is lost) and co-op; a versus player comes back later.
     | { type: "playerCaught"; player: number; at: Vec2; outForGood: boolean }
-    // A player is back in play on its spawn, `at`: after a solo catch, or
-    // when a 2-player wait is over.
+    // A player is back in play on its spawn, `at`, when its wait after a
+    // versus knockout is over.
     | { type: "playerRespawned"; player: number; at: Vec2 }
     // Versus: player `by`'s breath stunned `player`, on `at` (its cell).
     | { type: "playerStunned"; player: number; by: number; at: Vec2 }

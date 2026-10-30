@@ -27,9 +27,9 @@ import { allDirections, directions, samePos, vec2, type Vec2 } from "./vec2"
 //   own speed, but only where all four of its cells fit (see bossMove), so
 //   1-wide corridors are safe from it.
 //   Tile effects that block enemies block it too.
-// - Catching: touching it catches the player like an enemy (see caught in
-//   game.ts), anywhere on its footprint.
-// - A lost life sends it back to its spawn, keeping its damage (resetBoss).
+// - Touching: touching it hurts the player like an enemy, but harder (see
+//   touchedBy in game.ts and BOSS_DAMAGE), anywhere on its footprint. A
+//   hit sends nobody home: it carries on where it is.
 //
 // Boss levels have no wrap tunnels and no level ice (parseLevel checks), so
 // it never wraps or slides.
@@ -40,7 +40,8 @@ export type Boss = {
     pos: Vec2
     // pos before its latest move (as Character.lastPos), for the glide.
     lastPos: Vec2
-    // Where it starts, and goes back to after a lost life.
+    // Where it starts, and heads back to while no player is in play (see
+    // bossHomeStep).
     spawn: Vec2
     // Cells per second.
     speed: number
@@ -122,15 +123,6 @@ export function damageBoss(
 // Count the flash down by `dt` seconds.
 export function tickBoss(boss: Boss, dt: number) {
     boss.flash = Math.max(0, boss.flash - dt)
-}
-
-// After a lost life: back at its spawn, at rest, waiting out the grace
-// period again. Its health (and defeat) is kept.
-export function resetBoss(boss: Boss) {
-    boss.pos = vec2(boss.spawn.x, boss.spawn.y)
-    boss.lastPos = vec2(boss.spawn.x, boss.spawn.y)
-    boss.moveProgress = 0
-    boss.flash = 0
 }
 
 // ---- Movement ----

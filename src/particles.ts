@@ -61,6 +61,7 @@ export type Particle = {
 export type BurstKind =
     | "dot"
     | "defeat"
+    | "hurt"
     | "caught"
     | "bossHit"
     | "bossDefeat"
@@ -88,7 +89,18 @@ export const BURSTS: Readonly<Record<BurstKind, ParticleLook>> = {
         jitter: 0.15,
         drag: 2.5,
     },
-    // Red sparks round a player who was caught.
+    // A few red sparks round a player who was hurt (KDA-257): a smaller
+    // version of the knockout's.
+    hurt: {
+        colors: ["#dc2626", "#f87171"],
+        count: 8,
+        life: 0.4,
+        speed: 2.2,
+        spread: Math.PI * 2,
+        size: 0.1,
+        drag: 2.5,
+    },
+    // Red sparks round a player who was knocked out.
     caught: {
         colors: ["#dc2626", "#f87171", "#7f1d1d"],
         count: 18,

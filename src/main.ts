@@ -34,7 +34,7 @@ import {
     type TickInput,
     type TitleChoice,
 } from "./flow"
-import { totalScore, type GameState } from "./game"
+import { healthHud, totalScore, type GameState } from "./game"
 import {
     CONTROLS_ROWS,
     controlsRowLabel,
@@ -488,8 +488,8 @@ function render(alpha: number) {
     renderer.draw(game, lastAlpha, hud, rules, effects.of(shown))
 }
 
-// The versus HUD: each player's dots, meter, stun or respawn countdown, and
-// the round tally (no lives). The result screens keep showing the round
+// The versus HUD: each player's dots, meter, stun or respawn countdown,
+// health, and the round tally. The result screens keep showing the round
 // just played as it was during play.
 function versusHud(game: GameState, s: Screen): Hud {
     const match =
@@ -504,26 +504,28 @@ function versusHud(game: GameState, s: Screen): Hud {
             score: p.score,
             dots: p.dots,
             energy: energyHud(game, i),
+            health: healthHud(p),
             ...(p.out ? { out: { respawnIn: p.respawnIn } } : {}),
             ...(stunned(p) ? { stunned: p.stunnedFor } : {}),
         })),
     }
 }
 
-// The HUD: with one player its score and meter; with two, each one's.
+// The HUD: with one player its score, meter and health; with two, each
+// one's.
 function hudOf(game: GameState): Hud {
     if (game.players.length === 1) {
         return {
             score: totalScore(game),
-            lives: game.lives,
+            health: healthHud(game.players[0]),
             energy: energyHud(game),
         }
     }
     return {
-        lives: game.lives,
         players: game.players.map((p, i) => ({
             score: p.score,
             energy: energyHud(game, i),
+            health: healthHud(p),
             ...(p.out ? { out: { respawnIn: p.respawnIn } } : {}),
         })),
     }
