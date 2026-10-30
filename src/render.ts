@@ -8,6 +8,15 @@ import {
     type EnergyHud,
     type Look,
 } from "./breath"
+import {
+    clampView,
+    easeView,
+    inView,
+    viewFor,
+    viewOrigin,
+    type View,
+    type Viewport,
+} from "./camera"
 import type { Character } from "./character"
 import { AiType, Cell, CharacterId, SPRITE_SCALE } from "./constants"
 import {
@@ -193,6 +202,9 @@ const DOT_SCALE = 5 / 35
 export type RendererOptions = {
     // The window to fit; defaults to the global one.
     view?: Pick<Window, "innerWidth" | "innerHeight" | "devicePixelRatio">
+    // The time in milliseconds, for easing the view after the players
+    // (camera.ts); defaults to performance.now.
+    now?: () => number
 }
 
 export function createRenderer(
@@ -200,8 +212,13 @@ export function createRenderer(
     options: RendererOptions = {}
 ): Renderer {
     const view = options.view ?? window
+    const now = options.now ?? (() => performance.now())
     const ctx = canvas.getContext("2d")
     let layout: Layout | undefined
+    // The part of the maze on screen (see camera.ts), the game it follows
+    // and when it last moved. A new game or a new layout starts it afresh,
+    // right on the players.
+    let camera: { view: View; state: GameState; time: number } | undefined
     let cols = 0
     let rows = 0
     let last:
@@ -237,6 +254,43 @@ export function createRenderer(
         canvas.height = layout.pixelHeight
         canvas.style.width = `${layout.width}px`
         canvas.style.height = `${layout.height}px`
+        camera = undefined
+    }
+
+    // Where the view is this frame: eased after the players in play (their
+    // midpoint, both kept in view), or held where it was while nobody is in
+    // play. A fresh view starts right on the players (all of them when none
+    // is in play). It zooms in no closer than the layout's cell size.
+    function follow(
+        state: GameState,
+        alpha: number,
+        viewport: Viewport,
+        close: number
+    ) {
+        const maze = { cols, rows }
+        const time = now()
+        const inPlay = state.players.filter((p) => !p.out)
+        const viewOf = (players: readonly Player[]) =>
+            viewFor(
+                maze,
+                viewport,
+                players.map((p) =>
+                    glidePos(p.character, alpha, cols, rows, p.rate)
+                ),
+                close
+            )
+        let next: View
+        if (!camera || camera.state !== state) {
+            next = viewOf(inPlay.length > 0 ? inPlay : state.players)
+        } else if (inPlay.length === 0) {
+            next = camera.view
+        } else {
+            const dt = (time - camera.time) / 1000
+            const eased = easeView(camera.view, viewOf(inPlay), dt)
+            next = clampView(eased, maze, viewport, close)
+        }
+        camera = { view: next, state, time }
+        return next
     }
 
     function draw(
@@ -255,7 +309,21 @@ export function createRenderer(
             fit()
         }
         if (!ctx || !layout) return
-        const { cell, hudHeight, width, height, dpr } = layout
+        const { hudHeight, width, height, dpr } = layout
+        const viewport = { width, height: height - hudHeight }
+        // The view this frame (see camera.ts). From here on `cell` is its
+        // cell size: the layout's, or less while the view zooms out to keep
+        // two players in view.
+        const shot = follow(state, alpha, viewport, layout.cell)
+        const cell = shot.cell
+        const origin = viewOrigin(shot, viewport)
+        // The part of the maze on screen, in maze pixels; its corner on a
+        // whole device pixel so cell edges stay crisp.
+        const screen = {
+            x: Math.round(origin.x * cell * dpr) / dpr || 0,
+            y: Math.round(origin.y * cell * dpr) / dpr || 0,
+            ...viewport,
+        }
 
         // Work in CSS pixels; the transform scales to device pixels.
         ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
@@ -266,13 +334,26 @@ export function createRenderer(
 
         ctx.save()
         ctx.translate(0, hudHeight)
-        // Characters in a tunnel poke over the map edge; keep them on the map.
+        // Characters in a tunnel poke over the map edge; keep them on the map,
+        // and the map off the HUD.
+        const clipLeft = Math.max(0, -screen.x)
+        const clipTop = Math.max(0, -screen.y)
         ctx.beginPath()
-        ctx.rect(0, 0, cols * cell, rows * cell)
+        ctx.rect(
+            clipLeft,
+            clipTop,
+            Math.min(viewport.width, cols * cell - screen.x) - clipLeft,
+            Math.min(viewport.height, rows * cell - screen.y) - clipTop
+        )
         ctx.clip()
+        // Everything below is drawn in maze space, moved by the view.
+        if (screen.x !== 0 || screen.y !== 0) {
+            ctx.translate(-screen.x, -screen.y)
+        }
         const fog = rules.fog
             ? createFog(state, alpha, cols, rows, rules.fog.radius)
             : null
+        const seen = sight(fog, shot, viewport, cols, rows)
         // A shake moves everything in the maze, inside the still clip; the
         // fog's darkness doesn't move, so it covers the edge a shake bares.
         ctx.save()
@@ -282,8 +363,8 @@ export function createRenderer(
         }
         const aims =
             effects.aim && effects.guide === "aim" ? aimPreviews(state) : []
-        drawCells(ctx, state, alpha, cell, fog, aims)
-        drawBoss(ctx, state, alpha, cell, cols, rows, fog)
+        drawCells(ctx, state, alpha, cell, seen, aims)
+        drawBoss(ctx, state, alpha, cell, cols, rows, seen)
         drawCharacters(
             ctx,
             state,
@@ -291,12 +372,14 @@ export function createRenderer(
             cell,
             cols,
             rows,
-            fog,
+            seen,
             effects.guide === "arrow"
         )
-        if (effects.particles) drawParticles(ctx, effects.particles, cell, fog)
+        if (effects.particles) drawParticles(ctx, effects.particles, cell, seen)
         ctx.restore()
-        if (fog) drawDarkness(ctx, fog, cell, cols, rows, darknessLayer, dpr)
+        if (fog) {
+            drawDarkness(ctx, fog, cell, cols, rows, darknessLayer, dpr, screen)
+        }
         ctx.restore()
     }
 
@@ -359,6 +442,25 @@ function createFog(
     }
 }
 
+// What shows this frame: things in the view (or whose copy across a
+// tunnel is) and, in fog, in the light. The draw functions' `fog` parameter
+// takes it, and skips anything it hides.
+type Sight = { visible(p: Vec2): boolean }
+
+function sight(
+    fog: Fog | null,
+    view: View,
+    viewport: Viewport,
+    cols: number,
+    rows: number
+): Sight {
+    return {
+        visible: (p) =>
+            wrapCopies(p, cols, rows).some((c) => inView(view, viewport, c)) &&
+            (!fog || fog.visible(p)),
+    }
+}
+
 // Darken the map outside the light. With one player: per light centre (the
 // player and its copies across tunnels), a radial gradient over the part of
 // the map nearest that centre, clear in the middle and fading to full
@@ -371,6 +473,8 @@ function createFog(
 // dark, every light centre of every player clears its circle out of it
 // (destination-out, fading at the soft edge), and the layer goes over the
 // map. Without a 2D context for the layer, only `visible` hides things.
+// `screen` is the part of the map on screen, in the map's pixels: the layer
+// covers just that, so it keeps its size as the view moves and zooms.
 function drawDarkness(
     ctx: CanvasRenderingContext2D,
     fog: Fog,
@@ -378,12 +482,13 @@ function drawDarkness(
     cols: number,
     rows: number,
     layer: () => Layer,
-    dpr: number
+    dpr: number,
+    screen: Rect
 ) {
     const outer = fog.radius * cell
     const inner = Math.max(0, fog.radius - FOG_SOFT_EDGE) * cell
     if (fog.players.length > 1) {
-        drawSharedDarkness(ctx, fog, cell, cols, rows, layer(), dpr)
+        drawSharedDarkness(ctx, fog, cell, cols, rows, layer(), dpr, screen)
         return
     }
     for (const c of lightCentres(fog.players[0], cols, rows, fog.wrap)) {
@@ -407,6 +512,9 @@ function drawDarkness(
     }
 }
 
+// A rectangle, in pixels.
+type Rect = { x: number; y: number; width: number; height: number }
+
 // The canvas the 2-player darkness is drawn on, and its 2D context (null if
 // it has none).
 type Layer = {
@@ -421,15 +529,14 @@ function drawSharedDarkness(
     cols: number,
     rows: number,
     layer: Layer,
-    dpr: number
+    dpr: number,
+    screen: Rect
 ) {
-    const width = cols * cell
-    const height = rows * cell
     const dark = layer.ctx
     if (!dark) return
     // Resizing a canvas reallocates it, so only when the size changes.
-    const pixelWidth = Math.ceil(width * dpr)
-    const pixelHeight = Math.ceil(height * dpr)
+    const pixelWidth = Math.ceil(screen.width * dpr)
+    const pixelHeight = Math.ceil(screen.height * dpr)
     if (layer.canvas.width !== pixelWidth) layer.canvas.width = pixelWidth
     if (layer.canvas.height !== pixelHeight) layer.canvas.height = pixelHeight
     const outer = fog.radius * cell
@@ -438,15 +545,24 @@ function drawSharedDarkness(
     dark.setTransform(1, 0, 0, 1, 0, 0)
     dark.globalCompositeOperation = "source-over"
     dark.clearRect(0, 0, pixelWidth, pixelHeight)
-    dark.setTransform(dpr, 0, 0, dpr, 0, 0)
+    dark.setTransform(dpr, 0, 0, dpr, -screen.x * dpr, -screen.y * dpr)
     dark.globalCompositeOperation = "source-over"
     dark.fillStyle = `rgb(${COLORS.fog})`
-    dark.fillRect(0, 0, width, height)
+    dark.fillRect(0, 0, cols * cell, rows * cell)
     dark.globalCompositeOperation = "destination-out"
     for (const player of fog.players) {
         for (const c of lightCentres(player, cols, rows, fog.wrap)) {
             const x = (c.x + 0.5) * cell
             const y = (c.y + 0.5) * cell
+            // A light wholly off screen clears nothing that shows.
+            if (
+                x + outer < screen.x ||
+                x - outer > screen.x + screen.width ||
+                y + outer < screen.y ||
+                y - outer > screen.y + screen.height
+            ) {
+                continue
+            }
             const light = dark.createRadialGradient(x, y, inner, x, y, outer)
             light.addColorStop(0, "rgba(0, 0, 0, 1)")
             light.addColorStop(1, "rgba(0, 0, 0, 0)")
@@ -455,7 +571,7 @@ function drawSharedDarkness(
         }
     }
     dark.globalCompositeOperation = "source-over"
-    ctx.drawImage(layer.canvas, 0, 0, width, height)
+    ctx.drawImage(layer.canvas, screen.x, screen.y, screen.width, screen.height)
 }
 
 // Ice floor, walls and dots, plus the dot each player has just eaten while its
@@ -469,7 +585,7 @@ function drawCells(
     state: GameState,
     alpha: number,
     cell: number,
-    fog: Fog | null,
+    fog: Sight | null,
     aims: readonly AimPreview[]
 ) {
     const wall = cell * WALL_SCALE
@@ -573,7 +689,7 @@ function drawAimEdge(
     ctx: CanvasRenderingContext2D,
     aim: AimPreview,
     cell: number,
-    fog: Fog | null
+    fog: Sight | null
 ) {
     const inAim = new Set(aim.cells.map((c) => `${c.x},${c.y}`))
     const has = (x: number, y: number) => inAim.has(`${x},${y}`)
@@ -621,7 +737,7 @@ function drawBoss(
     cell: number,
     cols: number,
     rows: number,
-    fog: Fog | null
+    fog: Sight | null
 ) {
     const { boss } = state
     if (!boss || boss.defeated) return
@@ -665,7 +781,7 @@ function drawCharacters(
     cell: number,
     cols: number,
     rows: number,
-    fog: Fog | null,
+    fog: Sight | null,
     arrows: boolean
 ) {
     ctx.textAlign = "center"
@@ -773,7 +889,7 @@ function drawParticles(
     ctx: CanvasRenderingContext2D,
     particles: readonly Particle[],
     cell: number,
-    fog: Fog | null
+    fog: Sight | null
 ) {
     if (particles.length === 0) return
     ctx.save()
