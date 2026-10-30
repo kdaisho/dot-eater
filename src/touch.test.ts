@@ -1,18 +1,17 @@
 import { beforeEach, describe, expect, it } from "vite-plus/test"
+import { PLAYER_SPEED, TICK_RATE } from "./constants"
+import { step, type MoveInput } from "./game"
 import {
     InputState,
     KeyboardSource,
     PLAYER_1_KEYS,
     type DirectionAction,
 } from "./input"
+import { fixedRandom, makeState } from "./test/helpers"
 import {
-    isTap,
     isTouchDevice,
     SWIPE_DISTANCE,
     swipeDirection,
-    swipeHeld,
-    TAP_MAX_MS,
-    TAP_SLOP,
     TouchSource,
 } from "./touch"
 import { vec2 } from "./vec2"
@@ -35,31 +34,6 @@ describe("swipeDirection", () => {
         // 18 px each way is 25 px along the diagonal; a tie goes sideways.
         expect(swipeDirection(18, 18)).toBe("right")
         expect(swipeDirection(-18, -18)).toBe("left")
-    })
-})
-
-describe("isTap", () => {
-    it("is a short touch that hardly moved", () => {
-        expect(isTap(0, 0)).toBe(true)
-        expect(isTap(TAP_SLOP, TAP_MAX_MS)).toBe(true)
-        expect(isTap(TAP_SLOP + 1, 50)).toBe(false)
-        expect(isTap(0, TAP_MAX_MS + 1)).toBe(false)
-    })
-})
-
-describe("swipeHeld", () => {
-    it("keeps the previous direction behind a turn", () => {
-        expect(swipeHeld([], "up")).toEqual(["up"])
-        expect(swipeHeld(["right"], "up")).toEqual(["up", "right"])
-        expect(swipeHeld(["up", "right"], "left")).toEqual(["left", "up"])
-    })
-
-    it("drops it on a swipe back the way the player came", () => {
-        expect(swipeHeld(["right", "up"], "left")).toEqual(["left"])
-    })
-
-    it("keeps one direction on a repeated swipe", () => {
-        expect(swipeHeld(["right", "up"], "right")).toEqual(["right"])
     })
 })
 
@@ -96,13 +70,11 @@ describe("TouchSource", () => {
     let target: EventTarget
     let input: InputState
     let source: TouchSource
-    let now: number
 
     beforeEach(() => {
         target = new EventTarget()
         input = new InputState()
-        now = 0
-        source = new TouchSource(target, { now: () => now })
+        source = new TouchSource(target)
         source.attach(input)
     })
 
@@ -123,199 +95,173 @@ describe("TouchSource", () => {
         return event
     }
 
-    // A finger down at the first point, through the others, and up at the
-    // last.
-    function stroke(points: [number, number][], id = 1) {
-        const [first, ...rest] = points
-        pointer("pointerdown", first[0], first[1], id)
-        for (const [x, y] of rest) pointer("pointermove", x, y, id)
-        const last = rest.at(-1) ?? first
-        pointer("pointerup", last[0], last[1], id)
-    }
+    const down = (x: number, y: number, id = 1) =>
+        pointer("pointerdown", x, y, id)
+    const move = (x: number, y: number, id = 1) =>
+        pointer("pointermove", x, y, id)
+    const up = (x: number, y: number, id = 1) => pointer("pointerup", x, y, id)
 
     const p1 = () => input.player(0)
     const p2 = () => input.player(1)
     const held = (): DirectionAction[] =>
         (["up", "down", "left", "right"] as const).filter((a) => p1().isDown(a))
 
-    it("presses the swiped direction and keeps it held after the lift", () => {
-        stroke([
-            [100, 100],
-            [140, 105],
-        ])
+    it("holds the dragged direction while the finger is down, and lets go on the lift", () => {
+        down(100, 100)
+        move(140, 105)
         expect(p1().wasPressed("right")).toBe(true)
-        expect(held()).toEqual(["right"])
-        expect(p1().step()).toEqual(vec2(1, 0))
+        expect(p1().heldSteps()).toEqual([vec2(1, 0)])
         input.endTick()
-        // Still going right, with nothing pressed.
+        // Still held, with nothing pressed, while the finger stays down.
+        move(141, 104)
         expect(p1().heldSteps()).toEqual([vec2(1, 0)])
         expect(p1().wasPressed("right")).toBe(false)
+        up(141, 104)
+        expect(held()).toEqual([])
+        expect(p1().heldSteps()).toEqual([])
     })
 
-    it("swipes as soon as the finger has moved far enough", () => {
-        pointer("pointerdown", 100, 100)
-        pointer("pointermove", 100, 100 - SWIPE_DISTANCE + 1)
+    it("steers once the finger is SWIPE_DISTANCE from where it touched down", () => {
+        down(100, 100)
+        move(100, 100 - SWIPE_DISTANCE + 1)
         expect(held()).toEqual([])
-        pointer("pointermove", 100, 100 - SWIPE_DISTANCE)
+        expect(p1().wasPressed("up")).toBe(false)
+        move(100, 100 - SWIPE_DISTANCE)
         expect(held()).toEqual(["up"])
     })
 
-    it("keeps the previous direction behind a turn, newest first", () => {
-        stroke([
-            [0, 0],
-            [40, 0],
-        ])
-        stroke([
-            [0, 0],
-            [0, -40],
-        ])
-        expect(p1().heldSteps()).toEqual([vec2(0, -1), vec2(1, 0)])
-        stroke([
-            [0, 0],
-            [-40, 0],
-        ])
-        // Right is let go of; up stays behind left.
-        expect(p1().heldSteps()).toEqual([vec2(-1, 0), vec2(0, -1)])
-    })
-
-    it("lets go of the old direction on a swipe back", () => {
-        stroke([
-            [0, 0],
-            [40, 0],
-        ])
-        stroke([
-            [0, 0],
-            [-40, 0],
-        ])
-        expect(held()).toEqual(["left"])
-    })
-
-    it("turns again without lifting, measuring from the last swipe", () => {
-        pointer("pointerdown", 0, 0)
-        pointer("pointermove", 40, 0)
-        expect(held()).toEqual(["right"])
-        // Carrying on right isn't a new swipe.
+    it("presses only when the direction changes, not while dragging on", () => {
+        down(0, 0)
+        move(40, 0)
         input.endTick()
-        pointer("pointermove", 120, 0)
+        move(120, 0)
+        move(300, 10)
         expect(p1().wasPressed("right")).toBe(false)
-        // 30 px down from the last anchor (120, 0) turns down.
-        pointer("pointermove", 125, 30)
-        expect(p1().heldSteps()).toEqual([vec2(0, 1), vec2(1, 0)])
-        pointer("pointerup", 125, 30)
-        expect(p1().wasPressed("breath")).toBe(false)
-    })
-
-    it("presses the held direction again on a repeated swipe", () => {
-        stroke([
-            [0, 0],
-            [40, 0],
-        ])
-        input.endTick()
-        // A restart sets held directions aside until pressed again.
-        input.ignoreHeld()
-        expect(p1().heldSteps()).toEqual([])
-        stroke([
-            [0, 0],
-            [40, 0],
-        ])
-        expect(p1().wasPressed("right")).toBe(true)
-        expect(p1().heldSteps()).toEqual([vec2(1, 0)])
-    })
-
-    it("counts a flick whose movement only shows on the lift", () => {
-        pointer("pointerdown", 0, 0)
-        pointer("pointerup", 0, 50)
-        expect(held()).toEqual(["down"])
-        expect(p1().wasPressed("breath")).toBe(false)
-    })
-
-    it("breathes on a tap", () => {
-        pointer("pointerdown", 50, 50)
-        now = 100
-        pointer("pointermove", 55, 52)
-        pointer("pointerup", 55, 52)
-        expect(p1().wasPressed("breath")).toBe(true)
-        // Pressed and released, so it is a one-tick press.
-        expect(p1().isDown("breath")).toBe(false)
-        expect(held()).toEqual([])
-    })
-
-    it("doesn't breathe on a long press or a wobble", () => {
-        pointer("pointerdown", 50, 50)
-        now = TAP_MAX_MS + 1
-        pointer("pointerup", 50, 50)
-        expect(p1().wasPressed("breath")).toBe(false)
-
-        now = 0
-        pointer("pointerdown", 50, 50)
-        // Out past the slop and back, never a swipe.
-        pointer("pointermove", 50 + TAP_SLOP + 5, 50)
-        pointer("pointerup", 50, 50)
-        expect(p1().wasPressed("breath")).toBe(false)
-        expect(held()).toEqual([])
-    })
-
-    it("breathes on a second finger's tap while the first steers", () => {
-        pointer("pointerdown", 0, 0, 1)
-        pointer("pointermove", 40, 0, 1)
-        pointer("pointerdown", 300, 300, 2)
-        pointer("pointerup", 300, 300, 2)
-        expect(p1().wasPressed("breath")).toBe(true)
         expect(held()).toEqual(["right"])
+    })
+
+    it("re-steers without lifting, measuring from where the finger last went the held way", () => {
+        down(0, 0)
+        move(40, 0)
+        move(200, 0)
+        input.endTick()
+        // Up but not far enough yet: still right.
+        move(200, -SWIPE_DISTANCE + 1)
+        expect(held()).toEqual(["right"])
+        // SWIPE_DISTANCE up from (200, 0), however long the drag right
+        // was: up alone is held, freshly pressed.
+        move(200, -SWIPE_DISTANCE)
+        expect(p1().wasPressed("up")).toBe(true)
+        expect(p1().heldSteps()).toEqual([vec2(0, -1)])
+        // Back the way it came: SWIPE_DISTANCE down from where it last
+        // went up.
+        move(200, -60)
+        input.endTick()
+        move(200, -60 + SWIPE_DISTANCE - 1)
+        expect(held()).toEqual(["up"])
+        move(200, -60 + SWIPE_DISTANCE)
+        expect(p1().wasPressed("down")).toBe(true)
+        expect(p1().heldSteps()).toEqual([vec2(0, 1)])
+    })
+
+    it("forgets a wobble across the held way once the finger moves on", () => {
+        down(0, 0)
+        move(40, 0)
+        // 15 px down, then on to the right: the wobble is gone...
+        move(42, 15)
+        move(70, 15)
+        // ...so 15 px more down doesn't add up to a turn.
+        move(70, 30)
+        expect(held()).toEqual(["right"])
+        move(70, 15 + SWIPE_DISTANCE)
+        expect(held()).toEqual(["down"])
+    })
+
+    it("counts a flick whose movement only shows on the lift as a tap of that way", () => {
+        down(0, 0)
+        up(0, 50)
+        // Pressed for this tick (so it moves a cell), held no more.
+        expect(p1().wasPressed("down")).toBe(true)
+        expect(p1().pressedStep()).toEqual(vec2(0, 1))
+        expect(held()).toEqual([])
+    })
+
+    it("doesn't breathe or press anything on a tap", () => {
+        down(50, 50)
+        move(55, 52)
+        up(55, 52)
+        for (const action of ["breath", "punch", "up", "right"] as const) {
+            expect(p1().wasPressed(action)).toBe(false)
+        }
+    })
+
+    it("lets the newest finger on the board steer", () => {
+        down(0, 0, 1)
+        move(40, 0, 1)
+        // A second finger takes over: the first one's direction goes...
+        down(300, 300, 2)
+        expect(held()).toEqual([])
+        // ...and the first one's moves count no more.
+        move(40, 80, 1)
+        expect(held()).toEqual([])
+        move(300, 340, 2)
+        expect(held()).toEqual(["down"])
+        // Lifting the first one changes nothing; lifting the second stops.
+        up(40, 80, 1)
+        expect(held()).toEqual(["down"])
+        up(300, 340, 2)
+        expect(held()).toEqual([])
     })
 
     it("drives player 1 only", () => {
-        stroke([
-            [0, 0],
-            [40, 0],
-        ])
-        pointer("pointerdown", 0, 0)
-        pointer("pointerup", 0, 0)
+        down(0, 0)
+        move(40, 0)
         expect(p2().isDown("right")).toBe(false)
-        expect(p2().wasPressed("breath")).toBe(false)
     })
 
-    it("ignores the mouse by default, and a cancelled touch", () => {
+    it("ignores the mouse by default", () => {
         pointer("pointerdown", 0, 0, 1, "mouse")
-        pointer("pointerup", 0, 0, 1, "mouse")
-        expect(p1().wasPressed("breath")).toBe(false)
+        pointer("pointermove", 40, 0, 1, "mouse")
+        expect(held()).toEqual([])
+    })
 
-        pointer("pointerdown", 0, 0)
-        pointer("pointercancel", 0, 0)
-        pointer("pointerup", 0, 0)
-        expect(p1().wasPressed("breath")).toBe(false)
+    it("lets go on a cancelled touch", () => {
+        down(0, 0)
+        move(40, 0)
+        pointer("pointercancel", 40, 0)
+        expect(held()).toEqual([])
+        move(80, 0)
+        expect(held()).toEqual([])
     })
 
     it("keeps the touch from scrolling or zooming the page", () => {
-        expect(pointer("pointerdown", 0, 0).defaultPrevented).toBe(true)
+        expect(down(0, 0).defaultPrevented).toBe(true)
     })
 
-    it("lets go on release and on detach, and listens no more", () => {
-        stroke([
-            [0, 0],
-            [40, 0],
-        ])
+    it("lets go on release, steering again only once the finger drags anew", () => {
+        down(0, 0)
+        move(40, 0)
         source.release()
         expect(held()).toEqual([])
+        // Still down: on the way it went, but measured from where it was
+        // let go.
+        move(40 + SWIPE_DISTANCE - 1, 0)
+        expect(held()).toEqual([])
+        move(40 + SWIPE_DISTANCE, 0)
+        expect(held()).toEqual(["right"])
+    })
 
-        stroke([
-            [0, 0],
-            [0, 40],
-        ])
+    it("lets go on detach, and listens no more", () => {
+        down(0, 0)
+        move(0, 40)
         source.detach()
         expect(held()).toEqual([])
-        stroke([
-            [0, 0],
-            [40, 0],
-        ])
+        down(0, 0)
+        move(40, 0)
         expect(held()).toEqual([])
     })
 
-    // Regression (PR #56 review): a swipe's hold outlived newer input. An
-    // arrow (or D-pad, or pad) pressed for a direction the swipe held made
-    // no press edge, so after swiping left then up, holding left kept going
-    // up, and letting go never stopped the player.
-    describe("with another source", () => {
+    describe("with the keyboard", () => {
         const keys = new EventTarget()
         beforeEach(() =>
             new KeyboardSource([PLAYER_1_KEYS], keys).attach(input)
@@ -323,45 +269,40 @@ describe("TouchSource", () => {
         const key = (type: string, code: string) =>
             keys.dispatchEvent(Object.assign(new Event(type), { code }))
 
-        it("lets a newer key press win over the swipe, and stop on release", () => {
-            stroke([
-                [0, 0],
-                [-40, 0],
-            ])
-            stroke([
-                [0, 0],
-                [0, -40],
-            ])
+        it("lets a newer key press win over the drag, and stop on release", () => {
+            down(0, 0)
+            move(0, -40)
             input.endTick()
             key("keydown", "ArrowLeft")
             expect(p1().pressedStep()).toEqual(vec2(-1, 0))
             expect(p1().heldSteps()).toEqual([vec2(-1, 0)])
             key("keyup", "ArrowLeft")
-            // Nothing holds anything now: the player stops.
+            // Nothing holds anything now, the finger still down: the
+            // player stops.
             expect(held()).toEqual([])
+            // Dragging on the same way a little doesn't take back over...
+            move(0, -50)
+            expect(held()).toEqual([])
+            // ...a whole SWIPE_DISTANCE does: the newest input wins again.
+            move(0, -40 - SWIPE_DISTANCE)
+            expect(held()).toEqual(["up"])
         })
 
-        it("lets the next swipe steer again after a key", () => {
-            stroke([
-                [0, 0],
-                [40, 0],
-            ])
-            key("keydown", "ArrowUp")
-            key("keyup", "ArrowUp")
-            stroke([
-                [0, 0],
-                [0, 40],
-            ])
-            // No fallback left over from before the key press.
-            expect(p1().heldSteps()).toEqual([vec2(0, 1)])
+        it("lets a newer drag win over a held key", () => {
+            key("keydown", "ArrowRight")
+            input.endTick()
+            down(0, 0)
+            move(0, 40)
+            expect(p1().pressedStep()).toEqual(vec2(0, 1))
+            expect(p1().heldSteps()[0]).toEqual(vec2(0, 1))
+            key("keyup", "ArrowRight")
         })
 
-        it("doesn't drop the swipe for a breath or pause key", () => {
-            stroke([
-                [0, 0],
-                [40, 0],
-            ])
+        it("doesn't drop the drag for a breath, punch or pause key", () => {
+            down(0, 0)
+            move(40, 0)
             key("keydown", "ShiftRight")
+            key("keydown", "Slash")
             key("keydown", "KeyP")
             expect(held()).toEqual(["right"])
         })
@@ -369,15 +310,13 @@ describe("TouchSource", () => {
 
     // Regression (PR #56 review): after a swipe left and a restart
     // (ignoreHeld), ArrowLeft couldn't move left: the swipe still held
-    // left, so it stayed set aside. main releases the swipe whenever a game
+    // left, so it stayed set aside. main releases the drag whenever a game
     // starts or ends.
-    it("frees a released swipe's direction for the keys after a restart", () => {
+    it("frees a released drag's direction for the keys after a restart", () => {
         const keys = new EventTarget()
         new KeyboardSource([PLAYER_1_KEYS], keys).attach(input)
-        stroke([
-            [0, 0],
-            [-40, 0],
-        ])
+        down(0, 0)
+        move(-40, 0)
         input.endTick()
         source.release()
         input.ignoreHeld()
@@ -386,5 +325,61 @@ describe("TouchSource", () => {
         )
         expect(p1().pressedStep()).toEqual(vec2(-1, 0))
         expect(p1().heldSteps()).toEqual([vec2(-1, 0)])
+    })
+
+    // The drag in a game: as main builds player 1's MoveInput each tick.
+    describe("steering the player", () => {
+        // A corridor along row 1 with one side opening north at x = 2.
+        const junction = [
+            [1, 1, 2, 1, 1, 1],
+            [2, 2, 2, 2, 2, 2],
+            [1, 1, 1, 1, 1, 1],
+        ] as const
+        const ticksPerCell = TICK_RATE / PLAYER_SPEED
+
+        function run(state: ReturnType<typeof makeState>, ticks: number) {
+            for (let i = 0; i < ticks; i++) {
+                const move: MoveInput = {
+                    held: p1().heldSteps(),
+                    pressed: p1().pressedStep(),
+                }
+                step(state, 1 / TICK_RATE, move, fixedRandom(0))
+                input.endTick()
+            }
+        }
+        const at = (state: ReturnType<typeof makeState>) =>
+            state.players[0].character.pos
+
+        it("moves while the finger is down and stops at the next cell on the lift", () => {
+            const state = makeState(junction, { x: 0, y: 1 })
+            down(0, 0)
+            move(40, 0)
+            run(state, ticksPerCell)
+            expect(at(state)).toEqual(vec2(1, 1))
+            run(state, ticksPerCell)
+            expect(at(state)).toEqual(vec2(2, 1))
+            up(40, 0)
+            // It finishes the glide into (2, 1) and stops there.
+            run(state, ticksPerCell * 3)
+            expect(at(state)).toEqual(vec2(2, 1))
+        })
+
+        it("buffers a turn dragged just before a junction, like a key tap", () => {
+            const state = makeState(junction, { x: 1, y: 1 })
+            down(0, 0)
+            move(40, 0)
+            run(state, ticksPerCell)
+            // Gliding into the junction at (2, 1).
+            expect(at(state)).toEqual(vec2(2, 1))
+            run(state, 3)
+            // Up, before it gets there.
+            move(40, -40)
+            run(state, 1)
+            expect(state.players[0].bufferedStep).toEqual(vec2(0, -1))
+            run(state, ticksPerCell - 5)
+            expect(at(state)).toEqual(vec2(2, 1))
+            run(state, 1)
+            expect(at(state)).toEqual(vec2(2, 0))
+        })
     })
 })

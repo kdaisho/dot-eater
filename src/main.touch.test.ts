@@ -2,12 +2,15 @@
 import { beforeAll, describe, expect, it, vi } from "vite-plus/test"
 import { END_CONFIRM_DELAY } from "./flow"
 import { createGameState, step, type MoveInput, type Outcome } from "./game"
+import { BUTTONS_SPACE, computeLayout, controlsSpace } from "./layout"
+import { levels } from "./levels"
 import { ANIMAL_IDS } from "./roster"
 import { SETTINGS_KEY } from "./settings"
 
-// main on a phone: overlays are tapped, swipes on the play area steer and
-// taps breathe, and the pause button pauses. (A separate file, since main
-// is imported once per module graph.)
+// main on a phone: overlays are tapped, a drag on the play area steers
+// while the finger is down, the punch and breath buttons press, and the
+// pause button pauses. (A separate file, since main is imported once per
+// module graph.)
 
 vi.mock("canvas-confetti", () => ({ default: vi.fn() }))
 
@@ -27,7 +30,7 @@ vi.mock("./game", async (importOriginal) => {
 })
 
 // Keep the real touch source, but count the times main lets go of the
-// swipe.
+// drag.
 const touchReleases = vi.hoisted(() => ({ count: 0 }))
 vi.mock("./touch", async (importOriginal) => {
     const actual = await importOriginal<typeof import("./touch")>()
@@ -58,10 +61,16 @@ function tap(selector: string) {
     vi.advanceTimersByTime(FRAMES_MS)
 }
 
-function pointer(target: Element, type: string, x: number, y: number) {
+function pointer(
+    target: Element,
+    type: string,
+    x: number,
+    y: number,
+    pointerId = 1
+) {
     target.dispatchEvent(
         Object.assign(new Event(type, { bubbles: true, cancelable: true }), {
-            pointerId: 1,
+            pointerId,
             pointerType: "touch",
             clientX: x,
             clientY: y,
@@ -79,6 +88,14 @@ const moves = (from = 0): MoveInput[] =>
 describe("main on a touch screen", () => {
     beforeAll(async () => {
         vi.useFakeTimers()
+        // happy-dom's own controls, which the DOM types don't know: a small
+        // window on its side.
+        const { happyDOM } = window as unknown as {
+            happyDOM: {
+                setViewport(size: { width: number; height: number }): void
+            }
+        }
+        happyDOM.setViewport({ width: 600, height: 500 })
         // A touch screen, so the touch-only parts show.
         Object.defineProperty(navigator, "maxTouchPoints", {
             configurable: true,
@@ -121,23 +138,106 @@ describe("main on a touch screen", () => {
         expect(document.body.dataset.playing).toBe("on")
     })
 
-    it("steers with a swipe that sticks and breathes on a tap", () => {
+    it("fits the maze beside the punch and breath buttons' band, without the D-pad", () => {
+        expect(document.querySelector("[data-action=punch]")).not.toBeNull()
+        expect(document.querySelector("[data-action=breath]")).not.toBeNull()
+        const map = levels[0]
+        const cols = map.cells[0].length
+        const rows = map.cells.length
+        const room = controlsSpace(600, 500, "buttons")
+        expect(room.width).toBe(BUTTONS_SPACE)
+        const fitted = computeLayout(600 - room.width, 500, cols, rows)
+        // The band costs the maze some size here, so the test can tell.
+        expect(fitted.cell).toBeLessThan(
+            computeLayout(600, 500, cols, rows).cell
+        )
+        expect(el("canvas").style.width).toBe(`${fitted.width}px`)
+    })
+
+    it("steers while a finger drags on the board, and stops on the lift", () => {
         const play = el("#play")
         const from = vi.mocked(step).mock.calls.length
         pointer(play, "pointerdown", 100, 100)
         pointer(play, "pointermove", 100, 60)
-        pointer(play, "pointerup", 100, 60)
         vi.advanceTimersByTime(FRAMES_MS)
-        const after = moves(from)
-        expect(after[0]?.pressed).toEqual({ x: 0, y: -1 })
-        // Still held after the lift.
-        expect(after.at(-1)?.held).toEqual([{ x: 0, y: -1 }])
+        const during = moves(from)
+        expect(during[0]?.pressed).toEqual({ x: 0, y: -1 })
+        // Held, and not pressed again, while the finger stays down.
+        expect(during.at(-1)?.held).toEqual([{ x: 0, y: -1 }])
+        expect(during.at(-1)?.pressed).toEqual({ x: 0, y: 0 })
 
+        pointer(play, "pointerup", 100, 60)
+        const lifted = vi.mocked(step).mock.calls.length
+        vi.advanceTimersByTime(FRAMES_MS)
+        expect(moves(lifted)[0]?.held).toEqual([])
+    })
+
+    it("doesn't breathe on a tap on the board", () => {
+        const play = el("#play")
         const before = vi.mocked(step).mock.calls.length
         pointer(play, "pointerdown", 100, 100)
         pointer(play, "pointerup", 100, 100)
         vi.advanceTimersByTime(FRAMES_MS)
-        expect(moves(before).filter((m) => m.breath)).toHaveLength(1)
+        expect(moves(before).filter((m) => m.breath)).toHaveLength(0)
+    })
+
+    it.each(["punch", "breath"] as const)(
+        "steers with one finger while another presses %s",
+        (action) => {
+            const play = el("#play")
+            const button = el(`#touch-controls [data-action=${action}]`)
+            const from = vi.mocked(step).mock.calls.length
+            pointer(play, "pointerdown", 100, 100, 1)
+            pointer(play, "pointermove", 140, 100, 1)
+            pointer(button, "pointerdown", 0, 0, 2)
+            vi.advanceTimersByTime(FRAMES_MS)
+            // Held down over several ticks: one press.
+            const both = moves(from)
+            expect(both.length).toBeGreaterThan(1)
+            expect(both.filter((m) => m[action])).toHaveLength(1)
+            expect(both[0]?.[action]).toBe(true)
+            expect(both.at(-1)?.held).toEqual([{ x: 1, y: 0 }])
+            // Lifting the button's finger leaves the steering finger alone.
+            pointer(button, "pointerup", 0, 0, 2)
+            const after = vi.mocked(step).mock.calls.length
+            vi.advanceTimersByTime(FRAMES_MS)
+            expect(moves(after).at(-1)?.held).toEqual([{ x: 1, y: 0 }])
+            pointer(play, "pointerup", 140, 100, 1)
+            vi.advanceTimersByTime(FRAMES_MS)
+        }
+    )
+
+    it("lights the breath button while player 1 can breathe", () => {
+        const breath = el("#touch-controls [data-action=breath]")
+        // The game being played: what the latest step was given.
+        vi.advanceTimersByTime(FRAMES_MS)
+        const game = vi.mocked(step).mock.lastCall?.[0]
+        const breather = game!.players[0].breather
+        breather.energy = 0
+        vi.advanceTimersByTime(FRAMES_MS)
+        expect(breath.classList.contains("ready")).toBe(false)
+        breather.energy = breather.breath.maxEnergy
+        breather.cooldown = 0
+        vi.advanceTimersByTime(FRAMES_MS)
+        expect(breath.classList.contains("ready")).toBe(true)
+    })
+
+    it("lets a key take over from the drag", () => {
+        const play = el("#play")
+        pointer(play, "pointerdown", 100, 100)
+        pointer(play, "pointermove", 100, 140)
+        vi.advanceTimersByTime(FRAMES_MS)
+        dispatchEvent(new KeyboardEvent("keydown", { code: "ArrowLeft" }))
+        const from = vi.mocked(step).mock.calls.length
+        vi.advanceTimersByTime(FRAMES_MS)
+        expect(moves(from)[0]?.pressed).toEqual({ x: -1, y: 0 })
+        expect(moves(from)[0]?.held).toEqual([{ x: -1, y: 0 }])
+        dispatchEvent(new KeyboardEvent("keyup", { code: "ArrowLeft" }))
+        // The finger still down holds nothing now.
+        const after = vi.mocked(step).mock.calls.length
+        vi.advanceTimersByTime(FRAMES_MS)
+        expect(moves(after)[0]?.held).toEqual([])
+        pointer(play, "pointerup", 100, 140)
     })
 
     it("pauses on the pause button and resumes on a tap on Resume", () => {
@@ -203,18 +303,18 @@ describe("main on a touch screen", () => {
 
     // Regression (PR #56 review): the swipe kept holding left through the
     // game over, so the retry set left aside (ignoreHeld) and ArrowLeft
-    // couldn't move left until the player swiped left again.
-    it("lets go of a swipe when the game ends, so the keys work after Retry", () => {
+    // couldn't move left until the player swiped left again. A finger kept
+    // down through the game over could do the same with a drag.
+    it("lets go of a drag when the game ends, so the keys work after Retry", () => {
         const play = el("#play")
         pointer(play, "pointerdown", 100, 100)
         pointer(play, "pointermove", 60, 100)
-        pointer(play, "pointerup", 60, 100)
         vi.advanceTimersByTime(FRAMES_MS)
-        // Pausing and resuming keep the swipe.
+        // Pausing (with another finger) and resuming keep the drag.
         const releases = touchReleases.count
         const pause = el("#touch-controls [data-action=pause]")
-        pointer(pause, "pointerdown", 0, 0)
-        pointer(pause, "pointerup", 0, 0)
+        pointer(pause, "pointerdown", 0, 0, 2)
+        pointer(pause, "pointerup", 0, 0, 2)
         vi.advanceTimersByTime(FRAMES_MS)
         tap("#overlay li[data-index='0']")
         expect(screen()).toBe("playing")
@@ -238,6 +338,7 @@ describe("main on a touch screen", () => {
         expect(moves(from)[0]?.pressed).toEqual({ x: -1, y: 0 })
         expect(moves(from).at(-1)?.held).toEqual([{ x: -1, y: 0 }])
         dispatchEvent(new KeyboardEvent("keyup", { code: "ArrowLeft" }))
+        pointer(play, "pointerup", 60, 100)
     })
 
     it("picks an end screen's item once its confirm delay is over", () => {

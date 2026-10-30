@@ -8,7 +8,12 @@ import { browserAudioContext, createAudio } from "./audio"
 import { playEventSounds, screenSound } from "./sound"
 import { energyHud } from "./breath"
 import { MAX_FRAME_MS, TICK_MS } from "./constants"
-import { createTouchControls, DpadSource, setControls } from "./dpad"
+import {
+    createTouchControls,
+    DpadSource,
+    setBreathReady,
+    setControls,
+} from "./dpad"
 import { applyMotion, effectsForEvents } from "./eventEffects"
 import { takeEvents, type GameEvent } from "./events"
 import {
@@ -126,17 +131,18 @@ const touch = isTouchDevice(window)
 
 const canvas = document.getElementById("game")
 if (!(canvas instanceof HTMLCanvasElement)) throw new Error("No #game canvas")
-// Touch: swipes and taps on the play area steer player 1 (TouchSource);
-// the optional on-screen D-pad, breath and pause buttons (dpad.ts) do too.
-// The D-pad shows on touch devices when the Show D-pad setting is on
-// (applyDpad, live as the setting changes).
+// Touch: dragging on the play area steers player 1 while the finger is
+// down (TouchSource); the on-screen pause, punch and breath buttons
+// (dpad.ts) show during play on touch devices. The optional D-pad steers
+// too, alongside the drag: it shows on touch devices when the Show D-pad
+// setting is on (applyDpad, live as the setting changes).
 const playArea = document.getElementById("play") ?? canvas
 const touchControls = createTouchControls()
 const touchSource = new TouchSource(playArea)
 let dpadShown = false
 setControls(document, { touch, dpad: false, playing: false })
 
-// The renderer fits the maze into the window less the D-pad's band.
+// The renderer fits the maze into the window less the touch controls' band.
 const renderer = createRenderer(canvas, {
     view: {
         get innerWidth() {
@@ -153,11 +159,12 @@ const renderer = createRenderer(canvas, {
 addEventListener("resize", () => renderer.resize())
 
 function controlsRoom() {
-    return controlsSpace(innerWidth, innerHeight, dpadShown)
+    const shown = dpadShown ? "dpad" : touch ? "buttons" : "none"
+    return controlsSpace(innerWidth, innerHeight, shown)
 }
 
-// Show or hide the on-screen D-pad and breath button as the settings say,
-// refitting the maze when that changes.
+// Show or hide the on-screen D-pad as the settings say, refitting the maze
+// when that changes.
 function applyDpad() {
     const on = touch && settings.showDpad
     if (on === dpadShown) return
@@ -403,9 +410,10 @@ function enter(prev: Screen, next: Screen) {
     screen = next
     pads.setAssignment(padAssignment(next))
     setControls(document, { playing: next.kind === "playing" })
-    // A swipe holds its direction until newer input; a game starting or
-    // ending (not a pause or resume) lets go of it, so it neither steers
-    // the next game nor sets that direction aside for the keys there.
+    // A drag holds its direction while the finger is down; a game starting
+    // or ending (not a pause or resume) lets go of it, so it neither steers
+    // the next game nor sets that direction aside for the keys there. A
+    // finger still down steers again once it drags anew.
     const wasPlaying = prev.kind === "playing"
     const isPlaying = next.kind === "playing"
     if (
@@ -479,6 +487,7 @@ function render(alpha: number) {
     const shown = baseScreen(screen)
     const game = gameOf(shown)
     if (!game) return renderer.clear()
+    showBreathReady(energyHud(game).ready)
     if (shown.kind === "playing" || shown.kind === "ending") {
         lastAlpha = alpha
     }
@@ -486,6 +495,15 @@ function render(alpha: number) {
     const rules = "level" in shown ? levels[shown.level]?.rules : undefined
     const hud = game.mode === "versus" ? versusHud(game, shown) : hudOf(game)
     renderer.draw(game, lastAlpha, hud, rules, effects.of(shown))
+}
+
+// The breath button looks ready while player 1's meter shows ready
+// (amber). Set on the DOM only when that changes.
+let breathReady: boolean | undefined
+function showBreathReady(ready: boolean) {
+    if (ready === breathReady) return
+    breathReady = ready
+    setBreathReady(touchControls, ready)
 }
 
 // The versus HUD: each player's dots, meter, stun or respawn countdown,

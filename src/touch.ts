@@ -5,37 +5,38 @@ import type {
     PlayerInput,
 } from "./input"
 
-// Touch source: swipes on the play area steer player 1 and taps breathe.
-// Touch drives player 1 only; 2-player modes stay on keyboard and pads.
+// Touch source: dragging on the play area steers player 1 while the finger
+// is down. Touch drives player 1 only; 2-player modes stay on keyboard and
+// pads. Punch and breath are on-screen buttons (dpad.ts), so a tap on the
+// board does nothing.
 //
-// A swipe turns the player and the turn sticks after the finger lifts, so
-// the player keeps going the way it was last sent, as in other phone maze
-// games (a keyboard player has to hold an arrow instead). The previous
-// swipe stays held as a fallback, the way a keyboard player holds the old
-// arrow while pressing the new one: a turn swiped before a junction waits
-// for it while the player carries on, and the player turns along a corner
-// rather than stopping against it. A swipe back the way the player came
-// drops the old direction, so the player never bounces back. Swiping the
-// direction already held presses it again, so it also counts after a
-// restart has set held directions aside (InputState.ignoreHeld).
+// A finger that touches the board and drags SWIPE_DISTANCE holds the way it
+// went, by its stronger axis, as an arrow key is held: the direction is
+// pressed when it changes, so a turn made just before a junction is
+// buffered like a key tap, and released when the finger lifts, so the
+// player stops at the next cell like letting go of a key. Only the newest
+// direction is held: there is no fallback to the one before.
 //
-// One finger can keep steering without lifting: after each swipe the
-// distance is measured again from where the finger is, so drawing an L
-// turns twice. A short touch that hardly moves is a tap: it presses breath.
-// It has no DOM access beyond the injected event target, and the clock is
-// injected, so tests drive it with plain events.
+// Dragging another way re-steers without lifting. The distance is measured
+// from an anchor that keeps up with the finger while it moves on the way
+// held (and stays put while it moves any other way), so a turn or a
+// reversal always takes SWIPE_DISTANCE from where the finger last went the
+// held way, however long the drag has been, and a wobble across the way
+// held is forgotten once the finger moves on.
+//
+// The newest finger on the board steers: another finger touching down
+// takes over (the first one's direction is let go of). A direction pressed
+// by any other control (a key, a pad, the D-pad) drops the drag's
+// direction (PlayerInput.latch), so the newest input wins; the finger then
+// has to drag SWIPE_DISTANCE again to steer. It has no DOM access beyond
+// the injected event target, so tests drive it with plain events.
 
-// How far (CSS pixels) a finger must move before it counts as a swipe.
+// How far (CSS pixels) a finger must drag before it steers, or steers
+// another way.
 export const SWIPE_DISTANCE = 24
-// A touch that moved no further than this (CSS pixels) from where it went
-// down can be a tap.
-export const TAP_SLOP = 12
-// A touch held longer than this (ms) isn't a tap, so a thumb resting on the
-// screen doesn't breathe when it lifts.
-export const TAP_MAX_MS = 400
 
 // The direction a finger moved, by its stronger axis, or undefined while it
-// hasn't moved SWIPE_DISTANCE. Screen y grows downwards.
+// hasn't moved `distance`. Screen y grows downwards.
 export function swipeDirection(
     dx: number,
     dy: number,
@@ -46,32 +47,6 @@ export function swipeDirection(
     return dy < 0 ? "up" : "down"
 }
 
-// Whether a touch that went down `ms` ago and lifted `travel` CSS pixels at
-// most from where it started, without swiping, is a tap.
-export function isTap(travel: number, ms: number): boolean {
-    return travel <= TAP_SLOP && ms <= TAP_MAX_MS
-}
-
-const OPPOSITE: Record<DirectionAction, DirectionAction> = {
-    up: "down",
-    down: "up",
-    left: "right",
-    right: "left",
-}
-
-// The directions held after swiping `swiped`, newest first, given those
-// held before (newest first): the swipe, then the previous swipe as a
-// fallback unless it is the swipe itself or its opposite.
-export function swipeHeld(
-    held: readonly DirectionAction[],
-    swiped: DirectionAction
-): DirectionAction[] {
-    const previous = held[0]
-    return previous && previous !== swiped && previous !== OPPOSITE[swiped]
-        ? [swiped, previous]
-        : [swiped]
-}
-
 // The parts of a PointerEvent the source reads.
 type Pointer = {
     pointerId: number
@@ -80,55 +55,45 @@ type Pointer = {
     clientY: number
 }
 
-// One finger on the play area.
-type Gesture = {
-    // Where and when it went down.
-    startX: number
-    startY: number
-    startedAt: number
-    // Where distance is measured from: the start, then the latest swipe.
+// The finger steering on the play area.
+type Drag = {
+    pointerId: number
+    // Where the distance is measured from (see the top of the file).
     anchorX: number
     anchorY: number
-    // The farthest it has been from the start.
-    travel: number
-    // Its latest swipe, if it has swiped.
-    swiped?: DirectionAction
+    // Where the finger last was.
+    x: number
+    y: number
+    // The direction it holds, if any.
+    direction?: DirectionAction | undefined
 }
 
 export type TouchOptions = {
     // Pointer types that count; mouse is left out so a desktop click on the
-    // board doesn't breathe.
+    // board doesn't steer.
     pointerTypes?: readonly string[]
-    // Milliseconds, for telling taps from resting fingers.
-    now?: () => number
 }
 
-const SWIPE = "touch:swipe"
-const TAP = "touch:tap"
+const DRAG = "touch:drag"
 
 export class TouchSource implements InputSource {
     private input: InputState | undefined
-    private readonly gestures = new Map<number, Gesture>()
-    // The directions held by swipes, newest first.
-    private held: DirectionAction[] = []
+    private drag: Drag | undefined
     private readonly pointerTypes: readonly string[]
-    private readonly now: () => number
 
     constructor(
         private readonly target: EventTarget,
         options: TouchOptions = {}
     ) {
         this.pointerTypes = options.pointerTypes ?? ["touch", "pen"]
-        this.now = options.now ?? (() => performance.now())
     }
 
     attach(input: InputState): void {
         this.detach()
         this.input = input
-        // Newer input from another source drops the swipe (see latch).
-        input.players[0]?.latch(SWIPE, () => {
-            this.held = []
-        })
+        // Newer input from another source drops the drag's direction (see
+        // latch); the finger has to drag again to steer.
+        input.players[0]?.latch(DRAG, () => this.release())
         this.target.addEventListener("pointerdown", this.onDown)
         this.target.addEventListener("pointermove", this.onMove)
         this.target.addEventListener("pointerup", this.onUp)
@@ -138,7 +103,7 @@ export class TouchSource implements InputSource {
     detach(): void {
         if (!this.input) return
         this.release()
-        this.gestures.clear()
+        this.drag = undefined
         this.target.removeEventListener("pointerdown", this.onDown)
         this.target.removeEventListener("pointermove", this.onMove)
         this.target.removeEventListener("pointerup", this.onUp)
@@ -146,11 +111,15 @@ export class TouchSource implements InputSource {
         this.input = undefined
     }
 
-    // Let go of every swiped direction, so the player stops.
+    // Let go of the dragged direction, so the player stops. A finger still
+    // down steers again once it drags SWIPE_DISTANCE from where it is now.
     release(): void {
-        const player = this.player()
-        for (const action of this.held) player?.release(action, SWIPE)
-        this.held = []
+        const drag = this.drag
+        if (!drag) return
+        if (drag.direction) this.player()?.release(drag.direction, DRAG)
+        drag.direction = undefined
+        drag.anchorX = drag.x
+        drag.anchorY = drag.y
     }
 
     private player(): PlayerInput | undefined {
@@ -168,79 +137,76 @@ export class TouchSource implements InputSource {
         return e as Pointer
     }
 
+    // The drag of the finger an event is for, if that finger steers.
+    private dragOf(p: Pointer | undefined): Drag | undefined {
+        return p && this.drag?.pointerId === p.pointerId ? this.drag : undefined
+    }
+
     private readonly onDown = (event: Event) => {
         const p = this.pointer(event)
         if (!p || !this.input) return
         // Keep the browser from turning the touch into a scroll, a zoom or
         // a mouse click.
         event.preventDefault()
-        this.gestures.set(p.pointerId, {
-            startX: p.clientX,
-            startY: p.clientY,
-            startedAt: this.now(),
+        // The newest finger steers.
+        this.lift()
+        this.drag = {
+            pointerId: p.pointerId,
             anchorX: p.clientX,
             anchorY: p.clientY,
-            travel: 0,
-        })
+            x: p.clientX,
+            y: p.clientY,
+        }
     }
 
     private readonly onMove = (event: Event) => {
         const p = this.pointer(event)
-        const gesture = p && this.gestures.get(p.pointerId)
-        if (!p || !gesture) return
-        gesture.travel = Math.max(
-            gesture.travel,
-            Math.hypot(p.clientX - gesture.startX, p.clientY - gesture.startY)
-        )
-        const direction = swipeDirection(
-            p.clientX - gesture.anchorX,
-            p.clientY - gesture.anchorY
-        )
+        const drag = this.dragOf(p)
+        if (!p || !drag) return
+        drag.x = p.clientX
+        drag.y = p.clientY
+        const dx = drag.x - drag.anchorX
+        const dy = drag.y - drag.anchorY
+        // Moving on the way held: the anchor keeps up.
+        const going = dx !== 0 || dy !== 0 ? swipeDirection(dx, dy, 0) : null
+        if (drag.direction && going === drag.direction) {
+            drag.anchorX = drag.x
+            drag.anchorY = drag.y
+            return
+        }
+        const direction = swipeDirection(dx, dy)
         if (!direction) return
-        gesture.anchorX = p.clientX
-        gesture.anchorY = p.clientY
-        // Carrying on the same way isn't a new swipe.
-        if (direction === gesture.swiped) return
-        gesture.swiped = direction
-        this.swipe(direction)
+        drag.anchorX = drag.x
+        drag.anchorY = drag.y
+        const player = this.player()
+        if (drag.direction) player?.release(drag.direction, DRAG)
+        drag.direction = direction
+        player?.press(direction, DRAG)
     }
 
     private readonly onUp = (event: Event) => {
         const p = this.pointer(event)
-        const gesture = p && this.gestures.get(p.pointerId)
-        if (!p || !gesture) return
+        if (!this.dragOf(p)) return
+        // A flick whose movement only shows on the lift still presses (and
+        // so moves a cell, like a key tap).
         this.onMove(event)
-        this.gestures.delete(p.pointerId)
-        if (gesture.swiped) return
-        if (!isTap(gesture.travel, this.now() - gesture.startedAt)) return
-        const player = this.player()
-        player?.press("breath", TAP)
-        player?.release("breath", TAP)
+        this.lift()
     }
 
     private readonly onCancel = (event: Event) => {
-        const p = this.pointer(event)
-        if (p) this.gestures.delete(p.pointerId)
+        if (this.dragOf(this.pointer(event))) this.lift()
     }
 
-    private swipe(direction: DirectionAction) {
-        const player = this.player()
-        if (!player) return
-        const next = swipeHeld(this.held, direction)
-        // Release the swiped direction too, so pressing it again is a
-        // fresh press edge.
-        for (const action of this.held) {
-            if (action === direction || !next.includes(action)) {
-                player.release(action, SWIPE)
-            }
-        }
-        this.held = next
-        player.press(direction, SWIPE)
+    // The steering finger is gone: let go of its direction.
+    private lift() {
+        this.release()
+        this.drag = undefined
     }
 }
 
-// Whether the device has a touch screen, so the touch-only buttons (pause)
-// show. `view` is the window.
+// Whether the device has a touch screen, so the touch-only buttons (pause,
+// punch and breath) show and the maze leaves room for them. `view` is the
+// window.
 export function isTouchDevice(view: {
     matchMedia?: (query: string) => { matches: boolean }
     navigator?: { maxTouchPoints?: number }
