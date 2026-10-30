@@ -99,7 +99,8 @@ type Cell2 = { x: number; y: number }
 // has the default character's breath unless `breath` says otherwise (one
 // breath for all, or one per player), with an empty meter. There is no boss
 // unless `boss` gives one (see makeBoss). The game plays by `mode`'s rules
-// (solo unless given; see resolveCatch).
+// (solo unless given; see resolveCatch), with the players passing through
+// each other unless `playersBump` says otherwise.
 export function makeState(
     map: MapLiteral,
     player: Cell2 | readonly Cell2[],
@@ -110,12 +111,14 @@ export function makeState(
         breath = BREATHS[DEFAULT_ANIMAL],
         boss = null,
         mode = "solo",
+        playersBump = false,
     }: {
         lives?: number
         ice?: IceMap
         breath?: BreathDef | readonly BreathDef[]
         boss?: Boss | null
         mode?: Mode
+        playersBump?: boolean
     } = {}
 ): GameState {
     const starts = "x" in player ? [player] : player
@@ -138,6 +141,7 @@ export function makeState(
                 breathOf(i)
             )
         ),
+        playersBump,
         enemies,
         boss,
         ticks: 0,

@@ -82,9 +82,14 @@ export const START_LIVES = 3
 // back at its own spawn (see takeOut in game.ts).
 export const PLAYER_RESPAWN_DELAY = 3
 // How far (in cells, centre to centre) every enemy and the boss must be
-// drawn from a player's spawn for it to come back there (see spawnClear in
-// game.ts): far enough that nothing gliding in can catch it a tick later.
+// drawn from a player's spawn for it to come back there (see
+// clearOfEnemies in game.ts): far enough that nothing gliding in can catch it a tick later.
 export const RESPAWN_CLEAR_DISTANCE = 1.5
+// Seconds a player due back waits while the other player is on its spawn
+// or moving onto it (when players bump, KDA-262) before it comes back on
+// the nearest free cell instead (see tickPlayersOut in game.ts), so a
+// player can't camp on the other's spawn.
+export const RESPAWN_BLOCK_GRACE = 2
 
 // ---- Breaths (see breath.ts) ----
 
