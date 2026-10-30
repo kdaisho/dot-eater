@@ -248,6 +248,13 @@ export function makeBoss(x: number, y: number, speed?: number): Boss {
     return boss
 }
 
+// Keep `boss` from ever breathing (see bossBreath.ts), for tests of what
+// else it does that run past its first breath: its cooldown never ends.
+export function withoutBreath(boss: Boss): Boss {
+    boss.breath.cooldown = Infinity
+    return boss
+}
+
 // A map and its ice from rows of level map characters ("#" wall, "." dot,
 // space empty, "~" ice, ":" ice with a dot), for makeState. Unlike
 // parseLevel nothing is checked, so a test can build any situation.

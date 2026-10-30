@@ -55,6 +55,18 @@ export type GameEvent =
     // A player's breath finished the boss. Its killing blow reports this
     // only, not a bossHit as well.
     | { type: "bossDefeated"; player: number; at: Vec2 }
+    // The boss (at `at`) started winding up its breath, facing `facing`
+    // (a unit step) at the player it targets (see bossBreath.ts).
+    | { type: "bossWindUp"; at: Vec2; facing: Vec2 }
+    // The boss (at `at`) breathed along `facing`, striking `cells`,
+    // nearest first. The players it hurt report their own hurt (or
+    // playerCaught) after it.
+    | {
+          type: "bossBreathed"
+          at: Vec2
+          facing: Vec2
+          cells: readonly Vec2[]
+      }
     // A player was hurt (see hurtPlayer in game.ts) on `at` (its cell when
     // hit, before the knockback) and lost `damage` health, with some left.
     // A hit that takes its last health reports a playerCaught instead.

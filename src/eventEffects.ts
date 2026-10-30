@@ -1,3 +1,4 @@
+import { BOSS_BREATH } from "./bossBreath"
 import type { GameEvent } from "./events"
 import type { GameState } from "./game"
 import type { Jabs } from "./jab"
@@ -74,6 +75,20 @@ export function effectsForEvent(
         case "bossDefeated":
             particles.burst("bossDefeat", bossCentre(event.at))
             shake.add(SHAKES.bossDefeat)
+            return
+        case "bossBreathed":
+            // Its look (BOSS_BREATH.particles) on every cell it struck,
+            // flying along its facing, as a player breath's.
+            for (const cell of event.cells) {
+                particles.emit(BOSS_BREATH.particles, cell, {
+                    direction: event.facing,
+                })
+            }
+            shake.add(SHAKES.bossBreath)
+            return
+        case "bossWindUp":
+            // Its glow and the warning tint are drawn from the boss's state
+            // (see bossLooks and bossWarning); its sound is the warning.
             return
         case "hurt":
             particles.burst("hurt", event.at)

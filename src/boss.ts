@@ -7,8 +7,10 @@ import {
     Cell,
 } from "./constants"
 import type { BlockMap } from "./breath"
+import { createBossBreath, type BossBreath } from "./bossBreath"
 import { emit } from "./events"
 import type { GameState, Player } from "./game"
+import type { BossBreathData } from "./level"
 import { distanceMap, type DistanceMap } from "./path"
 import { allDirections, directions, samePos, vec2, type Vec2 } from "./vec2"
 
@@ -30,6 +32,8 @@ import { allDirections, directions, samePos, vec2, type Vec2 } from "./vec2"
 // - Touching: touching it hurts the player like an enemy, but harder (see
 //   touchedBy in game.ts and BOSS_DAMAGE), anywhere on its footprint. A
 //   hit sends nobody home: it carries on where it is.
+// - Breathing: every few seconds it breathes at a player in line with it
+//   (KDA-268; see bossBreath.ts, which keeps its own state in `breath`).
 //
 // Boss levels have no wrap tunnels and no level ice (parseLevel checks), so
 // it never wraps or slides.
@@ -53,9 +57,17 @@ export type Boss = {
     flash: number
     // At 0 health it is gone for good.
     defeated: boolean
+    // Its breath attack (see bossBreath.ts).
+    breath: BossBreath
 }
 
-export function createBoss(pos: Vec2, speed: number = BOSS_SPEED): Boss {
+// A boss on `pos` at `speed`, its breath tuned by `breath` (the level's;
+// the defaults for anything it leaves out).
+export function createBoss(
+    pos: Vec2,
+    speed: number = BOSS_SPEED,
+    breath?: BossBreathData
+): Boss {
     return {
         pos: vec2(pos.x, pos.y),
         lastPos: vec2(pos.x, pos.y),
@@ -67,6 +79,7 @@ export function createBoss(pos: Vec2, speed: number = BOSS_SPEED): Boss {
         maxHealth: BOSS_HEALTH,
         flash: 0,
         defeated: false,
+        breath: createBossBreath(breath),
     }
 }
 
