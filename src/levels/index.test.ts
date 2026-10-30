@@ -1,7 +1,12 @@
 import { describe, expect, it } from "vite-plus/test"
 import { AiType, Cell, PLAYER_RESPAWN_DELAY, TICK_RATE } from "../constants"
 import { footprint } from "../boss"
-import { DEFAULT_DIFFICULTY, DIFFICULTIES, ENEMY_COUNT } from "../difficulty"
+import {
+    DEFAULT_DIFFICULTY,
+    DIFFICULTIES,
+    ENEMY_COUNT,
+    MAP_SIZE,
+} from "../difficulty"
 import { wrapDelta } from "../glide"
 import { DEFAULT_ANIMAL } from "../roster"
 import { createGameState, IDLE, step, takeOut } from "../game"
@@ -45,18 +50,32 @@ describe("levels", () => {
         })
     })
 
-    // Until the stages are remade with a medium and a large map each, a
-    // stage's one map stands in for both, so every difficulty plays today's
-    // game: no stage lists more enemies than the fewest any difficulty
-    // brings out.
-    it.each(STAGE_DATA.map((data, i) => [i + 1, data] as const))(
-        "stage %i uses one map for both sizes, with every enemy at every difficulty",
+    // Until a stage is remade with a medium and a large map, its one map
+    // stands in for both (sameForBoth), so every difficulty plays today's
+    // game: it lists no more enemies than the fewest any difficulty brings
+    // out. Each remade stage's own tests check it has two maps.
+    it.each(
+        STAGE_DATA.map((data, i) => [i + 1, data] as const).filter(
+            ([, data]) => data.large === data.medium
+        )
+    )(
+        "stage %i, not yet remade, has every enemy at every difficulty",
         (_n, data) => {
-            expect(data.large).toBe(data.medium)
             const fewest = Math.min(...DIFFICULTIES.map((d) => ENEMY_COUNT[d]))
             expect(data.medium.enemies.length).toBeLessThanOrEqual(fewest)
         }
     )
+
+    it.each(
+        STAGE_DATA.map((data, i) => [i + 1, data] as const).filter(
+            ([, data]) => data.large !== data.medium
+        )
+    )("stage %i, remade, has a large map bigger than its medium one", (n) => {
+        const medium = stages[n - 1].medium
+        const large = stages[n - 1].hard
+        expect(large.width).toBeGreaterThan(medium.width)
+        expect(large.height).toBeGreaterThan(medium.height)
+    })
 
     it.each(everyLevel)(
         "stage %i (%s) shares its name and rules with the default difficulty",
@@ -142,21 +161,23 @@ describe("levels", () => {
         }
     )
 
-    // Player 2's spawn holds a dot in 1-player games, so they have the
-    // same dots as before 2-player games existed (these counts); with a
-    // player 2 it starts empty, as player 1's does.
-    const SOLO_DOTS = [129, 141, 133, 125, 145]
+    // Player 2's spawn holds a dot in 1-player games, so they have every
+    // dot the map has (counted from its text: every dot character, ice
+    // dots, enemy and boss spawns and the "Q" included); with a player 2
+    // it starts empty, as player 1's does.
     const dots = (cells: readonly (readonly Cell[])[]) =>
         cells.flat().filter((c) => c === Cell.dot).length
     it.each(everyLevel)(
         "stage %i (%s) keeps every dot in 1-player, the spawn's too",
-        (n, _difficulty, level) => {
+        (n, difficulty, level) => {
+            const { map } = STAGE_DATA[n - 1][MAP_SIZE[difficulty]]
+            const mapDots = map.join("").match(/[.:EBQ]/g)?.length ?? 0
             const [p1, p2] = level.playerSpawns
             const solo = createGameState(level, DEFAULT_ANIMAL)
-            expect(dots(solo.cells)).toBe(SOLO_DOTS[n - 1])
+            expect(dots(solo.cells)).toBe(mapDots)
             expect(solo.cells[p2.y][p2.x]).toBe(Cell.dot)
             const duo = createGameState(level, [DEFAULT_ANIMAL, DEFAULT_ANIMAL])
-            expect(dots(duo.cells)).toBe(SOLO_DOTS[n - 1] - 1)
+            expect(dots(duo.cells)).toBe(mapDots - 1)
             expect(duo.cells[p2.y][p2.x]).toBe(Cell.none)
             expect(duo.cells[p1.y][p1.x]).toBe(Cell.none)
         }
