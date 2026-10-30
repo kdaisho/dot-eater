@@ -188,6 +188,62 @@ describe("knockBack", () => {
     })
 })
 
+describe("knockBack with players bumping", () => {
+    // Player 1 at (3, 2) and player 2 at `p2`, both at rest, in versus.
+    function pair(bump: boolean, p2: Vec2 = vec2(4, 2)) {
+        const state = makeState(room.map, [vec2(3, 2), p2], [], {
+            mode: "versus",
+            health: MAX_HEALTH,
+            playersBump: bump,
+        })
+        for (const p of state.players) p.character.moveProgress = 1
+        return state
+    }
+
+    it("treats the other player's cell as a wall", () => {
+        const state = pair(true)
+        const [p1, p2] = state.players
+        expect(knockBack(state, p1, east)).toBe(false)
+        expect(p1.character.pos).toEqual(vec2(3, 2))
+        expect(p2.character.pos).toEqual(vec2(4, 2))
+    })
+
+    it("passes through the other player with Bump off", () => {
+        const state = pair(false)
+        expect(knockBack(state, state.players[0], east)).toBe(true)
+        expect(state.players[0].character.pos).toEqual(vec2(4, 2))
+    })
+
+    it("ignores a player out of play", () => {
+        const state = pair(true)
+        state.players[1].out = true
+        expect(knockBack(state, state.players[0], east)).toBe(true)
+    })
+
+    it("turns back into the cell it is leaving rather than onto the other", () => {
+        // Player 1 a third of the way from (3, 2) to (4, 2); player 2 on
+        // (3, 3), just past the cell it is leaving.
+        const state = pair(true, vec2(3, 3))
+        const [p1, p2] = state.players
+        p1.character.pos = vec2(4, 2)
+        p1.character.lastPos = vec2(3, 2)
+        p1.character.moveProgress = 0.3
+        expect(knockBack(state, p1, south)).toBe(true)
+        expect(p1.character.pos).toEqual(vec2(3, 2))
+        expect(p1.character.pos).not.toEqual(p2.character.pos)
+    })
+
+    it("never ends up on the other player's cell when hurt", () => {
+        // Hit from the west with player 2 right behind to the east.
+        const state = pair(true)
+        const [p1, p2] = state.players
+        expect(hurtPlayer(state, p1, ENEMY_DAMAGE, vec2(2.5, 2))).toBe(true)
+        expect(p1.health).toBe(MAX_HEALTH - ENEMY_DAMAGE)
+        expect(p1.character.pos).toEqual(vec2(3, 2))
+        expect(p2.character.pos).toEqual(vec2(4, 2))
+    })
+})
+
 describe("hurtPlayer", () => {
     it("costs the damage and knocks the player away along the stronger axis", () => {
         const state = roomState()
