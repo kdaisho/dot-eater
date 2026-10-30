@@ -14,11 +14,10 @@ import {
 } from "./flow"
 import { step, type MoveInput } from "./game"
 import type { Action } from "./input"
-import { parseLevel } from "./level"
 import { emptyProgress } from "./progress"
 import { AnimalId } from "./roster"
 import { defaultSettings, VOLUME_MAX, type Settings } from "./settings"
-import { cloneState, fixedRandom } from "./test/helpers"
+import { cloneState, fixedRandom, parseFlat, sameAtEvery } from "./test/helpers"
 import { vec2 } from "./vec2"
 
 // The settings screen in the screen machine: opened from the title and
@@ -26,13 +25,13 @@ import { vec2 } from "./vec2"
 // settings it carries.
 
 const levels = [
-    parseLevel({
+    parseFlat({
         name: "corridor",
         parTime: 60,
         map: ["######", "#PQ..#", "######"],
         enemies: [],
     }),
-]
+].map(sameAtEvery)
 
 // Input for one tick: the actions each player pressed (player 1 first).
 function input(...pressed: (readonly Action[])[]): TickInput {

@@ -1,4 +1,4 @@
-import type { LevelData } from "../level"
+import { sameForBoth, type LevelData } from "../level"
 
 // Fog: the player only sees a few cells around themselves. Introduces the
 // phantom, which drifts through walls straight at the player, so it can turn
@@ -9,24 +9,27 @@ import type { LevelData } from "../level"
 // chaser in the other and a wanderer in the middle.
 export const stage4: LevelData = {
     name: "Fog",
-    parTime: 75,
-    map: [
-        "#################",
-        "#E.............E#",
-        "#.##.#.#.#.#.##.#",
-        "#....#..E..#....#",
-        "##.#.###.###.#.##",
-        "#..#.........#..#",
-        "#.###.##.##.###.#",
-        "#.....#...#.....#",
-        "#.###.#.#.#.###.#",
-        "#...............#",
-        "##.#.###.###.#.##",
-        "#..#..##.##..#..#",
-        "#.###.##.##.###.#",
-        "#.......PQ......#",
-        "#################",
-    ],
-    enemies: [{ ai: "phantom" }, { ai: "chase" }, { ai: "random" }],
+    // One map for both sizes until the stage is remade.
+    ...sameForBoth({
+        parTime: 75,
+        map: [
+            "#################",
+            "#E.............E#",
+            "#.##.#.#.#.#.##.#",
+            "#....#..E..#....#",
+            "##.#.###.###.#.##",
+            "#..#.........#..#",
+            "#.###.##.##.###.#",
+            "#.....#...#.....#",
+            "#.###.#.#.#.###.#",
+            "#...............#",
+            "##.#.###.###.#.##",
+            "#..#..##.##..#..#",
+            "#.###.##.##.###.#",
+            "#.......PQ......#",
+            "#################",
+        ],
+        enemies: [{ ai: "phantom" }, { ai: "chase" }, { ai: "random" }],
+    }),
     rules: { fog: { radius: 3.5 } },
 }
