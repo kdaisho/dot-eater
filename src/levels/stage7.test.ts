@@ -6,11 +6,12 @@ import {
     MAP_SIZE,
     type MapSize,
 } from "../difficulty"
+import { patrolMove, slideDistances } from "../ice"
 import { parseLevel, type Cells } from "../level"
 import { distanceMap } from "../path"
 import { EACH_MAP } from "../test/helpers"
 import { chokepoints, deadEnds } from "../test/maze"
-import { vec2, type Vec2 } from "../vec2"
+import { samePos, vec2, type Vec2 } from "../vec2"
 import { stages } from "./index"
 import { stage7 } from "./stage7"
 
@@ -146,6 +147,42 @@ describe.each(EACH_MAP)("stage 7 (%s)", (difficulty) => {
                 return sum + distanceMap(cells, p)[next.y][next.x]
             }, 0)
             expect(lap).toBeGreaterThanOrEqual(28)
+        }
+    })
+
+    // Every cell a patroller walks over a whole lap of its route, from its
+    // spawn, moving as the AI does (patrolMove, which parseLevel's route
+    // check walks too).
+    const beat = (pos: Vec2, route: readonly Vec2[]): Vec2[] => {
+        const walked: Vec2[] = []
+        const seen = new Set<string>()
+        for (let j = 0; ;) {
+            if (samePos(pos, route[j])) j = (j + 1) % route.length
+            const key = `${pos.x},${pos.y},${j}`
+            if (seen.has(key)) return walked
+            seen.add(key)
+            walked.push(pos)
+            const dist = slideDistances(cells, level.ice, route[j])
+            pos = patrolMove(cells, level.ice, pos, dist)!.pos
+        }
+    }
+
+    // A guard on a beat along a row of rooms (its waypoints all in one row)
+    // stays in the rooms: where the corridor round them is as short, the
+    // route has a waypoint in between to keep it inside.
+    it("keeps each beat along a row of rooms inside the rooms", () => {
+        const rows = level.enemies.filter(
+            (e) =>
+                e.ai === AiType.patroller &&
+                e.route!.every((p) => p.y === e.route![0].y)
+        )
+        expect(rows.length).toBeGreaterThanOrEqual(1)
+        for (const { pos, route } of rows) {
+            const walked = beat(pos, route!)
+            expect(walked.filter(onRing)).toEqual([])
+            for (const p of route!) {
+                expect(walked.some((w) => samePos(w, p))).toBe(true)
+            }
         }
     })
 
