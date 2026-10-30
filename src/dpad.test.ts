@@ -115,6 +115,101 @@ describe("touch controls' visibility", () => {
             "touch-punch",
         ])
     })
+
+    // Where the stylesheet puts each control shown, from its fixed
+    // position's insets and size (happy-dom lays nothing out). Buttons are
+    // border-box, as in browsers.
+    function boxesAt(
+        width: number,
+        height: number,
+        flags: ControlFlags
+    ): { name: string; x: number; y: number; w: number; h: number }[] {
+        const { happyDOM } = window as unknown as {
+            happyDOM: {
+                setViewport(size: { width: number; height: number }): void
+            }
+        }
+        happyDOM.setViewport({ width, height })
+        shownWith(flags)
+        const root = document.getElementById("touch-controls")!
+        return [...root.children]
+            .filter((el) => getComputedStyle(el).display !== "none")
+            .map((el) => {
+                const style = getComputedStyle(el)
+                const px = (value: string) => parseFloat(value)
+                const w = px(style.width)
+                const h = px(style.height)
+                const x =
+                    style.left !== "auto" && style.left !== ""
+                        ? px(style.left)
+                        : width - px(style.right) - w
+                const y =
+                    style.top !== "auto" && style.top !== ""
+                        ? px(style.top)
+                        : height - px(style.bottom) - h
+                return { name: el.className, x, y, w, h }
+            })
+    }
+
+    // Regression (PR #79 review): at 320 px in portrait, Breath overlapped
+    // the D-pad by 17 px.
+    it.each([
+        [320, 568],
+        [360, 740],
+        [390, 844],
+        [568, 320],
+        [740, 360],
+        [844, 390],
+    ])("keeps the controls apart and on screen at %ix%i", (width, height) => {
+        for (const dpad of [false, true]) {
+            const boxes = boxesAt(width, height, {
+                touch: true,
+                dpad,
+                playing: true,
+            })
+            expect(boxes).toHaveLength(dpad ? 4 : 3)
+            for (const a of boxes) {
+                expect(a.x).toBeGreaterThanOrEqual(0)
+                expect(a.y).toBeGreaterThanOrEqual(0)
+                expect(a.x + a.w).toBeLessThanOrEqual(width)
+                expect(a.y + a.h).toBeLessThanOrEqual(height)
+                for (const b of boxes) {
+                    if (a === b) continue
+                    const apart =
+                        a.x + a.w <= b.x ||
+                        b.x + b.w <= a.x ||
+                        a.y + a.h <= b.y ||
+                        b.y + b.h <= a.y
+                    expect(apart, `${a.name} / ${b.name}`).toBe(true)
+                }
+            }
+        }
+    })
+
+    it("stacks breath above punch in landscape and on a narrow phone with the D-pad", () => {
+        const at = (width: number, height: number, dpad: boolean) => {
+            const boxes = boxesAt(width, height, {
+                touch: true,
+                dpad,
+                playing: true,
+            })
+            const find = (name: string) => boxes.find((b) => b.name === name)!
+            return { breath: find("touch-breath"), punch: find("touch-punch") }
+        }
+        for (const [width, height, dpad] of [
+            [844, 390, false],
+            [844, 390, true],
+            [320, 568, true],
+        ] as const) {
+            const { breath, punch } = at(width, height, dpad)
+            expect(breath.x).toBe(punch.x)
+            expect(breath.y).toBeLessThan(punch.y)
+        }
+        // Side by side in portrait otherwise.
+        const { breath, punch } = at(390, 844, true)
+        expect(breath.y).toBe(punch.y)
+        expect(breath.x).toBeLessThan(punch.x)
+    })
 })
 
 describe("setControls", () => {

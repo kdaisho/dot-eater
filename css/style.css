@@ -446,6 +446,21 @@ body[data-dpad="on"] .touch-breath {
     }
 }
 
+/* A narrow phone in portrait with the D-pad: side by side, breath would
+   reach the D-pad under 349 px (172 px of buttons from the right, the
+   D-pad's 165 px from the left, a 12 px gap), so breath sits above punch
+   in the D-pad's band instead. */
+@media (orientation: portrait) and (max-width: 348px) {
+    body[data-dpad="on"] .touch-punch {
+        bottom: 16px;
+    }
+
+    body[data-dpad="on"] .touch-breath {
+        bottom: 100px;
+        right: 16px;
+    }
+}
+
 /* Breath ready: amber, as the HUD meter is when a breath can go. */
 .touch-controls .touch-breath.ready {
     background: rgba(245, 158, 11, 0.2);
