@@ -4,7 +4,7 @@ import { BREATHS } from "../breaths"
 import { AiType, BOSS_HEALTH, BOSS_SPEED, Cell, DOT_ENERGY } from "../constants"
 import { MAP_SIZE } from "../difficulty"
 import { createGameState } from "../game"
-import { parseLevel } from "../level"
+import { parseLevel, type Level } from "../level"
 import { distanceMap, openNeighbours } from "../path"
 import { ANIMAL_IDS } from "../roster"
 import {
@@ -57,10 +57,9 @@ describe.each(EACH_MAP)("stage 5 (%s)", (difficulty) => {
     const { cells, open, dots, reach, bossCells, safe, doors } = arena
     const spawn = level.playerSpawns[0]
     const escapes = breathEscapes(level)
-    // Every other stage there is, at the same difficulty.
-    const others = stages
-        .filter((_, i) => i !== 4)
-        .map((stage) => stage[difficulty])
+    // The stages (numbered from 1), at the same difficulty, that `has`.
+    const stagesWith = (has: (level: Level) => boolean) =>
+        stages.flatMap((stage, i) => (has(stage[difficulty]) ? [i + 1] : []))
 
     it("is the fifth level, the Boss lair", () => {
         expect(stages[4][difficulty]).toEqual(level)
@@ -68,13 +67,12 @@ describe.each(EACH_MAP)("stage 5 (%s)", (difficulty) => {
         expect(level.parTime).toBe(map.parTime)
     })
 
-    it("starts a game with its boss, the only stage that has one", () => {
+    // The boss stages are this mid-game one and the final boss, stage 10.
+    it("starts a game with its boss, one of the two boss stages", () => {
         const game = createGameState(level)
         expect(game.boss?.pos).toEqual(level.boss!.pos)
         expect(game.boss?.speed).toBe(BOSS_SPEED)
-        for (const other of others) {
-            expect(other.boss).toBeNull()
-        }
+        expect(stagesWith((l) => l.boss !== null)).toEqual([5, 10])
     })
 
     // The mid-game boss: the defaults, its breath the gentle one.
@@ -94,21 +92,21 @@ describe.each(EACH_MAP)("stage 5 (%s)", (difficulty) => {
         expect(level.playerSpeed).toBeUndefined()
     })
 
-    it("regrows its dots after 10 s, and only it does", () => {
+    it("regrows its dots after 10 s, as only the boss stages do", () => {
         expect(level.rules.regrowDots).toEqual({ seconds: 10 })
         const game = createGameState(level)
         expect(game.regrow?.seconds).toBe(10)
-        for (const other of others) {
-            expect(other.rules.regrowDots).toBeUndefined()
-        }
+        expect(stagesWith((l) => l.rules.regrowDots !== undefined)).toEqual([
+            5, 10,
+        ])
     })
 
-    it("has its Splitters drop dots, and only it does", () => {
+    it("has its Splitters drop dots, as only the boss stages do", () => {
         expect(level.rules.splitterDrops).toBe(true)
         expect(createGameState(level).splitterDrops).toBe(true)
-        for (const other of others) {
-            expect(other.rules.splitterDrops).toBeUndefined()
-        }
+        expect(stagesWith((l) => l.rules.splitterDrops === true)).toEqual([
+            5, 10,
+        ])
     })
 
     it("is its map's size, with no tunnels, ice or fog", () => {

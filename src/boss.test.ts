@@ -56,6 +56,13 @@ describe("createBoss", () => {
         expect(boss.moveProgress).toBe(0)
         expect(createBoss(vec2(0, 0), 3).speed).toBe(3)
     })
+
+    it("starts with the health it is given, full", () => {
+        const boss = createBoss(vec2(0, 0), undefined, undefined, 18)
+        expect(boss.health).toBe(18)
+        expect(boss.maxHealth).toBe(18)
+        expect(boss.speed).toBe(BOSS_SPEED)
+    })
 })
 
 describe("footprint", () => {

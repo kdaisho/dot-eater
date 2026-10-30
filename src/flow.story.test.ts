@@ -24,6 +24,7 @@ import {
     STAGE_COUNT,
     type Progress,
 } from "./progress"
+import { stages } from "./levels"
 import { fixedRandom, parseFlat, sameAtEvery } from "./test/helpers"
 import { vec2 } from "./vec2"
 
@@ -568,6 +569,21 @@ describe("the ending", () => {
         expect(afterDelay(end, deps(), "confirm")).toEqual({
             kind: "title",
             mode: "solo",
+        })
+    })
+
+    // Stage 10, the last slot, is the Final boss: clearing it ends the
+    // story.
+    it("follows clearing the real stage 10, the Final boss", () => {
+        expect(stages).toHaveLength(STAGE_COUNT)
+        const real = { levels: stages }
+        const game = storyGame(last, 900, "solo", stages)
+        expect(game).toMatchObject({ kind: "playing", level: last })
+        expect(stages[last].hard.name).toBe("Final boss")
+        expect(finish(game, "won", 100, real)).toMatchObject({
+            kind: "storyEnd",
+            level: last,
+            run: { total: 900 },
         })
     })
 

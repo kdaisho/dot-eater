@@ -16,15 +16,8 @@ import type { Hud } from "./render"
 
 vi.mock("canvas-confetti", () => ({ default: vi.fn() }))
 
-// STAGE_COUNT stages, however many are built (the real ones, repeated), so
-// a run can reach the ending.
-vi.mock("./levels", async (importOriginal) => {
-    const actual = await importOriginal<typeof import("./levels")>()
-    const { STAGE_COUNT: count } = await import("./progress")
-    const fill = <T>(list: readonly T[]) =>
-        Array.from({ length: count }, (_, i) => list[i % list.length])
-    return { stages: fill(actual.stages), levels: fill(actual.levels) }
-})
+// The real stages: all STAGE_COUNT of them are built, so a run reaches the
+// ending by clearing stage 10, the Final boss.
 
 // Keep the real renderer, but watch the HUD main asks it to draw.
 const drawn = vi.hoisted(() => ({ hud: undefined as Hud | undefined }))
@@ -275,6 +268,8 @@ describe("main in story mode", () => {
             padTap(A)
             expect(screen()).toBe("playing")
         }
+        expect(levels).toHaveLength(STAGE_COUNT)
+        expect(levels[STAGE_COUNT - 1].name).toBe("Final boss")
         end("won", 100)
         const total = (STAGE_COUNT - 1) * 100
         expect(screen()).toBe("story-end")

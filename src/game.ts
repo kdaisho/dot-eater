@@ -264,7 +264,12 @@ export function createGameState(
         playersBump: false,
         enemies,
         boss: level.boss
-            ? createBoss(level.boss.pos, level.boss.speed, level.boss.breath)
+            ? createBoss(
+                  level.boss.pos,
+                  level.boss.speed,
+                  level.boss.breath,
+                  level.boss.health
+              )
             : null,
         ticks: 0,
         spawns: {

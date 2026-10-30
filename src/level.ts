@@ -73,6 +73,10 @@ export type FogRule = {
 export type BossData = {
     // Cells per second. Omitted means BOSS_SPEED.
     speed?: number
+    // The health it starts with, a whole number up to MAX_BOSS_HEALTH.
+    // Omitted means BOSS_HEALTH. A breath does cost / 25 damage (1, 2 or
+    // 3), so a multiple of 6 takes every character the same energy.
+    health?: number
     // Its breath attack's tuning (see bossBreath.ts). Omitted, or any part
     // of it, means the defaults.
     breath?: BossBreathData
@@ -223,10 +227,11 @@ export type Level = {
     playerSpeed?: number
     enemies: readonly EnemySpawn[]
     // The boss, or null for none: its spawn (the top-left cell of its
-    // footprint), speed and breath tuning (see BossData).
+    // footprint), speed, health and breath tuning (see BossData).
     boss: {
         pos: Readonly<Vec2>
         speed?: number
+        health?: number
         breath?: Readonly<BossBreathData>
     } | null
     rules: LevelRules
@@ -642,6 +647,9 @@ function toLevel(data: LevelData, variant: LevelVariant, map: BuiltMap): Level {
                       ...(data.boss?.speed === undefined
                           ? {}
                           : { speed: data.boss.speed }),
+                      ...(data.boss?.health === undefined
+                          ? {}
+                          : { health: data.boss.health }),
                       ...(data.boss?.breath === undefined
                           ? {}
                           : { breath: { ...data.boss.breath } }),
@@ -650,7 +658,10 @@ function toLevel(data: LevelData, variant: LevelVariant, map: BuiltMap): Level {
     }
 }
 
-const BOSS_KEYS: ReadonlySet<string> = new Set(["speed", "breath"])
+const BOSS_KEYS: ReadonlySet<string> = new Set(["speed", "health", "breath"])
+
+// The most health a level may give its boss (BossData.health).
+export const MAX_BOSS_HEALTH = 99
 
 // Boss settings that need no map: an object with only known, valid
 // settings. Whether the map has a boss for them is checked once it is
@@ -667,6 +678,15 @@ function bossDataProblems(boss: BossData | undefined): string[] {
         }
     }
     checkSpeed(problems, "boss.speed", boss.speed)
+    const { health } = boss
+    if (
+        health !== undefined &&
+        !(Number.isInteger(health) && health >= 1 && health <= MAX_BOSS_HEALTH)
+    ) {
+        problems.push(
+            `boss.health must be a whole number from 1 to ${MAX_BOSS_HEALTH}, got ${JSON.stringify(health)}`
+        )
+    }
     problems.push(...bossBreathProblems(boss.breath))
     return problems
 }

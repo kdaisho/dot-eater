@@ -25,6 +25,7 @@ import { stage6 } from "./stage6"
 import { stage7 } from "./stage7"
 import { stage8 } from "./stage8"
 import { stage9 } from "./stage9"
+import { stage10 } from "./stage10"
 
 // Each stage's level data, in stage order.
 const STAGE_DATA = [
@@ -37,6 +38,7 @@ const STAGE_DATA = [
     stage7,
     stage8,
     stage9,
+    stage10,
 ]
 
 // Every stage (numbered from 1) at every difficulty: both of its maps, each
