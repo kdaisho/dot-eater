@@ -94,6 +94,11 @@ describe("soundForEvent", () => {
             ],
             [{ type: "bossHit", player: 0, at, health: 3 }, "bossHit"],
             [{ type: "bossDefeated", player: 1, at }, "bossDefeated"],
+            [{ type: "bossWindUp", at, facing: at }, "boss.windUp"],
+            [
+                { type: "bossBreathed", at, facing: at, cells: [at] },
+                "boss.breath",
+            ],
             [{ type: "hurt", player: 0, at, damage: 25 }, "hurt"],
             [
                 { type: "playerCaught", player: 0, at, outForGood: false },
@@ -113,6 +118,8 @@ describe("soundForEvent", () => {
             [{ type: "gameWon" }, "stageClear"],
             [{ type: "gameLost" }, "gameOver"],
             [{ type: "playerRespawned", player: 0, at }, undefined],
+            [{ type: "dotRegrown", at }, undefined],
+            [{ type: "dotDropped", enemy: 0, at }, "dotDropped"],
         ]
         for (const [event, sound] of cases)
             expect(soundForEvent(event), event.type).toBe(sound)

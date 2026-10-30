@@ -784,6 +784,22 @@ describe("main", () => {
         })
     })
 
+    it("draws the boss's health in the HUD on a boss level", () => {
+        const game = drawnGame()
+        expect(drawn.last?.[2]).not.toHaveProperty("boss")
+        // Stage 1 has no boss; give this game one for the test.
+        game.boss = createBoss(vec2(1, 1))
+        game.boss.health = 5
+        try {
+            vi.advanceTimersByTime(FRAMES_MS)
+            expect(drawn.last?.[2]).toMatchObject({
+                boss: { health: 5, max: game.boss.maxHealth },
+            })
+        } finally {
+            game.boss = null
+        }
+    })
+
     it("draws the game's energy meter in the HUD", () => {
         const game = drawnGame()
         game.players[0].breather.energy = 60

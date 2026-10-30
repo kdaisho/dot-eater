@@ -18,12 +18,17 @@ export const SfxId = {
     enemyDefeated: "enemyDefeated",
     bossHit: "bossHit",
     bossDefeated: "bossDefeated",
+    // The boss's breath (KDA-268): a low rumble as it winds up, then a roar.
+    bossWindUp: "boss.windUp",
+    bossBreath: "boss.breath",
     // A player hurt with health left (KDA-257): a short knock.
     hurt: "hurt",
     // A player knocked out: its health gone.
     caught: "caught",
     // Versus: a player stunned by the other's breath.
     stunned: "stunned",
+    // A Splitter dropped a dot (KDA-270): a soft, low plop.
+    dotDropped: "dotDropped",
     // The punch (KDA-258): a whiff for a jab, a thwack when it lands on an
     // enemy or the other player, a dull thud on the boss.
     punch: "punch",
@@ -231,6 +236,49 @@ export const SFX: Readonly<Record<SfxId, readonly Tone[]>> = {
             volume: 0.5,
         },
     ],
+    // A low rumble swelling over the wind-up (about as long as the default
+    // BOSS_BREATH_WIND_UP), a growl over a deep hiss.
+    "boss.windUp": [
+        {
+            wave: "sawtooth",
+            at: 0,
+            duration: 0.9,
+            freq: 50,
+            freqEnd: 75,
+            volume: 0.3,
+            attack: 0.5,
+        },
+        {
+            wave: "noise",
+            at: 0,
+            duration: 0.9,
+            freq: 180,
+            freqEnd: 260,
+            volume: 0.35,
+            attack: 0.5,
+        },
+    ],
+    // A roar: a loud falling blast of noise over a deep, falling growl.
+    "boss.breath": [
+        {
+            wave: "noise",
+            at: 0,
+            duration: 0.6,
+            freq: 1100,
+            freqEnd: 180,
+            volume: 0.75,
+            attack: 0.02,
+        },
+        {
+            wave: "sawtooth",
+            at: 0,
+            duration: 0.5,
+            freq: 130,
+            freqEnd: 45,
+            volume: 0.35,
+            attack: 0.02,
+        },
+    ],
     // A short, dull thump with a crunch: less dramatic than the knockout's
     // long fall.
     hurt: [
@@ -269,6 +317,18 @@ export const SFX: Readonly<Record<SfxId, readonly Tone[]>> = {
         freqEnd: 900,
         volume: 0.3,
     }),
+    // A soft, low plop, falling: quieter than the dot blip, since every
+    // Splitter makes one every few seconds, wherever it is.
+    dotDropped: [
+        {
+            wave: "triangle",
+            at: 0,
+            duration: 0.08,
+            freq: 520,
+            freqEnd: 260,
+            volume: 0.12,
+        },
+    ],
     // A quick, quiet whiff: a tiny falling breath of air. It can play several
     // times a second, so it stays short and soft.
     punch: [

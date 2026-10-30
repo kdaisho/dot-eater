@@ -234,6 +234,8 @@ export function makeState(
             enemies: enemies.map((e) => vec2(e.pos.x, e.pos.y)),
         },
         events: [],
+        regrow: null,
+        splitterDrops: false,
     }
 }
 
@@ -243,6 +245,13 @@ export function makeState(
 export function makeBoss(x: number, y: number, speed?: number): Boss {
     const boss = createBoss(vec2(x, y), speed)
     boss.moveProgress = 1
+    return boss
+}
+
+// Keep `boss` from ever breathing (see bossBreath.ts), for tests of what
+// else it does that run past its first breath: its cooldown never ends.
+export function withoutBreath(boss: Boss): Boss {
+    boss.breath.cooldown = Infinity
     return boss
 }
 
