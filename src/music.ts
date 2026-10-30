@@ -219,13 +219,15 @@ export const MusicTrackId = {
     stage3: "stage3",
     stage4: "stage4",
     stage5: "stage5",
+    stage10: "stage10",
 } as const
 export type MusicTrackId = (typeof MusicTrackId)[keyof typeof MusicTrackId]
 
 export const MUSIC_TRACK_IDS: readonly MusicTrackId[] =
     Object.values(MusicTrackId)
 
-// Stage tunes by stage index (0 is stage 1, as in levels/index.ts).
+// Stage tunes by stage index (0 is stage 1, as in levels/index.ts). Stage
+// 10's tune joins as index 9 when its stage does.
 export const STAGE_TRACKS: readonly MusicTrackId[] = [
     MusicTrackId.stage1,
     MusicTrackId.stage2,
@@ -475,6 +477,76 @@ export const TRACKS: Readonly<Record<MusicTrackId, Track>> = {
                     "k h s h k k s h",
                     "k h s h k k s h",
                     "k h s h k s s s",
+                ],
+            },
+        ],
+    },
+    // Stage 10, Final boss: the climax. D minor at full tilt, the lead
+    // climbing through the harmonic minor's C# over a racing arpeggio, an
+    // octave-jumping bass and a fill to turn the loop.
+    stage10: {
+        bpm: 176,
+        voices: [
+            {
+                kind: "notes",
+                wave: "square",
+                volume: 0.1,
+                hold: true,
+                bars: [
+                    "D5 - F5 - A5 - C#6 -",
+                    "D6 - - - C6 - Bb5 -",
+                    "A5 - G5 - F5 - E5 -",
+                    "F5 - E5 - D5 - C#5 -",
+                    "D5 - F5 - A5 - D6 -",
+                    "F6 - - - E6 - D6 -",
+                    "C#6 - D6 - E6 - A5 -",
+                    "D6 - - - - - . .",
+                ],
+            },
+            {
+                kind: "notes",
+                wave: "square",
+                volume: 0.05,
+                gate: 0.5,
+                bars: [
+                    "D6 A5 F5 A5 D6 A5 F5 A5",
+                    "Bb5 F5 D5 F5 Bb5 F5 D5 F5",
+                    "G5 D5 Bb4 D5 G5 D5 Bb4 D5",
+                    "A5 E5 C#5 E5 A5 E5 C#5 E5",
+                    "D6 A5 F5 A5 D6 A5 F5 A5",
+                    "Bb5 F5 D5 F5 Bb5 F5 D5 F5",
+                    "A5 E5 C#5 E5 A5 E5 C#5 E5",
+                    "D6 A5 F5 A5 D6 A5 F5 A5",
+                ],
+            },
+            {
+                kind: "notes",
+                wave: "sawtooth",
+                volume: 0.12,
+                gate: 0.7,
+                bars: [
+                    "D2 D3 D2 D3 D2 D3 D2 D3",
+                    "Bb1 Bb2 Bb1 Bb2 Bb1 Bb2 Bb1 Bb2",
+                    "G1 G2 G1 G2 G1 G2 G1 G2",
+                    "A1 A2 A1 A2 A1 A2 C#2 C#3",
+                    "D2 D3 D2 D3 D2 D3 D2 D3",
+                    "Bb1 Bb2 Bb1 Bb2 Bb1 Bb2 Bb1 Bb2",
+                    "A1 A2 A1 A2 A1 A2 A1 A2",
+                    "D2 D3 D2 D3 A1 A2 C#2 C#3",
+                ],
+            },
+            {
+                kind: "drums",
+                volume: 0.55,
+                bars: [
+                    "k h s h k k s h",
+                    "k h s h k k s h",
+                    "k h s h k k s h",
+                    "k h s h k k s h",
+                    "k h s h k k s h",
+                    "k h s h k k s h",
+                    "k h s h k k s h",
+                    "k s k s s s s s",
                 ],
             },
         ],
