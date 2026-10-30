@@ -219,6 +219,7 @@ export const MusicTrackId = {
     stage3: "stage3",
     stage4: "stage4",
     stage5: "stage5",
+    stage6: "stage6",
 } as const
 export type MusicTrackId = (typeof MusicTrackId)[keyof typeof MusicTrackId]
 
@@ -232,6 +233,7 @@ export const STAGE_TRACKS: readonly MusicTrackId[] = [
     MusicTrackId.stage3,
     MusicTrackId.stage4,
     MusicTrackId.stage5,
+    MusicTrackId.stage6,
 ]
 
 // The tune for a stage index; stages past the list reuse it from the start.
@@ -475,6 +477,58 @@ export const TRACKS: Readonly<Record<MusicTrackId, Track>> = {
                     "k h s h k k s h",
                     "k h s h k k s h",
                     "k h s h k s s s",
+                ],
+            },
+        ],
+    },
+    // Stage 6, Haunted halls: a creeping D minor tune over a low organ, the
+    // lead edging up and down by half steps like footsteps behind you.
+    stage6: {
+        bpm: 120,
+        voices: [
+            {
+                kind: "notes",
+                wave: "square",
+                volume: 0.09,
+                hold: true,
+                bars: [
+                    "D5 - F5 - A5 - G#5 -",
+                    "G5 - F5 - E5 - C#5 -",
+                    "D5 - F5 - A5 - D6 -",
+                    "C#6 - A5 - Bb5 - A5 -",
+                ],
+            },
+            {
+                kind: "notes",
+                wave: "sine",
+                volume: 0.2,
+                hold: true,
+                bars: [
+                    "A3 - - - - - - -",
+                    "A3 - - - G3 - - -",
+                    "F3 - - - - - - -",
+                    "E3 - - - - - - -",
+                ],
+            },
+            {
+                kind: "notes",
+                wave: "triangle",
+                volume: 0.35,
+                bars: [
+                    "D2 . A2 . D2 . A2 .",
+                    "C#2 . A2 . C#2 . A2 .",
+                    "Bb1 . F2 . Bb1 . F2 .",
+                    "A1 . E2 . A1 . C#2 .",
+                ],
+            },
+            {
+                kind: "drums",
+                volume: 0.4,
+                bars: [
+                    "k . . h s . . h",
+                    "k . . h s . . h",
+                    "k . . h s . . h",
+                    "k . . h s . h h",
                 ],
             },
         ],
