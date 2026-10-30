@@ -66,6 +66,7 @@ describe("main's settings", () => {
         pressAndTick("Space")
         pressAndTick("Space")
         pressAndTick("Space")
+        pressAndTick("Space")
         expect(screen()).toBe("playing")
         pressAndTick("KeyP")
         expect(screen()).toBe("pause")

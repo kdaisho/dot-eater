@@ -9,6 +9,12 @@ import { playEventSounds, screenSound } from "./sound"
 import { energyHud } from "./breath"
 import { MAX_FRAME_MS, TICK_MS } from "./constants"
 import {
+    DIFFICULTIES,
+    DIFFICULTY_LABELS,
+    difficultyDescription,
+    type Difficulty,
+} from "./difficulty"
+import {
     createTouchControls,
     DpadSource,
     setBreathReady,
@@ -53,7 +59,12 @@ import {
     type PadChange,
 } from "./gamepad"
 import { InputState, KeyboardSource, keyMapsFor, type Action } from "./input"
-import { loadLastPick, saveLastPick } from "./lastPick"
+import {
+    loadLastDifficulty,
+    loadLastPick,
+    saveLastDifficulty,
+    saveLastPick,
+} from "./lastPick"
 import { controlsSpace } from "./layout"
 import { levels, stages } from "./levels"
 import { createLoop } from "./loop"
@@ -83,6 +94,7 @@ import {
     overlayTap,
     showCharacterSelect,
     showControls,
+    showDifficultySelect,
     showGameOver,
     showMatchResult,
     showPause,
@@ -113,6 +125,9 @@ const storage = browserStorage()
 let progress: Progress = loadProgress(storage)
 // Kept here too, so the last pick holds for the session if saving fails.
 let lastAnimal: AnimalId = loadLastPick(storage)
+// The difficulty picked last, kept the same way: where difficulty select
+// opens, and whose bests stage select shows.
+let lastDifficulty: Difficulty = loadLastDifficulty(storage)
 // Likewise the settings: saved on every change on the settings screen.
 let settings: Settings = loadSettings(storage)
 
@@ -393,6 +408,7 @@ function flowDeps(dt: number): FlowDeps {
         levels: stages,
         progress,
         lastAnimal,
+        lastDifficulty,
         dt,
         random: Math.random,
         settings,
@@ -445,8 +461,16 @@ function enter(prev: Screen, next: Screen) {
         input.ignoreHeld()
         effects.reset()
     }
-    // Only 1-player games remember the pick: 2-player games leave saved
+    // Only 1-player games remember the picks: 2-player games leave saved
     // data alone.
+    if (
+        next.kind === "characterSelect" &&
+        prev.kind === "difficultySelect" &&
+        playerCount(next.mode) === 1
+    ) {
+        lastDifficulty = next.difficulty
+        saveLastDifficulty(storage, lastDifficulty)
+    }
     if (
         next.kind === "playing" &&
         prev.kind === "characterSelect" &&
@@ -460,6 +484,7 @@ function enter(prev: Screen, next: Screen) {
         if (recordsProgress(next.mode)) {
             const { stars, ticks } = next.rating
             progress = recordClear(progress, storage, next.level, {
+                difficulty: next.difficulty,
                 stars,
                 ticks,
             })
@@ -511,6 +536,9 @@ function render(alpha: number) {
     const hud = game.mode === "versus" ? versusHud(game, shown) : hudOf(game)
     const boss = bossHud(game)
     if (boss) hud.boss = boss
+    if ("difficulty" in shown) {
+        hud.difficulty = DIFFICULTY_LABELS[shown.difficulty]
+    }
     renderer.draw(game, lastAlpha, hud, rules, effects.of(shown))
 }
 
@@ -621,9 +649,19 @@ function showOverlay(s: Screen) {
             return showStageSelect(
                 stageSlots(
                     progress,
-                    levels.map((level) => level.name)
+                    levels.map((level) => level.name),
+                    lastDifficulty
                 ),
-                s.selected
+                s.selected,
+                DIFFICULTY_LABELS[lastDifficulty]
+            )
+        case "difficultySelect":
+            return showDifficultySelect(
+                DIFFICULTIES.map((d) => ({
+                    label: DIFFICULTY_LABELS[d],
+                    detail: difficultyDescription(d),
+                    selected: d === s.difficulty,
+                }))
             )
         case "characterSelect":
             return showCharacterSelect(
@@ -644,14 +682,15 @@ function showOverlay(s: Screen) {
             )
         case "stageClear":
             return showStageClear({
-                ...endView(s.game, s.choice),
+                ...endView(s.game, s.choice, s.difficulty),
                 rating: s.rating,
             })
         case "gameOver":
-            return showGameOver(endView(s.game, s.choice))
+            return showGameOver(endView(s.game, s.choice, s.difficulty))
         case "roundResult": {
             const last = s.match[s.match.length - 1]
             return showRoundResult({
+                difficulty: DIFFICULTY_LABELS[s.difficulty],
                 round: s.match.length,
                 winner: last.winner,
                 dots: last.dots,
@@ -665,6 +704,7 @@ function showOverlay(s: Screen) {
         }
         case "matchResult":
             return showMatchResult({
+                difficulty: DIFFICULTY_LABELS[s.difficulty],
                 winner: s.winner,
                 rounds: s.match,
                 wins: roundWins(s.match),
@@ -699,8 +739,13 @@ const TITLE_LABELS: Record<TitleChoice, string> = {
 
 const PAUSE_LABELS = { resume: "Resume", settings: "Settings" } as const
 
-function endView(game: GameState, choice: EndChoice): EndScreenView {
+function endView(
+    game: GameState,
+    choice: EndChoice,
+    difficulty: Difficulty
+): EndScreenView {
     return {
+        difficulty: DIFFICULTY_LABELS[difficulty],
         score: totalScore(game),
         ...(game.players.length > 1
             ? {

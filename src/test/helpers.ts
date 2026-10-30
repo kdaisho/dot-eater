@@ -13,6 +13,7 @@ import {
     type Mode,
     type MoveInput,
 } from "../game"
+import type { Screen } from "../flow"
 import type { IceMap } from "../ice"
 import {
     DIFFICULTIES,
@@ -367,3 +368,20 @@ export function drawn(state: GameState, who: Character): Vec2 {
 // The character under the cursor on character select, for DOM tests of main.
 export const pick = () =>
     document.querySelector<HTMLElement>("#overlay li.selected")?.dataset.animal
+
+// Difficulty select for stage `level` in `mode`, its cursor on `difficulty`,
+// as stage select opens it: confirm goes to character select, Back to stage
+// select on the stage.
+export function difficultySelect(
+    level = 0,
+    difficulty: Difficulty = "medium",
+    mode: Mode = "solo"
+): Extract<Screen, { kind: "difficultySelect" }> {
+    return {
+        kind: "difficultySelect",
+        mode,
+        difficulty,
+        next: { kind: "characterSelect", level },
+        back: { kind: "stageSelect", mode, selected: level },
+    }
+}

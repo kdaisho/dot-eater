@@ -26,7 +26,13 @@ import type { Stage } from "./level"
 import { emptyProgress, markCleared, STAGE_COUNT } from "./progress"
 import { ANIMAL_IDS, AnimalId, DEFAULT_ANIMAL } from "./roster"
 import { rateClear } from "./stars"
-import { cloneState, fixedRandom, parseFlat, sameAtEvery } from "./test/helpers"
+import {
+    cloneState,
+    difficultySelect,
+    fixedRandom,
+    parseFlat,
+    sameAtEvery,
+} from "./test/helpers"
 import { vec2 } from "./vec2"
 
 const none = vec2(0, 0)
@@ -221,29 +227,30 @@ describe("stageSelect", () => {
         }
     })
 
-    it("opens character select for stage 1 with nothing cleared", () => {
+    it("opens difficulty select for stage 1 with nothing cleared", () => {
         const fresh = deps({ progress: emptyProgress() })
         const next = update(select(0), tickInput(["confirm"]), fresh)
-        expect(next).toEqual(characterSelect(0))
+        expect(next).toEqual(difficultySelect(0))
     })
 
-    it("opens character select for the selected stage on confirm", () => {
+    it("opens difficulty select for the selected stage on confirm", () => {
         const next = update(select(1), tickInput(["confirm"]), deps())
-        expect(next).toEqual(characterSelect(1))
+        expect(next).toEqual(difficultySelect(1))
     })
 
     it("starts character select on the last pick", () => {
-        const next = update(
-            select(1),
-            tickInput(["confirm"]),
-            deps({ lastAnimal: AnimalId.skunk })
+        const d = deps({ lastAnimal: AnimalId.skunk })
+        const next = update(select(1), tickInput(["confirm"]), d)
+        expect(update(next, tickInput(["confirm"]), d)).toEqual(
+            characterSelect(1, AnimalId.skunk)
         )
-        expect(next).toEqual(characterSelect(1, AnimalId.skunk))
     })
 
     it("starts character select on the Dragon with no last pick", () => {
         const next = update(select(0), tickInput(["confirm"]), deps())
-        expect(next).toEqual(characterSelect(0, AnimalId.dragon))
+        expect(update(next, tickInput(["confirm"]), deps())).toEqual(
+            characterSelect(0, AnimalId.dragon)
+        )
     })
 
     it("goes back to the title on pause", () => {
@@ -318,13 +325,13 @@ describe("characterSelect", () => {
         expect(next.game.cells).toEqual(second.cells.map((row) => [...row]))
     })
 
-    it("goes back to stage select on the same stage on pause", () => {
+    it("goes back to difficulty select on the same stage on pause", () => {
         const next = update(
             characterSelect(1, AnimalId.owl),
             tickInput(["pause"]),
             deps()
         )
-        expect(next).toEqual({ kind: "stageSelect", mode: "solo", selected: 1 })
+        expect(next).toEqual(difficultySelect(1))
     })
 
     it("stays put with no input", () => {
@@ -332,10 +339,12 @@ describe("characterSelect", () => {
         expect(update(screen, tickInput(), deps())).toBe(screen)
     })
 
-    it("goes stage select -> character select -> playing, one screen per confirm", () => {
+    it("goes stage select -> difficulty select -> character select -> playing, one screen per confirm", () => {
         const stepper = vi.fn<typeof step>(() => null)
         const d = deps({ step: stepper, lastAnimal: AnimalId.penguin })
         let screen: Screen = { kind: "stageSelect", mode: "solo", selected: 0 }
+        screen = update(screen, tickInput(["confirm"]), d)
+        expect(screen).toEqual(difficultySelect(0))
         screen = update(screen, tickInput(["confirm"]), d)
         expect(screen).toEqual(characterSelect(0, AnimalId.penguin))
         screen = update(screen, tickInput(["right"]), d)
@@ -843,8 +852,10 @@ describe("no input carry-over", () => {
             everything,
             d
         )
-        expect(fromStages.kind).toBe("characterSelect")
-        const fromCharacters = update(fromStages, everything, d)
+        expect(fromStages.kind).toBe("difficultySelect")
+        const fromDifficulties = update(fromStages, everything, d)
+        expect(fromDifficulties.kind).toBe("characterSelect")
+        const fromCharacters = update(fromDifficulties, everything, d)
         expect(fromCharacters.kind).toBe("playing")
         const fromPause = update(
             { ...playing(), kind: "paused" },
