@@ -587,6 +587,32 @@ describe("punching in versus", () => {
         expect(ofType(out, "punchHit")).toEqual([])
     })
 
+    it("never stacks the players when they bump (KDA-262)", () => {
+        // Hand-built: player 1 stepping into (3, 1), drawn at (2.05, 1);
+        // player 2 coming the other way into (2, 1), drawn at (2.4, 1).
+        // The shove's cell, one on from (2, 1), is player 1's (3, 1).
+        const setUp = (bump: boolean) => {
+            const state = versus({ x: 3, y: 1 })
+            state.playersBump = bump
+            const [one, two] = state.players.map((p) => p.character)
+            one!.pos = vec2(3, 1)
+            one!.lastPos = vec2(2, 1)
+            one!.moveProgress = 0.05
+            two!.pos = vec2(2, 1)
+            two!.lastPos = vec2(3, 1)
+            two!.moveProgress = 0.6
+            tick(state, [PUNCH, IDLE])
+            expect(ofType(state, "punchHit")).toHaveLength(1)
+            return state.players.map((p) => p.character.pos)
+        }
+        // Passing through, the shove lands on player 1's cell.
+        const [p1, p2] = setUp(false)
+        expect(p2).toEqual(p1)
+        // Bumping, it never does.
+        const [b1, b2] = setUp(true)
+        expect(b2).not.toEqual(b1)
+    })
+
     it("shoves a stunned player too", () => {
         const state = versus({ x: 3, y: 1 })
         stun(state.players[1])

@@ -180,6 +180,32 @@ describe("eventSounds", () => {
         ).toEqual(["punchHit.boss"])
     })
 
+    // Regression: a punch hitting an enemy and the boss played both the
+    // thwack and the thud.
+    it("plays one hit sound per punch, the enemy's over the boss's", () => {
+        const punched: GameEvent = {
+            type: "punched",
+            player: 0,
+            at,
+            facing: vec2(1, 0),
+        }
+        expect(
+            eventSounds([
+                punched,
+                { type: "punchHit", player: 0, at, target: "enemy", enemy: 0 },
+                { type: "punchHit", player: 0, at, target: "boss" },
+            ])
+        ).toEqual(["punchHit"])
+        // Another player's punch on the boss still thuds.
+        expect(
+            eventSounds([
+                punched,
+                { type: "punchHit", player: 0, at, target: "enemy", enemy: 0 },
+                { type: "punchHit", player: 1, at, target: "boss" },
+            ])
+        ).toEqual(["punchHit", "punchHit.boss"])
+    })
+
     // Regression: any landed punch dropped the whiff for the whole tick,
     // so player 1's miss was silent when player 2's punch landed.
     it("plays one player's whiff alongside the other's hit", () => {

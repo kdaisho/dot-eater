@@ -1924,6 +1924,29 @@ describe("createRenderer on a maze too big for the screen", () => {
         expect(calls.indexOf(translates[1])).toBeGreaterThan(clip)
     })
 
+    it("draws a jab's fist in the view, with the characters", () => {
+        const { calls, frame } = bigSetup()
+        const jab = {
+            player: 0,
+            facing: vec2(1, 0),
+            age: 0.05,
+            lunge: JAB_LUNGE,
+        }
+        frame(createGameState(BIG_LEVEL), 0, {}, { jabs: [jab] })
+        const clip = calls.findIndex((c) => c.name === "clip")
+        const view = calls.indexOf(
+            calls.filter((c) => c.name === "translate")[1]!
+        )
+        const fist = calls.findIndex(
+            (c) => c.name === "fillText" && c.args[0] === "👊"
+        )
+        expect(fist).toBeGreaterThan(Math.max(clip, view))
+        // In maze space: just right of player 1 at (1, 19).
+        const [x, y] = calls[fist]!.args.slice(1) as number[]
+        expect(x).toBeGreaterThan(1.5 * CELL)
+        expect(y).toBeCloseTo(19.5 * CELL)
+    })
+
     it("draws only the cells in view", () => {
         const { calls, frame } = bigSetup()
         frame(createGameState(BIG_LEVEL))
