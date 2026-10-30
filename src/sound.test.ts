@@ -89,6 +89,7 @@ describe("soundForEvent", () => {
             ],
             [{ type: "bossHit", player: 0, at, health: 3 }, "bossHit"],
             [{ type: "bossDefeated", player: 1, at }, "bossDefeated"],
+            [{ type: "hurt", player: 0, at, damage: 25 }, "hurt"],
             [
                 { type: "playerCaught", player: 0, at, outForGood: false },
                 "caught",
@@ -129,11 +130,11 @@ describe("eventSounds", () => {
         expect(eventSounds([])).toEqual([])
     })
 
-    it("makes a solo catch one sound", () => {
+    it("makes a versus knockout and coming back one sound", () => {
         expect(
             eventSounds([
                 { type: "playerCaught", player: 0, at, outForGood: false },
-                { type: "playerRespawned", player: 0, at },
+                { type: "playerRespawned", player: 1, at },
             ])
         ).toEqual(["caught"])
     })

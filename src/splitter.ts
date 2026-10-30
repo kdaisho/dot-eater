@@ -29,8 +29,6 @@ import { samePos, vec2, type Vec2 } from "./vec2"
 //   respawn of its own. Once both halves are gone, the main slot is whole
 //   again and waits out RESPAWN_DELAY at the spawn like any defeated enemy,
 //   blinking before it is back.
-// - A lost life: whatever it was, it is back whole at its spawn and the
-//   spare is GONE (see resetSplitter).
 //
 // Everything else (statuses, pushes, tile effects, collisions) treats each
 // slot in play like any other enemy.
@@ -199,15 +197,6 @@ export function halfDefeated(state: GameState, i: number) {
         makeWhole(main)
         main.respawnIn = RESPAWN_DELAY
     }
-}
-
-// After a lost life, which puts every enemy back in play at its spawn (see
-// respawn in game.ts): a Splitter's main slot is whole again and its spare
-// out of play. Does nothing to other enemies.
-export function resetSplitter(enemy: Character) {
-    if (!enemy.part) return
-    if (enemy.part.slot === "main") makeWhole(enemy)
-    else enemy.respawnIn = GONE
 }
 
 function makeWhole(main: Character) {

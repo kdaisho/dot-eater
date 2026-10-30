@@ -11,7 +11,7 @@ import type { Settings } from "./settings"
 import { breathSfx, SfxId } from "./sfx"
 
 // The effect a game event plays, if any. playerRespawned plays nothing: a
-// solo catch reports a catch and then a respawn, and is one sound.
+// versus player coming back makes no sound.
 export function soundForEvent(event: GameEvent): SfxId | undefined {
     switch (event.type) {
         case "dotEaten":
@@ -24,6 +24,8 @@ export function soundForEvent(event: GameEvent): SfxId | undefined {
             return SfxId.bossHit
         case "bossDefeated":
             return SfxId.bossDefeated
+        case "hurt":
+            return SfxId.hurt
         case "playerCaught":
             return SfxId.caught
         case "playerStunned":

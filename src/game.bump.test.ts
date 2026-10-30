@@ -6,7 +6,7 @@ import {
     PLAYER_RESPAWN_DELAY,
     PLAYER_SPEED,
     RESPAWN_BLOCK_GRACE,
-    START_LIVES,
+    MAX_HEALTH,
     TICK_RATE,
 } from "./constants"
 import type { Character } from "./character"
@@ -63,7 +63,7 @@ function game(
 ): GameState {
     const { map, ice } = textMap(rows)
     const state = makeState(map, [p1, p2], enemies, {
-        lives: START_LIVES,
+        health: MAX_HEALTH,
         mode,
         ice,
         playersBump: bump,

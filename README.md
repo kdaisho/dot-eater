@@ -8,7 +8,7 @@ Play it at [kdaisho.github.io/dot-eater](https://kdaisho.github.io/dot-eater).
 
 - You are the fly 🪰. Move with the arrow keys.
 - Eat every dot in the maze to win.
-- Avoid the two enemies, 👹 and 👺. If one catches you, you lose.
+- Avoid the enemies, 👹 and 👺. Each touch costs health and knocks you back; at 0 health you lose.
 - The openings in the outer wall lead to the opposite side.
 - After a win or a loss, press Space to restart.
 
