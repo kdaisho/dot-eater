@@ -228,6 +228,7 @@ const tickInput: TickInput = {
             held: p.heldSteps(),
             pressed: p.pressedStep(),
             breath: p.wasPressed("breath"),
+            punch: p.wasPressed("punch"),
         }
     },
     captured: () => pendingCapture,

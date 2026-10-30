@@ -276,6 +276,25 @@ describe("main", () => {
         expect(breaths[0]).toBe(true)
     })
 
+    it("passes a punch press (/) to the game on one tick, never on repeat", () => {
+        press("Slash")
+        const before = steps()
+        vi.advanceTimersByTime(FRAMES_MS)
+        const punches = moves(before).map((m) => m.punch)
+        expect(punches.filter(Boolean)).toHaveLength(1)
+        expect(punches[0]).toBe(true)
+        expect(moves(before).every((m) => !m.breath)).toBe(true)
+        // Held with auto-repeat: one punch, on the first keydown only.
+        keydown("Slash")
+        vi.advanceTimersByTime(FRAMES_MS)
+        const held = steps()
+        keydown("Slash", true)
+        keydown("Slash", true)
+        vi.advanceTimersByTime(FRAMES_MS)
+        expect(moves(held).some((m) => m.punch)).toBe(false)
+        keyup("Slash")
+    })
+
     it("pauses and resumes on P", () => {
         pressAndTick("KeyP")
         expect(screen()).toBe("pause")

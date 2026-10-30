@@ -321,7 +321,8 @@ type ControlsScreen = Extract<Screen, { kind: "controls" }>
 export type TickInput = {
     // Pressed since the previous tick (a press edge; holding doesn't repeat).
     wasPressed(action: Action, player?: number): boolean
-    // Movement and the breath press for the game; only read while playing.
+    // Movement and the breath and punch presses for the game; only read
+    // while playing.
     move(player?: number): MoveInput
     // The controls screen's capture since the previous tick (see Capture).
     // Only read while capturing.

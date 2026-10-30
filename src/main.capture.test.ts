@@ -54,7 +54,7 @@ const selectedItem = () => overlay()?.querySelector("li.selected")?.textContent
 const capturing = () => lines()[0]?.startsWith("Press a ") ?? false
 
 const B = 1
-const X = 2
+const Y = 3
 
 describe("main's controls capture", () => {
     const setBindings = vi.spyOn(KeyboardSource.prototype, "setBindings")
@@ -121,7 +121,7 @@ describe("main's controls capture", () => {
     // broke the poll also stopped the capture.
     it("captures a button even when polling the pads throws", () => {
         const error = vi.spyOn(console, "error").mockImplementation(() => {})
-        for (let i = 0; i < 7; i++) pressAndTick("ArrowDown")
+        for (let i = 0; i < 8; i++) pressAndTick("ArrowDown")
         expect(selectedItem()).toBe("Pad breath A")
         pressAndTick("Space")
         expect(capturing()).toBe(true)
@@ -134,10 +134,10 @@ describe("main's controls capture", () => {
             })
         pads = [broken([])]
         tickFrame()
-        pads = [broken([X])]
+        pads = [broken([Y])]
         tickFrame()
         expect(capturing()).toBe(false)
-        expect(selectedItem()).toBe("Pad breath X")
+        expect(selectedItem()).toBe("Pad breath Y")
         pads = [pad()]
         tickFrame()
         error.mockRestore()
@@ -146,7 +146,7 @@ describe("main's controls capture", () => {
     // Regression: Reset gave equal bindings as another object, which main
     // compared by reference and applied again (releasing held keys).
     it("doesn't re-apply equal bindings on Reset", () => {
-        // Undo the X and the J first, then reset the (now equal) bindings.
+        // Undo the Y and the J first, then reset the (now equal) bindings.
         pressAndTick("Space")
         tickFrame()
         pads = [pad([0])]
@@ -155,12 +155,12 @@ describe("main's controls capture", () => {
         tickFrame()
         expect(selectedItem()).toBe("Pad breath A")
         // Up is on J now.
-        for (let i = 0; i < 7; i++) pressAndTick("KeyJ")
+        for (let i = 0; i < 8; i++) pressAndTick("KeyJ")
         pressAndTick("Space")
         pressAndTick("ArrowUp")
         expect(selectedItem()).toBe("Up ↑")
         setBindings.mockClear()
-        for (let i = 0; i < 10; i++) pressAndTick("ArrowDown")
+        for (let i = 0; i < 12; i++) pressAndTick("ArrowDown")
         expect(selectedItem()).toBe("Reset to defaults")
         pressAndTick("Space")
         const saved = JSON.parse(localStorage.getItem(SETTINGS_KEY) ?? "{}")

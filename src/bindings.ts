@@ -4,23 +4,30 @@
 //
 // Rules (product decisions):
 // - Each player binds one key (a KeyboardEvent.code) to each action, and a
-//   pad button to breath, confirm and pause. The pad's D-pad and left stick
-//   always move and can't be rebound.
+//   pad button to breath, punch, confirm and pause. The pad's D-pad and
+//   left stick always move and can't be rebound.
 // - Escape always pauses (player 1) and goes back. It can't be bound, so
 //   nobody can lock themselves out of the pause menu.
 // - Binding a key or button already in use swaps the two bindings, across
 //   players too for keys, so every action always has exactly one key.
-// - Pad buttons: breath and confirm may share a button (A does both by
-//   default: breath in play, confirm in menus, never both at once). Pause
-//   never shares. Pads are per player (pad 1 drives P1, pad 2 drives P2),
-//   so pad bindings only swap within a player. See rebind.
+// - Pad buttons: confirm may share a button with breath or punch (A does
+//   breath and confirm by default: breath in play, confirm in menus, never
+//   both at once). Breath and punch never share (both act in play, so one
+//   press would do both), and pause never shares. Pads are per player (pad
+//   1 drives P1, pad 2 drives P2), so pad bindings only swap within a
+//   player. See rebind.
 
 import type { Action } from "./input"
 
 // The actions a pad button can be bound to.
-export type PadAction = "breath" | "confirm" | "pause"
+export type PadAction = "breath" | "punch" | "confirm" | "pause"
 
-export const PAD_ACTIONS: readonly PadAction[] = ["breath", "confirm", "pause"]
+export const PAD_ACTIONS: readonly PadAction[] = [
+    "breath",
+    "punch",
+    "confirm",
+    "pause",
+]
 
 export type PlayerBindings = {
     // KeyboardEvent.code per action.
@@ -44,6 +51,7 @@ export const FIXED_PAUSE_KEY = "Escape"
 
 // Standard-mapping buttons.
 export const PAD_A = 0
+export const PAD_X = 2
 export const PAD_START = 9
 // The D-pad (up, down, left, right): fixed to the directions.
 export const PAD_DPAD: readonly number[] = [12, 13, 14, 15]
@@ -60,10 +68,16 @@ export const DEFAULT_BINDINGS: Bindings = {
                 left: "ArrowLeft",
                 right: "ArrowRight",
                 breath: "ShiftRight",
+                punch: "Slash",
                 pause: "KeyP",
                 confirm: "Space",
             },
-            pad: { breath: PAD_A, confirm: PAD_A, pause: PAD_START },
+            pad: {
+                breath: PAD_A,
+                punch: PAD_X,
+                confirm: PAD_A,
+                pause: PAD_START,
+            },
         },
         {
             keys: {
@@ -72,10 +86,16 @@ export const DEFAULT_BINDINGS: Bindings = {
                 left: "KeyA",
                 right: "KeyD",
                 breath: "ShiftLeft",
+                punch: "KeyZ",
                 pause: "KeyQ",
                 confirm: "KeyE",
             },
-            pad: { breath: PAD_A, confirm: PAD_A, pause: PAD_START },
+            pad: {
+                breath: PAD_A,
+                punch: PAD_X,
+                confirm: PAD_A,
+                pause: PAD_START,
+            },
         },
     ],
 }
@@ -139,9 +159,12 @@ export function isPadAction(action: Action): action is PadAction {
     return (PAD_ACTIONS as readonly Action[]).includes(action)
 }
 
-// Whether two pad actions may share a button: only breath and confirm.
+// Whether two different pad actions may share a button: confirm (menus
+// only) with breath or punch (play only). Breath and punch both act in
+// play, and pause acts in both, so neither shares with them.
 function canShare(a: PadAction, b: PadAction): boolean {
-    return a !== "pause" && b !== "pause"
+    if (a === "pause" || b === "pause") return false
+    return a === "confirm" || b === "confirm"
 }
 
 // Bind `target` to `player`'s `action`: a string binds a key, a number a pad
@@ -153,14 +176,15 @@ function canShare(a: PadAction, b: PadAction): boolean {
 // Keys: whatever action (of either player) holds the key takes this
 // action's old key, a swap.
 //
-// Pad buttons, within the player: a button shared by breath and confirm
-// stays shared when one of them moves to a free button or to its partner's.
-// Moving onto pause's button (or pause onto theirs) swaps the two buttons
-// whole: what was on the target button takes the old one, and a partner
-// left behind on the old button comes along to the target. For example,
-// with A on breath and confirm and Start on pause, binding confirm to Start
-// gives Start to breath and confirm and A to pause, never pause sharing a
-// button with breath.
+// Pad buttons, within the player: a button shared by breath (or punch) and
+// confirm stays shared when one of them moves to a free button or to its
+// partner's. Moving onto a button whose action can't share with it (see
+// canShare: pause's button, or breath onto punch's and back) swaps the two
+// buttons whole: what was on the target button takes the old one, and a
+// partner left behind on the old button comes along to the target. For
+// example, with A on breath and confirm and Start on pause, binding confirm
+// to Start gives Start to breath and confirm and A to pause, never pause
+// sharing a button with breath.
 export function rebind(
     bindings: Bindings,
     player: number,
@@ -252,8 +276,8 @@ function withKey(
 // from an older version with fewer actions keeps the rest. Then the whole
 // is checked: when two actions end up on one key (stored duplicates, or a
 // fallback default that a stored key already uses), every key falls back to
-// the defaults; when a player's pause shares a pad button, that player's
-// pad buttons fall back.
+// the defaults; when a player's pad has two actions on one button that
+// can't share (see canShare), that player's pad buttons fall back.
 //
 // Unknown fields are kept (untyped, as they come), at the top, in each
 // player and in their keys and pad, as settings keeps its own: a save from
@@ -331,8 +355,13 @@ function parsePlayer(value: unknown, defaults: PlayerBindings): PlayerBindings {
     return { keys: parsedKeys, pad: parsedPad }
 }
 
+// Whether every pad action sharing a button with another may share it.
 function padOk(pad: Readonly<Record<PadAction, number>>): boolean {
-    return pad.pause !== pad.breath && pad.pause !== pad.confirm
+    return PAD_ACTIONS.every((a, i) =>
+        PAD_ACTIONS.slice(i + 1).every(
+            (b) => pad[a] !== pad[b] || canShare(a, b)
+        )
+    )
 }
 
 // An own field of an object, or undefined for anything else (including

@@ -45,7 +45,7 @@ const selectedItem = () => overlay()?.querySelector("li.selected")?.textContent
 const saved = () => JSON.parse(localStorage.getItem(SETTINGS_KEY) ?? "null")
 const capturing = () => lines()[0]?.startsWith("Press a ") ?? false
 
-const X = 2
+const Y = 3
 
 describe("main's controls screen", () => {
     beforeAll(async () => {
@@ -136,7 +136,7 @@ describe("main's controls screen", () => {
     })
 
     it("captures a pad button on a pad row, and the pad uses it", () => {
-        for (let i = 0; i < 7; i++) pressAndTick("ArrowDown")
+        for (let i = 0; i < 8; i++) pressAndTick("ArrowDown")
         expect(selectedItem()).toBe("Pad breath A")
         tap(0) // A confirms: the prompt opens
         expect(capturing()).toBe(true)
@@ -144,21 +144,22 @@ describe("main's controls screen", () => {
         // A key doesn't do for a pad row.
         pressAndTick("KeyZ")
         expect(capturing()).toBe(true)
-        tap(X)
+        tap(Y)
         expect(capturing()).toBe(false)
-        expect(selectedItem()).toBe("Pad breath X")
+        expect(selectedItem()).toBe("Pad breath Y")
         expect(saved().bindings.players[0].pad).toEqual({
-            breath: X,
+            breath: Y,
+            punch: 2,
             confirm: 0,
             pause: 9,
         })
-        // X is breath only now: it doesn't confirm on the menu.
-        tap(X)
+        // Y is breath only now: it doesn't confirm on the menu.
+        tap(Y)
         expect(capturing()).toBe(false)
     })
 
     it("resets to the defaults and goes back to the settings", () => {
-        for (let i = 0; i < 3; i++) pressAndTick("ArrowDown")
+        for (let i = 0; i < 4; i++) pressAndTick("ArrowDown")
         expect(selectedItem()).toBe("Reset to defaults")
         pressAndTick("Space")
         // The bindings are dropped: the defaults, from then on.
@@ -168,8 +169,10 @@ describe("main's controls screen", () => {
         expect(selectedItem()).toBe("Pad pause Start")
         pressAndTick("ArrowUp")
         pressAndTick("ArrowUp")
+        expect(selectedItem()).toBe("Pad punch X")
+        pressAndTick("ArrowUp")
         expect(selectedItem()).toBe("Pad breath A")
-        for (let i = 0; i < 3; i++) pressAndTick("ArrowDown")
+        for (let i = 0; i < 4; i++) pressAndTick("ArrowDown")
         pressAndTick("ArrowDown")
         pressAndTick("Space")
         expect(screen()).toBe("settings")
