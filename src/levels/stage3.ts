@@ -1,7 +1,8 @@
 import type { LevelData } from "../level"
 
 // Ice rink: anything that steps onto ice ("~", or ":" with a dot) keeps
-// sliding until a wall stops it or it reaches normal floor, enemies too. The
+// sliding until a wall stops it or it reaches normal floor, enemies too
+// (but not a Penguin player, which walks on ice, nor a phantom). The
 // middle of the map is a rink with wall posts to stop against, so getting
 // around it takes planning: some dots can only be passed over mid-slide, from
 // the right post. The middle row is an ice lane through a wrap tunnel: a

@@ -320,6 +320,26 @@ describe("enemyVisible", () => {
         enemy.respawnIn = RESPAWN_BLINK - half * 2.5
         expect(enemyVisible(enemy)).toBe(true)
     })
+
+    it("blinks an enemy in play in the last seconds of a status that blinksBeforeEnd", () => {
+        const enemy = makeEnemy(0, 0)
+        const warned = { name: "test.warned", blinksBeforeEnd: true }
+        const quiet = { name: "test.quiet", holds: true }
+        addStatus(enemy, warned, 3)
+        addStatus(enemy, quiet, 0.1)
+        const half = 1 / (BLINK_RATE * 2)
+        const at = (left: number) => {
+            enemy.statuses[0].left = left
+            return enemyVisible(enemy)
+        }
+        expect(at(RESPAWN_BLINK + 0.01)).toBe(true)
+        expect(at(RESPAWN_BLINK)).toBe(true)
+        expect(at(RESPAWN_BLINK - half * 1.5)).toBe(false)
+        expect(at(RESPAWN_BLINK - half * 2.5)).toBe(true)
+        // A status without the flag never blinks, however little is left.
+        enemy.statuses = [{ status: quiet, left: half * 0.5 }]
+        expect(enemyVisible(enemy)).toBe(true)
+    })
 })
 
 describe("pushEnemy", () => {
