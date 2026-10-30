@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vite-plus/test"
-import { DEFAULT_BINDINGS, PAD_A, PAD_START, rebind } from "./bindings"
+import { DEFAULT_BINDINGS, PAD_A, PAD_START, PAD_X, rebind } from "./bindings"
 import { CONTROLS_ROWS } from "./controlsMenu"
 import {
     baseScreen,
@@ -245,9 +245,10 @@ describe("capturing", () => {
 
     it("binds pad buttons on pad rows, swapping with pause", () => {
         let screen = press(on(padBreath), ["confirm"])
-        screen = update(screen, input([], { button: 2 }), deps())
+        screen = update(screen, input([], { button: 3 }), deps())
         expect(bindings(screen).players[0].pad).toEqual({
-            breath: 2,
+            breath: 3,
+            punch: PAD_X,
             confirm: PAD_A,
             pause: PAD_START,
         })
@@ -255,6 +256,7 @@ describe("capturing", () => {
         screen = update(screen, input([], { button: PAD_A }), deps())
         expect(bindings(screen).players[0].pad).toEqual({
             breath: PAD_START,
+            punch: PAD_X,
             confirm: PAD_START,
             pause: PAD_A,
         })

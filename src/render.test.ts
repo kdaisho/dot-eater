@@ -39,6 +39,7 @@ import {
     stunLabel,
     type Effects,
 } from "./render"
+import { JAB_LUNGE, JAB_SECONDS } from "./jab"
 import type { Particle } from "./particles"
 import { createSplitter } from "./splitter"
 import { DEFAULT_ANIMAL } from "./roster"
@@ -1546,6 +1547,67 @@ describe("createRenderer with effects", () => {
         renderer.resize()
         expect(calls.filter((c) => c.name === "arc")).toHaveLength(1)
     })
+
+    describe("a jab", () => {
+        const sprite = (
+            calls: ReturnType<typeof setup>["calls"],
+            text: string
+        ) => calls.find((c) => c.name === "fillText" && c.args[0] === text)
+
+        it("lunges the player along it, with a fist just ahead", () => {
+            const { calls, canvas, renderer } = setup()
+            const jab = {
+                player: 0,
+                facing: vec2(1, 0),
+                age: JAB_SECONDS / 2,
+                lunge: JAB_LUNGE,
+            }
+            renderer.draw(corridor(), 0, {}, {}, { jabs: [jab] })
+            const cell = cellOf(canvas)
+            const player = sprite(calls, "🐉")
+            expect(player?.args[1]).toBeCloseTo((1.5 + JAB_LUNGE) * cell)
+            expect(player?.args[2]).toBeCloseTo(1.5 * cell)
+            const fist = sprite(calls, "👊")
+            expect(fist?.args[1]).toBeGreaterThan(player?.args[1] as number)
+            expect(fist?.args[2]).toBeCloseTo(1.5 * cell)
+        })
+
+        it("shows nothing without one, or for another player", () => {
+            const { calls, canvas, renderer } = setup()
+            const other = {
+                player: 1,
+                facing: vec2(1, 0),
+                age: 0.05,
+                lunge: JAB_LUNGE,
+            }
+            renderer.draw(corridor(), 0, {}, {}, { jabs: [other] })
+            expect(sprite(calls, "🐉")?.args[1]).toBeCloseTo(
+                1.5 * cellOf(canvas)
+            )
+            expect(sprite(calls, "👊")).toBeUndefined()
+        })
+
+        // Regression: the fist was drawn with the player, before the
+        // enemies, so the enemy it hit covered it.
+        it("draws the fist over the enemy it hits", () => {
+            const { calls, renderer } = setup()
+            const state = corridor()
+            state.enemies.push(makeEnemy(2, 1))
+            const jab = {
+                player: 0,
+                facing: vec2(1, 0),
+                age: 0.05,
+                lunge: JAB_LUNGE,
+            }
+            renderer.draw(state, 0, {}, {}, { jabs: [jab] })
+            const at = (text: string) =>
+                calls.findIndex(
+                    (c) => c.name === "fillText" && c.args[0] === text
+                )
+            expect(at("👺")).toBeGreaterThan(-1)
+            expect(at("👊")).toBeGreaterThan(at("👺"))
+        })
+    })
 })
 
 describe("createRenderer with the facing guide", () => {
@@ -1742,6 +1804,22 @@ describe("createRenderer with the facing guide", () => {
             ])
         })
 
+        // Regression: the arrow was drawn on the lunging sprite, so it
+        // bobbed with every punch.
+        it("stays with the glide while the player jabs", () => {
+            const { calls, canvas, renderer } = setup()
+            const jab = {
+                player: 0,
+                facing: vec2(1, 0),
+                age: JAB_SECONDS / 2,
+                lunge: JAB_LUNGE,
+            }
+            renderer.draw(charged(), 0, {}, {}, { ...ARROW, jabs: [jab] })
+            expect(arrows(calls, canvas)).toEqual([
+                { color: 0, tip: [2.2, 1.5] },
+            ])
+        })
+
         it.each([
             ["up", vec2(0, -1), [1.5, 0.8]],
             ["down", vec2(0, 1), [1.5, 2.2]],
@@ -1907,6 +1985,29 @@ describe("createRenderer on a maze too big for the screen", () => {
         // The view moves the maze inside the clip.
         const translates = calls.filter((c) => c.name === "translate")
         expect(calls.indexOf(translates[1])).toBeGreaterThan(clip)
+    })
+
+    it("draws a jab's fist in the view, with the characters", () => {
+        const { calls, frame } = bigSetup()
+        const jab = {
+            player: 0,
+            facing: vec2(1, 0),
+            age: 0.05,
+            lunge: JAB_LUNGE,
+        }
+        frame(createGameState(BIG_LEVEL), 0, {}, { jabs: [jab] })
+        const clip = calls.findIndex((c) => c.name === "clip")
+        const view = calls.indexOf(
+            calls.filter((c) => c.name === "translate")[1]!
+        )
+        const fist = calls.findIndex(
+            (c) => c.name === "fillText" && c.args[0] === "👊"
+        )
+        expect(fist).toBeGreaterThan(Math.max(clip, view))
+        // In maze space: just right of player 1 at (1, 19).
+        const [x, y] = calls[fist]!.args.slice(1) as number[]
+        expect(x).toBeGreaterThan(1.5 * CELL)
+        expect(y).toBeCloseTo(19.5 * CELL)
     })
 
     it("draws only the cells in view", () => {

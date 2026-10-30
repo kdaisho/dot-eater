@@ -34,6 +34,7 @@ import {
     type Player,
 } from "./game"
 import { eatenDotVisible, glidePos, wrapCopies } from "./glide"
+import { jabLunge, type Jab } from "./jab"
 import { computeLayout, type Layout } from "./layout"
 import type { LevelRules } from "./level"
 import { particleAlpha, type Particle } from "./particles"
@@ -90,6 +91,9 @@ export type Effects = {
     // (see aimPreviews in breath.ts), a faint tint in its colour on the
     // cells its breath would hit, under the dots.
     aim?: boolean
+    // Each player's jab under way (KDA-258; see jab.ts): its sprite lunges
+    // along it, with a fist just ahead.
+    jabs?: readonly Jab[]
 }
 
 export type Renderer = {
@@ -168,6 +172,13 @@ const LABEL_SCALE = 0.4
 // cells.
 const ARROW_TIP = 0.7
 const ARROW_WIDTH = 0.3
+
+// A jab (see jab.ts) shows a fist this far ahead of the sprite's centre and
+// this wide, in cells: just past the sprite's front, where the punch
+// reaches. Placeholders to tune at preview.
+const FIST = "👊"
+const FIST_AHEAD = 0.6
+const FIST_SCALE = 0.4
 
 // The aim preview (see Effects.aim) is a tint in the player's colour: a
 // faint fill over each cell its breath would hit, and a slightly stronger
@@ -387,7 +398,8 @@ export function createRenderer(
             cols,
             rows,
             seen,
-            effects.guide === "arrow"
+            effects.guide === "arrow",
+            effects.jabs ?? []
         )
         if (effects.particles) drawParticles(ctx, effects.particles, cell, seen)
         ctx.restore()
@@ -824,7 +836,8 @@ function drawCharacters(
     cols: number,
     rows: number,
     fog: Sight | null,
-    arrows: boolean
+    arrows: boolean,
+    jabs: readonly Jab[]
 ) {
     ctx.textAlign = "center"
     ctx.textBaseline = "middle"
@@ -841,7 +854,8 @@ function drawCharacters(
     // with two players wears its marker (see PLAYER_COLORS). A Splitter's
     // half is drawn smaller (HALF_SCALE), its disc and badges too. With
     // `arrows`, each player who could breathe also gets its facing arrow (see
-    // drawArrow).
+    // drawArrow). A player with a jab under way (see jab.ts) lunges along
+    // it, with a fist just ahead (see drawFist).
     const marked = state.players.length > 1
     const enemySprite = (enemy: Character) => ({
         character: enemy,
@@ -850,6 +864,7 @@ function drawCharacters(
         marker: null,
         badge: null,
         arrow: null,
+        jab: null,
     })
     const held = state.enemies.filter((e) => hasStatus(e, "holds"))
     const free = state.enemies.filter((e) => !hasStatus(e, "holds"))
@@ -873,16 +888,28 @@ function drawCharacters(
                               canBreathe(player.breather)
                                   ? { index: i, facing: player.breather.facing }
                                   : null,
+                          jab: jabs.find((j) => j.player === i) ?? null,
                       },
                   ]
         ),
         ...free.map(enemySprite),
     ]
-    for (const { character, sprite, rate, marker, badge, arrow } of sprites) {
+    // Fists are drawn after every character, so one isn't hidden under the
+    // enemy it hits (players are drawn before enemies).
+    const fists: { x: number; y: number; facing: Vec2 }[] = []
+    for (const sprite of sprites) {
+        const { character, rate, marker, badge, arrow, jab } = sprite
         const isPlayer = character.id === CharacterId.player
         if (!isPlayer && !enemyVisible(character)) continue
         const held = !isPlayer && hasStatus(character, "holds")
-        const pos = glidePos(character, held ? 0 : alpha, cols, rows, rate)
+        const glide = glidePos(character, held ? 0 : alpha, cols, rows, rate)
+        const lunge = jab ? jabLunge(jab) : 0
+        const pos = jab
+            ? vec2(
+                  glide.x + jab.facing.x * lunge,
+                  glide.y + jab.facing.y * lunge
+              )
+            : glide
         if (fog && !isPlayer && !fog.visible(pos)) continue
         const looks = character.statuses.flatMap((s) =>
             s.status.look ? [s.status.look] : []
@@ -902,9 +929,9 @@ function drawCharacters(
                 ctx.arc(x, y, size / 2, 0, Math.PI * 2)
                 ctx.fill()
             }
-            ctx.fillText(sprite, x, y)
+            ctx.fillText(sprite.sprite, x, y)
             if (marker !== null) drawMarker(ctx, marker, x, y, size)
-            if (arrow) drawArrow(ctx, arrow, x, y, cell)
+            if (jab) fists.push({ x, y, facing: jab.facing })
             // A stunned player (versus) wears the stun badge, and one
             // immune just after a stun the immune badge, like a status's.
             const badges = [
@@ -921,7 +948,13 @@ function drawCharacters(
                 )
             })
         }
+        // The arrow stays with the glide, not the jab's lunge.
+        if (!arrow) continue
+        for (const p of wrapCopies(glide, cols, rows)) {
+            drawArrow(ctx, arrow, (p.x + 0.5) * cell, (p.y + 0.5) * cell, cell)
+        }
     }
+    for (const fist of fists) drawFist(ctx, fist.facing, fist.x, fist.y, cell)
 }
 
 // Particles (see particles.ts), each a disc or a square of its colour,
@@ -974,6 +1007,23 @@ function drawMarker(
     ctx.fillStyle = color
     ctx.font = `bold ${Math.round(size * LABEL_SCALE)}px sans-serif`
     ctx.fillText(String(index + 1), x - size / 2, y + size / 2)
+}
+
+// A jab's fist (see jab.ts) for a sprite centred at (x, y): a small 👊
+// FIST_AHEAD cells out along `facing`, FIST_SCALE of a cell wide.
+function drawFist(
+    ctx: CanvasRenderingContext2D,
+    facing: Vec2,
+    x: number,
+    y: number,
+    cell: number
+) {
+    ctx.font = `${Math.round(cell * FIST_SCALE)}px sans-serif`
+    ctx.fillText(
+        FIST,
+        x + facing.x * FIST_AHEAD * cell,
+        y + facing.y * FIST_AHEAD * cell
+    )
 }
 
 // Player `arrow.index`'s facing arrow, for its sprite centred at (x, y): a

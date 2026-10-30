@@ -14,7 +14,8 @@ import type { Vec2 } from "./vec2"
 // nothing new.
 //
 // `player` is always a player's index (player 1 is 0). `at` is a cell (the
-// top-left one of the boss's 2x2 footprint), for placing effects.
+// top-left one of the boss's 2x2 footprint), for placing effects, except
+// for the punch's events, where it is a drawn position.
 export type GameEvent =
     // A player ate a dot on `at` (walking or sliding onto it).
     | { type: "dotEaten"; player: number; at: Vec2 }
@@ -73,6 +74,21 @@ export type GameEvent =
     | { type: "playerRespawned"; player: number; at: Vec2 }
     // Versus: player `by`'s breath stunned `player`, on `at` (its cell).
     | { type: "playerStunned"; player: number; by: number; at: Vec2 }
+    // A player punched (see punch.ts), whether it hit anything or not. `at`
+    // is where the player is drawn (not a whole cell) and `facing` the unit
+    // step it punched along. Its hits follow, one punchHit each.
+    | { type: "punched"; player: number; at: Vec2; facing: Vec2 }
+    // A player's punch hit an enemy (`enemy`, its index in
+    // GameState.enemies), the boss or the other player (versus), at `at`:
+    // where the target was drawn when the fist met it (the nearest point of
+    // the boss's body), not a whole cell. The boss isn't hurt or moved.
+    | {
+          type: "punchHit"
+          player: number
+          at: Vec2
+          target: "enemy" | "boss" | "player"
+          enemy?: number
+      }
     // The stage is cleared: the game is won. In versus this is the end of
     // a round; whether it also ends the match is up to flow.ts (the next
     // screen is roundResult or matchResult).
