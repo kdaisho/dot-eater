@@ -1,4 +1,4 @@
-import { AiType, Cell, MAX_ENEMIES, TICK_RATE } from "./constants"
+import { AiType, Cell, MAX_ENEMIES, MAX_HEALTH, TICK_RATE } from "./constants"
 import {
     FREE,
     hasIce,
@@ -57,6 +57,22 @@ export type FogRule = {
 export type BossData = {
     // Cells per second. Omitted means BOSS_SPEED.
     speed?: number
+    // Its breath attack's tuning (see bossBreath.ts). Omitted, or any part
+    // of it, means the defaults.
+    breath?: BossBreathData
+}
+
+// The boss's breath (KDA-268), each part optional (see bossBreathProblems
+// for what is allowed).
+export type BossBreathData = {
+    // Seconds between breaths, and before the first (BOSS_BREATH_EVERY).
+    every?: number
+    // Seconds it winds up before it breathes (BOSS_BREATH_WIND_UP).
+    windUp?: number
+    // Its reach in cells from the footprint's edge (BOSS_BREATH_RANGE).
+    range?: number
+    // Health it costs a player it hits (BOSS_BREATH_DAMAGE).
+    damage?: number
 }
 
 // Per-level special rules. Each is optional; a level without rules plays
@@ -160,8 +176,12 @@ export type Level = {
     playerSpeed?: number
     enemies: readonly EnemySpawn[]
     // The boss, or null for none: its spawn (the top-left cell of its
-    // footprint) and speed (see BossData).
-    boss: { pos: Readonly<Vec2>; speed?: number } | null
+    // footprint), speed and breath tuning (see BossData).
+    boss: {
+        pos: Readonly<Vec2>
+        speed?: number
+        breath?: Readonly<BossBreathData>
+    } | null
     rules: LevelRules
 }
 
@@ -363,12 +383,15 @@ export function parseLevel(data: LevelData): Level {
                       ...(data.boss?.speed === undefined
                           ? {}
                           : { speed: data.boss.speed }),
+                      ...(data.boss?.breath === undefined
+                          ? {}
+                          : { breath: { ...data.boss.breath } }),
                   },
         rules: copyRules(data.rules),
     }
 }
 
-const BOSS_KEYS: ReadonlySet<string> = new Set(["speed"])
+const BOSS_KEYS: ReadonlySet<string> = new Set(["speed", "breath"])
 
 // Boss settings that need no map: an object with only known, valid
 // settings. Whether the map has a boss for them is checked once it is
@@ -385,6 +408,54 @@ function bossDataProblems(boss: BossData | undefined): string[] {
         }
     }
     checkSpeed(problems, "boss.speed", boss.speed)
+    problems.push(...bossBreathProblems(boss.breath))
+    return problems
+}
+
+// What each boss breath setting may be (see BossBreathData): seconds for
+// `every` and `windUp` (a wind-up too short to see and dodge is unfair),
+// whole cells for `range` and whole health for `damage` (at most a full
+// gauge).
+const BOSS_BREATH_LIMITS: Readonly<
+    Record<
+        keyof BossBreathData,
+        { min: number; max: number; whole: boolean; unit: string }
+    >
+> = {
+    every: { min: 1, max: 60, whole: false, unit: "seconds" },
+    windUp: { min: 0.25, max: 5, whole: false, unit: "seconds" },
+    range: { min: 1, max: 30, whole: true, unit: "cells" },
+    damage: { min: 1, max: MAX_HEALTH, whole: true, unit: "health" },
+}
+
+// The boss's breath settings (`boss.breath`), on their own: an object with
+// only known settings, each a number within BOSS_BREATH_LIMITS.
+function bossBreathProblems(breath: unknown): string[] {
+    if (breath === undefined) return []
+    if (!isPlainObject(breath)) {
+        return [`boss.breath must be an object, got ${JSON.stringify(breath)}`]
+    }
+    const problems: string[] = []
+    for (const [key, value] of Object.entries(breath)) {
+        if (!Object.hasOwn(BOSS_BREATH_LIMITS, key)) {
+            problems.push(`unknown boss.breath setting ${JSON.stringify(key)}`)
+            continue
+        }
+        if (value === undefined) continue
+        const { min, max, whole, unit } =
+            BOSS_BREATH_LIMITS[key as keyof BossBreathData]
+        const ok =
+            typeof value === "number" &&
+            Number.isFinite(value) &&
+            value >= min &&
+            value <= max &&
+            (!whole || Number.isInteger(value))
+        if (!ok) {
+            problems.push(
+                `boss.breath.${key} must be ${whole ? "a whole number" : "a number"} of ${unit} from ${min} to ${max}, got ${JSON.stringify(value)}`
+            )
+        }
+    }
     return problems
 }
 

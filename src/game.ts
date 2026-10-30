@@ -50,6 +50,7 @@ import {
     squareDistance,
     type Boss,
 } from "./boss"
+import { tickBossBreath } from "./bossBreath"
 import { createCharacter, type Character } from "./character"
 import { emit, type GameEvent } from "./events"
 import { glidePos, wrapDelta, type Glider } from "./glide"
@@ -253,7 +254,9 @@ export function createGameState(
         players,
         playersBump: false,
         enemies,
-        boss: level.boss ? createBoss(level.boss.pos, level.boss.speed) : null,
+        boss: level.boss
+            ? createBoss(level.boss.pos, level.boss.speed, level.boss.breath)
+            : null,
         ticks: 0,
         spawns: {
             players: players.map(({ character: c }) => vec2(c.pos.x, c.pos.y)),
@@ -792,7 +795,9 @@ function wait(character: Glider) {
 // tile effect blocks.
 //
 // A boss (see boss.ts) moves with the enemies, after the breaths, and keeps
-// out of blocked cells too; a defeated one doesn't move or catch. Once the
+// out of blocked cells too; a defeated one doesn't move or catch. Just
+// before it moves, its breath ticks (see bossBreath.ts): it may wind up
+// (holding still) or breathe, hurting the players it strikes. Once the
 // dots are gone with the boss still about, every energy meter refills by
 // itself (BOSS_TRICKLE per second), so the boss can always be finished.
 //
@@ -923,10 +928,15 @@ export function step(
         else spend(enemy)
     })
     const { boss } = state
+    // The boss's breath (see bossBreath.ts): while it winds up it finishes
+    // the glide it is in but makes no new move.
+    const holding = tickBossBreath(state)
     if (boss && !boss.defeated && advance(boss, dt)) {
-        const next = goingHome
-            ? bossHomeStep(state, blocked)
-            : bossChaseStep(state, targets, blocked)
+        const next = holding
+            ? null
+            : goingHome
+              ? bossHomeStep(state, blocked)
+              : bossChaseStep(state, targets, blocked)
         if (next) {
             boss.lastPos = vec2(boss.pos.x, boss.pos.y)
             boss.pos = next

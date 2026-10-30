@@ -1,5 +1,6 @@
 // @vitest-environment happy-dom
 import { afterEach, describe, expect, it, vi } from "vite-plus/test"
+import { BOSS_BREATH } from "./bossBreath"
 import { addStatus, addTileEffect, defeatEnemy, type BreathDef } from "./breath"
 import { BREATHS } from "./breaths"
 import {
@@ -897,6 +898,68 @@ describe("createRenderer", () => {
             const hit = setup()
             hit.renderer.draw(state, 0)
             expect(flashes(hit.calls)).toHaveLength(1)
+        })
+
+        // The boss winding up its breath (see bossBreath.ts) at the player,
+        // to its left.
+        function windingUp() {
+            const state = bossState()
+            state.boss!.breath.windingUp = 10
+            state.boss!.breath.facing = vec2(-1, 0)
+            return state
+        }
+
+        it("tints the cells its breath will strike while it winds up", () => {
+            // The cells (as "x,y") filled in the warning colour.
+            const tinted = ({ calls, canvas }: ReturnType<typeof setup>) =>
+                calls
+                    .filter(
+                        (c) =>
+                            c.name === "fillRect" &&
+                            c.fillStyle === BOSS_BREATH.warning
+                    )
+                    .map((c) => {
+                        const cell = cellOf(canvas)
+                        const [x, y] = c.args as number[]
+                        return `${Math.round(x / cell)},${Math.round(y / cell)}`
+                    })
+            const calm = setup()
+            calm.renderer.draw(bossState(), 0)
+            expect(tinted(calm)).toEqual([])
+            // Whatever the facing guide: it is a warning, not a guide.
+            const warned = setup()
+            warned.renderer.draw(windingUp(), 0)
+            expect(tinted(warned).sort()).toEqual(["1,1", "1,2", "2,1", "2,2"])
+            // With an edge round it in the same colour, as an aim's.
+            expect(
+                warned.calls.some(
+                    (c) =>
+                        c.name === "stroke" &&
+                        c.strokeStyle === BOSS_BREATH.warning
+                )
+            ).toBe(true)
+        })
+
+        it("glows behind it while it winds up", () => {
+            const glows = (calls: ReturnType<typeof setup>["calls"]) =>
+                calls.findIndex(
+                    (c) =>
+                        c.name === "fill" &&
+                        String(c.fillStyle).startsWith(
+                            `rgba(${BOSS_BREATH.glow},`
+                        )
+                )
+            const calm = setup()
+            calm.renderer.draw(bossState(), 0)
+            expect(glows(calm.calls)).toBe(-1)
+            const { calls, renderer } = setup()
+            renderer.draw(windingUp(), 0)
+            const glow = glows(calls)
+            const sprite = calls.findIndex(
+                (c) => c.name === "fillText" && c.args[0] === BOSS_SPRITE
+            )
+            expect(glow).toBeGreaterThanOrEqual(0)
+            expect(glow).toBeLessThan(sprite)
         })
 
         it("doesn't draw it once defeated", () => {

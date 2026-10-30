@@ -24,6 +24,10 @@ export function soundForEvent(event: GameEvent): SfxId | undefined {
             return SfxId.bossHit
         case "bossDefeated":
             return SfxId.bossDefeated
+        case "bossWindUp":
+            return SfxId.bossWindUp
+        case "bossBreathed":
+            return SfxId.bossBreath
         case "hurt":
             return SfxId.hurt
         case "playerCaught":

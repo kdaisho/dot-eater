@@ -1,4 +1,5 @@
 import { footprint } from "./boss"
+import { bossLooks, bossWarning } from "./bossBreath"
 import {
     aimPreviews,
     canBreathe,
@@ -200,6 +201,9 @@ export const BOSS_SCALE = 2
 const BOSS_BAR_HEIGHT = 0.12
 // How opaque the white flash over the sprite is just after a hit.
 const BOSS_FLASH_ALPHA = 0.7
+// The disc of a look on the boss (its glow while it winds up) is this much
+// wider than the sprite, so it shows round it.
+const BOSS_GLOW_SCALE = 1.15
 
 // A status's badge emoji is this size, as a fraction of the sprite's.
 const BADGE_SCALE = 0.5
@@ -373,7 +377,7 @@ export function createRenderer(
         }
         const aims =
             effects.aim && effects.guide === "aim" ? aimPreviews(state) : []
-        drawCells(ctx, state, alpha, cell, seen, aims)
+        drawCells(ctx, state, alpha, cell, seen, tintsFor(state, aims))
         drawBoss(ctx, state, alpha, cell, cols, rows, seen)
         drawCharacters(
             ctx,
@@ -596,7 +600,7 @@ function drawCells(
     alpha: number,
     cell: number,
     fog: Sight | null,
-    aims: readonly AimPreview[]
+    tints: readonly Tint[]
 ) {
     const wall = cell * WALL_SCALE
     const dot = Math.max(1, cell * DOT_SCALE)
@@ -619,7 +623,7 @@ function drawCells(
         )
     }
     const looks = tileLooks(state)
-    const aimed = aimGrid(state, aims)
+    const tinted = tintGrid(state, tints)
     state.cells.forEach((row, y) => {
         row.forEach((value, x) => {
             if (fog && !fog.visible(vec2(x, y))) return
@@ -629,9 +633,9 @@ function drawCells(
             for (const look of looks?.[y][x] ?? []) {
                 if (look.color) fillCell(x, y, look.color)
             }
-            for (const player of aimed?.[y][x] ?? []) {
+            for (const color of tinted?.[y][x] ?? []) {
                 ctx.globalAlpha = AIM_FILL_ALPHA
-                fillCell(x, y, PLAYER_COLORS[player])
+                fillCell(x, y, color)
                 ctx.globalAlpha = 1
             }
             if (value === Cell.wall) {
@@ -646,7 +650,7 @@ function drawCells(
             }
         })
     })
-    for (const aim of aims) drawAimEdge(ctx, aim, cell, fog)
+    for (const tint of tints) drawTintEdge(ctx, tint, cell, fog)
     if (!looks) return
     // Tile emoji go on top of everything in the cells, before characters.
     const emoji = looks.flatMap((row, y) =>
@@ -678,37 +682,56 @@ function tileLooks(state: GameState): Look[][][] | null {
     return looks
 }
 
-// Per cell [y][x], the players whose aim preview covers it, player 1
-// first, or null with no previews (the common case: no grid each frame).
-function aimGrid(
+// A faint tint over some cells, with a slightly stronger edge round them,
+// drawn under the dots: a player's aim preview in its colour, or the
+// boss's warning while it winds up its breath (see bossWarning).
+type Tint = { cells: readonly Vec2[]; color: string }
+
+// The tints to draw this frame: each aim preview in its player's colour
+// (player 1 first), then the boss's warning, if it is winding up. The
+// warning comes from the boss's state and its own colour (BOSS_BREATH in
+// bossBreath.ts), so nothing here knows the boss's breath.
+function tintsFor(state: GameState, aims: readonly AimPreview[]): Tint[] {
+    const tints: Tint[] = aims.map(({ player, cells }) => ({
+        cells,
+        color: PLAYER_COLORS[player],
+    }))
+    const warning = bossWarning(state)
+    if (warning && warning.cells.length > 0) tints.push(warning)
+    return tints
+}
+
+// Per cell [y][x], the colours of the tints covering it, in order, or null
+// with no tints (the common case: no grid each frame).
+function tintGrid(
     state: GameState,
-    aims: readonly AimPreview[]
-): number[][][] | null {
-    if (aims.length === 0) return null
-    const grid: number[][][] = state.cells.map((row) => row.map(() => []))
-    for (const { player, cells } of aims) {
-        for (const c of cells) grid[c.y][c.x].push(player)
+    tints: readonly Tint[]
+): string[][][] | null {
+    if (tints.length === 0) return null
+    const grid: string[][][] = state.cells.map((row) => row.map(() => []))
+    for (const { color, cells } of tints) {
+        for (const c of cells) grid[c.y][c.x].push(color)
     }
     return grid
 }
 
-// The edge of one aim preview: a line along every side of its cells that
-// doesn't border another of them, so it outlines the whole shape. In fog,
-// cells outside the light get none, as they get no fill.
-function drawAimEdge(
+// The edge of one tint: a line along every side of its cells that doesn't
+// border another of them, so it outlines the whole shape. In fog, cells
+// outside the light get none, as they get no fill.
+function drawTintEdge(
     ctx: CanvasRenderingContext2D,
-    aim: AimPreview,
+    tint: Tint,
     cell: number,
     fog: Sight | null
 ) {
-    const inAim = new Set(aim.cells.map((c) => `${c.x},${c.y}`))
-    const has = (x: number, y: number) => inAim.has(`${x},${y}`)
+    const inTint = new Set(tint.cells.map((c) => `${c.x},${c.y}`))
+    const has = (x: number, y: number) => inTint.has(`${x},${y}`)
     ctx.save()
     ctx.globalAlpha = AIM_EDGE_ALPHA
-    ctx.strokeStyle = PLAYER_COLORS[aim.player]
+    ctx.strokeStyle = tint.color
     ctx.lineWidth = Math.max(1, cell * AIM_EDGE_WIDTH)
     ctx.beginPath()
-    for (const { x, y } of aim.cells) {
+    for (const { x, y } of tint.cells) {
         if (fog && !fog.visible(vec2(x, y))) continue
         const left = x * cell
         const top = y * cell
@@ -756,6 +779,15 @@ function drawBoss(
     const size = cell * SPRITE_SCALE * BOSS_SCALE
     const x = (pos.x + 1) * cell
     const y = (pos.y + 1) * cell
+    // Its looks (see bossLooks: the glow while it winds up its breath),
+    // each colour as a disc behind the sprite, like an enemy status's.
+    for (const look of bossLooks(state)) {
+        if (!look.color) continue
+        ctx.fillStyle = look.color
+        ctx.beginPath()
+        ctx.arc(x, y, (size / 2) * BOSS_GLOW_SCALE, 0, Math.PI * 2)
+        ctx.fill()
+    }
     ctx.textAlign = "center"
     ctx.textBaseline = "middle"
     ctx.font = `${Math.round(size)}px sans-serif`
