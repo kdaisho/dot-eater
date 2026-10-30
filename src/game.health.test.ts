@@ -143,6 +143,37 @@ describe("knockBack", () => {
         expect(character.moveProgress).toBe(0.25)
     })
 
+    describe("with a wall behind the cell it is leaving", () => {
+        // The player glides east from (1, 1), a wall west of it, and is
+        // knocked west.
+        function leaving(progress: number) {
+            const { map } = textMap(["######", "#    #", "######"])
+            const state = makeState(map, vec2(2, 1))
+            const { character } = state.players[0]
+            character.lastPos = vec2(1, 1)
+            character.moveProgress = progress
+            return { state, character }
+        }
+
+        it("turns back from more than halfway", () => {
+            const { state, character } = leaving(0.6)
+            expect(knockBack(state, state.players[0], west)).toBe(true)
+            expect(character.pos).toEqual(vec2(1, 1))
+            expect(character.moveProgress).toBeCloseTo(0.4)
+        })
+
+        // Regression: less than halfway, the cell past (1, 1) is a wall,
+        // so it stayed put and glided on into whatever hit it.
+        it("turns back from less than halfway too, from where it is drawn", () => {
+            const { state, character } = leaving(0.4)
+            const before = drawn(state, character)
+            expect(knockBack(state, state.players[0], west)).toBe(true)
+            expect(character.pos).toEqual(vec2(1, 1))
+            expect(character.lastPos).toEqual(vec2(2, 1))
+            expect(drawn(state, character)).toEqual(before)
+        })
+    })
+
     it("goes through a wrap tunnel", () => {
         const { map } = textMap(["###", "   ", "###"])
         const state = makeState(map, vec2(0, 1))

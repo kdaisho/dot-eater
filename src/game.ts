@@ -457,8 +457,9 @@ function eatDot(state: GameState, who: Player, cell: Vec2): boolean {
 }
 
 // Knock `player` one cell along the unit `step`, if it could move into
-// that cell (see playerCanEnter): with a wall there it stays put. Returns whether it moved. Not tied to being hurt (see
-// hurtPlayer): anything that shoves a player uses it.
+// that cell (see playerCanEnter): with a wall there it stays put. Returns
+// whether it moved. Not tied to being hurt (see hurtPlayer): anything that
+// shoves a player uses it.
 //
 // It glides there like a normal move, at its normal speed, eating a dot
 // there and sliding on if it lands on ice, but keeps its facing (being
@@ -467,7 +468,10 @@ function eatDot(state: GameState, who: Player, cell: Vec2): boolean {
 // while less than halfway out of it. When the new cell lies on the glide it
 // is in (shoved back the way it came, or on the way it was going) the glide
 // carries on from where it is drawn; otherwise it starts from that nearest
-// cell, at most half a cell from where it was drawn.
+// cell, at most half a cell from where it was drawn. A player less than
+// halfway out of a cell that can't be shoved on past it turns back into
+// that cell instead, so a shove never leaves it gliding on towards
+// whatever shoved it.
 export function knockBack(
     state: GameState,
     player: Player,
@@ -479,20 +483,27 @@ export function knockBack(
     const gliding = progress < 1 - EPSILON
     const base = gliding && progress < 0.5 ? c.lastPos : c.pos
     const target = loopPos(state.cells, vec2(base.x + step.x, base.y + step.y))
-    if (!playerCanEnter(state, target)) return false
-    player.rate = 1
     if (gliding && samePos(target, c.pos)) {
         // On the way it was going: the glide it is in takes it there.
+        player.rate = 1
         return true
     }
-    if (gliding && samePos(target, c.lastPos)) {
+    // Less than halfway out of a cell with no way on past it: back into
+    // that cell, rather than gliding on towards whatever shoved it.
+    const blocked = !playerCanEnter(state, target)
+    const back = blocked && gliding && base === c.lastPos ? c.lastPos : target
+    if (gliding && samePos(back, c.lastPos)) {
+        if (!playerCanEnter(state, back)) return false
         // Back the way it came, from where it is drawn.
+        player.rate = 1
         c.lastPos = vec2(c.pos.x, c.pos.y)
-        c.pos = target
+        c.pos = vec2(back.x, back.y)
         c.moveProgress = 1 - progress
         player.eatenAt = null
         return true
     }
+    if (blocked) return false
+    player.rate = 1
     const ate = eatDot(state, player, target)
     c.lastPos = vec2(base.x, base.y)
     c.pos = target
