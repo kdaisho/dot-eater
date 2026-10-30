@@ -20,23 +20,32 @@ import { takeEvents, type GameEvent } from "./events"
 import {
     baseScreen,
     END_CHOICES,
+    endChoices,
     ROUND_CHOICES,
     gameOf,
     initialScreen,
-    PAUSE_CHOICES,
+    pauseChoices,
     pauseIfPlaying,
+    PLAY_CHOICES,
     playerCount,
     recordsProgress,
+    runTotal,
     screenSettings,
     selectItem,
     settingsContext,
+    STORY_CHOICES,
+    storyStart,
     TITLE_CHOICES,
     update,
     type EndChoice,
     type Capture,
     type FlowDeps,
     type Mode,
+    type PauseChoice,
+    type PlayChoice,
+    type Run,
     type Screen,
+    type StoryChoice,
     type TickInput,
     type TitleChoice,
 } from "./flow"
@@ -66,6 +75,7 @@ import { createLoop } from "./loop"
 import {
     loadProgress,
     recordClear,
+    recordStoryBest,
     stageSlots,
     type Progress,
 } from "./progress"
@@ -93,10 +103,14 @@ import {
     showGameOver,
     showMatchResult,
     showPause,
+    showPlaySelect,
     showRoundResult,
     showSettings,
     showStageClear,
     showStageSelect,
+    showStoryClear,
+    showStoryEnd,
+    showStoryMenu,
     setHintBindings,
     showTitle,
     showToast,
@@ -459,7 +473,13 @@ function enter(prev: Screen, next: Screen) {
         lastAnimal = next.animals[0]
         saveLastPick(storage, lastAnimal)
     }
-    if (next.kind === "stageClear" && prev.kind === "ending") {
+    // A clear in stage mode or in a story run (KDA-271) is recorded alike:
+    // the stage cleared, which unlocks the next, and its bests.
+    const cleared =
+        next.kind === "stageClear" ||
+        next.kind === "storyClear" ||
+        next.kind === "storyEnd"
+    if (cleared && prev.kind === "ending") {
         // 2-player games leave saved progress alone.
         if (recordsProgress(next.mode)) {
             const { stars, ticks } = next.rating
@@ -468,8 +488,20 @@ function enter(prev: Screen, next: Screen) {
                 stars,
                 ticks,
             })
+            // A run that reached the ending: its total may be the best.
+            if (next.kind === "storyEnd") {
+                const total = runTotal(next)
+                progress = recordStoryBest(
+                    progress,
+                    storage,
+                    next.difficulty,
+                    total
+                )
+            }
         }
         celebrate(10)
+        // The ending gets a burst on top.
+        if (next.kind === "storyEnd") burst()
     }
     if (next.kind === "matchResult" && prev.kind === "ending") celebrate(10)
     // Every change on the settings and controls screens is saved, and
@@ -518,7 +550,17 @@ function render(alpha: number) {
     if ("difficulty" in shown) {
         hud.difficulty = DIFFICULTY_LABELS[shown.difficulty]
     }
+    if ("run" in shown && shown.run) withRunTotal(hud, shown.run, game)
     renderer.draw(game, lastAlpha, hud, rules, effects.of(shown))
+}
+
+// In a story run (KDA-271) the HUD shows the run total so far, this
+// stage's score included: in place of the score with one player, and in
+// the middle (above the difficulty) with two, whose own scores stay.
+function withRunTotal(hud: Hud, run: Run, game: GameState) {
+    const total = runTotal({ run, game })
+    if (hud.players) hud.round = `Total ${total}`
+    else hud.score = total
 }
 
 // The versus HUD: each player's dots, meter, stun or respawn countdown,
@@ -615,6 +657,24 @@ function showOverlay(s: Screen) {
                     : {}),
             })
         }
+        case "playSelect":
+            return showPlaySelect(
+                MODE_LABELS[s.mode],
+                PLAY_CHOICES.map((c) => ({
+                    label: PLAY_LABELS[c],
+                    selected: c === s.choice,
+                }))
+            )
+        case "storyMenu":
+            return showStoryMenu(
+                STORY_CHOICES.map((c) => ({
+                    label: storyLabel(c),
+                    selected: c === s.choice,
+                    ...(storyStart(c, progress) >= levels.length
+                        ? { locked: true }
+                        : {}),
+                }))
+            )
         case "stageSelect":
             return showStageSelect(
                 stageSlots(
@@ -645,18 +705,42 @@ function showOverlay(s: Screen) {
         case "paused":
             return showPause(
                 s.game.players.length,
-                PAUSE_CHOICES.map((c) => ({
+                pauseChoices(s).map((c) => ({
                     label: PAUSE_LABELS[c],
                     selected: c === (s.choice ?? "resume"),
                 }))
             )
         case "stageClear":
-            return showStageClear({
-                ...endView(s.game, s.choice, s.difficulty),
-                rating: s.rating,
-            })
+            return showStageClear({ ...endView(s), rating: s.rating })
         case "gameOver":
-            return showGameOver(endView(s.game, s.choice, s.difficulty))
+            return showGameOver(endView(s))
+        case "storyClear":
+            return showStoryClear({
+                difficulty: DIFFICULTY_LABELS[s.difficulty],
+                score: totalScore(s.game),
+                runTotal: runTotal(s),
+                rating: s.rating,
+                ...(s.next === undefined
+                    ? {}
+                    : { next: `Stage ${s.next + 1}: ${levels[s.next].name}` }),
+                items: [
+                    {
+                        label: s.next === undefined ? "Title" : "Next stage",
+                        selected: true,
+                    },
+                ],
+            })
+        case "storyEnd": {
+            const best = recordsProgress(s.mode)
+                ? progress.storyBests?.[s.difficulty]
+                : undefined
+            return showStoryEnd({
+                difficulty: DIFFICULTY_LABELS[s.difficulty],
+                runTotal: runTotal(s),
+                ...(best === undefined ? {} : { best }),
+                items: [{ label: "Title", selected: true }],
+            })
+        }
         case "roundResult": {
             const last = s.match[s.match.length - 1]
             return showRoundResult({
@@ -692,7 +776,27 @@ const ROUND_LABELS = { nextRound: "Next round", quit: "Quit" } as const
 // The match result's menu: Retry plays a new match.
 const MATCH_LABELS = { retry: "Rematch", stageSelect: "Stage select" } as const
 
-const END_LABELS = { retry: "Retry", stageSelect: "Stage select" } as const
+const END_LABELS: Record<EndChoice, string> = {
+    retry: "Retry",
+    stageSelect: "Stage select",
+    quit: "Quit",
+}
+
+// The choice of story or stage mode (KDA-271).
+const PLAY_LABELS: Record<PlayChoice, string> = {
+    story: "Story",
+    stage: "Stage select",
+}
+
+// The story menu's items. Continue names the stage it starts on (e.g.
+// "Continue (stage 3: Ice)"), or says it is coming soon when that stage
+// isn't built yet.
+function storyLabel(choice: StoryChoice): string {
+    if (choice === "newStory") return "New story"
+    const index = storyStart(choice, progress)
+    const name = levels[index]?.name ?? "coming soon"
+    return `Continue (stage ${index + 1}: ${name})`
+}
 
 // The mode select's labels, one per mode; the title offers them all, in
 // MODE_CHOICES order, then Settings.
@@ -707,15 +811,20 @@ const TITLE_LABELS: Record<TitleChoice, string> = {
     settings: "Settings",
 }
 
-const PAUSE_LABELS = { resume: "Resume", settings: "Settings" } as const
+const PAUSE_LABELS: Record<PauseChoice, string> = {
+    resume: "Resume",
+    settings: "Settings",
+    quit: "Quit",
+}
 
+// An end screen's view. In a story run (KDA-271), game over also shows the
+// run total the stage started with: what Retry plays on from.
 function endView(
-    game: GameState,
-    choice: EndChoice,
-    difficulty: Difficulty
+    s: Extract<Screen, { kind: "stageClear" | "gameOver" }>
 ): EndScreenView {
+    const { game } = s
     return {
-        difficulty: DIFFICULTY_LABELS[difficulty],
+        difficulty: DIFFICULTY_LABELS[s.difficulty],
         score: totalScore(game),
         ...(game.players.length > 1
             ? {
@@ -723,9 +832,10 @@ function endView(
                   playerDots: game.players.map((p) => p.dots),
               }
             : {}),
-        items: END_CHOICES.map((c) => ({
+        ...("run" in s && s.run ? { runTotal: s.run.total } : {}),
+        items: endChoices(s).map((c) => ({
             label: END_LABELS[c],
-            selected: c === choice,
+            selected: c === s.choice,
         })),
     }
 }

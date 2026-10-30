@@ -100,11 +100,18 @@ describe("main on a touch screen", () => {
     it("taps through the menus into play, with Back on the way", () => {
         expect(screen()).toBe("title")
         tap("#overlay li[data-index='1']")
+        expect(screen()).toBe("play-select")
+        tap("#overlay li[data-index='1']")
         expect(screen()).toBe("stage-select")
+        tap("#overlay [data-back]")
+        expect(screen()).toBe("play-select")
+        expect(selectedItem()).toBe("Stage select")
         tap("#overlay [data-back]")
         expect(screen()).toBe("title")
         expect(selectedItem()).toBe("Co-op")
         tap("#overlay li[data-index='0']")
+        expect(screen()).toBe("play-select")
+        tap("#overlay li[data-index='1']")
         expect(screen()).toBe("stage-select")
         // A locked stage only moves the cursor there.
         tap("#overlay li[data-index='1']")

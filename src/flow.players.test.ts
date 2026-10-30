@@ -153,11 +153,20 @@ describe("the title's mode select", () => {
         expect(update(solo, input([["up"]]), deps())).toBe(solo)
     })
 
-    it("goes on to stage select in the picked mode", () => {
+    it("goes on to the choice of story or stage mode in the picked mode", () => {
         const title: Screen = { kind: "title", mode: "coop" }
         expect(update(title, input([["confirm"]]), deps())).toEqual({
-            kind: "stageSelect",
+            kind: "playSelect",
             mode: "coop",
+            choice: "story",
+        })
+    })
+
+    it("goes straight on to stage select in versus", () => {
+        const title: Screen = { kind: "title", mode: "versus" }
+        expect(update(title, input([["confirm"]]), deps())).toEqual({
+            kind: "stageSelect",
+            mode: "versus",
             selected: 0,
         })
     })
@@ -169,15 +178,15 @@ describe("the title's mode select", () => {
         )
     })
 
-    it("is where stage select goes back to, on the same mode", () => {
+    it("is where versus stage select goes back to, on the same mode", () => {
         const select: Screen = {
             kind: "stageSelect",
-            mode: "coop",
+            mode: "versus",
             selected: 1,
         }
         expect(update(select, input([["pause"]]), deps())).toEqual({
             kind: "title",
-            mode: "coop",
+            mode: "versus",
         })
     })
 })

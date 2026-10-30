@@ -86,15 +86,18 @@ export function playEventSounds(
     for (const id of eventSounds(events)) audio.playSfx(id)
 }
 
-// The tune a screen plays: the title's on the title and the menus, the
-// stage's while playing, frozen while paused (settings opened from pause
-// included). None from the ending outro on, so the stage clear and game
-// over jingles play alone; the result screens stay quiet.
+// The tune a screen plays: the title's on the title and the menus (the
+// story menus too), the stage's while playing, frozen while paused
+// (settings opened from pause included). None from the ending outro on, so
+// the stage clear and game over jingles play alone; the result screens,
+// story mode's clear card and ending included, stay quiet.
 export type MusicCue = { track: MusicTrackId; paused: boolean }
 
 export function musicForScreen(screen: Screen): MusicCue | undefined {
     switch (screen.kind) {
         case "title":
+        case "playSelect":
+        case "storyMenu":
         case "stageSelect":
         case "difficultySelect":
         case "characterSelect":
@@ -111,6 +114,8 @@ export function musicForScreen(screen: Screen): MusicCue | undefined {
         case "matchResult":
         case "stageClear":
         case "gameOver":
+        case "storyClear":
+        case "storyEnd":
             return undefined
     }
 }
@@ -119,7 +124,10 @@ export function musicForScreen(screen: Screen): MusicCue | undefined {
 // screen, which is a step in).
 function isBack(prev: Screen, next: Screen): boolean {
     return (
-        (prev.kind === "stageSelect" && next.kind === "title") ||
+        (prev.kind === "playSelect" && next.kind === "title") ||
+        (prev.kind === "storyMenu" && next.kind === "playSelect") ||
+        (prev.kind === "stageSelect" &&
+            (next.kind === "title" || next.kind === "playSelect")) ||
         (prev.kind === "difficultySelect" && next.kind === prev.back.kind) ||
         (prev.kind === "characterSelect" && next.kind === "difficultySelect") ||
         (prev.kind === "settings" && next.kind !== "controls") ||

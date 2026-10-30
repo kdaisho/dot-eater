@@ -56,7 +56,8 @@ export type Hud = {
     // the left and player 2 on the right, in their marker colours.
     players?: readonly PlayerHud[]
     // Versus: the round and tally (e.g. "Round 2 · 1–0"), drawn in the
-    // middle.
+    // middle. A co-op story run (KDA-271) puts its total there too
+    // ("Total 1230").
     round?: string
     // On a boss level, the boss's health (see bossHud in game.ts): the
     // stage's goal (KDA-267), drawn as a band along the bottom of the

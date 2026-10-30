@@ -169,7 +169,12 @@ describe("main", () => {
         expect(starts()).toBe(0)
         expect(steps()).toBe(0)
 
-        // Space: the stage list, with the first stage selected.
+        // Space: story or stage mode, on Story; Down, Space: the stage
+        // list, with the first stage selected.
+        pressAndTick("Space")
+        expect(screen()).toBe("play-select")
+        expect(selectedItem()).toBe("Story")
+        pressAndTick("ArrowDown")
         pressAndTick("Space")
         expect(screen()).toBe("stage-select")
         expect(selectedItem()).toBe(levels[0].name)
