@@ -528,7 +528,10 @@ function checkSpeed(
 
 // Every dot must be reachable from player `index`'s `spawn`, sliding
 // included, and no slide may strand the player there with no way back to
-// it (see slideReach). Player 1's problems read as they always have.
+// it (see slideReach). Player 1's problems read as they always have. The
+// check is for a player that slides, whatever animal it turns out to be: one
+// that walks on ice (the Penguin) moves as on floor, so it reaches at least
+// as much and can always walk back.
 function spawnProblems(
     cells: Cells,
     ice: IceMap,
