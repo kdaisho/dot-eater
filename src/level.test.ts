@@ -645,6 +645,30 @@ describe("parseLevel", () => {
             ])
         })
 
+        // Plain steps join the pocket at (3, 3) to the rest through the ice
+        // column at x = 5, but a slider can only cross that column, never
+        // turn into it. A Boar that breaks in through (2, 3) would slide
+        // between (3, 3) and (6, 3) for good once the wall regrows.
+        it("open areas a sliding player can't get back out of", () => {
+            const pocket = [
+                "###########",
+                "#.........#",
+                "#.###~###.#",
+                "#P# ~~~##.#",
+                "#.###~###.#",
+                "#.........#",
+                "###########",
+            ]
+            expect(problemsOf({ ...valid, map: pocket, enemies: [] })).toEqual([
+                "open area at (3, 3) (3 cells) traps a sliding player: no way back to a player spawn",
+            ])
+            // Without the ice it is open floor, and fine.
+            const floor = pocket.map((row) => row.replaceAll("~", " "))
+            expect(problemsOf({ ...valid, map: floor, enemies: [] })).toEqual(
+                []
+            )
+        })
+
         it("no open area that a tunnel joins to the rest", () => {
             // The empty cell at (5, 1) is reached only through the tunnel
             // from (0, 1).

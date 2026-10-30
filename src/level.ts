@@ -553,6 +553,10 @@ function reachProblems(map: BuiltMap, variant: LevelVariant): string[] {
         if (i > 0 && samePos(spawn, playerSpawns[0])) return
         problems.push(...spawnProblems(cells, ice, spawn, i))
     })
+    // A slide that strands a player from its spawn is reported above; the
+    // trapped areas are checked once the spawns are sound, so it isn't
+    // reported twice.
+    if (problems.length === 0) problems.push(...trapProblems(map))
     variant.enemies.forEach((enemy, i) => {
         if (!enemy.route) return
         problems.push(
@@ -916,8 +920,9 @@ function routeShapeProblems(enemy: EnemyData, i: number): string[] {
 // area, named by its first cell in reading order. Nothing ever goes there
 // but a player who breaks in through a wall (the Boar), who could then be
 // sealed inside, with no dots to refill its energy and break out again.
-// Areas are found by plain steps, wrap tunnels included; ice doesn't
-// matter, as sliding never crosses a wall.
+// Areas are found by plain steps, wrap tunnels included. Ice can still make
+// an area that plain steps join to the rest one-way for a sliding player;
+// trapProblems checks for that once the spawns are known to be sound.
 function sealedProblems(map: BuiltMap): string[] {
     const { cells } = map
     const height = cells.length
@@ -957,6 +962,53 @@ function sealedProblems(map: BuiltMap): string[] {
             )
         }
     }
+    return problems
+}
+
+// Open areas a sliding player can't get out of (KDA-245, as sealedProblems):
+// cells where a player standing free can never get back to a player spawn,
+// however it moves. Spawn checks only follow the player from its spawn, but
+// a player that breaks in through a wall (the Boar) can stand anywhere open,
+// and the wall regrows behind it. One problem per area: the trapped cells a
+// slider can get to from the first one in reading order, which names it. A
+// player that walks on ice (the Penguin) can always walk back, so only
+// sliders are checked, and only with ice: without it moves are symmetric
+// and sealedProblems has found every such area already.
+function trapProblems(map: BuiltMap): string[] {
+    const { cells, ice } = map
+    if (!hasIce(ice)) return []
+    const spawns = playerSpawnsOf(map).filter(
+        (spawn, i, all) => all.findIndex((s) => samePos(s, spawn)) === i
+    )
+    // One search backwards from each spawn (see slideDistances).
+    const dists = spawns.map((spawn) => slideDistances(cells, ice, spawn))
+    const trapped = cells.map((row, y) =>
+        row.map(
+            (cell, x) =>
+                cell !== Cell.wall &&
+                dists.every(
+                    (d) => d({ pos: vec2(x, y), heading: FREE }) === Infinity
+                )
+        )
+    )
+    const problems: string[] = []
+    cells.forEach((row, y) =>
+        row.forEach((_, x) => {
+            if (!trapped[y][x]) return
+            const { visited } = slideReach(cells, ice, vec2(x, y))
+            let size = 0
+            visited.forEach((seen, vy) =>
+                seen.forEach((v, vx) => {
+                    if (!v || !trapped[vy][vx]) return
+                    trapped[vy][vx] = false
+                    size++
+                })
+            )
+            problems.push(
+                `open area at (${x}, ${y}) (${size} ${size === 1 ? "cell" : "cells"}) traps a sliding player: no way back to a player spawn`
+            )
+        })
+    )
     return problems
 }
 
