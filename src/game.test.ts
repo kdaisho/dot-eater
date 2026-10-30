@@ -22,7 +22,7 @@ import {
     type GameState,
     type Outcome,
 } from "./game"
-import { parseLevel } from "./level"
+import { parseFlat } from "./test/helpers"
 import { levels } from "./levels"
 import {
     cloneState,
@@ -808,7 +808,7 @@ describe("createGameState", () => {
     })
 
     it("builds the state from a given level", () => {
-        const level = parseLevel({
+        const level = parseFlat({
             name: "tiny",
             parTime: 60,
             map: ["#####", "#P.E#", "#####"],
@@ -848,7 +848,7 @@ describe("createGameState", () => {
     })
 
     it("gives the characters the level's speeds", () => {
-        const level = parseLevel({
+        const level = parseFlat({
             name: "fast",
             parTime: 60,
             map: ["#######", "#P.E.E#", "#######"],
@@ -861,7 +861,7 @@ describe("createGameState", () => {
     })
 
     it("gives phantoms their slower default speed unless the level sets one", () => {
-        const level = parseLevel({
+        const level = parseFlat({
             name: "phantoms",
             parTime: 60,
             map: ["######", "#P.EE#", "######"],
@@ -872,7 +872,7 @@ describe("createGameState", () => {
     })
 
     it("gives four enemies their own ids and a patroller its route", () => {
-        const level = parseLevel({
+        const level = parseFlat({
             name: "four",
             parTime: 60,
             map: ["######", "#PEE.#", "#.EE.#", "######"],
@@ -903,7 +903,7 @@ describe("createGameState", () => {
     })
 
     it("uses the default speeds when the level leaves them out", () => {
-        const level = parseLevel({
+        const level = parseFlat({
             name: "default",
             parTime: 60,
             map: ["#####", "#P.E#", "#####"],
@@ -1011,7 +1011,7 @@ describe("step: lives", () => {
     })
 
     it("respawns at the level's spawns", () => {
-        const level = parseLevel({
+        const level = parseFlat({
             name: "spawns",
             parTime: 60,
             map: ["#######", "#P...E#", "#######"],

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vite-plus/test"
 import { addStatus, type EnemyStatus } from "../breath"
 import { AiType, Cell, TICK_RATE } from "../constants"
 import { createGameState, step, type GameState, type MoveInput } from "../game"
-import { parseLevel } from "../level"
+import { parseFlat } from "../test/helpers"
 import type { Character } from "../character"
 import {
     fixedRandom,
@@ -198,7 +198,7 @@ describe("the Boar's wall-break breath", () => {
     })
 
     it("moves at 3.5 cells/s", () => {
-        const level = parseLevel({
+        const level = parseFlat({
             name: "Track",
             parTime: 60,
             map: [

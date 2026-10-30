@@ -10,8 +10,9 @@ import {
     type MoveInput,
     type Outcome,
 } from "./game"
+import { DEFAULT_DIFFICULTY, type Difficulty } from "./difficulty"
 import type { Action } from "./input"
-import type { Level } from "./level"
+import type { Stage } from "./level"
 import { isPlayable, STAGE_COUNT, type Progress } from "./progress"
 import { ANIMAL_IDS, DEFAULT_ANIMAL, type AnimalId } from "./roster"
 import { bindingsOf, defaultSettings, type Settings } from "./settings"
@@ -82,6 +83,11 @@ import { matchWinner, roundResult, type RoundResult } from "./versus"
 // The title is also the mode select (1 player, or a 2-player mode; see
 // MODE_CHOICES). Every screen after it carries the `mode` picked there, up
 // to the end screens and back to stage select, so Retry keeps it.
+//
+// Character select and every game screen carry the `difficulty` the stage
+// is played at (see difficulty.ts), so Retry, Next round and a rematch keep
+// it. For now it is always DEFAULT_DIFFICULTY; the player can't pick one
+// yet.
 //
 // The game is only ever stepped in `playing`. Once a game ends the machine
 // leaves `playing` on that same tick, so the game itself (cells, score,
@@ -230,6 +236,8 @@ export type Screen =
           mode: Mode
           // The stage that starts once a character is picked.
           level: number
+          // The difficulty it starts at.
+          difficulty: Difficulty
           // Where each player's cursor is, player 1 first.
           picks: Picks
           // Whether each player has confirmed its pick.
@@ -239,6 +247,7 @@ export type Screen =
           kind: "playing"
           mode: Mode
           level: number
+          difficulty: Difficulty
           animals: Picks
           game: GameState
           // Versus only: the match so far.
@@ -248,6 +257,7 @@ export type Screen =
           kind: "paused"
           mode: Mode
           level: number
+          difficulty: Difficulty
           animals: Picks
           game: GameState
           match?: Match
@@ -258,6 +268,7 @@ export type Screen =
           kind: "ending"
           mode: Mode
           level: number
+          difficulty: Difficulty
           animals: Picks
           game: GameState
           outcome: Outcome
@@ -268,6 +279,7 @@ export type Screen =
           kind: "roundResult"
           mode: Mode
           level: number
+          difficulty: Difficulty
           animals: Picks
           game: GameState
           // The rounds so far, this one last.
@@ -280,6 +292,7 @@ export type Screen =
           kind: "matchResult"
           mode: Mode
           level: number
+          difficulty: Difficulty
           animals: Picks
           game: GameState
           // Every round, the deciding one last.
@@ -293,6 +306,7 @@ export type Screen =
           kind: "stageClear"
           mode: Mode
           level: number
+          difficulty: Difficulty
           animals: Picks
           game: GameState
           choice: EndChoice
@@ -303,6 +317,7 @@ export type Screen =
           kind: "gameOver"
           mode: Mode
           level: number
+          difficulty: Difficulty
           animals: Picks
           game: GameState
           choice: EndChoice
@@ -338,7 +353,8 @@ export type Capture = {
 }
 
 export type FlowDeps = {
-    levels: readonly Level[]
+    // Each stage's level at every difficulty, by stage index.
+    levels: readonly Stage[]
     // Which stages are unlocked.
     progress: Progress
     // Tick length in seconds.
@@ -362,23 +378,25 @@ export function initialScreen(): Screen {
     return { kind: "title", mode: MODE_CHOICES[0] }
 }
 
-// Start `level` as `animals` (one per player of `mode`; a single animal for
-// 1 player). A versus game is a round of `match` (the rounds before it; a
-// new match unless given).
+// Start `level` at `difficulty` as `animals` (one per player of `mode`; a
+// single animal for 1 player). A versus game is a round of `match` (the
+// rounds before it; a new match unless given).
 export function startLevel(
-    levels: readonly Level[],
+    levels: readonly Stage[],
     level: number,
     animals: AnimalId | Picks = DEFAULT_ANIMAL,
     mode: Mode = "solo",
-    match: Match = []
+    match: Match = [],
+    difficulty: Difficulty = DEFAULT_DIFFICULTY
 ): Screen {
     const picks: Picks = typeof animals === "string" ? [animals] : animals
     return {
         kind: "playing",
         mode,
         level,
+        difficulty,
         animals: picks,
-        game: createGameState(levels[level], picks, mode),
+        game: createGameState(levels[level][difficulty], picks, mode),
         ...(mode === "versus" ? { match } : {}),
     }
 }
@@ -724,6 +742,8 @@ function updateStageSelect(
             kind: "characterSelect",
             mode,
             level: screen.selected,
+            // Until the player can pick one (KDA-265).
+            difficulty: DEFAULT_DIFFICULTY,
             picks: [pick, ...Array<AnimalId>(count - 1).fill(pick)],
             ready: Array<boolean>(count).fill(false),
         }
@@ -774,7 +794,8 @@ function updateCharacterSelect(
     }
     const animals: Picks = [picks[0], ...picks.slice(1)]
     if (ready.every(Boolean)) {
-        return startLevel(deps.levels, screen.level, animals, screen.mode)
+        const { level, mode, difficulty } = screen
+        return startLevel(deps.levels, level, animals, mode, [], difficulty)
     }
     return changed ? { ...screen, picks: animals, ready } : screen
 }
@@ -798,11 +819,12 @@ function updatePlaying(
             : Array.from({ length: count }, (_, i) => input.move(i))
     const outcome = stepGame(screen.game, deps.dt, moves, deps.random)
     if (!outcome) return screen
-    const { mode, level, animals, game, match } = screen
+    const { mode, level, difficulty, animals, game, match } = screen
     return {
         kind: "ending",
         mode,
         level,
+        difficulty,
         animals,
         game,
         outcome,
@@ -812,20 +834,30 @@ function updatePlaying(
 
 function endScreen(
     screen: Extract<Screen, { kind: "ending" }>,
-    levels: readonly Level[]
+    levels: readonly Stage[]
 ): Screen {
     if (screen.mode === "versus") return versusRoundEnd(screen)
-    const { mode, level, animals, game } = screen
+    const { mode, level, difficulty, animals, game } = screen
     const choice = END_CHOICES[0]
     const shown = { seconds: 0 }
     if (screen.outcome !== "won") {
-        return { kind: "gameOver", mode, level, animals, game, choice, shown }
+        return {
+            kind: "gameOver",
+            mode,
+            level,
+            difficulty,
+            animals,
+            game,
+            choice,
+            shown,
+        }
     }
-    const rating = rateClear(game, levels[level].parTime)
+    const rating = rateClear(game, levels[level][difficulty].parTime)
     return {
         kind: "stageClear",
         mode,
         level,
+        difficulty,
         animals,
         game,
         choice,
@@ -842,7 +874,7 @@ function updateEnd(
     const ready = confirmReady(screen.shown, deps.dt)
     if (ready && input.wasPressed("confirm")) {
         return screen.choice === "retry"
-            ? startLevel(deps.levels, screen.level, screen.animals, screen.mode)
+            ? retry(screen, deps)
             : { kind: "stageSelect", mode: screen.mode, selected: screen.level }
     }
     const index = END_CHOICES.indexOf(screen.choice)
@@ -850,11 +882,24 @@ function updateEnd(
     return next === index ? screen : { ...screen, choice: END_CHOICES[next] }
 }
 
+// The same stage again from the start, at the same difficulty, with the
+// same characters (in versus, a new match).
+function retry(
+    screen: Extract<
+        Screen,
+        { kind: "stageClear" | "gameOver" | "matchResult" }
+    >,
+    deps: FlowDeps
+): Screen {
+    const { level, animals, mode, difficulty } = screen
+    return startLevel(deps.levels, level, animals, mode, [], difficulty)
+}
+
 // A versus round is over (the stage is cleared; a versus game is never
 // lost): add its result to the match and show it, or the match's result
 // once a player has won enough rounds.
 function versusRoundEnd(screen: Extract<Screen, { kind: "ending" }>): Screen {
-    const { mode, level, animals, game } = screen
+    const { mode, level, difficulty, animals, game } = screen
     const match = [...(screen.match ?? []), roundResult(game)]
     const shown = { seconds: 0 }
     const winner = matchWinner(match)
@@ -864,6 +909,7 @@ function versusRoundEnd(screen: Extract<Screen, { kind: "ending" }>): Screen {
             kind: "roundResult",
             mode,
             level,
+            difficulty,
             animals,
             game,
             match,
@@ -875,6 +921,7 @@ function versusRoundEnd(screen: Extract<Screen, { kind: "ending" }>): Screen {
         kind: "matchResult",
         mode,
         level,
+        difficulty,
         animals,
         game,
         match,
@@ -903,9 +950,9 @@ function updateRoundResult(
 ): Screen {
     const ready = confirmReady(screen.shown, deps.dt)
     if (ready && input.wasPressed("confirm")) {
-        const { level, animals, mode, match } = screen
+        const { level, animals, mode, match, difficulty } = screen
         return screen.choice === "nextRound"
-            ? startLevel(deps.levels, level, animals, mode, match)
+            ? startLevel(deps.levels, level, animals, mode, match, difficulty)
             : { kind: "stageSelect", mode, selected: level }
     }
     const index = ROUND_CHOICES.indexOf(screen.choice)
@@ -923,7 +970,7 @@ function updateMatchResult(
     const ready = confirmReady(screen.shown, deps.dt)
     if (ready && input.wasPressed("confirm")) {
         return screen.choice === "retry"
-            ? startLevel(deps.levels, screen.level, screen.animals, screen.mode)
+            ? retry(screen, deps)
             : { kind: "stageSelect", mode: screen.mode, selected: screen.level }
     }
     const index = END_CHOICES.indexOf(screen.choice)

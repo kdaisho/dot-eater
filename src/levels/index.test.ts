@@ -1,31 +1,78 @@
 import { describe, expect, it } from "vite-plus/test"
-import {
-    AiType,
-    Cell,
-    PLAYER_RESPAWN_DELAY,
-    RESPAWN_CLEAR_DISTANCE,
-    TICK_RATE,
-} from "../constants"
+import { AiType, Cell, PLAYER_RESPAWN_DELAY, TICK_RATE } from "../constants"
 import { footprint } from "../boss"
+import { DEFAULT_DIFFICULTY, DIFFICULTIES, ENEMY_COUNT } from "../difficulty"
 import { wrapDelta } from "../glide"
 import { DEFAULT_ANIMAL } from "../roster"
 import { createGameState, IDLE, step, takeOut } from "../game"
-import { parseLevel, type Cells } from "../level"
+import { parseLevel, SPAWN_GAP, type Cells } from "../level"
 import { slideReach } from "../ice"
 import { distanceMap, openNeighbours } from "../path"
 import { vec2, type Vec2 } from "../vec2"
-import { levels } from "./index"
+import { EACH_MAP } from "../test/helpers"
+import { levels, stages } from "./index"
 import { stage1 } from "./stage1"
 import { stage2 } from "./stage2"
+import { stage3 } from "./stage3"
+import { stage4 } from "./stage4"
+import { stage5 } from "./stage5"
+
+// Each stage's level data, in stage order.
+const STAGE_DATA = [stage1, stage2, stage3, stage4, stage5]
+
+// Every stage (numbered from 1) at every difficulty: both of its maps, each
+// with every enemy count a difficulty brings out.
+const everyLevel = stages.flatMap((stage, i) =>
+    DIFFICULTIES.map(
+        (difficulty) => [i + 1, difficulty, stage[difficulty]] as const
+    )
+)
 
 describe("levels", () => {
     it("ships at least one level", () => {
         expect(levels.length).toBeGreaterThan(0)
     })
 
-    it.each(levels.map((level, i) => [i, level] as const))(
-        "level %i has a name and a valid map",
-        (_i, level) => {
+    it("has each stage at every difficulty, and at the default as levels", () => {
+        expect(stages).toHaveLength(STAGE_DATA.length)
+        stages.forEach((stage, i) => {
+            expect(levels[i]).toBe(stage[DEFAULT_DIFFICULTY])
+            for (const difficulty of DIFFICULTIES) {
+                expect(stage[difficulty]).toEqual(
+                    parseLevel(STAGE_DATA[i], difficulty)
+                )
+            }
+        })
+    })
+
+    // Until the stages are remade with a medium and a large map each, a
+    // stage's one map stands in for both, so every difficulty plays today's
+    // game: no stage lists more enemies than the fewest any difficulty
+    // brings out.
+    it.each(STAGE_DATA.map((data, i) => [i + 1, data] as const))(
+        "stage %i uses one map for both sizes, with every enemy at every difficulty",
+        (_n, data) => {
+            expect(data.large).toBe(data.medium)
+            const fewest = Math.min(...DIFFICULTIES.map((d) => ENEMY_COUNT[d]))
+            expect(data.medium.enemies.length).toBeLessThanOrEqual(fewest)
+        }
+    )
+
+    it.each(everyLevel)(
+        "stage %i (%s) shares its name and rules with the default difficulty",
+        (n, difficulty, level) => {
+            const base = levels[n - 1]
+            expect(level.name).toBe(base.name)
+            expect(level.rules).toEqual(base.rules)
+            expect(level.enemies.length).toBeLessThanOrEqual(
+                ENEMY_COUNT[difficulty]
+            )
+        }
+    )
+
+    it.each(everyLevel)(
+        "stage %i (%s) has a name and a valid map",
+        (_n, _difficulty, level) => {
             expect(level.name.trim()).not.toBe("")
             expect(level.width).toBeGreaterThan(0)
             expect(level.height).toBeGreaterThan(0)
@@ -34,9 +81,9 @@ describe("levels", () => {
 
     // 2-player games start player 2 on the "Q" each stage has beside the
     // "P", on normal floor (spawns never are ice).
-    it.each(levels.map((level, i) => [i + 1, level] as const))(
-        "stage %i has a player 2 spawn of its own, next to player 1's",
-        (_n, level) => {
+    it.each(everyLevel)(
+        "stage %i (%s) has a player 2 spawn of its own, next to player 1's",
+        (_n, _difficulty, level) => {
             const [p1, p2] = level.playerSpawns
             expect(level.playerSpawns).toHaveLength(2)
             expect(p2).not.toEqual(p1)
@@ -45,15 +92,11 @@ describe("levels", () => {
         }
     )
 
-    // While nobody is in play in a 2-player game, the enemies and the boss
-    // head back to their own spawns, and a player waiting to come back
-    // needs its spawn clear of them (see clearOfEnemies in game.ts). So no
-    // enemy or boss spawn may be near a player spawn: SPAWN_GAP keeps a
-    // chaser circling its spawn, a cell off it, out of the way.
-    const SPAWN_GAP = RESPAWN_CLEAR_DISTANCE + 1
-    it.each(levels.map((level, i) => [i + 1, level] as const))(
-        "stage %i has no enemy or boss spawn near a player spawn",
-        (_n, level) => {
+    // parseStage checks this (see SPAWN_GAP); this is the same rule worked
+    // out on the parsed levels.
+    it.each(everyLevel)(
+        "stage %i (%s) has no enemy or boss spawn near a player spawn",
+        (_n, _difficulty, level) => {
             const gap = (a: Vec2, b: Vec2) =>
                 Math.hypot(
                     wrapDelta(a.x - b.x, level.width),
@@ -74,9 +117,9 @@ describe("levels", () => {
     // With both players out, player 1 with a life to come back on and
     // player 2 for good, the game goes on: player 1 is back within a
     // couple of seconds of its wait.
-    it.each(levels.map((level, i) => [i + 1, level] as const))(
-        "stage %i brings a co-op player back while nobody is in play",
-        (_n, level) => {
+    it.each(everyLevel)(
+        "stage %i (%s) brings a co-op player back while nobody is in play",
+        (_n, _difficulty, level) => {
             const state = createGameState(
                 level,
                 [DEFAULT_ANIMAL, DEFAULT_ANIMAL],
@@ -105,9 +148,9 @@ describe("levels", () => {
     const SOLO_DOTS = [129, 141, 133, 125, 145]
     const dots = (cells: readonly (readonly Cell[])[]) =>
         cells.flat().filter((c) => c === Cell.dot).length
-    it.each(levels.map((level, i) => [i + 1, level] as const))(
-        "stage %i keeps every dot in 1-player, the spawn's too",
-        (n, level) => {
+    it.each(everyLevel)(
+        "stage %i (%s) keeps every dot in 1-player, the spawn's too",
+        (n, _difficulty, level) => {
             const [p1, p2] = level.playerSpawns
             const solo = createGameState(level, DEFAULT_ANIMAL)
             expect(dots(solo.cells)).toBe(SOLO_DOTS[n - 1])
@@ -122,9 +165,9 @@ describe("levels", () => {
     // Fairness for player 2, sliding included, as parseLevel checks for
     // every spawn: every dot can be eaten from its spawn, and no slide
     // strands it with no way back there.
-    it.each(levels.map((level, i) => [i + 1, level] as const))(
-        "stage %i lets player 2 eat every dot from its spawn",
-        (_n, level) => {
+    it.each(everyLevel)(
+        "stage %i (%s) lets player 2 eat every dot from its spawn",
+        (_n, _difficulty, level) => {
             const reach = slideReach(
                 level.cells.map((row) => [...row]),
                 level.ice,
@@ -141,12 +184,12 @@ describe("levels", () => {
     )
 })
 
-describe("stage 1", () => {
-    const level = parseLevel(stage1)
+describe.each(EACH_MAP)("stage 1 (%s)", (difficulty) => {
+    const level = parseLevel(stage1, difficulty)
     const cells: Cells = level.cells.map((row) => [...row])
 
     it("is the first level", () => {
-        expect(levels[0]).toEqual(level)
+        expect(stages[0][difficulty]).toEqual(level)
         expect(level.name).toBe("Classic")
     })
 
@@ -205,12 +248,12 @@ describe("stage 1", () => {
     })
 })
 
-describe("stage 2", () => {
-    const level = parseLevel(stage2)
+describe.each(EACH_MAP)("stage 2 (%s)", (difficulty) => {
+    const level = parseLevel(stage2, difficulty)
     const cells: Cells = level.cells.map((row) => [...row])
 
     it("is the second level", () => {
-        expect(levels[1]).toEqual(level)
+        expect(stages[1][difficulty]).toEqual(level)
         expect(level.name).toBe("Wrap maze")
     })
 
@@ -227,7 +270,7 @@ describe("stage 2", () => {
     })
 
     it("fits the same screen as stage 1", () => {
-        const first = parseLevel(stage1)
+        const first = parseLevel(stage1, difficulty)
         expect(level.width).toBeLessThanOrEqual(first.width)
         expect(level.height).toBeLessThanOrEqual(first.height)
     })

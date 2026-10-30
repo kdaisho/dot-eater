@@ -1,14 +1,33 @@
 import { describe, expect, it } from "vite-plus/test"
 import { AiType, Cell, MAX_ENEMIES, TICK_RATE } from "./constants"
 import {
+    DIFFICULTIES,
+    ENEMY_COUNT,
+    MAP_SIZE,
+    type Difficulty,
+} from "./difficulty"
+import { createGameState } from "./game"
+import {
     hasDots,
     LevelError,
+    levelFor,
     loopPos,
     parseLevel,
+    parseMaps,
+    parseStage,
+    sameForBoth,
+    SPAWN_GAP,
     type CellRef,
     type LevelData,
+    type LevelVariant,
 } from "./level"
-import { cellsFrom, OLD_LEVEL, OLD_MAP } from "./test/helpers"
+import {
+    cellsFrom,
+    OLD_LEVEL,
+    OLD_MAP,
+    parseFlat,
+    type FlatLevelData,
+} from "./test/helpers"
 import { vec2 } from "./vec2"
 
 const map = [
@@ -60,7 +79,7 @@ describe("hasDots", () => {
 })
 
 // A valid level to derive broken ones from.
-const valid: LevelData = {
+const valid: FlatLevelData = {
     name: "test",
     parTime: 60,
     map: [
@@ -73,9 +92,9 @@ const valid: LevelData = {
 }
 
 // The problems parseLevel reports for `data`, or [] if it parses.
-function problemsOf(data: LevelData): readonly string[] {
+function problemsOf(data: FlatLevelData): readonly string[] {
     try {
-        parseLevel(data)
+        parseFlat(data)
         return []
     } catch (e) {
         if (e instanceof LevelError) return e.problems
@@ -84,7 +103,7 @@ function problemsOf(data: LevelData): readonly string[] {
 }
 
 // `valid` with its enemy made a patroller walking `route`.
-function patrol(route: readonly CellRef[]): LevelData {
+function patrol(route: readonly CellRef[]): FlatLevelData {
     return { ...valid, enemies: [{ ai: "patroller", route }] }
 }
 
@@ -105,7 +124,7 @@ function crowded(count: number, ai: "random" | "splitter" = "random") {
 
 describe("parseLevel", () => {
     it("parses cells, spawns and metadata", () => {
-        const level = parseLevel({
+        const level = parseFlat({
             ...valid,
             playerSpeed: 4,
             enemies: [{ ai: "chase", speed: 2.5 }],
@@ -133,7 +152,7 @@ describe("parseLevel", () => {
     // The dot is for 1-player games; createGameState clears it when there
     // is a player 2.
     it("starts player 2 on Q, which holds a dot", () => {
-        const level = parseLevel({
+        const level = parseFlat({
             ...valid,
             map: ["#####", "#PQE#", "#. .#", "#####"],
         })
@@ -142,11 +161,11 @@ describe("parseLevel", () => {
     })
 
     it("starts player 2 on player 1's spawn when there is no Q", () => {
-        expect(parseLevel(valid).playerSpawns).toEqual([vec2(1, 1), vec2(1, 1)])
+        expect(parseFlat(valid).playerSpawns).toEqual([vec2(1, 1), vec2(1, 1)])
     })
 
     it("parses splitters, up to 4 enemy slots with each splitter as 2", () => {
-        const level = parseLevel({
+        const level = parseFlat({
             ...valid,
             enemies: [{ ai: "splitter", speed: 1.5 }],
         })
@@ -174,7 +193,7 @@ describe("parseLevel", () => {
     })
 
     it("parses ice: ~ is empty ice and : is ice with a dot", () => {
-        const level = parseLevel({
+        const level = parseFlat({
             ...valid,
             map: ["#####", "#P:E#", "#~ .#", "#####"],
         })
@@ -193,7 +212,7 @@ describe("parseLevel", () => {
     })
 
     it("counts a dot on ice as the level's dot", () => {
-        const level = parseLevel({
+        const level = parseFlat({
             ...valid,
             map: ["#####", "#P:~#", "#####"],
             enemies: [],
@@ -202,13 +221,13 @@ describe("parseLevel", () => {
     })
 
     it("leaves omitted speeds out", () => {
-        const level = parseLevel(valid)
+        const level = parseFlat(valid)
         expect(level).not.toHaveProperty("playerSpeed")
         expect(level.enemies[0]).not.toHaveProperty("speed")
     })
 
     it("matches enemies to E spawns in reading order", () => {
-        const level = parseLevel({
+        const level = parseFlat({
             name: "order",
             parTime: 60,
             map: ["#####", "#.E.#", "#EP.#", "#####"],
@@ -221,7 +240,7 @@ describe("parseLevel", () => {
     })
 
     it("accepts any map size", () => {
-        const level = parseLevel({
+        const level = parseFlat({
             name: "wide",
             parTime: 60,
             map: ["#############", "#P.........E#", "#############"],
@@ -234,7 +253,7 @@ describe("parseLevel", () => {
 
     it("follows wrap-around tunnels when checking reachability", () => {
         // The right part is only reachable through the edge tunnel.
-        const level = parseLevel({
+        const level = parseFlat({
             name: "tunnel",
             parTime: 60,
             map: ["#####", ".P#..", "#####"],
@@ -255,7 +274,7 @@ describe("parseLevel", () => {
     })
 
     it("accepts up to 4 enemies with every AI type", () => {
-        const level = parseLevel({
+        const level = parseFlat({
             name: "four",
             parTime: 60,
             map: ["######", "#PEE.#", "#.EE.#", "######"],
@@ -287,7 +306,7 @@ describe("parseLevel", () => {
     // Waypoint 0 at (3, 1) is mid-lane on ice with walls above and below:
     // the patroller can only slide over it, never stop there.
     it("accepts a patrol route that only works by sliding over a waypoint", () => {
-        const level = parseLevel({
+        const level = parseFlat({
             name: "slide-by",
             parTime: 60,
             map: [
@@ -312,26 +331,26 @@ describe("parseLevel", () => {
     })
 
     it("leaves the route out for enemies without one", () => {
-        expect(parseLevel(valid).enemies[0]).not.toHaveProperty("route")
+        expect(parseFlat(valid).enemies[0]).not.toHaveProperty("route")
     })
 
     it("carries the par time into the level", () => {
-        expect(parseLevel(valid).parTime).toBe(60)
-        expect(parseLevel({ ...valid, parTime: 0.5 }).parTime).toBe(0.5)
-        expect(parseLevel({ ...valid, parTime: 16.4 }).parTime).toBe(16.4)
+        expect(parseFlat(valid).parTime).toBe(60)
+        expect(parseFlat({ ...valid, parTime: 0.5 }).parTime).toBe(0.5)
+        expect(parseFlat({ ...valid, parTime: 16.4 }).parTime).toBe(16.4)
     })
 
     it("takes up to MAX_ENEMIES enemies, a Splitter counting as one", () => {
         expect(problemsOf(crowded(MAX_ENEMIES))).toEqual([])
         expect(problemsOf(crowded(MAX_ENEMIES, "splitter"))).toEqual([])
         expect(
-            parseLevel(crowded(MAX_ENEMIES, "splitter")).enemies
+            parseFlat(crowded(MAX_ENEMIES, "splitter")).enemies
         ).toHaveLength(8)
     })
 
     it("returns cells that are not shared with other parses", () => {
-        const a = parseLevel(valid)
-        const b = parseLevel(valid)
+        const a = parseFlat(valid)
+        const b = parseFlat(valid)
         expect(a.cells).not.toBe(b.cells)
         expect(a.cells[0]).not.toBe(b.cells[0])
     })
@@ -351,10 +370,10 @@ describe("parseLevel", () => {
 
         it("a missing or non-number parTime", () => {
             const { parTime: _, ...missing } = valid
-            expect(problemsOf(missing as LevelData)).toEqual([
+            expect(problemsOf(missing as FlatLevelData)).toEqual([
                 "parTime must be a positive number of seconds in whole tenths, got undefined",
             ])
-            const text = { ...valid, parTime: "60" } as unknown as LevelData
+            const text = { ...valid, parTime: "60" } as unknown as FlatLevelData
             expect(problemsOf(text)).toEqual([
                 "parTime must be a positive number of seconds in whole tenths, got 60",
             ])
@@ -364,7 +383,7 @@ describe("parseLevel", () => {
             const data = {
                 ...valid,
                 enemies: [{ ai: "smart" }],
-            } as unknown as LevelData
+            } as unknown as FlatLevelData
             expect(problemsOf(data)).toEqual([
                 'enemies[0].ai must be one of random, chase, ambusher, patroller, phantom, splitter, got "smart"',
             ])
@@ -684,7 +703,7 @@ describe("parseLevel", () => {
 
         it("with every problem of a stage in one error", () => {
             expect(() =>
-                parseLevel({
+                parseFlat({
                     name: "",
                     parTime: 0,
                     map: ["#x", "#"],
@@ -713,17 +732,17 @@ describe("the old level fixture", () => {
 
 describe("parseLevel rules", () => {
     // Rules come from JSON-like data, so tests pass shapes the type forbids.
-    const withRules = (rules: unknown): LevelData =>
-        ({ ...valid, rules }) as LevelData
+    const withRules = (rules: unknown): FlatLevelData =>
+        ({ ...valid, rules }) as FlatLevelData
 
     it("gives a level without rules empty rules", () => {
-        expect(parseLevel(valid).rules).toEqual({})
-        expect(parseLevel(withRules({})).rules).toEqual({})
+        expect(parseFlat(valid).rules).toEqual({})
+        expect(parseFlat(withRules({})).rules).toEqual({})
     })
 
     it("carries a fog rule through, copied", () => {
         const data = withRules({ fog: { radius: 3.5 } })
-        const level = parseLevel(data)
+        const level = parseFlat(data)
         expect(level.rules).toEqual({ fog: { radius: 3.5 } })
         expect(level.rules.fog).not.toBe(data.rules?.fog)
     })
@@ -731,7 +750,7 @@ describe("parseLevel rules", () => {
     it("keeps the rules JSON-serializable", () => {
         const data = withRules({ fog: { radius: 4 } })
         expect(JSON.parse(JSON.stringify(data))).toEqual(data)
-        expect(parseLevel(JSON.parse(JSON.stringify(data))).rules).toEqual({
+        expect(parseFlat(JSON.parse(JSON.stringify(data))).rules).toEqual({
             fog: { radius: 4 },
         })
     })
@@ -775,21 +794,24 @@ describe("parseLevel rules", () => {
 
 describe("parseLevel with a boss", () => {
     // A room with the boss's footprint at (3, 2) to (4, 3).
-    const lair: LevelData = {
+    const lair: FlatLevelData = {
         name: "lair",
         parTime: 60,
         map: ["#######", "#P....#", "#..B .#", "#.....#", "#E....#", "#######"],
         enemies: [{ ai: "chase" }],
     }
     // `lair` with its map rows replaced by `map`.
-    const withMap = (map: readonly string[]): LevelData => ({ ...lair, map })
+    const withMap = (map: readonly string[]): FlatLevelData => ({
+        ...lair,
+        map,
+    })
     // Boss settings come from JSON-like data, so tests pass shapes the type
     // forbids.
-    const withBoss = (boss: unknown): LevelData =>
-        ({ ...lair, boss }) as LevelData
+    const withBoss = (boss: unknown): FlatLevelData =>
+        ({ ...lair, boss }) as FlatLevelData
 
     it("parses the boss's spawn, on a dot, with no enemy slot", () => {
-        const level = parseLevel(lair)
+        const level = parseFlat(lair)
         expect(level.boss).toEqual({ pos: vec2(3, 2) })
         expect(level.cells[2][3]).toBe(Cell.dot)
         expect(level.cells[2][4]).toBe(Cell.none)
@@ -797,15 +819,15 @@ describe("parseLevel with a boss", () => {
     })
 
     it("has no boss without a B", () => {
-        expect(parseLevel(valid).boss).toBeNull()
+        expect(parseFlat(valid).boss).toBeNull()
     })
 
     it("takes the boss's speed from its settings", () => {
-        expect(parseLevel(withBoss({ speed: 2.5 })).boss).toEqual({
+        expect(parseFlat(withBoss({ speed: 2.5 })).boss).toEqual({
             pos: vec2(3, 2),
             speed: 2.5,
         })
-        expect(parseLevel(withBoss({})).boss).toEqual({ pos: vec2(3, 2) })
+        expect(parseFlat(withBoss({})).boss).toEqual({ pos: vec2(3, 2) })
     })
 
     it("rejects bad boss settings", () => {
@@ -936,5 +958,325 @@ describe("parseLevel with a boss", () => {
                 ])
             )
         ).toEqual(["a level with a boss can't have ice"])
+    })
+})
+
+// A level with two maps of its own: a medium one listing 4 enemies and a
+// large one listing 8, all far enough from the player spawns for a stage.
+const MEDIUM: LevelVariant = {
+    parTime: 60,
+    map: [
+        "#########",
+        "#E.E.E.E#",
+        "#.......#",
+        "#.......#",
+        "#...PQ..#",
+        "#########",
+    ],
+    enemies: [
+        { ai: "chase" },
+        { ai: "random" },
+        { ai: "ambusher" },
+        { ai: "phantom" },
+    ],
+}
+const LARGE: LevelVariant = {
+    parTime: 90,
+    map: [
+        "###########",
+        "#E.E.E.E.E#",
+        "#.........#",
+        "#E.E.E....#",
+        "#.........#",
+        "#.........#",
+        "#....PQ...#",
+        "###########",
+    ],
+    enemies: [
+        { ai: "chase" },
+        { ai: "random" },
+        { ai: "ambusher" },
+        { ai: "phantom" },
+        { ai: "splitter" },
+        { ai: "random" },
+        { ai: "chase" },
+        {
+            ai: "patroller",
+            route: [
+                [1, 5],
+                [9, 5],
+            ],
+        },
+    ],
+}
+const twoMaps: LevelData = { name: "two maps", medium: MEDIUM, large: LARGE }
+
+// The problems `parse` reports for `data`, or [] if it parses.
+function problemsWith(
+    data: LevelData,
+    parse: (data: LevelData) => unknown = parseLevel
+): readonly string[] {
+    try {
+        parse(data)
+        return []
+    } catch (e) {
+        if (e instanceof LevelError) return e.problems
+        throw e
+    }
+}
+
+describe("parseLevel per difficulty", () => {
+    it("plays Easy and Medium on the medium map, Hard and Super Hard on the large one", () => {
+        for (const difficulty of DIFFICULTIES) {
+            const level = parseLevel(twoMaps, difficulty)
+            const map = MAP_SIZE[difficulty] === "medium" ? MEDIUM : LARGE
+            expect(level.width).toBe(map.map[0].length)
+            expect(level.height).toBe(map.map.length)
+            expect(level.parTime).toBe(map.parTime)
+        }
+        expect(parseLevel(twoMaps)).toEqual(parseLevel(twoMaps, "medium"))
+    })
+
+    it("brings out the first ENEMY_COUNT enemies, each on its own spawn", () => {
+        const ais = (difficulty: Difficulty) =>
+            parseLevel(twoMaps, difficulty).enemies.map((e) => e.ai)
+        expect(ais("easy")).toEqual([
+            AiType.chase,
+            AiType.random,
+            AiType.ambusher,
+        ])
+        expect(ais("medium")).toEqual([
+            AiType.chase,
+            AiType.random,
+            AiType.ambusher,
+            AiType.phantom,
+        ])
+        expect(ais("hard")).toEqual([
+            AiType.chase,
+            AiType.random,
+            AiType.ambusher,
+            AiType.phantom,
+            AiType.splitter,
+            AiType.random,
+        ])
+        const superHard = parseLevel(twoMaps, "superHard").enemies
+        expect(superHard).toHaveLength(8)
+        expect(superHard.map((e) => e.pos)).toEqual([
+            vec2(1, 1),
+            vec2(3, 1),
+            vec2(5, 1),
+            vec2(7, 1),
+            vec2(9, 1),
+            vec2(1, 3),
+            vec2(3, 3),
+            vec2(5, 3),
+        ])
+        expect(superHard[7].route).toEqual([vec2(1, 5), vec2(9, 5)])
+        for (const difficulty of DIFFICULTIES) {
+            const all = parseMaps(twoMaps)[MAP_SIZE[difficulty]].enemies
+            expect(parseLevel(twoMaps, difficulty).enemies).toEqual(
+                all.slice(0, ENEMY_COUNT[difficulty])
+            )
+        }
+    })
+
+    it("leaves the spawns beyond the count empty, keeping their dots", () => {
+        const level = parseLevel(twoMaps, "easy")
+        expect(level.enemies.map((e) => e.pos)).not.toContainEqual(vec2(7, 1))
+        expect(level.cells[1][7]).toBe(Cell.dot)
+        const game = createGameState(level)
+        expect(game.enemies).toHaveLength(3)
+        expect(game.spawns.enemies).toEqual([
+            vec2(1, 1),
+            vec2(3, 1),
+            vec2(5, 1),
+        ])
+        expect(game.cells[1][7]).toBe(Cell.dot)
+        // The same dots as with an enemy on every spawn.
+        expect(level.cells).toEqual(parseLevel(twoMaps, "medium").cells)
+    })
+
+    it("brings out every enemy a map lists when it lists fewer than the count", () => {
+        const few: LevelData = {
+            ...twoMaps,
+            large: {
+                ...LARGE,
+                map: LARGE.map.map((row, y) =>
+                    y === 1 ? "#E.E......#" : y === 3 ? "#.........#" : row
+                ),
+                enemies: LARGE.enemies.slice(0, 2),
+            },
+        }
+        for (const difficulty of ["hard", "superHard"] as const) {
+            expect(
+                parseLevel(few, difficulty).enemies.map((e) => e.ai)
+            ).toEqual([AiType.chase, AiType.random])
+        }
+    })
+
+    it("gives back a level with no more enemies than the count as it is", () => {
+        const level = parseMaps(twoMaps).medium
+        expect(levelFor(level, "medium")).toBe(level)
+        expect(levelFor(level, "superHard")).toBe(level)
+        expect(levelFor(level, "easy").enemies).toHaveLength(3)
+    })
+
+    it("checks both maps whatever the difficulty, marking whose problem it is", () => {
+        const data: LevelData = {
+            ...twoMaps,
+            medium: { ...MEDIUM, parTime: 0 },
+            large: { ...LARGE, map: ["#P?#"] },
+        }
+        for (const difficulty of DIFFICULTIES) {
+            expect(
+                problemsWith(data, (d) => parseLevel(d, difficulty))
+            ).toEqual([
+                "medium: parTime must be a positive number of seconds in whole tenths, got 0",
+                'large: unknown map character "?" at (2, 0)',
+            ])
+        }
+    })
+
+    // Super Hard is the only difficulty that brings out the large map's
+    // last enemy, but every difficulty rejects its bad route.
+    it("rejects a bad patrol route that only some difficulty brings out", () => {
+        expect(ENEMY_COUNT.hard).toBeLessThan(LARGE.enemies.length)
+        const data: LevelData = {
+            ...twoMaps,
+            large: {
+                ...LARGE,
+                enemies: [
+                    ...LARGE.enemies.slice(0, 7),
+                    {
+                        ai: "patroller",
+                        route: [
+                            [1, 5],
+                            [0, 0],
+                        ],
+                    },
+                ],
+            },
+        }
+        for (const difficulty of DIFFICULTIES) {
+            expect(
+                problemsWith(data, (d) => parseLevel(d, difficulty))
+            ).toEqual(["large: enemies[7].route[1] (0, 0) is a wall"])
+        }
+    })
+
+    it("checks each map's spawn count and enemy cap", () => {
+        const nine: LevelData = {
+            ...twoMaps,
+            large: {
+                ...LARGE,
+                map: LARGE.map.map((row, y) => (y === 3 ? "#E.E.E.E..#" : row)),
+                enemies: [...LARGE.enemies, { ai: "random" }],
+            },
+        }
+        expect(problemsWith(nine)).toEqual([
+            `large: at most ${MAX_ENEMIES} enemies are supported, got 9`,
+        ])
+        const short: LevelData = {
+            ...twoMaps,
+            medium: { ...MEDIUM, enemies: MEDIUM.enemies.slice(0, 3) },
+        }
+        expect(problemsWith(short)).toEqual([
+            'medium: map has 4 "E" spawns but enemies lists 3',
+        ])
+    })
+
+    it("needs a boss on both maps or neither", () => {
+        const data: LevelData = {
+            ...twoMaps,
+            medium: {
+                ...MEDIUM,
+                map: MEDIUM.map.map((row, y) => (y === 2 ? "#..B....#" : row)),
+            },
+        }
+        expect(problemsWith(data)).toEqual([
+            'both maps must have a boss ("B") or neither',
+        ])
+    })
+
+    it("checks one map once, unmarked, when both are the same object", () => {
+        const data: LevelData = {
+            name: "one map",
+            ...sameForBoth({ ...MEDIUM, parTime: 0 }),
+        }
+        expect(problemsWith(data)).toEqual([
+            "parTime must be a positive number of seconds in whole tenths, got 0",
+        ])
+        const fine = { name: "one map", ...sameForBoth(MEDIUM) }
+        expect(parseLevel(fine, "superHard")).toEqual(
+            parseLevel(fine, "medium")
+        )
+    })
+
+    it("rejects a map that is missing", () => {
+        const data = { ...twoMaps, large: undefined } as unknown as LevelData
+        expect(problemsWith(data)).toEqual([
+            "large must be an object, got undefined",
+        ])
+    })
+})
+
+describe("parseStage", () => {
+    it("parses the level at every difficulty", () => {
+        const stage = parseStage(twoMaps)
+        for (const difficulty of DIFFICULTIES) {
+            expect(stage[difficulty]).toEqual(parseLevel(twoMaps, difficulty))
+        }
+    })
+
+    // See SPAWN_GAP. parseLevel lets test levels put them anywhere.
+    it("rejects an enemy spawn near a player spawn, on either map", () => {
+        const data: LevelData = {
+            ...twoMaps,
+            medium: {
+                ...MEDIUM,
+                map: MEDIUM.map.map((row, y) => (y === 2 ? "#...E...#" : row)),
+                enemies: [...MEDIUM.enemies, { ai: "random" }],
+            },
+        }
+        expect(problemsWith(data, parseStage)).toEqual([
+            `medium: enemies[4]'s spawn at (4, 2) is too near the "P" at (4, 4): 2.00 cells, less than ${SPAWN_GAP}`,
+            `medium: enemies[4]'s spawn at (4, 2) is too near the "Q" at (5, 4): 2.24 cells, less than ${SPAWN_GAP}`,
+        ])
+        expect(problemsWith(data)).toEqual([])
+    })
+
+    it("rejects a boss whose footprint is near a player spawn", () => {
+        const lair: LevelData = {
+            name: "lair",
+            ...sameForBoth({
+                parTime: 60,
+                map: [
+                    "#######",
+                    "#.....#",
+                    "#.B...#",
+                    "#.....#",
+                    "#..P..#",
+                    "#######",
+                ],
+                enemies: [],
+            }),
+        }
+        expect(problemsWith(lair, parseStage)).toEqual([
+            `the boss at (2, 2) is too near the "P" at (3, 4): 1.00 cells, less than ${SPAWN_GAP}`,
+        ])
+    })
+
+    it("measures the gap through wrap tunnels", () => {
+        const data: LevelData = {
+            name: "tunnel",
+            ...sameForBoth({
+                parTime: 60,
+                map: ["#######", "P....E.", "#.....#", "#######"],
+                enemies: [{ ai: "random" }],
+            }),
+        }
+        expect(problemsWith(data, parseStage)).toEqual([
+            `enemies[0]'s spawn at (5, 1) is too near the "P" at (0, 1): 2.00 cells, less than ${SPAWN_GAP}`,
+        ])
     })
 })
