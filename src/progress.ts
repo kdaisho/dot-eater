@@ -123,11 +123,13 @@ export function parseProgress(raw: string | null): Progress {
 // none.
 function parseStoryBests(saved: unknown): StoryBests | undefined {
     if (!isRecord(saved)) return undefined
-    const bests: Record<string, unknown> = {}
-    for (const [key, value] of Object.entries(saved)) {
-        if (!isDifficulty(key) || isScore(value)) bests[key] = value
-    }
-    return bests
+    // Built with fromEntries, as parseByDifficulty is, so a saved
+    // "__proto__" key is an own field and never an inherited best.
+    return Object.fromEntries(
+        Object.entries(saved).filter(
+            ([key, value]) => !isDifficulty(key) || isScore(value)
+        )
+    )
 }
 
 function isScore(value: unknown): value is number {
@@ -159,12 +161,15 @@ function parseByDifficulty(
     saved: unknown
 ): StageProgress["byDifficulty"] | undefined {
     if (!isRecord(saved)) return undefined
-    const records: Record<string, unknown> = {}
-    for (const [key, value] of Object.entries(saved)) {
-        if (!isDifficulty(key)) records[key] = value
-        else if (isRecord(value)) records[key] = parseBests(value)
-    }
-    return records
+    // Built with fromEntries, which makes every key an own field: assigning
+    // a saved "__proto__" key would set the object's prototype instead, and
+    // its fields would read as inherited bests.
+    return Object.fromEntries(
+        Object.entries(saved).flatMap(([key, value]) => {
+            if (!isDifficulty(key)) return [[key, value]]
+            return isRecord(value) ? [[key, parseBests(value)]] : []
+        })
+    )
 }
 
 function isStars(value: unknown): value is number {

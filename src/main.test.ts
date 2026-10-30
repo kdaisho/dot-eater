@@ -24,7 +24,7 @@ import {
     STAGE_COUNT,
 } from "./progress"
 import { ANIMAL_IDS, AnimalId, DEFAULT_ANIMAL } from "./roster"
-import { formatTicks, starText } from "./stars"
+import { formatSeconds, formatTicks, starText } from "./stars"
 import { vec2 } from "./vec2"
 import { pick } from "./test/helpers"
 
@@ -753,22 +753,25 @@ describe("main", () => {
     })
 
     it("shows the clear time and stars, saves the bests and lists them on stage select", () => {
-        // The step is mocked, so set the clear: under half health, 1:02.5.
+        // The step is mocked, so set the clear: under half health, 2.5 s
+        // over stage 1's par.
+        const { parTime } = levels[0]
+        const ticks = (parTime + 2.5) * TICK_RATE
         const game = drawnGame()
-        game.ticks = 62.5 * TICK_RATE
+        game.ticks = ticks
         game.players[0].health = MAX_HEALTH / 2 - 1
         gameOver("won")
         expect(overlayLines().slice(2)).toEqual([
-            "Time 1:02.5",
+            `Time ${formatTicks(ticks)}`,
             "★ Cleared",
             "☆ At least half health",
-            "☆ Under par (1:00)",
+            `☆ Under par (${formatSeconds(parTime)})`,
         ])
         const saved = parseProgress(localStorage.getItem(PROGRESS_KEY))
         // Order-independent: an earlier win (0 ticks, 3 stars) may have
         // saved better bests already.
         expect(saved.stages[0].stars).toBeGreaterThanOrEqual(1)
-        expect(saved.stages[0].bestTime).toBeLessThanOrEqual(62.5 * TICK_RATE)
+        expect(saved.stages[0].bestTime).toBeLessThanOrEqual(ticks)
 
         pressAndTick("ArrowDown")
         pressAndTick("Space")

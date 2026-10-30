@@ -201,6 +201,30 @@ describe("parseProgress: byDifficulty", () => {
         }
     )
 
+    // Regression (PR #86 review): a saved "__proto__" key was assigned, which
+    // set byDifficulty's prototype, so its fields read as inherited bests.
+    it("never takes a saved __proto__ key as byDifficulty's prototype", () => {
+        // Written as text: an object literal's __proto__ sets the prototype.
+        const raw =
+            '{"version":1,"stages":[{"cleared":true,"byDifficulty":' +
+            '{"__proto__":{"medium":{"stars":3,"bestTime":1},' +
+            '"hard":{"stars":3,"bestTime":1}}}}]}'
+        const stage = parseProgress(raw).stages[0]
+        expect(Object.getPrototypeOf(stage.byDifficulty)).toBe(Object.prototype)
+        expect(bestsAt(stage, "medium")).toEqual({})
+        expect(bestsAt(stage, "hard")).toEqual({})
+        expect(stageSlots(parseProgress(raw), ["A"], "hard")[0]).toEqual({
+            kind: "open",
+            name: "A",
+        })
+        // A clear there is recorded as the first one.
+        const p = recordBests(parseProgress(raw), 0, run("hard", 1, 600))
+        expect(bestsAt(p.stages[0], "hard")).toEqual({
+            stars: 1,
+            bestTime: 600,
+        })
+    })
+
     it("keeps entries for difficulties it doesn't know through a save", () => {
         const raw = JSON.stringify({
             version: 1,

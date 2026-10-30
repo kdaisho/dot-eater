@@ -95,6 +95,18 @@ describe("story bests in the save", () => {
         })
     })
 
+    // Regression guard, as for byDifficulty: assigning a saved "__proto__"
+    // key would set the object's prototype, and its fields would read as
+    // inherited bests.
+    it("never read a saved __proto__ key as inherited bests", () => {
+        const parsed = parseProgress(
+            '{"version":1,"stages":[],"storyBests":{"__proto__":{"hard":999}}}'
+        )
+        expect(parsed.storyBests?.hard).toBeUndefined()
+        const next = recordStoryBest(parsed, undefined, "hard", 10)
+        expect(next.storyBests?.hard).toBe(10)
+    })
+
     it("are dropped when they aren't an object, and the rest still counts", () => {
         const parsed = parse({
             stages: [{ cleared: true }],
