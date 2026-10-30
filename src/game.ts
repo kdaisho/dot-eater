@@ -926,6 +926,9 @@ export function step(
     const paths = targetPaths(cells, targets, enemyCells)
     // The distances chasers and ambushers aim by, shared the same way.
     const aims: ChaseDistances = new Map()
+    // The enemies a chaser, ambusher or Splitter keeps from stacking on,
+    // where each is as the loop goes (see spreadChoice in ai.ts).
+    const crowd = enemies.filter(inPlay)
     enemies.forEach((enemy, i) => {
         if (!inPlay(enemy) || hasStatus(enemy, "holds")) return
         if (!advance(enemy, dt)) return
@@ -956,7 +959,8 @@ export function step(
                 state.ice,
                 blocked,
                 enemyCells,
-                aims
+                aims,
+                crowd
             )
         } else {
             const target = nearestTarget(
@@ -975,7 +979,8 @@ export function step(
                 state.ice,
                 blocked,
                 enemyCells,
-                aims
+                aims,
+                crowd
             )
         }
         if (samePos(enemy.pos, from.enemies[i])) {

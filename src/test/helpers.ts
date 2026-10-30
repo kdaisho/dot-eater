@@ -321,6 +321,19 @@ export function p2Move(move: MoveInput): MoveInput[] {
 // A random source that always returns the same value.
 export const fixedRandom = (value: number) => () => value
 
+// A random source that gives the same run of values for the same `seed`
+// (mulberry32), for seeded simulations.
+export function seededRandom(seed: number): () => number {
+    let a = seed >>> 0
+    return () => {
+        a = (a + 0x6d2b79f5) >>> 0
+        let t = a
+        t = Math.imul(t ^ (t >>> 15), t | 1)
+        t ^= t + Math.imul(t ^ (t >>> 7), t | 61)
+        return ((t ^ (t >>> 14)) >>> 0) / 4294967296
+    }
+}
+
 // Step one tick at a time with player 1 holding `held` (nothing by
 // default; enemies use fixedRandom(0)) until a player is hurt or knocked
 // out (so the game may be lost, or in a 2-player mode a player taken out),
