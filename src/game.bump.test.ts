@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vite-plus/test"
-import { addStatus } from "./breath"
+import { addStatus, addTileEffect, type TileEffect } from "./breath"
 import {
     AiType,
+    Cell,
     PLAYER_RESPAWN_DELAY,
     PLAYER_SPEED,
     START_LIVES,
@@ -109,12 +110,10 @@ describe("players bumping into each other", () => {
             // Ready, waiting at exactly 1, facing the way it pushes.
             expect(p1.character.moveProgress).toBe(1)
             expect(p1.breather.facing).toEqual(east)
-            // Player 2 moves on. Player 1 moved first on that tick, so it
-            // goes on the next.
+            // Player 2 moves on, and player 1 follows on the same tick (its
+            // move waits for player 2's; see the order tests below).
             run(state, [hold(east), hold(east)], 1)
             expect(posOf(state, 1)).toEqual(vec2(6, 1))
-            expect(posOf(state, 0)).toEqual(vec2(4, 1))
-            run(state, [hold(east), IDLE], 1)
             expect(posOf(state, 0)).toEqual(vec2(5, 1))
         }
     )
@@ -146,6 +145,76 @@ describe("players bumping into each other", () => {
         expect(posOf(state, 0)).toEqual(vec2(5, 1))
         run(state, [hold(east), hold(east)], MOVE * 2)
         expect(posOf(state, 0).x).toBe(posOf(state, 1).x - 1)
+    })
+
+    describe("following, whichever player is behind", () => {
+        // A hall on row 2, with a side corridor north at (3, 1).
+        const rows = [
+            "##########",
+            "### ######",
+            "#        #",
+            "##########",
+            "#.########",
+        ]
+        const behind = vec2(3, 2)
+        const ahead = vec2(4, 2)
+        // The game with player `back` (0 or 1) behind the other.
+        const line = (back: number) =>
+            back === 0
+                ? game(behind, ahead, { rows })
+                : game(ahead, behind, { rows })
+        // Each player's input, the one behind's first given.
+        const inputs = (back: number, b: MoveInput, a: MoveInput) =>
+            back === 0 ? [b, a] : [a, b]
+
+        // Regression: player 1 was checked against player 2's cell before
+        // player 2 moved off it, so it turned down the side corridor.
+        it.each([0, 1])(
+            "goes straight on, not down an older held way (player %i behind)",
+            (back) => {
+                const state = line(back)
+                const follow = { held: [east, north], pressed: none }
+                run(state, inputs(back, follow, hold(east)), 1)
+                expect(posOf(state, back)).toEqual(ahead)
+                expect(posOf(state, 1 - back)).toEqual(vec2(5, 2))
+            }
+        )
+
+        it.each([0, 1])(
+            "follows on a tap without using it up first (player %i behind)",
+            (back) => {
+                const state = line(back)
+                const tap = { held: [], pressed: east }
+                run(state, inputs(back, tap, hold(east)), 1)
+                expect(posOf(state, back)).toEqual(ahead)
+            }
+        )
+
+        it.each([0, 1])(
+            "takes an older held way when the other doesn't move (player %i behind)",
+            (back) => {
+                const state = line(back)
+                const follow = { held: [east, north], pressed: none }
+                run(state, inputs(back, follow, IDLE), 1)
+                expect(posOf(state, back)).toEqual(vec2(3, 1))
+            }
+        )
+
+        it.each([0, 1])(
+            "slides on behind the other (player %i behind)",
+            (back) => {
+                const ice = ["#########", "# ~~~~~ #", "#########", "#.#######"]
+                const state =
+                    back === 0
+                        ? game(vec2(3, 1), vec2(4, 1), { rows: ice })
+                        : game(vec2(4, 1), vec2(3, 1), { rows: ice })
+                // The one behind is sliding east from (2, 1).
+                state.players[back].character.lastPos = vec2(2, 1)
+                run(state, inputs(back, IDLE, hold(east)), 1)
+                expect(posOf(state, back)).toEqual(vec2(4, 1))
+                expect(posOf(state, 1 - back)).toEqual(vec2(5, 1))
+            }
+        )
     })
 
     it("keeps two players next to each other from swapping cells", () => {
@@ -197,6 +266,37 @@ describe("players bumping into each other", () => {
         const state = game(vec2(1, 1), vec2(5, 1), { rows, bump: false })
         run(state, [hold(east), IDLE], MOVE * 7)
         expect(posOf(state, 0)).toEqual(vec2(7, 1))
+    })
+
+    describe("a regrowing wall", () => {
+        // A wall at (5, 1) in the hall, opened for 1 s. Player 1 has
+        // stepped from (4, 1) into it, and player 2 followed into (4, 1).
+        const open: TileEffect = { name: "test.open", opensWall: true }
+        function inWall(bump = true): GameState {
+            const rows = [...HALL]
+            rows[1] = "#    #    #"
+            const state = game(vec2(5, 1), vec2(4, 1), { rows, bump })
+            addTileEffect(state, vec2(5, 1), open, 1)
+            state.players[0].character.lastPos = vec2(4, 1)
+            state.players[1].character.lastPos = vec2(3, 1)
+            run(state, [IDLE, IDLE], TICK_RATE)
+            return state
+        }
+
+        // Regression: it put player 1 back where it came from, on player 2.
+        it("doesn't push a player onto the other", () => {
+            const state = inWall()
+            expect(state.cells[1][5]).toBe(Cell.wall)
+            expect(posOf(state, 1)).toEqual(vec2(4, 1))
+            // The nearest open cell free of player 2.
+            expect(posOf(state, 0)).toEqual(vec2(6, 1))
+        })
+
+        it("off, pushes a player back onto the other", () => {
+            const state = inWall(false)
+            expect(posOf(state, 0)).toEqual(vec2(4, 1))
+            expect(posOf(state, 1)).toEqual(vec2(4, 1))
+        })
     })
 
     it("isn't blocked by a player out of play", () => {

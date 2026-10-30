@@ -487,13 +487,24 @@ function solidAt(state: GameState, cell: Vec2): boolean {
 // player out of play never blocks, and enemies and the boss ignore players
 // either way. Players move in order, so of two heading into one cell on a
 // tick player 1 gets there and player 2 is blocked; and two players next to
-// each other can't swap cells, as each is on the cell the other wants.
+// each other can't swap cells, as each is on the cell the other wants. A
+// player blocked by one still to move this tick waits for it first (see
+// defersMove), so following doesn't depend on the player order.
 function playerBlocks(state: GameState, who: Player, cell: Vec2): boolean {
+    return blockingPlayer(state, who, cell) !== null
+}
+
+// The player that blocks `who` from `cell` (see playerBlocks), or null.
+function blockingPlayer(
+    state: GameState,
+    who: Player,
+    cell: Vec2
+): Player | null {
+    if (!state.playersBump) return null
     return (
-        state.playersBump &&
-        state.players.some(
+        state.players.find(
             (p) => p !== who && !p.out && samePos(p.character.pos, cell)
-        )
+        ) ?? null
     )
 }
 
@@ -535,7 +546,10 @@ function wait(character: Glider) {
 // Players move in order, player 1 first (so on a dot both step onto in the
 // same tick, player 1 eats it), and pass through each other, unless they
 // bump (GameState.playersBump): then a player can't move into the other's
-// cell and waits there as at a wall (see playerBlocks). Each enemy, and
+// cell and waits there as at a wall (see playerBlocks); a player held up
+// only by one still to move this tick moves after it instead (see
+// defersMove), so the one behind follows whichever player is first. Each
+// enemy, and
 // the boss, goes after the nearest player (see nearestTarget and
 // bossTarget).
 //
@@ -596,31 +610,16 @@ export function step(
         vec2(c.lastPos.x, c.lastPos.y)
     )
 
+    // The players still to take their turn this tick, and the moves put off
+    // until the others have moved (see defersMove).
+    const pending = new Set(players)
+    const later: (() => void)[] = []
     players.forEach((player, i) => {
-        // A player out of play ignores its input altogether.
-        if (player.out) return
-        // A stunned player (versus) ignores its input too: it finishes the
-        // glide it is in and, on ice, its slide (PM decision), but makes no
-        // move of its own.
-        if (stunned(player)) {
-            if (advance(player.character, dt * player.rate)) {
-                if (slideTick(state, player)) spend(player.character)
-                else wait(player.character)
-            }
-            return
-        }
-        const move = inputs[i] ?? IDLE
-        if (!isZero(move.pressed)) player.bufferedStep = move.pressed
-        // The rate was taken in tickStarts too, before anyone moved, so its
-        // progress and its drawn path for collisions agree.
-        if (advance(player.character, dt * player.rate)) {
-            if (movePlayerTick(state, player, move.held)) {
-                spend(player.character)
-            } else {
-                wait(player.character)
-            }
-        }
+        const rest = playerTurn(state, player, inputs[i] ?? IDLE, dt, pending)
+        if (rest) later.push(rest)
+        else pending.delete(player)
     })
+    for (const rest of later) rest()
     let breathed = false
     players.forEach((player, i) => {
         // A player stunned by an earlier player's breath on this same tick
@@ -768,6 +767,81 @@ export function settle(state: GameState, dt: number): boolean {
         c.moveProgress = progress >= 1 - EPSILON ? 1 : progress
     }
     return state.players.every((p) => p.character.moveProgress >= 1 - EPSILON)
+}
+
+// `player`'s turn to move this tick (see step), with `move` its input and
+// `pending` the players still to take theirs (itself included). Returns the
+// rest of the turn when its move is put off until the others have moved
+// (see defersMove), for the caller to run then; null once it is done.
+//
+// A player out of play ignores its input altogether. A stunned one (versus)
+// ignores it too: it finishes the glide it is in and, on ice, its slide
+// (PM decision), but makes no move of its own.
+function playerTurn(
+    state: GameState,
+    player: Player,
+    move: MoveInput,
+    dt: number,
+    pending: ReadonlySet<Player>
+): (() => void) | null {
+    if (player.out) return null
+    const { character } = player
+    const isStunned = stunned(player)
+    if (!isStunned && !isZero(move.pressed)) player.bufferedStep = move.pressed
+    // The rate was taken in tickStarts too, before anyone moved, so its
+    // progress and its drawn path for collisions agree.
+    if (!advance(character, dt * player.rate)) return null
+    const held = isStunned ? null : move.held
+    const rest = () => {
+        const moved = held
+            ? movePlayerTick(state, player, held)
+            : slideTick(state, player)
+        if (moved) spend(character)
+        else wait(character)
+    }
+    if (defersMove(state, player, held, pending)) return rest
+    rest()
+    return null
+}
+
+// Whether `player`'s move this tick waits until the other players have
+// moved: the first way it would go (its slide step, else the buffered tap,
+// then the held directions, newest first; see movePlayerTick) that isn't a
+// wall or a solid enemy is blocked only by a player still to move this tick
+// (in `pending`; see playerBlocks), which may yet move out of the way. So
+// a player right behind the other follows it whichever player is first,
+// instead of turning off down an older held direction or waiting a tick.
+// Put off, nothing is tried or used up (the tap buffer stays); afterwards
+// it moves as usual. `held` is null for a stunned player, which only
+// slides.
+function defersMove(
+    state: GameState,
+    player: Player,
+    held: readonly Vec2[] | null,
+    pending: ReadonlySet<Player>
+): boolean {
+    if (!state.playersBump) return false
+    const { cells } = state
+    const { character } = player
+    const slide = slideStep(cells, state.ice, character.pos, character.lastPos)
+    const ways = [
+        ...(slide ? [slide] : []),
+        ...(held ? [player.bufferedStep, ...held] : []),
+    ]
+    for (const way of ways) {
+        if (isZero(way)) continue
+        const cell = loopPos(
+            cells,
+            vec2(character.pos.x + way.x, character.pos.y + way.y)
+        )
+        if (cells[cell.y][cell.x] === Cell.wall || solidAt(state, cell)) {
+            continue
+        }
+        const blocker = blockingPlayer(state, player, cell)
+        if (!blocker) return false
+        if (pending.has(blocker)) return true
+    }
+    return false
 }
 
 // A player's move opportunity: try the buffered direction first, then each
