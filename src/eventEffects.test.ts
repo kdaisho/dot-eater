@@ -9,6 +9,7 @@ import {
 } from "./eventEffects"
 import { takeEvents, type GameEvent } from "./events"
 import { step, type GameState, type MoveInput } from "./game"
+import { createJabs } from "./jab"
 import { BURSTS, createParticles, type ParticleLook } from "./particles"
 import { defaultSettings } from "./settings"
 import { createShake, SHAKES } from "./shake"
@@ -131,6 +132,32 @@ describe("effectsForEvent", () => {
         expect(r.emits).toEqual([])
         expect(r.shakes).toEqual([SHAKES.stun])
         expect(SHAKES.stun).toBeLessThan(SHAKES.hit)
+    })
+
+    it("a jab look, nothing else, for a punch", () => {
+        const r = recorder()
+        const jabs: { player: number; facing: Vec2 }[] = []
+        r.targets.jabs = {
+            add: (player, facing) => jabs.push({ player, facing }),
+        }
+        effectsForEvent(
+            { type: "punched", player: 1, at: vec2(2, 2), facing: vec2(0, -1) },
+            room(),
+            r.targets
+        )
+        expect(jabs).toEqual([{ player: 1, facing: vec2(0, -1) }])
+        expect(r.bursts).toEqual([])
+        expect(r.shakes).toEqual([])
+    })
+
+    it("a tiny burst and a very small shake where a punch lands", () => {
+        for (const target of ["enemy", "boss", "player"] as const) {
+            const at = vec2(2.4, 2)
+            const r = run({ type: "punchHit", player: 0, at, target })
+            expect(r.bursts).toEqual([{ kind: "punch", at }])
+            expect(r.shakes).toEqual([SHAKES.punch])
+        }
+        expect(SHAKES.punch).toBeLessThan(SHAKES.stun)
     })
 
     it.each([
@@ -305,6 +332,44 @@ describe("effectsForEvents", () => {
         expect(r.bursts.map((b) => b.kind)).toEqual(["dot", "caught"])
         expect(r.shakes).toEqual([SHAKES.caught])
     })
+
+    // Regression: each hit shook, so a jab into three stacked enemies
+    // shook three times as hard as one into a single enemy.
+    it("shakes once per punch, however many it hits, with a burst on each", () => {
+        const r = recorder()
+        const hit = (player: number, enemy: number): GameEvent => ({
+            type: "punchHit",
+            player,
+            at: vec2(3, 2),
+            target: "enemy",
+            enemy,
+        })
+        const punched = (player: number): GameEvent => ({
+            type: "punched",
+            player,
+            at: vec2(2, 2),
+            facing: vec2(1, 0),
+        })
+        effectsForEvents(
+            [
+                punched(0),
+                hit(0, 0),
+                hit(0, 1),
+                hit(0, 2),
+                punched(1),
+                hit(1, 3),
+            ],
+            room(),
+            r.targets
+        )
+        expect(r.bursts.map((b) => b.kind)).toEqual([
+            "punch",
+            "punch",
+            "punch",
+            "punch",
+        ])
+        expect(r.shakes).toEqual([SHAKES.punch, SHAKES.punch])
+    })
 })
 
 describe("applyMotion", () => {
@@ -321,6 +386,15 @@ describe("applyMotion", () => {
         applyMotion(t, defaultSettings(), false)
         expect(t.particles.reduced).toBe(false)
         expect(t.shake.enabled).toBe(true)
+    })
+
+    // Regression: the jab lunged even with reduced motion requested.
+    it("stops jabs lunging with reduced motion", () => {
+        const t = { ...targets(), jabs: createJabs() }
+        applyMotion(t, defaultSettings(), true)
+        expect(t.jabs.reduced).toBe(true)
+        applyMotion(t, defaultSettings(), false)
+        expect(t.jabs.reduced).toBe(false)
     })
 
     it("turns the shake on with reduced motion when the setting says so", () => {

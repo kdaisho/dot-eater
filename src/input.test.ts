@@ -214,6 +214,7 @@ describe("KeyboardSource", () => {
             ["ArrowLeft", "left"],
             ["ArrowRight", "right"],
             ["ShiftRight", "breath"],
+            ["Slash", "punch"],
             ["KeyP", "pause"],
             ["Escape", "pause"],
             ["Space", "confirm"],
@@ -225,6 +226,7 @@ describe("KeyboardSource", () => {
             ["KeyA", "left"],
             ["KeyD", "right"],
             ["ShiftLeft", "breath"],
+            ["KeyZ", "punch"],
             ["KeyQ", "pause"],
             ["KeyE", "confirm"],
         ])
@@ -312,7 +314,7 @@ describe("KeyboardSource", () => {
         expect(
             key("keydown", "ArrowDown", { repeat: true }).defaultPrevented
         ).toBe(true)
-        expect(key("keydown", "KeyZ").defaultPrevented).toBe(false)
+        expect(key("keydown", "KeyJ").defaultPrevented).toBe(false)
     })
 
     it("leaves keys with Ctrl, Meta or Alt to the browser", () => {
@@ -421,7 +423,7 @@ describe("KeyboardSource", () => {
         })
 
         it("leaves unbound keys to the page", () => {
-            source.setBindings(rebind(DEFAULT_BINDINGS, 0, "confirm", "KeyZ"))
+            source.setBindings(rebind(DEFAULT_BINDINGS, 0, "confirm", "KeyJ"))
             expect(key("keydown", "Space").defaultPrevented).toBe(false)
             expect(p1().isDown("confirm")).toBe(false)
         })

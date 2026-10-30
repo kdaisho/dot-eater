@@ -10,6 +10,7 @@ import {
     keyName,
     PAD_A,
     PAD_START,
+    PAD_X,
     parseBindings,
     rebind,
     sameBindings,
@@ -17,9 +18,11 @@ import {
 } from "./bindings"
 import { ACTIONS } from "./input"
 
-const X = 2
+const B = 1
 const Y = 3
 const SELECT = 8
+// Keys in use: 8 actions for each of the 2 players.
+const KEY_COUNT = 16
 
 const p1 = (b: Bindings) => b.players[0]
 const p2 = (b: Bindings) => b.players[1]
@@ -32,19 +35,25 @@ function allKeys(b: Bindings): string[] {
 describe("DEFAULT_BINDINGS", () => {
     it("binds every action of both players to a distinct key", () => {
         const keys = allKeys(DEFAULT_BINDINGS)
-        expect(keys).toHaveLength(14)
-        expect(new Set(keys).size).toBe(14)
+        expect(keys).toHaveLength(KEY_COUNT)
+        expect(new Set(keys).size).toBe(KEY_COUNT)
         expect(keys).not.toContain("Escape")
     })
 
-    it("puts breath and confirm on A and pause on Start for both pads", () => {
+    it("puts breath and confirm on A, punch on X and pause on Start for both pads", () => {
         for (const player of DEFAULT_BINDINGS.players) {
             expect(player.pad).toEqual({
                 breath: PAD_A,
+                punch: PAD_X,
                 confirm: PAD_A,
                 pause: PAD_START,
             })
         }
+    })
+
+    it("punches on / for player 1 and Z for player 2", () => {
+        expect(p1(DEFAULT_BINDINGS).keys.punch).toBe("Slash")
+        expect(p2(DEFAULT_BINDINGS).keys.punch).toBe("KeyZ")
     })
 })
 
@@ -52,7 +61,7 @@ describe("rebind keys", () => {
     it("binds a free key", () => {
         const b = rebind(DEFAULT_BINDINGS, 0, "breath", "KeyX")
         expect(p1(b).keys.breath).toBe("KeyX")
-        expect(new Set(allKeys(b)).size).toBe(14)
+        expect(new Set(allKeys(b)).size).toBe(KEY_COUNT)
     })
 
     it("never changes its input", () => {
@@ -73,7 +82,18 @@ describe("rebind keys", () => {
         const b = rebind(DEFAULT_BINDINGS, 1, "confirm", "ArrowUp")
         expect(p2(b).keys.confirm).toBe("ArrowUp")
         expect(p1(b).keys.up).toBe("KeyE")
-        expect(new Set(allKeys(b)).size).toBe(14)
+        expect(new Set(allKeys(b)).size).toBe(KEY_COUNT)
+    })
+
+    it("swaps punch keys like any other", () => {
+        const b = rebind(DEFAULT_BINDINGS, 0, "punch", "KeyZ")
+        expect(p1(b).keys.punch).toBe("KeyZ")
+        expect(p2(b).keys.punch).toBe("Slash")
+        const c = rebind(DEFAULT_BINDINGS, 0, "punch", "ShiftRight")
+        expect(p1(c).keys).toMatchObject({
+            punch: "ShiftRight",
+            breath: "Slash",
+        })
     })
 
     it("keeps every action on exactly one key through many rebinds", () => {
@@ -83,7 +103,7 @@ describe("rebind keys", () => {
         for (const player of [0, 1]) {
             for (const action of ACTIONS) {
                 b = rebind(b, player, action, codes[n++ % codes.length]!)
-                expect(new Set(allKeys(b)).size).toBe(14)
+                expect(new Set(allKeys(b)).size).toBe(KEY_COUNT)
             }
         }
     })
@@ -115,20 +135,60 @@ describe("rebind pad buttons", () => {
     const pad = (b: Bindings, player = 0) => b.players[player]!.pad
 
     it("splits breath off the shared A, leaving confirm on it", () => {
-        const b = rebind(DEFAULT_BINDINGS, 0, "breath", X)
-        expect(pad(b)).toEqual({ breath: X, confirm: PAD_A, pause: PAD_START })
+        const b = rebind(DEFAULT_BINDINGS, 0, "breath", Y)
+        expect(pad(b)).toEqual({
+            breath: Y,
+            punch: PAD_X,
+            confirm: PAD_A,
+            pause: PAD_START,
+        })
     })
 
     it("lets breath and confirm share a button again", () => {
-        let b = rebind(DEFAULT_BINDINGS, 0, "breath", X)
-        b = rebind(b, 0, "confirm", X)
-        expect(pad(b)).toEqual({ breath: X, confirm: X, pause: PAD_START })
+        let b = rebind(DEFAULT_BINDINGS, 0, "breath", Y)
+        b = rebind(b, 0, "confirm", Y)
+        expect(pad(b)).toEqual({
+            breath: Y,
+            punch: PAD_X,
+            confirm: Y,
+            pause: PAD_START,
+        })
+    })
+
+    it("lets punch and confirm share a button", () => {
+        const b = rebind(DEFAULT_BINDINGS, 0, "confirm", PAD_X)
+        expect(pad(b)).toEqual({
+            breath: PAD_A,
+            punch: PAD_X,
+            confirm: PAD_X,
+            pause: PAD_START,
+        })
+    })
+
+    it("never lets breath and punch share: they swap whole", () => {
+        // Punch onto the shared A: breath and confirm go to X together.
+        const b = rebind(DEFAULT_BINDINGS, 0, "punch", PAD_A)
+        expect(pad(b)).toEqual({
+            breath: PAD_X,
+            punch: PAD_A,
+            confirm: PAD_X,
+            pause: PAD_START,
+        })
+        // Breath onto punch's X: punch takes A, confirm comes along to X.
+        const c = rebind(DEFAULT_BINDINGS, 0, "breath", PAD_X)
+        expect(pad(c)).toEqual({
+            breath: PAD_X,
+            punch: PAD_A,
+            confirm: PAD_X,
+            pause: PAD_START,
+        })
     })
 
     it("swaps A and Start whole when confirm moves onto pause's button", () => {
         const b = rebind(DEFAULT_BINDINGS, 0, "confirm", PAD_START)
         expect(pad(b)).toEqual({
             breath: PAD_START,
+            punch: PAD_X,
             confirm: PAD_START,
             pause: PAD_A,
         })
@@ -138,35 +198,52 @@ describe("rebind pad buttons", () => {
         const b = rebind(DEFAULT_BINDINGS, 0, "pause", PAD_A)
         expect(pad(b)).toEqual({
             breath: PAD_START,
+            punch: PAD_X,
             confirm: PAD_START,
             pause: PAD_A,
         })
     })
 
     it("swaps only the clashing action when breath and confirm are apart", () => {
-        let b = rebind(DEFAULT_BINDINGS, 0, "breath", X)
+        let b = rebind(DEFAULT_BINDINGS, 0, "breath", Y)
         b = rebind(b, 0, "pause", PAD_A)
-        expect(pad(b)).toEqual({ breath: X, confirm: PAD_START, pause: PAD_A })
+        expect(pad(b)).toMatchObject({
+            breath: Y,
+            confirm: PAD_START,
+            pause: PAD_A,
+        })
         b = rebind(b, 0, "breath", PAD_A)
-        expect(pad(b)).toEqual({ breath: PAD_A, confirm: PAD_START, pause: X })
+        expect(pad(b)).toMatchObject({
+            breath: PAD_A,
+            confirm: PAD_START,
+            pause: Y,
+        })
     })
 
-    it("never leaves pause sharing a button", () => {
+    it("never leaves pause, or breath and punch, sharing a button", () => {
         let b = DEFAULT_BINDINGS
         const moves: [string, number][] = [
             ["confirm", PAD_START],
-            ["breath", X],
-            ["pause", X],
-            ["confirm", Y],
+            ["breath", Y],
             ["pause", Y],
+            ["confirm", B],
+            ["pause", B],
             ["breath", PAD_A],
             ["pause", PAD_A],
+            ["punch", PAD_A],
+            ["breath", Y],
+            ["punch", Y],
+            ["confirm", Y],
+            ["breath", B],
+            ["pause", PAD_X],
         ]
         for (const [action, button] of moves) {
             b = rebind(b, 0, action as "breath", button)
-            const { breath, confirm, pause } = pad(b)
+            const { breath, punch, confirm, pause } = pad(b)
             expect(pause).not.toBe(breath)
+            expect(pause).not.toBe(punch)
             expect(pause).not.toBe(confirm)
+            expect(breath).not.toBe(punch)
         }
     })
 
@@ -182,7 +259,7 @@ describe("rebind pad buttons", () => {
                 DEFAULT_BINDINGS
             )
         }
-        expect(rebind(DEFAULT_BINDINGS, 0, "up", X)).toBe(DEFAULT_BINDINGS)
+        expect(rebind(DEFAULT_BINDINGS, 0, "up", Y)).toBe(DEFAULT_BINDINGS)
     })
 })
 
@@ -219,8 +296,81 @@ describe("parseBindings", () => {
         expect(p1(b).keys.breath).toBe("KeyX")
         expect(p2(b).pad).toEqual({
             breath: PAD_A,
+            punch: PAD_X,
             confirm: PAD_A,
             pause: SELECT,
+        })
+    })
+
+    // Bindings saved before the punch (KDA-258) have none: it takes its
+    // default key and button, and the rest are kept.
+    it("gives a save from before the punch the default punch", () => {
+        const value = JSON.parse(JSON.stringify(stored))
+        for (const player of value.players) {
+            delete player.keys.punch
+            delete player.pad.punch
+        }
+        expect(parseBindings(value)).toEqual(stored)
+    })
+
+    // Regression: a missing punch took its default even when a stored key
+    // or button already had it, and the clash reset every key (or the
+    // pad), wiping the player's remaps.
+    it("gives a missing punch a free key when its default is taken", () => {
+        const value = JSON.parse(JSON.stringify(stored))
+        for (const player of value.players) delete player.keys.punch
+        // P2's breath on Z, P2's default punch; P1's breath on /, P1's.
+        value.players[1].keys.breath = "KeyZ"
+        value.players[0].keys.breath = "Slash"
+        const b = parseBindings(value)
+        expect(p1(b).keys.breath).toBe("Slash")
+        expect(p2(b).keys.breath).toBe("KeyZ")
+        expect(p1(b).keys.up).toBe("ArrowUp")
+        // The first spare keys that are free, P1 first.
+        expect(p1(b).keys.punch).toBe("Period")
+        expect(p2(b).keys.punch).toBe("Comma")
+        expect(new Set(allKeys(b)).size).toBe(KEY_COUNT)
+    })
+
+    it("still resets every key when a stored punch clashes", () => {
+        const value = JSON.parse(JSON.stringify(stored))
+        value.players[0].keys.punch = "ArrowUp"
+        expect(parseBindings(value).players[0].keys).toEqual(
+            DEFAULT_BINDINGS.players[0].keys
+        )
+    })
+
+    it("gives a missing pad punch a button it can have", () => {
+        const value = JSON.parse(JSON.stringify(stored))
+        for (const player of value.players) delete player.pad.punch
+        // P1's breath on X, the default punch button; P2's pause there.
+        value.players[0].pad.breath = PAD_X
+        value.players[1].pad.pause = PAD_X
+        const b = parseBindings(value)
+        expect(p1(b).pad).toEqual({
+            breath: PAD_X,
+            punch: Y,
+            confirm: PAD_A,
+            pause: PAD_START,
+        })
+        expect(p2(b).pad).toEqual({
+            breath: PAD_A,
+            punch: Y,
+            confirm: PAD_A,
+            pause: PAD_X,
+        })
+    })
+
+    it("shares a missing pad punch with confirm when it can", () => {
+        const value = JSON.parse(JSON.stringify(stored))
+        delete value.players[0].pad.punch
+        value.players[0].pad.breath = Y
+        value.players[0].pad.confirm = PAD_X
+        expect(p1(parseBindings(value)).pad).toEqual({
+            breath: Y,
+            punch: PAD_X,
+            confirm: PAD_X,
+            pause: PAD_START,
         })
     })
 
@@ -264,6 +414,19 @@ describe("parseBindings", () => {
         value.players[0].keys.up = "KeyW"
         delete value.players[1].keys.up
         expect(parseBindings(value)).toEqual(DEFAULT_BINDINGS)
+    })
+
+    it("resets a player's pad when breath and punch share a button", () => {
+        const value = JSON.parse(JSON.stringify(stored))
+        value.players[1].pad.punch = PAD_A
+        const b = parseBindings(value)
+        expect(p2(b).pad).toEqual(p2(DEFAULT_BINDINGS).pad)
+    })
+
+    it("keeps punch and confirm sharing a button", () => {
+        const value = JSON.parse(JSON.stringify(stored))
+        value.players[0].pad.confirm = PAD_X
+        expect(p1(parseBindings(value)).pad.confirm).toBe(PAD_X)
     })
 
     it("resets a player's pad when pause shares a button", () => {
@@ -355,12 +518,12 @@ describe("captureKey", () => {
 
 describe("captureButton", () => {
     it("takes the first newly pressed bindable button", () => {
-        expect(captureButton([], [X])).toBe(X)
-        expect(captureButton([PAD_A], [PAD_A, Y, X])).toBe(Y)
+        expect(captureButton([], [PAD_X])).toBe(PAD_X)
+        expect(captureButton([PAD_A], [PAD_A, Y, PAD_X])).toBe(Y)
     })
 
     it("ignores held buttons and the D-pad", () => {
-        expect(captureButton([X], [X])).toBeUndefined()
+        expect(captureButton([PAD_X], [PAD_X])).toBeUndefined()
         expect(captureButton([], [12, 13])).toBeUndefined()
         expect(captureButton([], [14, PAD_START])).toBe(PAD_START)
         expect(captureButton([], [])).toBeUndefined()
@@ -406,7 +569,7 @@ describe("display names", () => {
 
     it("names either kind of target", () => {
         expect(bindingName("KeyE")).toBe("E")
-        expect(bindingName(X)).toBe("X")
+        expect(bindingName(PAD_X)).toBe("X")
     })
 
     it("names every default binding readably", () => {
@@ -419,6 +582,7 @@ describe("display names", () => {
             "←",
             "→",
             "Right Shift",
+            "/",
             "P",
             "Space",
             "W",
@@ -426,6 +590,7 @@ describe("display names", () => {
             "A",
             "D",
             "Left Shift",
+            "Z",
             "Q",
             "E",
         ])

@@ -138,3 +138,16 @@ export const BOSS_SPEED = 1.5
 export const BOSS_DEFEAT_POINTS = 500
 // Seconds the boss flashes white after each hit.
 export const BOSS_FLASH = 0.15
+
+// ---- The punch (see punch.ts; placeholders to tune at preview) ----
+
+// How far ahead of the player's drawn position (in cells, centre to centre,
+// along its facing) a punch reaches an enemy's drawn position: the fist
+// reaches a third of a sprite past the player's front, and touches an
+// enemy whose own front (half a sprite from its centre) is within that.
+// About 1.07, so an enemy resting on the next cell is in reach.
+export const PUNCH_REACH =
+    SPRITE_SCALE / 2 + SPRITE_SCALE / 3 + SPRITE_SCALE / 2
+// How far to either side of the facing line (in cells) a punch still
+// reaches: half a cell, so it hits in its own lane only.
+export const PUNCH_ACROSS = 0.5
