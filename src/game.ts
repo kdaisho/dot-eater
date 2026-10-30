@@ -125,9 +125,10 @@ export type Player = {
     // eatenDotVisible in glide.ts). Purely visual.
     eatenAt: Vec2 | null
     // The factor on the player's speed for the glide of its latest move
-    // (lastPos -> pos): its breath's slideSpeedScale if that move was a
-    // slide step (see movePlayerTick), else 1. The renderer reads it too, so
-    // frames between ticks glide at the same rate (see glideT).
+    // (lastPos -> pos). It is 1 for every move today (it was added for the
+    // Penguin's faster slides, which became walking on ice), kept as the
+    // hook for a move that glides at another speed. The renderer reads it
+    // too, so frames between ticks glide at the same rate (see glideT).
     rate: number
     // Whether the player has been taken out of play (see takeOut): it isn't
     // drawn, doesn't move, breathe, eat or get caught, enemies and the boss
@@ -516,8 +517,8 @@ function wait(character: Glider) {
 //
 // On ice (see ice.ts), a sliding character's move is its slide step, taken
 // at its normal move opportunity: input and AI are ignored until the slide
-// ends. Phantoms float over ice and never slide. A player's breath may
-// speed its slides up (slideSpeedScale; see Player.rate).
+// ends. Phantoms float over ice and never slide, and nor does a player whose
+// breath walks on ice (walksOnIce, the Penguin's): ice is normal floor to it.
 //
 // Breaths (see breath.ts): their timers count down first, so anything that
 // runs out (a status, a tile effect, a defeated enemy's wait) is over before
@@ -753,8 +754,8 @@ export function settle(state: GameState, dt: number): boolean {
 // isn't the player's opportunity, so the buffer is left alone: a tap made
 // during a slide is used at the first opportunity after it ends (a newer tap
 // replaces it, as always). A solid enemy ahead ends a slide as a wall would,
-// so the player is then free to move. The glide of a slide step (and only of
-// a slide step) runs at the breath's slideSpeedScale (Player.rate).
+// so the player is then free to move. A player whose breath walks on ice
+// never slides (see slideTick).
 function movePlayerTick(
     state: GameState,
     player: Player,
@@ -767,7 +768,6 @@ function movePlayerTick(
     const moved =
         movePlayer(state, buffered, player) ||
         held.some((direction) => movePlayer(state, direction, player))
-    if (moved) player.rate = 1
     const tried = isZero(buffered) ? held[0] : buffered
     if (!moved && tried && !isZero(tried)) {
         player.breather.facing = vec2(tried.x, tried.y)
@@ -777,17 +777,17 @@ function movePlayerTick(
 
 // Player's slide step, if it is sliding (see movePlayerTick): whether it
 // moved, or null if it isn't sliding (or a solid enemy ahead ended the
-// slide), so it is free to make a move of its own.
+// slide), so it is free to make a move of its own. A player whose breath
+// walks on ice (BreathDef.walksOnIce) never slides.
 function slideTick(state: GameState, player: Player): boolean | null {
     const { cells } = state
     const { character } = player
+    if (player.breather.breath.walksOnIce) return null
     const slide = slideStep(cells, state.ice, character.pos, character.lastPos)
     if (!slide) return null
     const ahead = vec2(character.pos.x + slide.x, character.pos.y + slide.y)
     if (solidAt(state, loopPos(cells, ahead))) return null
-    if (!movePlayer(state, slide, player)) return false
-    player.rate = player.breather.breath.slideSpeedScale ?? 1
-    return true
+    return movePlayer(state, slide, player)
 }
 
 function isZero(v: Vec2): boolean {

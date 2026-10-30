@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vite-plus/test"
-import { addStatus } from "../breath"
+import type { BreathDef } from "../breath"
 import type { Character } from "../character"
 import { AiType, PLAYER_SPEED, TICK_RATE } from "../constants"
 import { step, type GameState, type MoveInput } from "../game"
@@ -12,6 +12,7 @@ import {
     type MapLiteral,
     ticksUntilCaught,
 } from "../test/helpers"
+import { ANIMALS } from "../roster"
 import { vec2, type Vec2 } from "../vec2"
 import { dragon } from "./dragon"
 import { BREATH_ICE, FROZEN, ICE_SECONDS, penguin } from "./penguin"
@@ -24,15 +25,16 @@ const east = vec2(1, 0)
 // Ticks per player move at the default speed.
 const MOVE = TICK_RATE / PLAYER_SPEED
 
-type Press = { held?: Vec2; breath?: boolean }
+type Press = { held?: Vec2; pressed?: Vec2; breath?: boolean }
 
-function tick(state: GameState, { held, breath }: Press = {}) {
-    const move: MoveInput = {
-        held: held ? [held] : [],
-        pressed: none,
-        breath: breath ?? false,
-    }
-    return step(state, TICK, move, fixedRandom(0))
+const input = ({ held, pressed, breath }: Press = {}): MoveInput => ({
+    held: held ? [held] : [],
+    pressed: pressed ?? none,
+    breath: breath ?? false,
+})
+
+function tick(state: GameState, press: Press = {}) {
+    return step(state, TICK, input(press), fixedRandom(0))
 }
 
 function run(state: GameState, n: number, press: Press = {}) {
@@ -76,7 +78,7 @@ describe("penguin's ice breath", () => {
         expect(penguin.cooldown).toBe(1)
         expect(penguin.duration).toBe(3)
         expect(penguin.maxEnergy).toBe(100)
-        expect(penguin.slideSpeedScale).toBe(1.5)
+        expect(penguin.walksOnIce).toBe(true)
         expect(FROZEN).toMatchObject({
             holds: true,
             harmless: true,
@@ -162,12 +164,13 @@ describe("penguin's ice breath", () => {
         expect(state.tiles).toEqual([])
     })
 
-    it("makes ice the player slides on", () => {
+    it("makes ice that other animals slide on", () => {
         const state = penguinState()
         tick(state, { breath: true })
         expect(iceAt(state)).toEqual([vec2(2, 1), vec2(3, 1), vec2(4, 1)])
-        // Onto the ice at x 2, then on over x 3 and 4 to the floor at x 5,
-        // with nothing held.
+        // A Dragon in the Penguin's place: onto the ice at x 2, then on over
+        // x 3 and 4 to the floor at x 5, with nothing held.
+        state.players[0].breather.breath = dragon
         tick(state, { held: east })
         run(state, MOVE * 3)
         expect(state.players[0].character.pos).toEqual(vec2(5, 1))
@@ -217,7 +220,7 @@ describe("penguin's ice breath", () => {
     })
 })
 
-describe("penguin's stat: slides faster on ice", () => {
+describe("penguin's stat: walks on ice", () => {
     // Level ice from x 2 to 7, floor at x 8.
     const level = textMap([
         "###########",
@@ -226,91 +229,172 @@ describe("penguin's stat: slides faster on ice", () => {
         "#.#########",
     ])
 
-    // The player at x 1, ready to move, on `level` (default: the one above).
-    function slideState(
-        breath = penguin,
-        { map, ice } = level,
-        enemies: Character[] = []
-    ) {
-        const state = makeState(map, { x: 1, y: 1 }, enemies, { breath, ice })
+    // The player at x 1, ready to move, on `level`.
+    function iceState(breath: BreathDef) {
+        const state = makeState(level.map, { x: 1, y: 1 }, [], {
+            breath,
+            ice: level.ice,
+        })
         state.players[0].character.moveProgress = 1
         return state
     }
 
-    // Press east once, then let go until the player comes to rest. Returns
-    // each of its glides as [the x it glides into, its speed as a factor of
-    // the normal one]: MOVE over the ticks from arriving there to moving on
-    // (or coming to rest).
-    function glideRates(state: GameState): [number, number][] {
+    const at = (state: GameState, i = 0) => state.players[i].character.pos
+
+    it("reads as such on the character card", () => {
+        expect(ANIMALS.penguin.statText).toBe("Walks on ice")
+    })
+
+    it("moves cell by cell on level ice and stops when input stops", () => {
+        const state = iceState(penguin)
+        // Onto the ice at x 2, then a cell per MOVE while east is held.
         tick(state, { held: east })
-        const rates: [number, number][] = []
-        let x = state.players[0].character.pos.x
-        let ticks = 0
-        for (let i = 0; i < TICK_RATE * 5; i++) {
-            tick(state)
-            ticks++
-            const moved = state.players[0].character.pos.x !== x
-            if (moved || state.players[0].character.moveProgress >= 1) {
-                rates.push([x, MOVE / ticks])
-                if (!moved) return rates
-                x = state.players[0].character.pos.x
-                ticks = 0
-            }
-        }
-        throw new Error("Never came to rest")
-    }
-
-    it("slides 1.5x as fast as normal", () => {
-        // The player's own step onto the ice, at x 2, is at normal speed;
-        // only the slide steps after it, x 3 to the floor at x 8, are
-        // faster.
-        expect(glideRates(slideState())).toEqual([
-            [2, 1],
-            [3, 1.5],
-            [4, 1.5],
-            [5, 1.5],
-            [6, 1.5],
-            [7, 1.5],
-            [8, 1.5],
-        ])
+        expect(at(state)).toEqual(vec2(2, 1))
+        run(state, MOVE - 1, { held: east })
+        expect(at(state)).toEqual(vec2(2, 1))
+        tick(state, { held: east })
+        expect(at(state)).toEqual(vec2(3, 1))
+        // Let go mid-rink: it stops there, and stays.
+        run(state, TICK_RATE * 2)
+        expect(at(state)).toEqual(vec2(3, 1))
+        // And can walk back the way it came, a cell at a time.
+        run(state, MOVE, { held: vec2(-1, 0) })
+        expect(at(state)).toEqual(vec2(2, 1))
+        run(state, TICK_RATE)
+        expect(at(state)).toEqual(vec2(2, 1))
     })
 
-    it("slides faster up to a frozen enemy, not on the step onto the ice", () => {
-        // Ice from x 2 to 5, a frozen enemy at x 5: the slide stops at x 4.
-        const short = textMap(["########", "# ~~~~ #", "########", "#.######"])
-        const enemy = makeEnemy(5, 1)
-        addStatus(enemy, FROZEN, 100)
-        expect(glideRates(slideState(penguin, short, [enemy]))).toEqual([
-            [2, 1],
-            [3, 1.5],
-            [4, 1.5],
-        ])
+    it("still slides for any other animal", () => {
+        const state = iceState(dragon)
+        tick(state, { held: east })
+        run(state, TICK_RATE * 3)
+        expect(at(state)).toEqual(vec2(8, 1))
     })
 
-    it("only on ice, and only for the Penguin", () => {
-        expect(glideRates(slideState(dragon)).every(([, r]) => r === 1)).toBe(
-            true
-        )
-        const state = makeState(corridor, { x: 1, y: 1 }, [], {
+    it("turns on a tapped direction mid-rink, as on floor", () => {
+        // A 4x2 rink of level ice, floor round it.
+        const { map, ice } = textMap([
+            "########",
+            "#      #",
+            "# ~~~~ #",
+            "# ~~~~ #",
+            "#      #",
+            "########",
+            "#.######",
+        ])
+        const state = makeState(map, { x: 1, y: 2 }, [], {
             breath: penguin,
+            ice,
         })
         state.players[0].character.moveProgress = 1
-        run(state, 1 + MOVE * 2, { held: east })
-        expect(state.players[0].character.pos).toEqual(vec2(4, 1))
+        run(state, 1 + MOVE, { held: east })
+        expect(at(state)).toEqual(vec2(3, 2))
+        // A tap south mid-glide, east still held: the tap is taken at the
+        // next move, then the held east again.
+        tick(state, { held: east, pressed: vec2(0, 1) })
+        run(state, MOVE - 2, { held: east })
+        expect(at(state)).toEqual(vec2(3, 2))
         tick(state, { held: east })
-        expect(state.players[0].character.pos).toEqual(vec2(4, 1))
+        expect(at(state)).toEqual(vec2(3, 3))
+        run(state, MOVE, { held: east })
+        expect(at(state)).toEqual(vec2(4, 3))
+        run(state, TICK_RATE)
+        expect(at(state)).toEqual(vec2(4, 3))
     })
 
-    it("on the breath's own ice too", () => {
+    it("on its own breath's ice too", () => {
         const state = penguinState()
         tick(state, { breath: true })
-        // Onto the new ice at x 2 at the normal pace, then sliding to x 3, 4
-        // and the floor at x 5 at the faster one.
-        expect(glideRates(state)).toEqual([
-            [2, 1],
-            [3, 1.5],
-            [4, 1.5],
-            [5, 1.5],
+        expect(iceAt(state)).toEqual([vec2(2, 1), vec2(3, 1), vec2(4, 1)])
+        tick(state, { held: east })
+        run(state, TICK_RATE)
+        expect(at(state)).toEqual(vec2(2, 1))
+        run(state, MOVE, { held: east })
+        run(state, TICK_RATE)
+        expect(at(state)).toEqual(vec2(3, 1))
+    })
+
+    // Two rows of corridor; player 1 at (1, 1), player 2 at (1, 2).
+    const hall = textMap([
+        "##########",
+        "#        #",
+        "#        #",
+        "##########",
+        "#.########",
+    ]).map
+
+    // Step both players with their own input.
+    function tick2(state: GameState, p1: Press = {}, p2: Press = {}) {
+        return step(state, TICK, [input(p1), input(p2)], fixedRandom(0))
+    }
+
+    // A co-op game in the hall, player 1 with a full meter.
+    function hallState(breaths: [BreathDef, BreathDef]) {
+        const state = makeState(hall, [vec2(1, 1), vec2(1, 2)], [], {
+            breath: breaths,
+            mode: "coop",
+        })
+        for (const p of state.players) p.character.moveProgress = 1
+        state.players[0].breather.energy = 100
+        return state
+    }
+
+    // Player 1's breath east from (1, 1) covers (2, 1), then x 3 and 4 on
+    // both rows.
+    const hallIce = [vec2(2, 1), vec2(3, 1), vec2(3, 2), vec2(4, 1), vec2(4, 2)]
+
+    it("in 2P, a Penguin walks and a Dragon slides, each by its own rule", () => {
+        const state = hallState([penguin, dragon])
+        tick2(state, { breath: true })
+        expect(iceAt(state)).toEqual(hallIce)
+        // Both head east and let go once on the ice. The Penguin stops on
+        // the ice at x 2; the Dragon steps onto the floor at x 2, then the
+        // ice at x 3, and slides over x 4 to the floor at x 5.
+        tick2(state, { held: east }, { held: east })
+        for (let i = 0; i < MOVE; i++) tick2(state, {}, { held: east })
+        for (let i = 0; i < TICK_RATE * 2; i++) tick2(state)
+        expect(at(state, 0)).toEqual(vec2(2, 1))
+        expect(at(state, 1)).toEqual(vec2(5, 2))
+    })
+
+    it("on another Penguin's breath ice too", () => {
+        const state = hallState([penguin, penguin])
+        tick2(state, { breath: true })
+        expect(iceAt(state)).toEqual(hallIce)
+        // Player 2 walks over the floor at x 2 onto player 1's ice at x 3
+        // and stops there.
+        tick2(state, {}, { held: east })
+        for (let i = 0; i < MOVE; i++) tick2(state, {}, { held: east })
+        for (let i = 0; i < TICK_RATE * 2; i++) tick2(state)
+        expect(at(state, 1)).toEqual(vec2(3, 2))
+    })
+
+    it("leaves the enemies sliding on ice as before", () => {
+        // Level ice from x 4 to 6. A chaser that has just stepped east onto
+        // the ice at x 4 slides on over x 5 and 6 to the floor at x 7, away
+        // from the player it chases, whichever animal the player is.
+        const { map, ice } = textMap([
+            "##########",
+            "#   ~~~  #",
+            "##########",
+            "#.########",
         ])
+        const trailOf = (breath: BreathDef) => {
+            const enemy = makeEnemy(4, 1, AiType.chase, { x: 3, y: 1 })
+            enemy.moveProgress = 1
+            const state = makeState(map, { x: 1, y: 1 }, [enemy], {
+                breath,
+                ice,
+            })
+            const xs: number[] = []
+            for (let i = 0; i < TICK_RATE * 3 && xs.length < 3; i++) {
+                const x = enemy.pos.x
+                tick(state)
+                if (enemy.pos.x !== x) xs.push(enemy.pos.x)
+            }
+            return xs
+        }
+        expect(trailOf(penguin)).toEqual([5, 6, 7])
+        expect(trailOf(penguin)).toEqual(trailOf(dragon))
     })
 })

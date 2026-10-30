@@ -2,7 +2,8 @@ import type { BreathDef, EnemyStatus, TileEffect } from "../breath"
 import { AnimalId } from "../roster"
 
 // Penguin 🐧, ice breath (KDA-217): a cone that freezes enemies for 3 s and
-// turns the floor to ice for 5 s. Stat: slides 1.5x faster on ice.
+// turns the floor to ice for 5 s. Stat: walks on ice (KDA-259): it moves and
+// stops on ice as on normal floor, where everyone else slides.
 
 // Seconds the floor stays ice.
 export const ICE_SECONDS = 5
@@ -19,7 +20,8 @@ export const FROZEN: EnemyStatus = {
     look: { color: "rgba(150, 210, 255, 0.6)", emoji: "🧊" },
 }
 
-// The cone's floor as ice (slides as on level ice). The engine leaves out
+// The cone's floor as ice (as level ice: everyone but a Penguin slides on
+// it). The engine leaves out
 // any cell a character stands on, frozen enemies included.
 export const BREATH_ICE: TileEffect = {
     name: "penguin.ice",
@@ -38,7 +40,7 @@ export const penguin: BreathDef = {
     duration: 3,
     maxEnergy: 100,
     speedScale: 1,
-    slideSpeedScale: 1.5,
+    walksOnIce: true,
     // Icy blue flakes drifting out along the cone (white would vanish on
     // the white floor).
     particles: {
