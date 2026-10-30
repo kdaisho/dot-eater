@@ -219,13 +219,15 @@ export const MusicTrackId = {
     stage3: "stage3",
     stage4: "stage4",
     stage5: "stage5",
+    stage8: "stage8",
 } as const
 export type MusicTrackId = (typeof MusicTrackId)[keyof typeof MusicTrackId]
 
 export const MUSIC_TRACK_IDS: readonly MusicTrackId[] =
     Object.values(MusicTrackId)
 
-// Stage tunes by stage index (0 is stage 1, as in levels/index.ts).
+// Stage tunes by stage index (0 is stage 1, as in levels/index.ts). Stage
+// 8's tune is in TRACKS, waiting for the stage to be registered.
 export const STAGE_TRACKS: readonly MusicTrackId[] = [
     MusicTrackId.stage1,
     MusicTrackId.stage2,
@@ -475,6 +477,58 @@ export const TRACKS: Readonly<Record<MusicTrackId, Track>> = {
                     "k h s h k k s h",
                     "k h s h k k s h",
                     "k h s h k s s s",
+                ],
+            },
+        ],
+    },
+    // Stage 8, Frozen fog: Ice rink's twinkle over Fog's slow heartbeat, in
+    // D minor.
+    stage8: {
+        bpm: 92,
+        voices: [
+            {
+                kind: "notes",
+                wave: "sine",
+                volume: 0.25,
+                hold: true,
+                bars: [
+                    "D5 - - - F5 - E5 -",
+                    "C5 - - - . . A4 -",
+                    "Bb4 - - - D5 - C5 -",
+                    "A4 - - - . . . .",
+                ],
+            },
+            {
+                kind: "notes",
+                wave: "sine",
+                volume: 0.06,
+                bars: [
+                    "D6 F6 A6 F6 D6 F6 A6 F6",
+                    "C6 E6 A6 E6 C6 E6 A6 E6",
+                    "Bb5 D6 F6 D6 Bb5 D6 F6 D6",
+                    "A5 C#6 E6 C#6 A5 C#6 E6 C#6",
+                ],
+            },
+            {
+                kind: "notes",
+                wave: "triangle",
+                volume: 0.35,
+                hold: true,
+                bars: [
+                    "D2 - - - - - - -",
+                    "A1 - - - - - - -",
+                    "Bb1 - - - - - - -",
+                    "A1 - - - - - - -",
+                ],
+            },
+            {
+                kind: "drums",
+                volume: 0.35,
+                bars: [
+                    "k . k . . . h .",
+                    "k . k . . . h .",
+                    "k . k . . . h .",
+                    "k . k . . h . h",
                 ],
             },
         ],
