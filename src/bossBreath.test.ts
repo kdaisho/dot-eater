@@ -39,6 +39,7 @@ import { stage5 } from "./levels/stage5"
 import {
     fixedRandom,
     makeEnemy,
+    parseFlat,
     makeState,
     textMap,
     type MapLiteral,
@@ -219,7 +220,7 @@ describe("createBossBreath", () => {
     })
 
     it("is built from the level's boss settings", () => {
-        const level = parseLevel({
+        const level = parseFlat({
             name: "lair",
             parTime: 60,
             map: ["#######", "#P.B..#", "#.....#", "#######"],

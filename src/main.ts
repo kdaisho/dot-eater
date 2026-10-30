@@ -50,7 +50,7 @@ import {
 import { InputState, KeyboardSource, keyMapsFor, type Action } from "./input"
 import { loadLastPick, saveLastPick } from "./lastPick"
 import { controlsSpace } from "./layout"
-import { levels } from "./levels"
+import { levels, stages } from "./levels"
 import { createLoop } from "./loop"
 import {
     loadProgress,
@@ -371,7 +371,7 @@ function tick(dt: number) {
 
 function flowDeps(dt: number): FlowDeps {
     return {
-        levels,
+        levels: stages,
         progress,
         lastAnimal,
         dt,
