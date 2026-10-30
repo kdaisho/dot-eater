@@ -9,7 +9,8 @@ import {
     DEFEAT_POINTS,
     DOT_POINTS,
     PLAYER_SPEED,
-    START_LIVES,
+    ENEMY_DAMAGE,
+    MAX_HEALTH,
     TICK_RATE,
 } from "./constants"
 import { BREATHS } from "./breaths"
@@ -83,7 +84,7 @@ describe("createGameState with two players", () => {
         expect(p1.character.speed).toBe(PLAYER_SPEED)
         expect(p2.character.speed).toBe(PLAYER_SPEED * BREATHS.boar.speedScale)
         expect(p2.character.moveProgress).toBe(1)
-        expect(state.lives).toBe(START_LIVES)
+        for (const p of state.players) expect(p.health).toBe(MAX_HEALTH)
     })
 
     it("lets both players pick the same animal", () => {
@@ -182,7 +183,7 @@ describe("two players", () => {
         run(state, [hold(east), hold(west)], MOVE * 2)
         expect(state.players[0].character.pos).toEqual(vec2(6, 1))
         expect(state.players[1].character.pos).toEqual(vec2(4, 1))
-        expect(state.lives).toBe(1)
+        for (const p of state.players) expect(p.health).toBe(1)
     })
 
     it("can share a cell", () => {
@@ -216,9 +217,9 @@ describe("two players", () => {
     })
 })
 
-describe("catching two players", () => {
+describe("hurting two players", () => {
     // Player 1 at the left end, player 2 on a chaser's cell at the right.
-    function cornered(lives: number) {
+    function cornered(health: number) {
         const chaser = makeEnemy(8, 1, AiType.chase)
         return makeState(
             corridor,
@@ -227,20 +228,20 @@ describe("catching two players", () => {
                 { x: 8, y: 1 },
             ],
             [chaser],
-            { lives }
+            { health }
         )
     }
 
-    it("costs one shared life when either is caught, and respawns both", () => {
-        const state = cornered(3)
+    it("hurts only the player touched, resetting nobody", () => {
+        const state = cornered(MAX_HEALTH)
         run(state, [hold(east), IDLE], 1)
-        expect(state.lives).toBe(2)
+        expect(state.players[0].health).toBe(MAX_HEALTH)
+        expect(state.players[1].health).toBe(MAX_HEALTH - ENEMY_DAMAGE)
         expect(state.players[0].character.pos).toEqual(vec2(2, 1))
-        expect(state.players[1].character.pos).toEqual(vec2(8, 1))
         expect(state.enemies[0].pos).toEqual(vec2(8, 1))
     })
 
-    it("ends the game on the last life", () => {
+    it("ends the game when either is knocked out", () => {
         expect(run(cornered(1), [IDLE, IDLE], 1)).toBe("dead")
     })
 })
@@ -454,14 +455,12 @@ describe("enemies with two players", () => {
         expect(nearestTarget(state.cells, chaser, targets)).toBe(0)
         // Through step it heads for player 2 and catches it, rather than
         // shuffling at the patch's edge.
-        const lives = state.lives
-        for (let i = 0; i < TICK_RATE * 8 && state.lives === lives; i++) {
+        const hit = () => state.players[1].health < 1
+        for (let i = 0; i < TICK_RATE * 8 && !hit(); i++) {
             step(state, TICK, [IDLE, IDLE], fixedRandom(0))
-            if (state.lives === lives) {
-                expect(chaser.pos.x).toBeGreaterThanOrEqual(4)
-            }
+            if (!hit()) expect(chaser.pos.x).toBeGreaterThanOrEqual(4)
         }
-        expect(state.lives).toBe(lives - 1)
+        expect(hit()).toBe(true)
     })
 
     it("fall back to plain maze distance when no player can be reached", () => {
@@ -551,14 +550,12 @@ describe("the boss with two players", () => {
         )
         const targets = state.players.map((p) => p.character.pos)
         expect(bossTarget(state, targets)).toBe(1)
-        const lives = state.lives
-        for (let i = 0; i < TICK_RATE * 8 && state.lives === lives; i++) {
+        const hit = () => state.players[1].health < 1
+        for (let i = 0; i < TICK_RATE * 8 && !hit(); i++) {
             step(state, TICK, [IDLE, IDLE], fixedRandom(0))
-            if (state.lives === lives) {
-                expect(boss.pos.x).toBeGreaterThanOrEqual(3)
-            }
+            if (!hit()) expect(boss.pos.x).toBeGreaterThanOrEqual(3)
         }
-        expect(state.lives).toBe(lives - 1)
+        expect(hit()).toBe(true)
     })
 
     it("moves towards the nearer player through step", () => {

@@ -5,9 +5,12 @@ import {
     DPAD_DEAD_ZONE,
     DpadSource,
     padDirection,
+    setBreathReady,
     setControls,
+    type ControlFlags,
 } from "./dpad"
 import { InputState } from "./input"
+import css from "../css/style.css?raw"
 
 afterEach(() => {
     document.body.innerHTML = ""
@@ -31,14 +34,198 @@ describe("padDirection", () => {
 })
 
 describe("createTouchControls", () => {
-    it("adds pause, the D-pad and breath once", () => {
+    it("adds pause, the D-pad, breath and punch once", () => {
         const root = createTouchControls(document)
         expect(root.parentElement).toBe(document.body)
         expect(root.querySelector("[data-action=pause]")).not.toBeNull()
         expect(root.querySelector(".dpad")).not.toBeNull()
-        expect(root.querySelector("[data-action=breath]")).not.toBeNull()
+        expect(
+            root
+                .querySelector("[data-action=breath]")
+                ?.getAttribute("aria-label")
+        ).toBe("Breath")
+        expect(
+            root
+                .querySelector("[data-action=punch]")
+                ?.getAttribute("aria-label")
+        ).toBe("Punch")
         expect(createTouchControls(document)).toBe(root)
         expect(document.querySelectorAll("#touch-controls")).toHaveLength(1)
+    })
+})
+
+describe("setBreathReady", () => {
+    it("marks the breath button ready, and not", () => {
+        const root = createTouchControls(document)
+        const breath = root.querySelector("[data-action=breath]")!
+        setBreathReady(root, true)
+        expect(breath.classList.contains("ready")).toBe(true)
+        expect(
+            root
+                .querySelector("[data-action=punch]")
+                ?.classList.contains("ready")
+        ).toBe(false)
+        setBreathReady(root, false)
+        expect(breath.classList.contains("ready")).toBe(false)
+    })
+})
+
+// Which controls the stylesheet shows for the body's flags (setControls).
+describe("touch controls' visibility", () => {
+    // The controls shown with these flags. The controls are built afresh
+    // each time: happy-dom keeps an element's computed style when only the
+    // body's attributes change.
+    function shownWith(flags: ControlFlags): string[] {
+        document.getElementById("touch-controls")?.remove()
+        setControls(document, flags)
+        const root = createTouchControls(document)
+        return [...root.children]
+            .filter((el) => getComputedStyle(el).display !== "none")
+            .map((el) => el.className.replace("touch-controls ", ""))
+    }
+
+    beforeEach(() => {
+        const style = document.createElement("style")
+        style.textContent = css
+        document.head.appendChild(style)
+    })
+    afterEach(() => document.head.replaceChildren())
+
+    const phone = { touch: true, buttons: true, dpad: false }
+
+    it("shows pause, punch and breath only on a touch screen during play", () => {
+        expect(shownWith({ ...phone, playing: true })).toEqual([
+            "touch-pause",
+            "touch-breath",
+            "touch-punch",
+        ])
+        // Outside play (menus, pause).
+        expect(shownWith({ ...phone, playing: false })).toEqual([])
+        // Not a touch screen.
+        expect(
+            shownWith({
+                touch: false,
+                buttons: false,
+                dpad: false,
+                playing: true,
+            })
+        ).toEqual([])
+    })
+
+    // Regression (PR #79 review): a laptop with a touch screen got the
+    // punch and breath buttons (and their band) over its keyboard play.
+    it("shows only pause on a touch screen that isn't the main input", () => {
+        expect(
+            shownWith({
+                touch: true,
+                buttons: false,
+                dpad: false,
+                playing: true,
+            })
+        ).toEqual(["touch-pause"])
+    })
+
+    it("shows the D-pad with Show D-pad on, beside punch and breath", () => {
+        expect(
+            shownWith({ touch: true, buttons: true, dpad: true, playing: true })
+        ).toEqual(["touch-pause", "dpad", "touch-breath", "touch-punch"])
+    })
+
+    // Where the stylesheet puts each control shown, from its fixed
+    // position's insets and size (happy-dom lays nothing out). Buttons are
+    // border-box, as in browsers.
+    function boxesAt(
+        width: number,
+        height: number,
+        flags: ControlFlags
+    ): { name: string; x: number; y: number; w: number; h: number }[] {
+        const { happyDOM } = window as unknown as {
+            happyDOM: {
+                setViewport(size: { width: number; height: number }): void
+            }
+        }
+        happyDOM.setViewport({ width, height })
+        shownWith(flags)
+        const root = document.getElementById("touch-controls")!
+        return [...root.children]
+            .filter((el) => getComputedStyle(el).display !== "none")
+            .map((el) => {
+                const style = getComputedStyle(el)
+                const px = (value: string) => parseFloat(value)
+                const w = px(style.width)
+                const h = px(style.height)
+                const x =
+                    style.left !== "auto" && style.left !== ""
+                        ? px(style.left)
+                        : width - px(style.right) - w
+                const y =
+                    style.top !== "auto" && style.top !== ""
+                        ? px(style.top)
+                        : height - px(style.bottom) - h
+                return { name: el.className, x, y, w, h }
+            })
+    }
+
+    // Regression (PR #79 review): at 320 px in portrait, Breath overlapped
+    // the D-pad by 17 px.
+    it.each([
+        [320, 568],
+        [360, 740],
+        [390, 844],
+        [568, 320],
+        [740, 360],
+        [844, 390],
+    ])("keeps the controls apart and on screen at %ix%i", (width, height) => {
+        for (const dpad of [false, true]) {
+            const boxes = boxesAt(width, height, {
+                touch: true,
+                buttons: true,
+                dpad,
+                playing: true,
+            })
+            expect(boxes).toHaveLength(dpad ? 4 : 3)
+            for (const a of boxes) {
+                expect(a.x).toBeGreaterThanOrEqual(0)
+                expect(a.y).toBeGreaterThanOrEqual(0)
+                expect(a.x + a.w).toBeLessThanOrEqual(width)
+                expect(a.y + a.h).toBeLessThanOrEqual(height)
+                for (const b of boxes) {
+                    if (a === b) continue
+                    const apart =
+                        a.x + a.w <= b.x ||
+                        b.x + b.w <= a.x ||
+                        a.y + a.h <= b.y ||
+                        b.y + b.h <= a.y
+                    expect(apart, `${a.name} / ${b.name}`).toBe(true)
+                }
+            }
+        }
+    })
+
+    it("stacks breath above punch in landscape and on a narrow phone with the D-pad", () => {
+        const at = (width: number, height: number, dpad: boolean) => {
+            const boxes = boxesAt(width, height, {
+                touch: true,
+                buttons: true,
+                dpad,
+                playing: true,
+            })
+            const find = (name: string) => boxes.find((b) => b.name === name)!
+            return { breath: find("touch-breath"), punch: find("touch-punch") }
+        }
+        for (const [width, height, dpad] of [
+            [844, 390, false],
+            [844, 390, true],
+            [320, 568, true],
+        ] as const) {
+            const { breath, punch } = at(width, height, dpad)
+            expect(breath.x).toBe(punch.x)
+            expect(breath.y).toBeLessThan(punch.y)
+        }
+        // Side by side in portrait otherwise.
+        const { breath, punch } = at(390, 844, true)
+        expect(breath.y).toBe(punch.y)
+        expect(breath.x).toBeLessThan(punch.x)
     })
 })
 
@@ -69,6 +256,7 @@ describe("DpadSource", () => {
     const breath = () =>
         root.querySelector<HTMLElement>("[data-action=breath]")!
     const pause = () => root.querySelector<HTMLElement>("[data-action=pause]")!
+    const punch = () => root.querySelector<HTMLElement>("[data-action=punch]")!
     const p1 = () => input.player(0)
 
     // happy-dom lays nothing out: every rect is at (0, 0) and empty, so
@@ -116,6 +304,48 @@ describe("DpadSource", () => {
         expect(p1().wasPressed("pause")).toBe(true)
         pointer(pause(), "pointerup", 0, 0, 2)
         expect(p1().isDown("pause")).toBe(false)
+    })
+
+    it("presses punch and breath once per tap, never again while held", () => {
+        for (const button of [punch(), breath()]) {
+            const action = button.dataset.action as "punch" | "breath"
+            pointer(button, "pointerdown")
+            expect(p1().wasPressed(action)).toBe(true)
+            // Held over later ticks: no auto-repeat.
+            for (let tick = 0; tick < 5; tick++) {
+                input.endTick()
+                pointer(button, "pointermove", 3, 2)
+                expect(p1().wasPressed(action)).toBe(false)
+            }
+            pointer(button, "pointerup")
+            input.endTick()
+            // A second tap is a second press.
+            pointer(button, "pointerdown")
+            pointer(button, "pointerup")
+            expect(p1().wasPressed(action)).toBe(true)
+            input.endTick()
+        }
+    })
+
+    it("looks pressed while a finger is on a button", () => {
+        pointer(punch(), "pointerdown", 0, 0, 1)
+        expect(punch().classList.contains("pressed")).toBe(true)
+        // A second finger on it, then the first lifts: still pressed.
+        pointer(punch(), "pointerdown", 0, 0, 2)
+        pointer(punch(), "pointerup", 0, 0, 1)
+        expect(punch().classList.contains("pressed")).toBe(true)
+        pointer(punch(), "pointercancel", 0, 0, 2)
+        expect(punch().classList.contains("pressed")).toBe(false)
+        expect(p1().isDown("punch")).toBe(false)
+    })
+
+    it("takes two fingers at once: steer and punch", () => {
+        pointer(pad(), "pointerdown", 40, 0, 1)
+        pointer(punch(), "pointerdown", 0, 0, 2)
+        expect(p1().isDown("right")).toBe(true)
+        expect(p1().wasPressed("punch")).toBe(true)
+        pointer(punch(), "pointerup", 0, 0, 2)
+        expect(p1().isDown("right")).toBe(true)
     })
 
     it("takes two fingers at once: steer and breathe", () => {

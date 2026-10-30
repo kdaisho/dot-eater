@@ -18,7 +18,7 @@ import {
 import type { StageSlot } from "./progress"
 import { ANIMAL_IDS, AnimalId, ANIMALS } from "./roster"
 import { rateClear } from "./stars"
-import { START_LIVES, TICK_RATE } from "./constants"
+import { MAX_HEALTH, TICK_RATE } from "./constants"
 
 // canvas-confetti touches a 2D canvas context on import, which happy-dom
 // doesn't provide.
@@ -52,10 +52,13 @@ const endView = (choice: 0 | 1, score = 0) => ({
     })),
 })
 
-// A stage clear view: 2 stars (no lives lost, over a 60 s par) in 1:02.5.
+// A stage clear view: 2 stars (full health, over a 60 s par) in 1:02.5.
 const clearView = (choice: 0 | 1, score = 0) => ({
     ...endView(choice, score),
-    rating: rateClear({ ticks: 62.5 * TICK_RATE, lives: START_LIVES }, 60),
+    rating: rateClear(
+        { ticks: 62.5 * TICK_RATE, players: [{ health: MAX_HEALTH }] },
+        60
+    ),
 })
 
 describe("showTitle", () => {
@@ -88,7 +91,7 @@ describe("showStageSelect", () => {
         expectSingle()
         expect(overlay()?.dataset.screen).toBe("stage-select")
         expect(lines()).toEqual([
-            "↑ ↓ to choose, Space to pick a character, Esc to go back",
+            "↑ ↓ to choose, Space to pick a difficulty, Esc to go back",
         ])
         expect(items()).toEqual([
             "Level 1",
@@ -291,7 +294,7 @@ describe("showStageClear", () => {
             "Score 340",
             "Time 1:02.5",
             "★ Cleared",
-            "★ No lives lost",
+            "★ At least half health",
             "☆ Under par (1:00)",
         ])
         expect(items()).toEqual(["Retry", "Stage select"])
@@ -301,26 +304,29 @@ describe("showStageClear", () => {
     it("marks every star earned on a perfect clear", () => {
         showStageClear({
             ...endView(0),
-            rating: rateClear({ ticks: 600, lives: START_LIVES }, 45),
+            rating: rateClear(
+                { ticks: 600, players: [{ health: MAX_HEALTH }] },
+                45
+            ),
         })
         expect(lines()).toEqual([
             "Score 0",
             "Time 0:10.0",
             "★ Cleared",
-            "★ No lives lost",
+            "★ At least half health",
             "★ Under par (0:45)",
         ])
     })
 
-    it("marks only the clear star on a slow clear with lives lost", () => {
+    it("marks only the clear star on a slow clear with little health", () => {
         showStageClear({
             ...endView(0),
-            rating: rateClear({ ticks: 3601, lives: 1 }, 60),
+            rating: rateClear({ ticks: 3601, players: [{ health: 1 }] }, 60),
         })
         expect(lines().slice(1)).toEqual([
             "Time 1:00.1",
             "★ Cleared",
-            "☆ No lives lost",
+            "☆ At least half health",
             "☆ Under par (1:00)",
         ])
     })

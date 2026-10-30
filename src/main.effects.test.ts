@@ -135,6 +135,9 @@ describe("main's particles and shake", () => {
         pressAndTick("Escape")
         for (let i = 0; i < 3; i++) pressAndTick("ArrowUp")
         pressAndTick("Space")
+        pressAndTick("ArrowDown")
+        pressAndTick("Space")
+        pressAndTick("Space")
         pressAndTick("Space")
         pressAndTick("Space")
         expect(screen()).toBe("playing")
@@ -150,6 +153,7 @@ describe("main's particles and shake", () => {
         expect(seen.effects?.aim).toBe(true)
         // The Facing guide setting's default.
         expect(seen.effects?.guide).toBe("arrow")
+        expect(seen.effects?.bossBreath).toBe(true)
     })
 
     // Regression (the resume tick): effects moved on once more than the
@@ -182,6 +186,7 @@ describe("main's particles and shake", () => {
         expect(seen.effects?.aim).toBeUndefined()
         // The arrow still shows on the paused board.
         expect(seen.effects?.guide).toBe("arrow")
+        expect(seen.effects?.bossBreath).toBe(true)
         pressAndTick("KeyP")
         expect(screen()).toBe("playing")
         expect(seen.updates - updates).toBe(steps - stepped)

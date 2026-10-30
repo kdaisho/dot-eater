@@ -22,8 +22,8 @@ export type Glider = Pick<
 // part of the next tick that has already passed, for smooth frames between
 // ticks. A resting character (progress 1: idle, blocked or waiting to move)
 // is drawn at pos. `rate` is a factor on its speed for this glide, as the
-// game applies it (the player's Player.rate, e.g. a faster slide),
-// so frames between ticks keep up with the ticks.
+// game applies it (the player's Player.rate), so frames between ticks keep
+// up with the ticks.
 export function glideT(character: Glider, alpha: number, rate = 1): number {
     const { moveProgress, speed } = character
     if (moveProgress >= 1) return 1

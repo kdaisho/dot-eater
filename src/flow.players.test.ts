@@ -14,10 +14,14 @@ import {
 } from "./flow"
 import { step, type MoveInput } from "./game"
 import type { Action } from "./input"
-import { parseLevel } from "./level"
 import { emptyProgress, markCleared } from "./progress"
 import { AnimalId, DEFAULT_ANIMAL } from "./roster"
-import { fixedRandom } from "./test/helpers"
+import {
+    difficultySelect,
+    fixedRandom,
+    parseFlat,
+    sameAtEvery,
+} from "./test/helpers"
 import { vec2, type Vec2 } from "./vec2"
 
 // The screen machine with a mode picked on the title, and two players
@@ -28,25 +32,25 @@ const east = vec2(1, 0)
 const west = vec2(-1, 0)
 
 const levels = [
-    parseLevel({
+    parseFlat({
         name: "corridor",
         parTime: 60,
         map: ["######", "#PQ..#", "######"],
         enemies: [],
     }),
-    parseLevel({
+    parseFlat({
         name: "second",
         parTime: 60,
         map: ["#####", "#P.E#", "#####"],
         enemies: [{ ai: "random" }],
     }),
-    parseLevel({
+    parseFlat({
         name: "third",
         parTime: 60,
         map: ["#####", "#P.E#", "#####"],
         enemies: [{ ai: "random" }],
     }),
-]
+].map(sameAtEvery)
 
 // Input for one tick: the actions each player pressed (player 1 first) and
 // the direction each holds.
@@ -80,7 +84,14 @@ function characterSelect(
     ready: readonly boolean[] = [false, false],
     level = 0
 ): Extract<Screen, { kind: "characterSelect" }> {
-    return { kind: "characterSelect", mode: "coop", level, picks, ready }
+    return {
+        kind: "characterSelect",
+        mode: "coop",
+        level,
+        difficulty: "medium",
+        picks,
+        ready,
+    }
 }
 
 function playing(
@@ -142,11 +153,20 @@ describe("the title's mode select", () => {
         expect(update(solo, input([["up"]]), deps())).toBe(solo)
     })
 
-    it("goes on to stage select in the picked mode", () => {
+    it("goes on to the choice of story or stage mode in the picked mode", () => {
         const title: Screen = { kind: "title", mode: "coop" }
         expect(update(title, input([["confirm"]]), deps())).toEqual({
-            kind: "stageSelect",
+            kind: "playSelect",
             mode: "coop",
+            choice: "story",
+        })
+    })
+
+    it("goes straight on to stage select in versus", () => {
+        const title: Screen = { kind: "title", mode: "versus" }
+        expect(update(title, input([["confirm"]]), deps())).toEqual({
+            kind: "stageSelect",
+            mode: "versus",
             selected: 0,
         })
     })
@@ -158,15 +178,15 @@ describe("the title's mode select", () => {
         )
     })
 
-    it("is where stage select goes back to, on the same mode", () => {
+    it("is where versus stage select goes back to, on the same mode", () => {
         const select: Screen = {
             kind: "stageSelect",
-            mode: "coop",
+            mode: "versus",
             selected: 1,
         }
         expect(update(select, input([["pause"]]), deps())).toEqual({
             kind: "title",
-            mode: "coop",
+            mode: "versus",
         })
     })
 })
@@ -178,12 +198,11 @@ describe("2-player stage select", () => {
         selected,
     })
 
-    it("opens character select with both cursors on the last pick", () => {
-        const next = update(
-            select(1),
-            input([["confirm"]]),
-            deps({ lastAnimal: AnimalId.skunk })
-        )
+    it("opens difficulty select, then character select with both cursors on the last pick", () => {
+        const d = deps({ lastAnimal: AnimalId.skunk })
+        const difficulty = update(select(1), input([["confirm"]]), d)
+        expect(difficulty).toEqual(difficultySelect(1, "medium", "coop"))
+        const next = update(difficulty, input([["confirm"]]), d)
         expect(next).toEqual(
             characterSelect([AnimalId.skunk, AnimalId.skunk], [false, false], 1)
         )
@@ -255,13 +274,11 @@ describe("2-player character select", () => {
         expect(next).toEqual(characterSelect())
     })
 
-    it("goes back to stage select on back from a player who hasn't confirmed", () => {
+    it("goes back to difficulty select on back from a player who hasn't confirmed", () => {
         const ready = characterSelect(undefined, [true, false], 1)
-        expect(update(ready, input([[], ["pause"]]), deps())).toEqual({
-            kind: "stageSelect",
-            mode: "coop",
-            selected: 1,
-        })
+        expect(update(ready, input([[], ["pause"]]), deps())).toEqual(
+            difficultySelect(1, "medium", "coop")
+        )
     })
 })
 

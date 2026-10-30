@@ -1,5 +1,6 @@
 // Saved settings: volumes, mute, screen shake, the on-screen D-pad, the
-// facing guide and the control bindings.
+// facing guide, whether players bump into each other and the control
+// bindings.
 //
 // Like progress.ts: there is no DOM access here, storage is passed in
 // (window.localStorage in main), and every storage access is wrapped in
@@ -47,6 +48,9 @@ export type Settings = {
     showDpad: boolean
     // The facing guide drawn on the board (see FacingGuide).
     facingGuide: FacingGuide
+    // Whether players bump into each other in a 2-player game instead of
+    // passing through (KDA-262; see GameState.playersBump). Off by default.
+    playersBump: boolean
     // The keys and pad buttons (KDA-215); DEFAULT_BINDINGS when left out
     // (see bindingsOf). Checked with parseBindings when read.
     bindings?: Bindings
@@ -64,6 +68,7 @@ export function defaultSettings(): Settings {
         screenShake: null,
         showDpad: false,
         facingGuide: "arrow",
+        playersBump: false,
     }
 }
 
@@ -101,6 +106,7 @@ export function parseSettings(raw: string | null): Settings {
         screenShake,
         showDpad,
         facingGuide,
+        playersBump,
     } = data
     return {
         ...data,
@@ -118,6 +124,10 @@ export function parseSettings(raw: string | null): Settings {
         facingGuide: isFacingGuide(facingGuide)
             ? facingGuide
             : defaults.facingGuide,
+        playersBump:
+            typeof playersBump === "boolean"
+                ? playersBump
+                : defaults.playersBump,
         // Left out when the save has none, so it keeps following the
         // defaults; otherwise valid, whatever was stored.
         ...(Object.hasOwn(data, "bindings")

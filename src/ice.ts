@@ -1,6 +1,7 @@
 import { Cell } from "./constants"
 import { moveStep } from "./glide"
 import { loopPos } from "./level"
+import { wrap } from "./path"
 import { allDirections, directions, samePos, vec2, type Vec2 } from "./vec2"
 
 // Ice floor. Pure, no DOM.
@@ -11,8 +12,10 @@ import { allDirections, directions, samePos, vec2, type Vec2 } from "./vec2"
 //
 // - A character that has just moved onto ice keeps going the same way: its
 //   following moves are slide steps. Sliding uses the character's normal move
-//   opportunities, so it slides at its normal speed (the player's times its
-//   breath's slideSpeedScale, e.g. the Penguin's; see Player.rate).
+//   opportunities, so it slides at its normal speed. A player whose breath
+//   walks on ice (the Penguin's; see BreathDef.walksOnIce) never slides: to
+//   it ice is normal floor. Everything here describes the characters that
+//   slide.
 // - While sliding, steering is ignored: the player's held and tapped
 //   directions, and enemy AI.
 // - The slide ends on reaching normal floor, or on ice when the next cell
@@ -115,8 +118,9 @@ export type SlideReach = {
     stuck: MoveState[]
 }
 
-// Breadth-first search of the player's slide-aware moves from standing free
-// at `start`, ignoring enemies. Without ice every state is free and moves
+// Breadth-first search of a sliding player's moves from standing free at
+// `start`, ignoring enemies (a player that walks on ice, the Penguin, moves
+// as with no ice at all, and reaches at least as much). Without ice every state is free and moves
 // are symmetric, so this is plain reachability and nothing is stuck.
 export function slideReach(cells: Grid, ice: IceMap, start: Vec2): SlideReach {
     const origin: MoveState = { pos: vec2(start.x, start.y), heading: FREE }
@@ -224,8 +228,7 @@ export function slideDistances(
     const slides = (x: number, y: number, heading: number) => {
         if (!ice[y][x]) return false
         const d = directions[allDirections[heading]]
-        const next = loopPos(cells, vec2(x + d.x, y + d.y))
-        return cells[next.y][next.x] !== Cell.wall
+        return cells[wrap(y + d.y, height)][wrap(x + d.x, width)] !== Cell.wall
     }
 
     // Standing on the target in any state counts as reaching it.
@@ -247,13 +250,14 @@ export function slideDistances(
             if (heading !== FREE && h !== heading) continue
             if (slides(x, y, h) !== (heading !== FREE)) continue
             const d = directions[allDirections[h]]
-            const from = loopPos(cells, vec2(x - d.x, y - d.y))
-            if (cells[from.y][from.x] === Cell.wall) continue
-            if (blocked && samePos(from, blocked)) continue
+            const fx = wrap(x - d.x, width)
+            const fy = wrap(y - d.y, height)
+            if (cells[fy][fx] === Cell.wall) continue
+            if (blocked && blocked.x === fx && blocked.y === fy) continue
             // Either free there and choosing this way, or already sliding
             // this way (which needs ice there).
-            reach(from.x, from.y, FREE, next)
-            if (ice[from.y][from.x]) reach(from.x, from.y, h, next)
+            reach(fx, fy, FREE, next)
+            if (ice[fy][fx]) reach(fx, fy, h, next)
         }
     }
 

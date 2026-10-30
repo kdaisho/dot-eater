@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vite-plus/test"
 import { type Audio } from "./audio"
 import { DEFAULT_BINDINGS, rebind } from "./bindings"
 import type { GameEvent } from "./events"
-import { initialScreen, type Screen } from "./flow"
+import { initialScreen, STORY_CARD_SECONDS, type Screen } from "./flow"
 import type { GameState } from "./game"
 import { ANIMAL_IDS } from "./roster"
 import { defaultSettings } from "./settings"
@@ -26,10 +26,18 @@ type ScreenOf<K extends Screen["kind"]> = Extract<Screen, { kind: K }>
 
 const title: ScreenOf<"title"> = { kind: "title", mode: "solo" }
 const stageSelect: Screen = { kind: "stageSelect", mode: "solo", selected: 0 }
+const difficultySelect: ScreenOf<"difficultySelect"> = {
+    kind: "difficultySelect",
+    mode: "coop",
+    difficulty: "medium",
+    next: { kind: "characterSelect", level: 0 },
+    back: { kind: "stageSelect", mode: "coop", selected: 0 },
+}
 const characterSelect: Screen = {
     kind: "characterSelect",
     mode: "coop",
     level: 0,
+    difficulty: "medium",
     picks: ["dragon", "owl"],
     ready: [false, false],
 }
@@ -37,6 +45,7 @@ const playing = (level = 0): Screen => ({
     kind: "playing",
     mode: "solo",
     level,
+    difficulty: "medium",
     animals: ["dragon"],
     game,
 })
@@ -44,6 +53,7 @@ const paused = (level = 0): ScreenOf<"paused"> => ({
     kind: "paused",
     mode: "solo",
     level,
+    difficulty: "medium",
     animals: ["dragon"],
     game,
 })
@@ -51,6 +61,7 @@ const ending: Screen = {
     kind: "ending",
     mode: "solo",
     level: 0,
+    difficulty: "medium",
     animals: ["dragon"],
     game,
     outcome: "won",
@@ -59,6 +70,7 @@ const gameOver: Screen = {
     kind: "gameOver",
     mode: "solo",
     level: 0,
+    difficulty: "medium",
     animals: ["dragon"],
     game,
     choice: "retry",
@@ -89,14 +101,32 @@ describe("soundForEvent", () => {
             ],
             [{ type: "bossHit", player: 0, at, health: 3 }, "bossHit"],
             [{ type: "bossDefeated", player: 1, at }, "bossDefeated"],
+            [{ type: "bossWindUp", at, facing: at }, "boss.windUp"],
+            [
+                { type: "bossBreathed", at, facing: at, cells: [at] },
+                "boss.breath",
+            ],
+            [{ type: "hurt", player: 0, at, damage: 25 }, "hurt"],
             [
                 { type: "playerCaught", player: 0, at, outForGood: false },
                 "caught",
             ],
             [{ type: "playerStunned", player: 1, by: 0, at }, "stunned"],
+            [{ type: "punched", player: 0, at, facing: vec2(1, 0) }, "punch"],
+            [
+                { type: "punchHit", player: 0, at, target: "enemy", enemy: 1 },
+                "punchHit",
+            ],
+            [{ type: "punchHit", player: 1, at, target: "player" }, "punchHit"],
+            [
+                { type: "punchHit", player: 0, at, target: "boss" },
+                "punchHit.boss",
+            ],
             [{ type: "gameWon" }, "stageClear"],
             [{ type: "gameLost" }, "gameOver"],
             [{ type: "playerRespawned", player: 0, at }, undefined],
+            [{ type: "dotRegrown", at }, undefined],
+            [{ type: "dotDropped", enemy: 0, at }, "dotDropped"],
         ]
         for (const [event, sound] of cases)
             expect(soundForEvent(event), event.type).toBe(sound)
@@ -129,11 +159,11 @@ describe("eventSounds", () => {
         expect(eventSounds([])).toEqual([])
     })
 
-    it("makes a solo catch one sound", () => {
+    it("makes a versus knockout and coming back one sound", () => {
         expect(
             eventSounds([
                 { type: "playerCaught", player: 0, at, outForGood: false },
-                { type: "playerRespawned", player: 0, at },
+                { type: "playerRespawned", player: 1, at },
             ])
         ).toEqual(["caught"])
     })
@@ -145,6 +175,72 @@ describe("eventSounds", () => {
                 { type: "gameLost" },
             ])
         ).toEqual(["gameOver"])
+    })
+
+    it("plays a landed punch as its hit only, not a whiff too", () => {
+        const punched: GameEvent = {
+            type: "punched",
+            player: 0,
+            at,
+            facing: vec2(1, 0),
+        }
+        expect(eventSounds([punched])).toEqual(["punch"])
+        expect(
+            eventSounds([
+                punched,
+                { type: "punchHit", player: 0, at, target: "enemy", enemy: 0 },
+            ])
+        ).toEqual(["punchHit"])
+        expect(
+            eventSounds([
+                punched,
+                { type: "punchHit", player: 0, at, target: "boss" },
+            ])
+        ).toEqual(["punchHit.boss"])
+    })
+
+    // Regression: a punch hitting an enemy and the boss played both the
+    // thwack and the thud.
+    it("plays one hit sound per punch, the enemy's over the boss's", () => {
+        const punched: GameEvent = {
+            type: "punched",
+            player: 0,
+            at,
+            facing: vec2(1, 0),
+        }
+        expect(
+            eventSounds([
+                punched,
+                { type: "punchHit", player: 0, at, target: "enemy", enemy: 0 },
+                { type: "punchHit", player: 0, at, target: "boss" },
+            ])
+        ).toEqual(["punchHit"])
+        // Another player's punch on the boss still thuds.
+        expect(
+            eventSounds([
+                punched,
+                { type: "punchHit", player: 0, at, target: "enemy", enemy: 0 },
+                { type: "punchHit", player: 1, at, target: "boss" },
+            ])
+        ).toEqual(["punchHit", "punchHit.boss"])
+    })
+
+    // Regression: any landed punch dropped the whiff for the whole tick,
+    // so player 1's miss was silent when player 2's punch landed.
+    it("plays one player's whiff alongside the other's hit", () => {
+        const punched = (player: number): GameEvent => ({
+            type: "punched",
+            player,
+            at,
+            facing: vec2(1, 0),
+        })
+        expect(
+            eventSounds([
+                punched(0),
+                punched(1),
+                { type: "punchHit", player: 1, at, target: "player" },
+            ])
+        ).toEqual(["punch", "punchHit"])
     })
 
     it("plays them on the audio engine", () => {
@@ -162,6 +258,7 @@ describe("musicForScreen", () => {
         for (const screen of [
             initialScreen(),
             stageSelect,
+            difficultySelect,
             characterSelect,
             settingsOver({ kind: "title", mode: "solo" }),
         ])
@@ -204,6 +301,15 @@ describe("menuSound", () => {
             "menuMove"
         )
         expect(
+            menuSound(difficultySelect, {
+                ...difficultySelect,
+                difficulty: "hard",
+            })
+        ).toBe("menuMove")
+        expect(menuSound(difficultySelect, { ...difficultySelect })).toBe(
+            undefined
+        )
+        expect(
             menuSound(characterSelect, {
                 ...characterSelect,
                 picks: ["dragon", "boar"],
@@ -241,7 +347,8 @@ describe("menuSound", () => {
 
     it("confirms going forward, and a player's ready", () => {
         expect(menuSound(title, stageSelect)).toBe("confirm")
-        expect(menuSound(stageSelect, characterSelect)).toBe("confirm")
+        expect(menuSound(stageSelect, difficultySelect)).toBe("confirm")
+        expect(menuSound(difficultySelect, characterSelect)).toBe("confirm")
         expect(menuSound(characterSelect, playing())).toBe("confirm")
         expect(menuSound(gameOver, playing())).toBe("confirm")
         expect(
@@ -254,7 +361,8 @@ describe("menuSound", () => {
 
     it("goes back one menu up, out of settings, or taking a ready back", () => {
         expect(menuSound(stageSelect, title)).toBe("back")
-        expect(menuSound(characterSelect, stageSelect)).toBe("back")
+        expect(menuSound(difficultySelect, difficultySelect.back)).toBe("back")
+        expect(menuSound(characterSelect, difficultySelect)).toBe("back")
         expect(menuSound(settingsOver(paused()), paused())).toBe("back")
         expect(
             menuSound(
@@ -376,5 +484,97 @@ describe("the controls screen", () => {
         expect(menuSound({ ...controls, settings: rebound }, controls)).toBe(
             "confirm"
         )
+    })
+})
+
+describe("story mode (KDA-271)", () => {
+    const playSelect: ScreenOf<"playSelect"> = {
+        kind: "playSelect",
+        mode: "solo",
+        choice: "story",
+    }
+    const storyMenu: ScreenOf<"storyMenu"> = {
+        kind: "storyMenu",
+        mode: "solo",
+        choice: "continue",
+    }
+    const run = { total: 100, from: "continue" } as const
+    const rating = {
+        ticks: 600,
+        parTime: 60,
+        healthy: true,
+        underPar: true,
+        stars: 3,
+    } as const
+    const cleared = {
+        mode: "solo",
+        level: 0,
+        difficulty: "medium",
+        animals: ["dragon"],
+        game,
+        run,
+        rating,
+    } as const
+    const storyClear: Screen = { kind: "storyClear", ...cleared, next: 1 }
+    const storyEnd: Screen = { kind: "storyEnd", ...cleared }
+
+    it("plays the title tune on the story menus", () => {
+        for (const screen of [playSelect, storyMenu])
+            expect(musicForScreen(screen), screen.kind).toEqual({
+                track: "title",
+                paused: false,
+            })
+    })
+
+    it("plays the stage's tune in a run's game", () => {
+        expect(musicForScreen({ ...playing(1), run } as Screen)).toEqual({
+            track: "stage2",
+            paused: false,
+        })
+    })
+
+    it("leaves the clear card and the ending to the stage clear jingle", () => {
+        expect(musicForScreen(storyClear)).toBeUndefined()
+        expect(musicForScreen(storyEnd)).toBeUndefined()
+    })
+
+    it("blips on the story menus' moves", () => {
+        expect(menuSound(playSelect, { ...playSelect, choice: "stage" })).toBe(
+            "menuMove"
+        )
+        expect(menuSound(storyMenu, { ...storyMenu, choice: "newStory" })).toBe(
+            "menuMove"
+        )
+    })
+
+    it("confirms going forward and goes back one menu up", () => {
+        expect(menuSound(title, playSelect)).toBe("confirm")
+        expect(menuSound(playSelect, storyMenu)).toBe("confirm")
+        expect(menuSound(playSelect, stageSelect)).toBe("confirm")
+        expect(menuSound(playSelect, title)).toBe("back")
+        expect(menuSound(storyMenu, playSelect)).toBe("back")
+        expect(menuSound(stageSelect, playSelect)).toBe("back")
+        const storyDifficulty: Screen = { ...difficultySelect, back: storyMenu }
+        expect(menuSound(storyMenu, storyDifficulty)).toBe("confirm")
+        expect(menuSound(storyDifficulty, storyMenu)).toBe("back")
+    })
+
+    it("confirms the next stage from the clear card, quietly entered", () => {
+        expect(menuSound(storyClear, playing(1))).toBe("confirm")
+        expect(menuSound(ending, storyClear)).toBeUndefined()
+        expect(menuSound(ending, storyEnd)).toBeUndefined()
+    })
+
+    // Regression: the card starting the next stage by itself played the
+    // confirm sound, with nothing pressed.
+    it("is quiet when the card starts the next stage by itself", () => {
+        const waited = (seconds: number): Screen => ({
+            ...(storyClear as ScreenOf<"storyClear">),
+            waited: { seconds },
+        })
+        expect(
+            menuSound(waited(STORY_CARD_SECONDS), playing(1))
+        ).toBeUndefined()
+        expect(menuSound(waited(1), playing(1))).toBe("confirm")
     })
 })
