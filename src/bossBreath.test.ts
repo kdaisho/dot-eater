@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vite-plus/test"
 import { createBoss, damageBoss } from "./boss"
 import {
+    atRest,
     BOSS_BREATH,
     bossBreathCells,
     bossBreathTarget,
@@ -24,6 +25,7 @@ import type { GameEvent, GameEventType } from "./events"
 import {
     bringBack,
     createGameState,
+    drawnPos,
     HURT_INVULNERABLE_TICKS,
     IDLE,
     step,
@@ -497,17 +499,38 @@ describe("the boss's breath cadence", () => {
         expect(state.boss!.pos).toEqual(vec2(2, 1))
     })
 
-    it("finishes the glide it is in as it winds up", () => {
-        const state = game(vec2(8, 1), vec2(2, 1), { speed: 1.5 })
+    // Regression (PR #74 review): it wound up mid-glide, from the cell it
+    // was heading for, so with a short wind-up it breathed from a cell it
+    // wasn't drawn on yet.
+    it("waits for its glide to end, so it breathes from where it is drawn", () => {
+        const state = game(vec2(8, 1), vec2(2, 1), {
+            speed: 1.5,
+            breath: { windUp: 0.25 },
+        })
         const boss = state.boss!
+        const cols = state.cells[0].length
+        const rows = state.cells.length
+        // Just setting off from (1, 1) to (2, 1): 0.9 cells to go at 1.5
+        // cells/s is 36 ticks.
         boss.lastPos = vec2(1, 1)
-        boss.moveProgress = 0.5
-        tick(state)
-        expect(eventsOf(state, "bossWindUp")).toHaveLength(1)
-        for (let i = 1; i < WIND_UP; i++) tick(state)
-        expect(boss.pos).toEqual(vec2(2, 1))
-        expect(boss.moveProgress).toBe(1)
-        expect(boss.breath.windingUp).toBe(1)
+        boss.moveProgress = 0.1
+        expect(atRest(boss)).toBe(false)
+        expect(ticksUntil(state, "bossWindUp")).toBe(36)
+        expect(atRest(boss)).toBe(true)
+        expect(drawnPos(boss, cols, rows)).toEqual(vec2(2, 1))
+        expect(ticksUntil(state, "bossBreathed")).toBe(0.25 * TICK_RATE)
+        expect(eventsOf(state, "bossBreathed")[0].at).toEqual(vec2(2, 1))
+    })
+
+    it("is at rest on its cell once its glide is done, or with none to do", () => {
+        const boss = createBoss(vec2(3, 1))
+        // At its spawn, before its first move: nothing to glide.
+        expect(boss.moveProgress).toBe(0)
+        expect(atRest(boss)).toBe(true)
+        boss.lastPos = vec2(2, 1)
+        expect(atRest(boss)).toBe(false)
+        boss.moveProgress = 1
+        expect(atRest(boss)).toBe(true)
     })
 
     it("breathes whoever is in line by then: a player can step aside", () => {

@@ -27,11 +27,13 @@ import { samePos, vec2, type Vec2 } from "./vec2"
 //
 // - Cadence: it may breathe once its cooldown (`every`) is over, which it
 //   also is at the start of a stage, so the players get a grace period.
-//   Then, as soon as a player in play is in line with it (see inLine), it
-//   winds up, facing the nearest such player (player 1 on ties). With
-//   nobody in line it doesn't breathe, but stays ready.
-// - Wind-up (`windUp`): it holds still (it finishes the glide it is in but
-//   makes no new move; see step in game.ts), glows (bossLooks), and the
+//   Then, as soon as a player in play is in line with it (see inLine) and
+//   it is at rest on its cell (atRest: its glide done, so it breathes from
+//   where it is drawn, however short the wind-up), it winds up, facing the
+//   nearest such player (player 1 on ties). With nobody in line it doesn't
+//   breathe, but stays ready.
+// - Wind-up (`windUp`): it holds still (it makes no new move; see step in
+//   game.ts, which moves its glide on before this), glows (bossLooks), and the
 //   cells it will hit are tinted (bossWarning). Then it breathes along its
 //   facing, whoever is in line by then: a player can step out of the way.
 // - The breath: two cells wide (the footprint's two rows or columns), out
@@ -126,6 +128,13 @@ export function createBossBreath(data: BossBreathData = {}): BossBreath {
 // Whether `boss` is winding up its breath (and so holds still).
 export function windingUp(boss: Boss): boolean {
     return !boss.defeated && boss.breath.windingUp > 0
+}
+
+// Whether `boss` is at rest on its cell: drawn right on its pos, with its
+// glide done (or none to do, as at its spawn). Only then does it wind up,
+// so its breath starts from where it is drawn.
+export function atRest(boss: Boss): boolean {
+    return boss.moveProgress >= 1 - 1e-9 || samePos(boss.lastPos, boss.pos)
 }
 
 // ---- Where it reaches ----
@@ -252,9 +261,11 @@ export function bossBreathTarget(
 // ---- Each tick ----
 
 // The boss's breath for one tick of step (see the top of this file):
-// count the cooldown down, start a wind-up when it is ready and a player is
-// in line, or breathe when the wind-up is over. Returns whether the boss
-// holds still this tick (it is winding up). No boss, no breath.
+// count the cooldown down, start a wind-up when it is ready, at rest (see
+// atRest) and a player is in line, or breathe when the wind-up is over.
+// Returns whether the boss holds still this tick (it is winding up). Step
+// calls it after moving the boss's glide on, before its next move. No
+// boss, no breath.
 export function tickBossBreath(state: GameState): boolean {
     const { boss } = state
     if (!boss) return false
@@ -277,7 +288,7 @@ export function tickBossBreath(state: GameState): boolean {
         return false
     }
     breath.cooldown = Math.max(0, breath.cooldown - 1)
-    if (breath.cooldown > 0) return false
+    if (breath.cooldown > 0 || !atRest(boss)) return false
     const target = bossBreathTarget(state)
     if (!target) return false
     breath.facing = target.facing

@@ -954,10 +954,12 @@ export function step(
         else spend(enemy)
     })
     const { boss } = state
-    // The boss's breath (see bossBreath.ts): while it winds up it finishes
-    // the glide it is in but makes no new move.
+    // The boss's glide moves on first, then its breath (see bossBreath.ts),
+    // which winds up only once the boss is drawn on its cell; while it
+    // winds up it makes no new move.
+    const ready = boss !== null && !boss.defeated && advance(boss, dt)
     const holding = tickBossBreath(state)
-    if (boss && !boss.defeated && advance(boss, dt)) {
+    if (boss && ready) {
         const next = holding
             ? null
             : goingHome
