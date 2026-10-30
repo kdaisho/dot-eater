@@ -166,9 +166,10 @@ export type BreathDef = {
     // the level's (1 for normal).
     maxEnergy: number
     speedScale: number
-    // A further factor on the player's speed on its slide steps on ice
-    // (level or breath ice; see Player.rate). Leave it out for 1.
-    slideSpeedScale?: number
+    // Whether the player walks on ice (level or breath ice) as on normal
+    // floor, moving and stopping by its input, instead of sliding (see
+    // slideTick in game.ts). Leave it out to slide like everyone else.
+    walksOnIce?: boolean
     // How the breath looks in particles (see particles.ts): a burst on each
     // cell it strikes, flying along the facing. Leave it out for none.
     particles?: ParticleLook
