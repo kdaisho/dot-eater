@@ -47,7 +47,7 @@ describe("levels", () => {
 
     // While nobody is in play in a 2-player game, the enemies and the boss
     // head back to their own spawns, and a player waiting to come back
-    // needs its spawn clear of them (see spawnClear in game.ts). So no
+    // needs its spawn clear of them (see clearOfEnemies in game.ts). So no
     // enemy or boss spawn may be near a player spawn: SPAWN_GAP keeps a
     // chaser circling its spawn, a cell off it, out of the way.
     const SPAWN_GAP = RESPAWN_CLEAR_DISTANCE + 1

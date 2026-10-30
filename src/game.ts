@@ -8,6 +8,7 @@ import {
     ENEMY_IDS,
     PLAYER_RESPAWN_DELAY,
     PLAYER_SPEED,
+    RESPAWN_BLOCK_GRACE,
     RESPAWN_CLEAR_DISTANCE,
     START_LIVES,
 } from "./constants"
@@ -50,7 +51,7 @@ import { glidePos, wrapDelta, type Glider } from "./glide"
 import { slideStep, type IceMap } from "./ice"
 import { hasDots, loopPos, type Cells, type Level } from "./level"
 import { levels } from "./levels"
-import { distanceMap } from "./path"
+import { distanceMap, openNeighbours } from "./path"
 import { DEFAULT_ANIMAL, type AnimalId } from "./roster"
 import { createSplitter, resetSplitter } from "./splitter"
 import { loseDots, stunned, tickStuns } from "./versus"
@@ -144,6 +145,11 @@ export type Player = {
     // it waits for the spawn to be clear; see tickPlayersOut), or null if it
     // is out for good. Null while in play.
     respawnIn: number | null
+    // While out and due back, the seconds it has waited because the other
+    // player was on its spawn or moving onto it (when players bump); at
+    // RESPAWN_BLOCK_GRACE it comes back on the nearest free cell instead
+    // (see tickPlayersOut). 0 otherwise.
+    spawnHeldFor: number
     // Seconds left of a versus stun (see stun in versus.ts), 0 when not
     // stunned.
     stunnedFor: number
@@ -280,6 +286,7 @@ export function newPlayer(character: Character, breath: BreathDef): Player {
         rate: 1,
         out: false,
         respawnIn: null,
+        spawnHeldFor: 0,
         stunnedFor: 0,
         stunImmuneFor: 0,
     }
@@ -315,12 +322,13 @@ function respawn(state: GameState) {
     if (state.boss) resetBoss(state.boss)
 }
 
-// Put `player` back in play on its own spawn, as at the start of a game:
-// ready to move, facing right, nothing buffered. Its score, energy and
-// cooldown are kept. Nobody else is touched (see respawn for everyone).
-export function bringBack(state: GameState, player: Player) {
+// Put `player` back in play on its own spawn (or `at`, see
+// tickPlayersOut), as at the start of a game: ready to move, facing right,
+// nothing buffered. Its score, energy and cooldown are kept. Nobody else is
+// touched (see respawn for everyone).
+export function bringBack(state: GameState, player: Player, at?: Vec2) {
     const index = state.players.indexOf(player)
-    const spawn = state.spawns.players[index]
+    const spawn = at ?? state.spawns.players[index]
     const { character } = player
     character.pos = vec2(spawn.x, spawn.y)
     character.lastPos = vec2(spawn.x, spawn.y)
@@ -331,6 +339,7 @@ export function bringBack(state: GameState, player: Player) {
     player.rate = 1
     player.out = false
     player.respawnIn = null
+    player.spawnHeldFor = 0
     player.stunnedFor = 0
     player.stunImmuneFor = 0
     emit(state, {
@@ -354,6 +363,7 @@ export function takeOut(player: Player, respawnAfter: number | null) {
     player.rate = 1
     player.out = true
     player.respawnIn = respawnAfter
+    player.spawnHeldFor = 0
     player.stunnedFor = 0
     player.stunImmuneFor = 0
 }
@@ -366,30 +376,71 @@ export function outForGood(player: Player): boolean {
 // Count down every out player's wait by `dt` seconds, at the start of a
 // tick, and bring back each one whose wait is over (see bringBack). One
 // that is due waits on (at 0) while its spawn isn't clear: while an enemy
-// or the boss is near it (see spawnClear). It comes back on the first tick
+// or the boss is near it (see clearOfEnemies), or, when players bump, the
+// other player is on it or moving onto it. It comes back on the first tick
 // its spawn is clear, before anyone moves, so it may move on that same
-// tick.
+// tick. Once the other player has held it up for RESPAWN_BLOCK_GRACE, it
+// comes back on the nearest free cell instead (see nearestFreeCell).
 function tickPlayersOut(state: GameState, dt: number) {
     state.players.forEach((player, i) => {
         if (!player.out || player.respawnIn === null) return
         player.respawnIn = Math.max(0, player.respawnIn - dt)
         if (player.respawnIn > EPSILON) return
         player.respawnIn = 0
-        if (spawnClear(state, i)) bringBack(state, player)
+        const spawn = state.spawns.players[i]
+        // Held up by the other player (only when players bump), it comes
+        // back on the nearest free cell instead once it has waited
+        // RESPAWN_BLOCK_GRACE for it, so nobody can camp on its spawn.
+        const camped = playerBlocks(state, player, spawn)
+        if (!camped) {
+            if (clearOfEnemies(state, spawn)) bringBack(state, player)
+            return
+        }
+        player.spawnHeldFor += dt
+        if (player.spawnHeldFor < RESPAWN_BLOCK_GRACE - EPSILON) return
+        const cell = nearestFreeCell(state, player, spawn)
+        if (cell) bringBack(state, player, cell)
     })
 }
 
-// Whether player `index` may come back on its spawn now: no enemy in play
-// (harmless ones aside) and no undefeated boss is drawn within
-// RESPAWN_CLEAR_DISTANCE of it (the boss by its footprint's square), or is
-// in a move that ends on it or next to it. So nothing gliding in can catch
-// it on the tick it is back or the next; checking only for a catch at once
-// let an enemy just out of reach catch it a tick later. When players bump,
-// the other player standing on the spawn, or moving onto it, holds it up
-// too (see playerBlocks), so the two never share a cell.
-function spawnClear(state: GameState, index: number): boolean {
-    const spawn = state.spawns.players[index]
-    if (playerBlocks(state, state.players[index], spawn)) return false
+// The nearest cell to `spawn` (breadth-first along open cells, direction
+// order on ties) that `player` may come back on: no other player there
+// (see playerBlocks) and clear of enemies and the boss (see
+// clearOfEnemies). Null if there is none.
+function nearestFreeCell(
+    state: GameState,
+    player: Player,
+    spawn: Vec2
+): Vec2 | null {
+    const seen = new Set([`${spawn.x},${spawn.y}`])
+    const queue = [spawn]
+    for (let head = 0; head < queue.length; head++) {
+        for (const cell of openNeighbours(state.cells, queue[head])) {
+            const key = `${cell.x},${cell.y}`
+            if (seen.has(key)) continue
+            seen.add(key)
+            if (
+                !playerBlocks(state, player, cell) &&
+                clearOfEnemies(state, cell)
+            ) {
+                return cell
+            }
+            queue.push(cell)
+        }
+    }
+    return null
+}
+
+// Whether a player may come back on `spawn` (its spawn, or the cell it
+// comes back on instead; see tickPlayersOut) as far as enemies go: no
+// enemy in play (harmless ones aside) and no undefeated boss is drawn
+// within RESPAWN_CLEAR_DISTANCE of it (the boss by its footprint's square),
+// or is in a move that ends on it or next to it. So nothing gliding in can
+// catch it on the tick it is back or the next; checking only for a catch
+// at once let an enemy just out of reach catch it a tick later. When
+// players bump, the other player standing on the spawn, or moving onto it,
+// holds it up too (see tickPlayersOut), so the two never share a cell.
+function clearOfEnemies(state: GameState, spawn: Vec2): boolean {
     const cols = state.cells[0].length
     const rows = state.cells.length
     // `spawn` relative to `at`, the short way round.
