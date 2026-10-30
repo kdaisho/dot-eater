@@ -12,6 +12,7 @@ import {
     LevelError,
     levelFor,
     loopPos,
+    MAX_BOSS_HEALTH,
     parseLevel,
     parseMaps,
     parseStage,
@@ -992,11 +993,39 @@ describe("parseLevel with a boss", () => {
         expect(problemsOf(withBoss({ speed: TICK_RATE + 1 }))).toEqual([
             `boss.speed must be at most ${TICK_RATE} (one cell per tick), got ${TICK_RATE + 1}`,
         ])
-        expect(problemsOf(withBoss({ health: 3 }))).toEqual([
-            'unknown boss setting "health"',
+        expect(problemsOf(withBoss({ armour: 3 }))).toEqual([
+            'unknown boss setting "armour"',
         ])
         expect(problemsOf(withBoss(2))).toEqual([
             "boss must be an object, got 2",
+        ])
+    })
+
+    it("takes the boss's health from its settings", () => {
+        expect(parseFlat(withBoss({ health: 18 })).boss).toEqual({
+            pos: vec2(3, 2),
+            health: 18,
+        })
+        for (const health of [1, MAX_BOSS_HEALTH]) {
+            expect(problemsOf(withBoss({ health }))).toEqual([])
+        }
+    })
+
+    it("rejects a bad boss health", () => {
+        const problem = (got: string) =>
+            `boss.health must be a whole number from 1 to ${MAX_BOSS_HEALTH}, got ${got}`
+        expect(problemsOf(withBoss({ health: 0 }))).toEqual([problem("0")])
+        expect(problemsOf(withBoss({ health: 12.5 }))).toEqual([
+            problem("12.5"),
+        ])
+        expect(problemsOf(withBoss({ health: MAX_BOSS_HEALTH + 1 }))).toEqual([
+            problem(`${MAX_BOSS_HEALTH + 1}`),
+        ])
+        expect(problemsOf(withBoss({ health: "12" }))).toEqual([
+            problem('"12"'),
+        ])
+        expect(problemsOf(withBoss({ health: null }))).toEqual([
+            problem("null"),
         ])
     })
 

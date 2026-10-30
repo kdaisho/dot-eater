@@ -61,12 +61,13 @@ export type Boss = {
     breath: BossBreath
 }
 
-// A boss on `pos` at `speed`, its breath tuned by `breath` (the level's;
-// the defaults for anything it leaves out).
+// A boss on `pos` at `speed` with `health`, its breath tuned by `breath`
+// (the level's; the defaults for anything it leaves out).
 export function createBoss(
     pos: Vec2,
     speed: number = BOSS_SPEED,
-    breath?: BossBreathData
+    breath?: BossBreathData,
+    health: number = BOSS_HEALTH
 ): Boss {
     return {
         pos: vec2(pos.x, pos.y),
@@ -75,8 +76,8 @@ export function createBoss(
         speed,
         // As for enemies: a short grace period before its first move.
         moveProgress: 0,
-        health: BOSS_HEALTH,
-        maxHealth: BOSS_HEALTH,
+        health,
+        maxHealth: health,
         flash: 0,
         defeated: false,
         breath: createBossBreath(breath),

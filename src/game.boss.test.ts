@@ -146,6 +146,20 @@ describe("createGameState", () => {
         expect(game.enemies).toEqual([])
     })
 
+    it("gives the boss the level's health, and the HUD shows it", () => {
+        const tough = parseFlat({
+            name: "lair",
+            parTime: 60,
+            map: ["#######", "#P.B..#", "#.....#", "#######"],
+            enemies: [],
+            boss: { health: 18 },
+            rules: { regrowDots: { seconds: 10 } },
+        })
+        const game = createGameState(tough)
+        expect(game.boss).toMatchObject({ health: 18, maxHealth: 18 })
+        expect(bossHud(game)).toEqual({ health: 18, max: 18 })
+    })
+
     it("has no boss on a level without one", () => {
         expect(createGameState(OLD_LEVEL).boss).toBeNull()
     })
