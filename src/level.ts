@@ -2,6 +2,7 @@ import {
     AiType,
     Cell,
     MAX_ENEMIES,
+    MAX_HEALTH,
     RESPAWN_CLEAR_DISTANCE,
     TICK_RATE,
 } from "./constants"
@@ -72,12 +73,40 @@ export type FogRule = {
 export type BossData = {
     // Cells per second. Omitted means BOSS_SPEED.
     speed?: number
+    // Its breath attack's tuning (see bossBreath.ts). Omitted, or any part
+    // of it, means the defaults.
+    breath?: BossBreathData
+}
+
+// The boss's breath (KDA-268), each part optional (see bossBreathProblems
+// for what is allowed).
+export type BossBreathData = {
+    // Seconds between breaths, and before the first (BOSS_BREATH_EVERY).
+    every?: number
+    // Seconds it winds up before it breathes (BOSS_BREATH_WIND_UP).
+    windUp?: number
+    // Its reach in cells from the footprint's edge (BOSS_BREATH_RANGE).
+    range?: number
+    // Health it costs a player it hits (BOSS_BREATH_DAMAGE).
+    damage?: number
 }
 
 // Per-level special rules. Each is optional; a level without rules plays
 // normally.
 export type LevelRules = {
     fog?: FogRule
+    // Eaten dots grow back (see regrow.ts).
+    regrowDots?: RegrowRule
+    // Splitters drop dots as they go (KDA-270, see dropDot in splitter.ts).
+    // Only on a level with a boss, where dots don't decide the clear.
+    splitterDrops?: boolean
+}
+
+// rules.regrowDots (KDA-269): an eaten dot grows back on its own cell after
+// `seconds` (positive, in whole tenths like parTime), once the cell is
+// clear of characters.
+export type RegrowRule = {
+    seconds: number
 }
 
 // One of a level's two maps (see LevelData), with what goes with it.
@@ -136,7 +165,7 @@ export function sameForBoth(variant: LevelVariant): Pick<LevelData, MapSize> {
 // anything that moves onto it keeps sliding (see ice.ts). Spawns are always
 // on normal floor. A level with a boss has no tunnels and no ice: the boss
 // neither wraps nor slides. On a boss level, the stage is cleared once
-// every dot is eaten and the boss is defeated.
+// the boss is defeated, whatever dots are left (see cleared in game.ts).
 const WALL = "#"
 const DOT = "."
 const EMPTY = " "
@@ -194,8 +223,12 @@ export type Level = {
     playerSpeed?: number
     enemies: readonly EnemySpawn[]
     // The boss, or null for none: its spawn (the top-left cell of its
-    // footprint) and speed (see BossData).
-    boss: { pos: Readonly<Vec2>; speed?: number } | null
+    // footprint), speed and breath tuning (see BossData).
+    boss: {
+        pos: Readonly<Vec2>
+        speed?: number
+        breath?: Readonly<BossBreathData>
+    } | null
     rules: LevelRules
 }
 
@@ -368,8 +401,12 @@ export function parseMaps(data: LevelData): Readonly<Record<MapSize, Level>> {
         return map
     })
     // The boss is part of what the stage is, at every difficulty.
-    if (new Set(built.map((map) => map.bossPositions.length > 0)).size > 1) {
+    const bosses = new Set(built.map((map) => map.bossPositions.length > 0))
+    if (bosses.size > 1) {
         problems.push(`both maps must have a boss ("${BOSS}") or neither`)
+    } else {
+        problems.push(...bossEnergyProblems(data.rules, bosses.has(true)))
+        problems.push(...splitterDropsProblems(data.rules, bosses.has(true)))
     }
     if (problems.length > 0) throw fail()
 
@@ -553,6 +590,10 @@ function reachProblems(map: BuiltMap, variant: LevelVariant): string[] {
         if (i > 0 && samePos(spawn, playerSpawns[0])) return
         problems.push(...spawnProblems(cells, ice, spawn, i))
     })
+    // A slide that strands a player from its spawn is reported above; the
+    // trapped areas are checked once the spawns are sound, so it isn't
+    // reported twice.
+    if (problems.length === 0) problems.push(...trapProblems(map))
     variant.enemies.forEach((enemy, i) => {
         if (!enemy.route) return
         problems.push(
@@ -601,12 +642,15 @@ function toLevel(data: LevelData, variant: LevelVariant, map: BuiltMap): Level {
                       ...(data.boss?.speed === undefined
                           ? {}
                           : { speed: data.boss.speed }),
+                      ...(data.boss?.breath === undefined
+                          ? {}
+                          : { breath: { ...data.boss.breath } }),
                   },
         rules: copyRules(data.rules),
     }
 }
 
-const BOSS_KEYS: ReadonlySet<string> = new Set(["speed"])
+const BOSS_KEYS: ReadonlySet<string> = new Set(["speed", "breath"])
 
 // Boss settings that need no map: an object with only known, valid
 // settings. Whether the map has a boss for them is checked once it is
@@ -623,6 +667,54 @@ function bossDataProblems(boss: BossData | undefined): string[] {
         }
     }
     checkSpeed(problems, "boss.speed", boss.speed)
+    problems.push(...bossBreathProblems(boss.breath))
+    return problems
+}
+
+// What each boss breath setting may be (see BossBreathData): seconds for
+// `every` and `windUp` (a wind-up too short to see and dodge is unfair),
+// whole cells for `range` and whole health for `damage` (at most a full
+// gauge).
+const BOSS_BREATH_LIMITS: Readonly<
+    Record<
+        keyof BossBreathData,
+        { min: number; max: number; whole: boolean; unit: string }
+    >
+> = {
+    every: { min: 1, max: 60, whole: false, unit: "seconds" },
+    windUp: { min: 0.25, max: 5, whole: false, unit: "seconds" },
+    range: { min: 1, max: 30, whole: true, unit: "cells" },
+    damage: { min: 1, max: MAX_HEALTH, whole: true, unit: "health" },
+}
+
+// The boss's breath settings (`boss.breath`), on their own: an object with
+// only known settings, each a number within BOSS_BREATH_LIMITS.
+function bossBreathProblems(breath: unknown): string[] {
+    if (breath === undefined) return []
+    if (!isPlainObject(breath)) {
+        return [`boss.breath must be an object, got ${JSON.stringify(breath)}`]
+    }
+    const problems: string[] = []
+    for (const [key, value] of Object.entries(breath)) {
+        if (!Object.hasOwn(BOSS_BREATH_LIMITS, key)) {
+            problems.push(`unknown boss.breath setting ${JSON.stringify(key)}`)
+            continue
+        }
+        if (value === undefined) continue
+        const { min, max, whole, unit } =
+            BOSS_BREATH_LIMITS[key as keyof BossBreathData]
+        const ok =
+            typeof value === "number" &&
+            Number.isFinite(value) &&
+            value >= min &&
+            value <= max &&
+            (!whole || Number.isInteger(value))
+        if (!ok) {
+            problems.push(
+                `boss.breath.${key} must be ${whole ? "a whole number" : "a number"} of ${unit} from ${min} to ${max}, got ${JSON.stringify(value)}`
+            )
+        }
+    }
     return problems
 }
 
@@ -684,7 +776,11 @@ function bossProblems(
     return problems
 }
 
-const RULE_KEYS: ReadonlySet<string> = new Set(["fog"])
+const RULE_KEYS: ReadonlySet<string> = new Set([
+    "fog",
+    "regrowDots",
+    "splitterDrops",
+])
 const FOG_KEYS: ReadonlySet<string> = new Set(["radius"])
 // The smallest fog radius: the renderer's soft edge is 1.5 cells, and a
 // smaller radius would darken the player's own cell.
@@ -709,6 +805,7 @@ function rulesProblems(rules: LevelRules | undefined): string[] {
             )
         }
     }
+    problems.push(...regrowDotsProblems(rules.regrowDots))
     const fog: unknown = rules.fog
     if (fog === undefined) return problems
     if (!isPlainObject(fog)) {
@@ -738,10 +835,75 @@ function rulesProblems(rules: LevelRules | undefined): string[] {
     return problems
 }
 
+// rules.regrowDots, if given: an object with only `seconds`, positive and
+// in whole tenths (the same rule as parTime).
+function regrowDotsProblems(rule: unknown): string[] {
+    if (rule === undefined) return []
+    if (!isPlainObject(rule)) {
+        return [
+            `rules.regrowDots must be an object, got ${JSON.stringify(rule)}`,
+        ]
+    }
+    const problems = Object.keys(rule)
+        .filter((key) => key !== "seconds")
+        .map((key) => `unknown rules.regrowDots setting ${JSON.stringify(key)}`)
+    if (!isParTime(rule.seconds)) {
+        problems.push(
+            `rules.regrowDots.seconds must be a positive number of seconds in whole tenths, got ${String(rule.seconds)}`
+        )
+    }
+    return problems
+}
+
+// rules.splitterDrops, if given: true or false, and true only on a level
+// with a boss (`hasBoss`). Elsewhere the dots decide the clear, and a
+// Splitter dropping them would keep adding dots to clear.
+function splitterDropsProblems(
+    rules: LevelRules | undefined,
+    hasBoss: boolean
+): string[] {
+    const drops: unknown = rules?.splitterDrops
+    if (drops === undefined) return []
+    if (typeof drops !== "boolean") {
+        return [
+            `rules.splitterDrops must be true or false, got ${JSON.stringify(drops)}`,
+        ]
+    }
+    return drops && !hasBoss
+        ? [
+              `rules.splitterDrops needs a boss ("${BOSS}"): elsewhere dots decide the clear`,
+          ]
+        : []
+}
+
+// A boss level (`hasBoss`) must have rules.regrowDots. A boss takes many
+// breaths to defeat and the breaths' energy comes only from dots, so
+// without dots coming back the stage could run out of them with the boss
+// still standing, and could never be won.
+function bossEnergyProblems(
+    rules: LevelRules | undefined,
+    hasBoss: boolean
+): string[] {
+    return hasBoss && rules?.regrowDots === undefined
+        ? [
+              "a boss level needs rules.regrowDots, so the dots (its ammunition) come back",
+          ]
+        : []
+}
+
 // A copy of the (already validated) rules, so the parsed level shares no
 // objects with the level data.
 function copyRules(rules: LevelRules | undefined): LevelRules {
-    return rules?.fog ? { fog: { radius: rules.fog.radius } } : {}
+    const copy: LevelRules = rules?.fog
+        ? { fog: { radius: rules.fog.radius } }
+        : {}
+    if (rules?.regrowDots) {
+        copy.regrowDots = { seconds: rules.regrowDots.seconds }
+    }
+    if (rules?.splitterDrops !== undefined) {
+        copy.splitterDrops = rules.splitterDrops
+    }
+    return copy
 }
 
 function checkSpeed(
@@ -916,8 +1078,9 @@ function routeShapeProblems(enemy: EnemyData, i: number): string[] {
 // area, named by its first cell in reading order. Nothing ever goes there
 // but a player who breaks in through a wall (the Boar), who could then be
 // sealed inside, with no dots to refill its energy and break out again.
-// Areas are found by plain steps, wrap tunnels included; ice doesn't
-// matter, as sliding never crosses a wall.
+// Areas are found by plain steps, wrap tunnels included. Ice can still make
+// an area that plain steps join to the rest one-way for a sliding player;
+// trapProblems checks for that once the spawns are known to be sound.
 function sealedProblems(map: BuiltMap): string[] {
     const { cells } = map
     const height = cells.length
@@ -957,6 +1120,53 @@ function sealedProblems(map: BuiltMap): string[] {
             )
         }
     }
+    return problems
+}
+
+// Open areas a sliding player can't get out of (KDA-245, as sealedProblems):
+// cells where a player standing free can never get back to a player spawn,
+// however it moves. Spawn checks only follow the player from its spawn, but
+// a player that breaks in through a wall (the Boar) can stand anywhere open,
+// and the wall regrows behind it. One problem per area: the trapped cells a
+// slider can get to from the first one in reading order, which names it. A
+// player that walks on ice (the Penguin) can always walk back, so only
+// sliders are checked, and only with ice: without it moves are symmetric
+// and sealedProblems has found every such area already.
+function trapProblems(map: BuiltMap): string[] {
+    const { cells, ice } = map
+    if (!hasIce(ice)) return []
+    const spawns = playerSpawnsOf(map).filter(
+        (spawn, i, all) => all.findIndex((s) => samePos(s, spawn)) === i
+    )
+    // One search backwards from each spawn (see slideDistances).
+    const dists = spawns.map((spawn) => slideDistances(cells, ice, spawn))
+    const trapped = cells.map((row, y) =>
+        row.map(
+            (cell, x) =>
+                cell !== Cell.wall &&
+                dists.every(
+                    (d) => d({ pos: vec2(x, y), heading: FREE }) === Infinity
+                )
+        )
+    )
+    const problems: string[] = []
+    cells.forEach((row, y) =>
+        row.forEach((_, x) => {
+            if (!trapped[y][x]) return
+            const { visited } = slideReach(cells, ice, vec2(x, y))
+            let size = 0
+            visited.forEach((seen, vy) =>
+                seen.forEach((v, vx) => {
+                    if (!v || !trapped[vy][vx]) return
+                    trapped[vy][vx] = false
+                    size++
+                })
+            )
+            problems.push(
+                `open area at (${x}, ${y}) (${size} ${size === 1 ? "cell" : "cells"}) traps a sliding player: no way back to a player spawn`
+            )
+        })
+    )
     return problems
 }
 

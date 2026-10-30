@@ -40,7 +40,7 @@ import {
     type TickInput,
     type TitleChoice,
 } from "./flow"
-import { healthHud, totalScore, type GameState } from "./game"
+import { bossHud, healthHud, totalScore, type GameState } from "./game"
 import {
     CONTROLS_ROWS,
     controlsRowLabel,
@@ -230,6 +230,9 @@ const effects = {
             // while playing.
             guide: settings.facingGuide,
             ...(s.kind === "playing" ? { aim: true } : {}),
+            // The boss's wind-up (its glow and warning tint), on the board
+            // in play, paused and ending, as the rings are.
+            bossBreath: true,
         }
     },
 }
@@ -509,11 +512,11 @@ function render(alpha: number) {
     }
     // Every screen with a game also says which level it is.
     const rules = "level" in shown ? levels[shown.level]?.rules : undefined
-    const hud = {
-        ...(game.mode === "versus" ? versusHud(game, shown) : hudOf(game)),
-        ...("difficulty" in shown
-            ? { difficulty: DIFFICULTY_LABELS[shown.difficulty] }
-            : {}),
+    const hud = game.mode === "versus" ? versusHud(game, shown) : hudOf(game)
+    const boss = bossHud(game)
+    if (boss) hud.boss = boss
+    if ("difficulty" in shown) {
+        hud.difficulty = DIFFICULTY_LABELS[shown.difficulty]
     }
     renderer.draw(game, lastAlpha, hud, rules, effects.of(shown))
 }

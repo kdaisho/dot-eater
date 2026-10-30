@@ -19,6 +19,12 @@ import type { Vec2 } from "./vec2"
 export type GameEvent =
     // A player ate a dot on `at` (walking or sliding onto it).
     | { type: "dotEaten"; player: number; at: Vec2 }
+    // An eaten dot grew back on `at` (KDA-269, see regrow.ts).
+    | { type: "dotRegrown"; at: Vec2 }
+    // A Splitter slot, enemy `enemy` (its index in GameState.enemies),
+    // dropped a dot on `at`, the cell it just left (KDA-270, see dropDot
+    // in splitter.ts).
+    | { type: "dotDropped"; enemy: number; at: Vec2 }
     // A player breathed: the breath fired (or struck the boss or the other
     // player) and its cost was paid. A refused breath reports nothing.
     // `at` is the player's cell and `facing` the unit step it breathed
@@ -49,6 +55,18 @@ export type GameEvent =
     // A player's breath finished the boss. Its killing blow reports this
     // only, not a bossHit as well.
     | { type: "bossDefeated"; player: number; at: Vec2 }
+    // The boss (at `at`) started winding up its breath, facing `facing`
+    // (a unit step) at the player it targets (see bossBreath.ts).
+    | { type: "bossWindUp"; at: Vec2; facing: Vec2 }
+    // The boss (at `at`) breathed along `facing`, striking `cells`,
+    // nearest first. The players it hurt report their own hurt (or
+    // playerCaught) after it.
+    | {
+          type: "bossBreathed"
+          at: Vec2
+          facing: Vec2
+          cells: readonly Vec2[]
+      }
     // A player was hurt (see hurtPlayer in game.ts) on `at` (its cell when
     // hit, before the knockback) and lost `damage` health, with some left.
     // A hit that takes its last health reports a playerCaught instead.
