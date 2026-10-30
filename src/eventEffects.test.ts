@@ -60,6 +60,14 @@ describe("effectsForEvent", () => {
         expect(r.shakes).toEqual([])
     })
 
+    it("a faint sparkle where a dot grew back, without a shake", () => {
+        const r = run({ type: "dotRegrown", at: vec2(3, 2) })
+        expect(r.bursts).toEqual([{ kind: "regrow", at: vec2(3, 2) }])
+        expect(r.shakes).toEqual([])
+        // Quieter than a dot's crumbs at most: many dots regrow.
+        expect(BURSTS.regrow.count).toBeLessThanOrEqual(BURSTS.dot.count)
+    })
+
     it("a defeat burst and a hit shake where an enemy was defeated", () => {
         for (const split of [false, true]) {
             const r = run({

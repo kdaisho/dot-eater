@@ -63,6 +63,15 @@ export type BossData = {
 // normally.
 export type LevelRules = {
     fog?: FogRule
+    // Eaten dots grow back (see regrow.ts).
+    regrowDots?: RegrowRule
+}
+
+// rules.regrowDots (KDA-269): an eaten dot grows back on its own cell after
+// `seconds` (positive, in whole tenths like parTime), once the cell is
+// clear of characters.
+export type RegrowRule = {
+    seconds: number
 }
 
 export type LevelData = {
@@ -446,7 +455,7 @@ function bossProblems(
     return problems
 }
 
-const RULE_KEYS: ReadonlySet<string> = new Set(["fog"])
+const RULE_KEYS: ReadonlySet<string> = new Set(["fog", "regrowDots"])
 const FOG_KEYS: ReadonlySet<string> = new Set(["radius"])
 // The smallest fog radius: the renderer's soft edge is 1.5 cells, and a
 // smaller radius would darken the player's own cell.
@@ -471,6 +480,7 @@ function rulesProblems(rules: LevelRules | undefined): string[] {
             )
         }
     }
+    problems.push(...regrowDotsProblems(rules.regrowDots))
     const fog: unknown = rules.fog
     if (fog === undefined) return problems
     if (!isPlainObject(fog)) {
@@ -500,10 +510,36 @@ function rulesProblems(rules: LevelRules | undefined): string[] {
     return problems
 }
 
+// rules.regrowDots, if given: an object with only `seconds`, positive and
+// in whole tenths (the same rule as parTime).
+function regrowDotsProblems(rule: unknown): string[] {
+    if (rule === undefined) return []
+    if (!isPlainObject(rule)) {
+        return [
+            `rules.regrowDots must be an object, got ${JSON.stringify(rule)}`,
+        ]
+    }
+    const problems = Object.keys(rule)
+        .filter((key) => key !== "seconds")
+        .map((key) => `unknown rules.regrowDots setting ${JSON.stringify(key)}`)
+    if (!isParTime(rule.seconds)) {
+        problems.push(
+            `rules.regrowDots.seconds must be a positive number of seconds in whole tenths, got ${String(rule.seconds)}`
+        )
+    }
+    return problems
+}
+
 // A copy of the (already validated) rules, so the parsed level shares no
 // objects with the level data.
 function copyRules(rules: LevelRules | undefined): LevelRules {
-    return rules?.fog ? { fog: { radius: rules.fog.radius } } : {}
+    const copy: LevelRules = rules?.fog
+        ? { fog: { radius: rules.fog.radius } }
+        : {}
+    if (rules?.regrowDots) {
+        copy.regrowDots = { seconds: rules.regrowDots.seconds }
+    }
+    return copy
 }
 
 function checkSpeed(

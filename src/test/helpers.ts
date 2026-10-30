@@ -186,6 +186,7 @@ export function makeState(
             enemies: enemies.map((e) => vec2(e.pos.x, e.pos.y)),
         },
         events: [],
+        regrow: null,
     }
 }
 

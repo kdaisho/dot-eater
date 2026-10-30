@@ -18,6 +18,8 @@ import type { Vec2 } from "./vec2"
 export type GameEvent =
     // A player ate a dot on `at` (walking or sliding onto it).
     | { type: "dotEaten"; player: number; at: Vec2 }
+    // An eaten dot grew back on `at` (KDA-269, see regrow.ts).
+    | { type: "dotRegrown"; at: Vec2 }
     // A player breathed: the breath fired (or struck the boss or the other
     // player) and its cost was paid. A refused breath reports nothing.
     // `at` is the player's cell and `facing` the unit step it breathed

@@ -36,6 +36,9 @@ export function effectsForEvent(
         case "dotEaten":
             particles.burst("dot", event.at)
             return
+        case "dotRegrown":
+            particles.burst("regrow", event.at)
+            return
         case "breathed":
             breathParticles(event, state, particles)
             return

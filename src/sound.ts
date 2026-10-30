@@ -11,7 +11,10 @@ import type { Settings } from "./settings"
 import { breathSfx, SfxId } from "./sfx"
 
 // The effect a game event plays, if any. playerRespawned plays nothing: a
-// versus player coming back makes no sound.
+// versus player coming back makes no sound. Nor does a dot growing back
+// (KDA-269): dots regrow about as often as they are eaten, so a sound for
+// it would echo every dot blip a few seconds later, often off screen; its
+// sparkle is enough.
 export function soundForEvent(event: GameEvent): SfxId | undefined {
     switch (event.type) {
         case "dotEaten":
@@ -35,6 +38,7 @@ export function soundForEvent(event: GameEvent): SfxId | undefined {
         case "gameLost":
             return SfxId.gameOver
         case "playerRespawned":
+        case "dotRegrown":
             return undefined
     }
 }

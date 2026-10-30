@@ -56,6 +56,7 @@ import { hasDots, loopPos, type Cells, type Level } from "./level"
 import { levels } from "./levels"
 import { distanceMap, openNeighbours } from "./path"
 import { DEFAULT_ANIMAL, type AnimalId } from "./roster"
+import { createRegrow, dotGone, tickRegrow, type Regrow } from "./regrow"
 import { createSplitter } from "./splitter"
 import { loseDots, stunned, tickStuns } from "./versus"
 import { samePos, vec2, type Vec2 } from "./vec2"
@@ -102,6 +103,9 @@ export type GameState = {
     // What happened in the latest tick, in order (see events.ts). `step`
     // empties it first.
     events: GameEvent[]
+    // The eaten dots growing back, on a level with rules.regrowDots (see
+    // regrow.ts); null on one without.
+    regrow: Regrow | null
 }
 
 // One player: its character on the board, plus everything else that is its
@@ -258,6 +262,7 @@ export function createGameState(
             enemies: enemySpawns,
         },
         events: [],
+        regrow: createRegrow(level.rules.regrowDots, cells),
     }
 }
 
@@ -507,6 +512,7 @@ function eatDot(state: GameState, who: Player, cell: Vec2): boolean {
     const { cells } = state
     if (cells[cell.y][cell.x] !== Cell.dot) return false
     cells[cell.y][cell.x] = Cell.none
+    dotGone(state, cell)
     who.score += DOT_POINTS
     who.dots++
     gainEnergy(who.breather)
@@ -800,6 +806,10 @@ function wait(character: Glider) {
 // A boss (see boss.ts) moves with the enemies, after the breaths, and keeps
 // out of blocked cells too; a defeated one doesn't move or catch.
 //
+// On a level with rules.regrowDots, eaten dots due back grow back with the
+// timers, on cells no character is on (see regrow.ts), so a player moving
+// onto one this tick eats it.
+//
 // What happened is reported in GameState.events (see events.ts), which is
 // emptied first, so it holds this tick's events only.
 //
@@ -822,6 +832,7 @@ export function step(
     for (const player of players) {
         if (player.invulnerableFor > 0) player.invulnerableFor--
     }
+    tickRegrow(state, dt)
     const from = positions(state)
     let start = tickStarts(state, dt)
     // Where each player came from on its latest move before this tick, for
