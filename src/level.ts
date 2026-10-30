@@ -1,4 +1,4 @@
-import { AiType, Cell, ENEMY_IDS, TICK_RATE } from "./constants"
+import { AiType, Cell, MAX_ENEMIES, TICK_RATE } from "./constants"
 import {
     FREE,
     hasIce,
@@ -288,15 +288,11 @@ export function parseLevel(data: LevelData): Level {
             `map has ${enemyPositions.length} "${ENEMY}" spawns but enemies lists ${data.enemies.length}`
         )
     }
-    // A Splitter takes two enemy slots: its halves after a split need both
-    // (see splitter.ts).
-    const slots = data.enemies.reduce(
-        (n, e) => n + (e.ai === "splitter" ? 2 : 1),
-        0
-    )
-    if (slots > ENEMY_IDS.length) {
+    // A Splitter counts as one: its spare slot (see splitter.ts) is within
+    // MAX_ENEMY_SLOTS however many there are.
+    if (data.enemies.length > MAX_ENEMIES) {
         problems.push(
-            `at most ${ENEMY_IDS.length} enemies are supported (a splitter counts as 2), got ${slots}`
+            `at most ${MAX_ENEMIES} enemies are supported, got ${data.enemies.length}`
         )
     }
     // A level without dots would be won on the first tick.

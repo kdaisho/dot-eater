@@ -1,6 +1,6 @@
 import { Cell } from "./constants"
 import { loopPos, type Cells } from "./level"
-import { allDirections, directions, samePos, vec2, type Vec2 } from "./vec2"
+import { allDirections, directions, vec2, type Vec2 } from "./vec2"
 
 // Steps from one cell to another; Infinity when there is no path.
 export type DistanceMap = number[][]
@@ -32,19 +32,33 @@ export function distanceMap(
     source: Vec2,
     blocked?: Vec2
 ): DistanceMap {
+    const height = cells.length
+    const width = cells[0].length
     const dist: DistanceMap = cells.map((row) => row.map(() => Infinity))
     dist[source.y][source.x] = 0
-    const queue: Vec2[] = [source]
+    // Cells as y * width + x, to search without making a Vec2 per step.
+    const queue = [source.y * width + source.x]
     for (let head = 0; head < queue.length; head++) {
-        const pos = queue[head]
-        const next = dist[pos.y][pos.x] + 1
-        for (const v of openNeighbours(cells, pos)) {
-            if (blocked && samePos(v, blocked)) continue
-            if (dist[v.y][v.x] === Infinity) {
-                dist[v.y][v.x] = next
-                queue.push(v)
+        const x = queue[head] % width
+        const y = (queue[head] - x) / width
+        const next = dist[y][x] + 1
+        for (const d of allDirections) {
+            // One step, wrapping round the edges as loopPos does.
+            const vx = wrap(x + directions[d].x, width)
+            const vy = wrap(y + directions[d].y, height)
+            if (cells[vy][vx] === Cell.wall) continue
+            if (blocked && blocked.x === vx && blocked.y === vy) continue
+            if (dist[vy][vx] === Infinity) {
+                dist[vy][vx] = next
+                queue.push(vy * width + vx)
             }
         }
     }
     return dist
+}
+
+// `n` one step off either end of 0 to `size` - 1 wrapped round to the
+// other end, as loopPos does.
+export function wrap(n: number, size: number): number {
+    return n < 0 ? size - 1 : n >= size ? 0 : n
 }

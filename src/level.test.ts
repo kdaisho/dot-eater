@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vite-plus/test"
-import { AiType, Cell, TICK_RATE } from "./constants"
+import { AiType, Cell, MAX_ENEMIES, TICK_RATE } from "./constants"
 import {
     hasDots,
     LevelError,
@@ -86,6 +86,21 @@ function problemsOf(data: LevelData): readonly string[] {
 // `valid` with its enemy made a patroller walking `route`.
 function patrol(route: readonly CellRef[]): LevelData {
     return { ...valid, enemies: [{ ai: "patroller", route }] }
+}
+
+// `valid` with `count` enemies (MAX_ENEMIES + 1 at most), all of AI `ai`.
+function crowded(count: number, ai: "random" | "splitter" = "random") {
+    const spawns = "E".repeat(count).padEnd(MAX_ENEMIES + 1, ".")
+    return {
+        ...valid,
+        map: [
+            "#######",
+            `#P${spawns.slice(0, 4)}#`,
+            `#${spawns.slice(4)}#`,
+            "#######",
+        ],
+        enemies: Array.from({ length: count }, () => ({ ai })),
+    }
 }
 
 describe("parseLevel", () => {
@@ -306,6 +321,14 @@ describe("parseLevel", () => {
         expect(parseLevel({ ...valid, parTime: 16.4 }).parTime).toBe(16.4)
     })
 
+    it("takes up to MAX_ENEMIES enemies, a Splitter counting as one", () => {
+        expect(problemsOf(crowded(MAX_ENEMIES))).toEqual([])
+        expect(problemsOf(crowded(MAX_ENEMIES, "splitter"))).toEqual([])
+        expect(
+            parseLevel(crowded(MAX_ENEMIES, "splitter")).enemies
+        ).toHaveLength(8)
+    })
+
     it("returns cells that are not shared with other parses", () => {
         const a = parseLevel(valid)
         const b = parseLevel(valid)
@@ -473,52 +496,12 @@ describe("parseLevel", () => {
             ])
         })
 
-        it("more enemies than there are enemy ids", () => {
-            expect(
-                problemsOf({
-                    ...valid,
-                    map: ["#######", "#PEEE.#", "#.EE..#", "#######"],
-                    enemies: [
-                        { ai: "random" },
-                        { ai: "random" },
-                        { ai: "random" },
-                        { ai: "random" },
-                        { ai: "random" },
-                    ],
-                })
-            ).toEqual([
-                "at most 4 enemies are supported (a splitter counts as 2), got 5",
+        it("more than MAX_ENEMIES enemies", () => {
+            expect(problemsOf(crowded(MAX_ENEMIES + 1))).toEqual([
+                "at most 8 enemies are supported, got 9",
             ])
-        })
-
-        it("more enemies than there are enemy ids, a splitter counting as 2", () => {
-            const map = ["#######", "#PEEE.#", "#.E...#", "#######"]
-            expect(
-                problemsOf({
-                    ...valid,
-                    map,
-                    enemies: [
-                        { ai: "random" },
-                        { ai: "splitter" },
-                        { ai: "random" },
-                        { ai: "random" },
-                    ],
-                })
-            ).toEqual([
-                "at most 4 enemies are supported (a splitter counts as 2), got 5",
-            ])
-            expect(
-                problemsOf({
-                    ...valid,
-                    map: ["#######", "#PEEE.#", "#.....#", "#######"],
-                    enemies: [
-                        { ai: "splitter" },
-                        { ai: "random" },
-                        { ai: "splitter" },
-                    ],
-                })
-            ).toEqual([
-                "at most 4 enemies are supported (a splitter counts as 2), got 5",
+            expect(problemsOf(crowded(MAX_ENEMIES + 1, "splitter"))).toEqual([
+                "at most 8 enemies are supported, got 9",
             ])
         })
 
