@@ -214,22 +214,29 @@ describe.each(EACH_MAP)("stage 1 (%s)", (difficulty) => {
         expect(level.name).toBe("Classic")
     })
 
-    it("has one random and one chase enemy at the default speed", () => {
-        expect(level.enemies.map((e) => e.ai)).toEqual([
+    // Wanderers and a chaser first, so Easy's three are the gentlest mix;
+    // the ambusher only from the fourth enemy on.
+    it("brings out wanderers and a chaser first, ambushers later, at the default speed", () => {
+        const ais = level.enemies.map((e) => e.ai)
+        expect(ais.slice(0, 3)).toEqual([
             AiType.random,
             AiType.chase,
+            AiType.random,
         ])
+        expect(ais[3]).toBe(AiType.ambusher)
+        for (const ai of ais) {
+            expect([AiType.random, AiType.chase, AiType.ambusher]).toContain(ai)
+        }
         for (const enemy of level.enemies) {
             expect(enemy.speed).toBeUndefined()
         }
         expect(level.playerSpeed).toBeUndefined()
     })
 
-    it("is bigger than the old 9x9 map, with odd sides", () => {
-        expect(level.width).toBeGreaterThan(9)
-        expect(level.height).toBeGreaterThan(9)
-        expect(level.width % 2).toBe(1)
-        expect(level.height % 2).toBe(1)
+    it("has the size of its map", () => {
+        expect([level.width, level.height]).toEqual(
+            MAP_SIZE[difficulty] === "medium" ? [21, 17] : [29, 21]
+        )
     })
 
     it("has walls mirrored left to right", () => {
@@ -264,7 +271,7 @@ describe.each(EACH_MAP)("stage 1 (%s)", (difficulty) => {
     it("starts the enemies well away from the player", () => {
         const dist = distanceMap(cells, level.playerSpawns[0])
         for (const { pos } of level.enemies) {
-            expect(dist[pos.y][pos.x]).toBeGreaterThanOrEqual(10)
+            expect(dist[pos.y][pos.x]).toBeGreaterThanOrEqual(15)
         }
     })
 })

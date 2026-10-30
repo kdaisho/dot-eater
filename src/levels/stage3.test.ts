@@ -40,7 +40,9 @@ describe.each(EACH_MAP)("stage 3 (%s)", (difficulty) => {
         expect(level.playerSpeed).toBeUndefined()
     })
 
-    it("is stage 1's size", () => {
+    // Stage 1 is remade at two sizes (KDA-273); stage 3 matches it once it
+    // is remade too.
+    it.skipIf(stage3.medium === stage3.large)("is stage 1's size", () => {
         const first = parseLevel(stage1, difficulty)
         expect(level.width).toBe(first.width)
         expect(level.height).toBe(first.height)
