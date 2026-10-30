@@ -13,6 +13,7 @@ import {
     MAX_HEALTH,
     PLAYER_RESPAWN_DELAY,
     PLAYER_SPEED,
+    RESPAWN_BLOCK_GRACE,
     RESPAWN_CLEAR_DISTANCE,
     TICK_RATE,
 } from "./constants"
@@ -54,7 +55,7 @@ import { glidePos, wrapDelta, type Glider } from "./glide"
 import { slideStep, type IceMap } from "./ice"
 import { hasDots, loopPos, type Cells, type Level } from "./level"
 import { levels } from "./levels"
-import { distanceMap } from "./path"
+import { distanceMap, openNeighbours } from "./path"
 import { DEFAULT_ANIMAL, type AnimalId } from "./roster"
 import { createSplitter } from "./splitter"
 import { loseDots, stunned, tickStuns } from "./versus"
@@ -80,8 +81,14 @@ export type GameState = {
     // Timed effects on cells from breaths (see TileEffect in breath.ts).
     tiles: ActiveTile[]
     // One or two players, player 1 first. Each has its own character,
-    // breath, energy, score and tap buffer. Players pass through each other.
+    // breath, energy, score and tap buffer. Players pass through each other
+    // unless playersBump is set.
     players: Player[]
+    // Whether players bump into each other (KDA-262, the Players setting):
+    // a player can't move into another's cell (see playerBlocks). Off,
+    // they pass through each other. With one player it changes nothing.
+    // createGameState leaves it off; flow.ts sets it from the settings.
+    playersBump: boolean
     enemies: Character[]
     // The level's boss (see boss.ts), or null on a level without one. Not
     // an enemy: it has no enemy slot, and breath hooks never see it.
@@ -136,6 +143,11 @@ export type Player = {
     // it waits for the spawn to be clear; see tickPlayersOut), or null if it
     // is out for good. Null while in play.
     respawnIn: number | null
+    // While out and due back, the seconds it has waited because the other
+    // player was on its spawn or moving onto it (when players bump); at
+    // RESPAWN_BLOCK_GRACE it comes back on the nearest free cell instead
+    // (see tickPlayersOut). 0 otherwise.
+    spawnHeldFor: number
     // Seconds left of a versus stun (see stun in versus.ts), 0 when not
     // stunned.
     stunnedFor: number
@@ -238,6 +250,7 @@ export function createGameState(
         floorIce: ice,
         tiles: [],
         players,
+        playersBump: false,
         enemies,
         boss: level.boss ? createBoss(level.boss.pos, level.boss.speed) : null,
         ticks: 0,
@@ -279,6 +292,7 @@ export function newPlayer(character: Character, breath: BreathDef): Player {
         rate: 1,
         out: false,
         respawnIn: null,
+        spawnHeldFor: 0,
         stunnedFor: 0,
         stunImmuneFor: 0,
         health: MAX_HEALTH,
@@ -291,12 +305,13 @@ export function totalScore(state: GameState): number {
     return state.players.reduce((sum, p) => sum + p.score, 0)
 }
 
-// Put `player` back in play on its own spawn, as at the start of a game:
-// ready to move, facing right, nothing buffered, full health. Its score,
-// energy and cooldown are kept. Nobody else is touched.
-export function bringBack(state: GameState, player: Player) {
+// Put `player` back in play on its own spawn (or `at`, see
+// tickPlayersOut), as at the start of a game: ready to move, facing right,
+// nothing buffered, full health. Its score, energy and cooldown are kept.
+// Nobody else is touched.
+export function bringBack(state: GameState, player: Player, at?: Vec2) {
     const index = state.players.indexOf(player)
-    const spawn = state.spawns.players[index]
+    const spawn = at ?? state.spawns.players[index]
     const { character } = player
     character.pos = vec2(spawn.x, spawn.y)
     character.lastPos = vec2(spawn.x, spawn.y)
@@ -307,6 +322,7 @@ export function bringBack(state: GameState, player: Player) {
     player.rate = 1
     player.out = false
     player.respawnIn = null
+    player.spawnHeldFor = 0
     player.stunnedFor = 0
     player.stunImmuneFor = 0
     player.health = MAX_HEALTH
@@ -332,6 +348,7 @@ export function takeOut(player: Player, respawnAfter: number | null) {
     player.rate = 1
     player.out = true
     player.respawnIn = respawnAfter
+    player.spawnHeldFor = 0
     player.stunnedFor = 0
     player.stunImmuneFor = 0
     player.invulnerableFor = 0
@@ -345,27 +362,71 @@ export function outForGood(player: Player): boolean {
 // Count down every out player's wait by `dt` seconds, at the start of a
 // tick, and bring back each one whose wait is over (see bringBack). One
 // that is due waits on (at 0) while its spawn isn't clear: while an enemy
-// or the boss is near it (see spawnClear). It comes back on the first tick
+// or the boss is near it (see clearOfEnemies), or, when players bump, the
+// other player is on it or moving onto it. It comes back on the first tick
 // its spawn is clear, before anyone moves, so it may move on that same
-// tick.
+// tick. Once the other player has held it up for RESPAWN_BLOCK_GRACE, it
+// comes back on the nearest free cell instead (see nearestFreeCell).
 function tickPlayersOut(state: GameState, dt: number) {
     state.players.forEach((player, i) => {
         if (!player.out || player.respawnIn === null) return
         player.respawnIn = Math.max(0, player.respawnIn - dt)
         if (player.respawnIn > EPSILON) return
         player.respawnIn = 0
-        if (spawnClear(state, i)) bringBack(state, player)
+        const spawn = state.spawns.players[i]
+        // Held up by the other player (only when players bump), it comes
+        // back on the nearest free cell instead once it has waited
+        // RESPAWN_BLOCK_GRACE for it, so nobody can camp on its spawn.
+        const camped = playerBlocks(state, player, spawn)
+        if (!camped) {
+            if (clearOfEnemies(state, spawn)) bringBack(state, player)
+            return
+        }
+        player.spawnHeldFor += dt
+        if (player.spawnHeldFor < RESPAWN_BLOCK_GRACE - EPSILON) return
+        const cell = nearestFreeCell(state, player, spawn)
+        if (cell) bringBack(state, player, cell)
     })
 }
 
-// Whether player `index` may come back on its spawn now: no enemy in play
-// (harmless ones aside) and no undefeated boss is drawn within
-// RESPAWN_CLEAR_DISTANCE of it (the boss by its footprint's square), or is
-// in a move that ends on it or next to it. So nothing gliding in can catch
-// it on the tick it is back or the next; checking only for a catch at once
-// let an enemy just out of reach catch it a tick later.
-function spawnClear(state: GameState, index: number): boolean {
-    const spawn = state.spawns.players[index]
+// The nearest cell to `spawn` (breadth-first along open cells, direction
+// order on ties) that `player` may come back on: no other player there
+// (see playerBlocks) and clear of enemies and the boss (see
+// clearOfEnemies). Null if there is none.
+function nearestFreeCell(
+    state: GameState,
+    player: Player,
+    spawn: Vec2
+): Vec2 | null {
+    const seen = new Set([`${spawn.x},${spawn.y}`])
+    const queue = [spawn]
+    for (let head = 0; head < queue.length; head++) {
+        for (const cell of openNeighbours(state.cells, queue[head])) {
+            const key = `${cell.x},${cell.y}`
+            if (seen.has(key)) continue
+            seen.add(key)
+            if (
+                !playerBlocks(state, player, cell) &&
+                clearOfEnemies(state, cell)
+            ) {
+                return cell
+            }
+            queue.push(cell)
+        }
+    }
+    return null
+}
+
+// Whether a player may come back on `spawn` (its spawn, or the cell it
+// comes back on instead; see tickPlayersOut) as far as enemies go: no
+// enemy in play (harmless ones aside) and no undefeated boss is drawn
+// within RESPAWN_CLEAR_DISTANCE of it (the boss by its footprint's square),
+// or is in a move that ends on it or next to it. So nothing gliding in can
+// catch it on the tick it is back or the next; checking only for a catch
+// at once let an enemy just out of reach catch it a tick later. When
+// players bump, the other player standing on the spawn, or moving onto it,
+// holds it up too (see tickPlayersOut), so the two never share a cell.
+function clearOfEnemies(state: GameState, spawn: Vec2): boolean {
     const cols = state.cells[0].length
     const rows = state.cells.length
     // `spawn` relative to `at`, the short way round.
@@ -394,10 +455,11 @@ function spawnClear(state: GameState, index: number): boolean {
 // Try to move `who` (player 1 unless given) one step, eating (and scoring)
 // any dot there and recording it in its eatenAt (cleared when the step eats
 // nothing), and filling its energy meter. The player then faces that way.
-// Returns true if the player moved; false if a wall blocked the step or the
-// step was zero. Enemies never block it (a frozen one included: the player
-// walks over it), and nor do other players: players pass through each
-// other. It doesn't know about sliding: that is up to the caller
+// Returns true if the player moved; false if a wall or, when players bump,
+// another player (see playerBlocks) blocked the step or the step was zero.
+// Enemies never block it (a frozen one included: the player walks over
+// it), and otherwise players pass through each other. It doesn't know about
+// sliding: that is up to the caller
 // (movePlayerTick).
 export function movePlayer(
     state: GameState,
@@ -410,7 +472,7 @@ export function movePlayer(
         state.cells,
         vec2(player.pos.x + step.x, player.pos.y + step.y)
     )
-    if (!playerCanEnter(state, target)) return false
+    if (!playerCanEnter(state, who, target)) return false
     const ate = eatDot(state, who, target)
     player.lastPos = vec2(player.pos.x, player.pos.y)
     player.pos = target
@@ -419,9 +481,10 @@ export function movePlayer(
     return true
 }
 
-// Whether a player may move onto `cell` (on the map): not a wall. Enemies
-// and other players never block it.
-function playerCanEnter(state: GameState, cell: Vec2): boolean {
+// Whether `who` may move onto `cell` (on the map): not a wall, nor, when
+// players bump, another player's cell (see playerBlocks). Enemies never
+// block it.
+function playerCanEnter(state: GameState, who: Player, cell: Vec2): boolean {
     const value = state.cells[cell.y][cell.x]
     switch (value) {
         case Cell.none:
@@ -436,7 +499,7 @@ function playerCanEnter(state: GameState, cell: Vec2): boolean {
             throw new Error(`Unknown cell: ${String(unhandled)}`)
         }
     }
-    return true
+    return !playerBlocks(state, who, cell)
 }
 
 // Eat (and score) the dot on `cell`, if there is one, for `who`, filling
@@ -490,10 +553,10 @@ export function knockBack(
     }
     // Less than halfway out of a cell with no way on past it: back into
     // that cell, rather than gliding on towards whatever shoved it.
-    const blocked = !playerCanEnter(state, target)
+    const blocked = !playerCanEnter(state, player, target)
     const back = blocked && gliding && base === c.lastPos ? c.lastPos : target
     if (gliding && samePos(back, c.lastPos)) {
-        if (!playerCanEnter(state, back)) return false
+        if (!playerCanEnter(state, player, back)) return false
         // Back the way it came, from where it is drawn.
         player.rate = 1
         c.lastPos = vec2(c.pos.x, c.pos.y)
@@ -627,6 +690,34 @@ export function playerVisible(player: Player): boolean {
     return phase % 2 === 0
 }
 
+// Whether, when players bump (GameState.playersBump), another player in play
+// is on `cell` or moving into it (its logical cell, pos): `who` can't go
+// there, as if it were a wall. Only pos counts, not the cell a player is
+// gliding out of, so one player can follow right behind the other. A
+// player out of play never blocks, and enemies and the boss ignore players
+// either way. Players move in order, so of two heading into one cell on a
+// tick player 1 gets there and player 2 is blocked; and two players next to
+// each other can't swap cells, as each is on the cell the other wants. A
+// player blocked by one still to move this tick waits for it first (see
+// defersMove), so following doesn't depend on the player order.
+function playerBlocks(state: GameState, who: Player, cell: Vec2): boolean {
+    return blockingPlayer(state, who, cell) !== null
+}
+
+// The player that blocks `who` from `cell` (see playerBlocks), or null.
+function blockingPlayer(
+    state: GameState,
+    who: Player,
+    cell: Vec2
+): Player | null {
+    if (!state.playersBump) return null
+    return (
+        state.players.find(
+            (p) => p !== who && !p.out && samePos(p.character.pos, cell)
+        ) ?? null
+    )
+}
+
 // Add one tick's progress. Returns true if the character may move this tick.
 // A character already waiting at 1 gains nothing more, so waiting doesn't
 // bank time towards the move after next.
@@ -664,7 +755,12 @@ function wait(character: Glider) {
 // nothing changes after the game ends.
 //
 // Players move in order, player 1 first (so on a dot both step onto in the
-// same tick, player 1 eats it), and pass through each other. Each enemy, and
+// same tick, player 1 eats it), and pass through each other, unless they
+// bump (GameState.playersBump): then a player can't move into the other's
+// cell and waits there as at a wall (see playerBlocks); a player held up
+// only by one still to move this tick moves after it instead (see
+// defersMove), so the one behind follows whichever player is first. Each
+// enemy, and
 // the boss, goes after the nearest player (see nearestTarget and
 // bossTarget).
 //
@@ -730,31 +826,16 @@ export function step(
         vec2(c.lastPos.x, c.lastPos.y)
     )
 
+    // The players still to take their turn this tick, and the moves put off
+    // until the others have moved (see defersMove).
+    const pending = new Set(players)
+    const later: (() => void)[] = []
     players.forEach((player, i) => {
-        // A player out of play ignores its input altogether.
-        if (player.out) return
-        // A stunned player (versus) ignores its input too: it finishes the
-        // glide it is in and, on ice, its slide (PM decision), but makes no
-        // move of its own.
-        if (stunned(player)) {
-            if (advance(player.character, dt * player.rate)) {
-                if (slideTick(state, player)) spend(player.character)
-                else wait(player.character)
-            }
-            return
-        }
-        const move = inputs[i] ?? IDLE
-        if (!isZero(move.pressed)) player.bufferedStep = move.pressed
-        // The rate was taken in tickStarts too, before anyone moved, so its
-        // progress and its drawn path for collisions agree.
-        if (advance(player.character, dt * player.rate)) {
-            if (movePlayerTick(state, player, move.held)) {
-                spend(player.character)
-            } else {
-                wait(player.character)
-            }
-        }
+        const rest = playerTurn(state, player, inputs[i] ?? IDLE, dt, pending)
+        if (rest) later.push(rest)
+        else pending.delete(player)
     })
+    for (const rest of later) rest()
     let breathed = false
     players.forEach((player, i) => {
         // A player stunned by an earlier player's breath on this same tick
@@ -904,6 +985,82 @@ export function settle(state: GameState, dt: number): boolean {
     return state.players.every((p) => p.character.moveProgress >= 1 - EPSILON)
 }
 
+// `player`'s turn to move this tick (see step), with `move` its input and
+// `pending` the players still to take theirs (itself included). Returns the
+// rest of the turn when its move is put off until the others have moved
+// (see defersMove), for the caller to run then; null once it is done.
+//
+// A player out of play ignores its input altogether. A stunned one (versus)
+// ignores it too: it finishes the glide it is in and, on ice, its slide
+// (PM decision), but makes no move of its own.
+function playerTurn(
+    state: GameState,
+    player: Player,
+    move: MoveInput,
+    dt: number,
+    pending: ReadonlySet<Player>
+): (() => void) | null {
+    if (player.out) return null
+    const { character } = player
+    const isStunned = stunned(player)
+    if (!isStunned && !isZero(move.pressed)) player.bufferedStep = move.pressed
+    // The rate was taken in tickStarts too, before anyone moved, so its
+    // progress and its drawn path for collisions agree.
+    if (!advance(character, dt * player.rate)) return null
+    const held = isStunned ? null : move.held
+    const rest = () => {
+        const moved = held
+            ? movePlayerTick(state, player, held)
+            : slideTick(state, player)
+        if (moved) spend(character)
+        else wait(character)
+    }
+    if (defersMove(state, player, held, pending)) return rest
+    rest()
+    return null
+}
+
+// Whether `player`'s move this tick waits until the other players have
+// moved: the first way it would go (its slide step, else the buffered tap,
+// then the held directions, newest first; see movePlayerTick) that isn't a
+// wall is blocked only by a player still to move this tick (in `pending`;
+// see playerBlocks), which may yet move out of the way. So
+// a player right behind the other follows it whichever player is first,
+// instead of turning off down an older held direction or waiting a tick.
+// Put off, nothing is tried or used up (the tap buffer stays); afterwards
+// it moves as usual. `held` is null for a stunned player, which only
+// slides.
+function defersMove(
+    state: GameState,
+    player: Player,
+    held: readonly Vec2[] | null,
+    pending: ReadonlySet<Player>
+): boolean {
+    if (!state.playersBump) return false
+    const { cells } = state
+    const { character } = player
+    // As slideTick sees it: a player walking on ice never slides.
+    const slide = player.breather.breath.walksOnIce
+        ? null
+        : slideStep(cells, state.ice, character.pos, character.lastPos)
+    const ways = [
+        ...(slide ? [slide] : []),
+        ...(held ? [player.bufferedStep, ...held] : []),
+    ]
+    for (const way of ways) {
+        if (isZero(way)) continue
+        const cell = loopPos(
+            cells,
+            vec2(character.pos.x + way.x, character.pos.y + way.y)
+        )
+        if (cells[cell.y][cell.x] === Cell.wall) continue
+        const blocker = blockingPlayer(state, player, cell)
+        if (!blocker) return false
+        if (pending.has(blocker)) return true
+    }
+    return false
+}
+
 // A player's move opportunity: try the buffered direction first, then each
 // held direction, newest first, until one is open. The buffer is cleared
 // either way, so it never outlives one opportunity. Returns true if the
@@ -917,8 +1074,9 @@ export function settle(state: GameState, dt: number): boolean {
 // While sliding, the move is the slide step whatever the input. A slide step
 // isn't the player's opportunity, so the buffer is left alone: a tap made
 // during a slide is used at the first opportunity after it ends (a newer tap
-// replaces it, as always). A player whose breath walks on ice never slides
-// (see slideTick).
+// replaces it, as always). Another player ahead ends a slide as a wall
+// would when players bump (see playerBlocks), so the player is then free to
+// move. A player whose breath walks on ice never slides (see slideTick).
 function movePlayerTick(
     state: GameState,
     player: Player,
@@ -939,10 +1097,11 @@ function movePlayerTick(
 }
 
 // Player's slide step, if it is sliding (see movePlayerTick): whether it
-// moved, or null if it isn't sliding, so it is free to make a move of its
-// own. Enemies don't end a slide, but the floor under one may: a frozen
-// enemy on level ice is slid over, while one in breath ice stands on floor
-// (breath ice never forms under a character), so a slide ends on its cell. A
+// moved, or null if it isn't sliding (or, when players bump, another
+// player ahead ended the slide), so it is free to make a move of its own.
+// Enemies don't end a slide, but the floor under one may: a frozen enemy on
+// level ice is slid over, while one in breath ice stands on floor (breath
+// ice never forms under a character), so a slide ends on its cell. A
 // player whose breath walks on ice (BreathDef.walksOnIce) never slides.
 function slideTick(state: GameState, player: Player): boolean | null {
     const { cells } = state
@@ -950,6 +1109,8 @@ function slideTick(state: GameState, player: Player): boolean | null {
     if (player.breather.breath.walksOnIce) return null
     const slide = slideStep(cells, state.ice, character.pos, character.lastPos)
     if (!slide) return null
+    const ahead = vec2(character.pos.x + slide.x, character.pos.y + slide.y)
+    if (playerBlocks(state, player, loopPos(cells, ahead))) return null
     return movePlayer(state, slide, player)
 }
 
