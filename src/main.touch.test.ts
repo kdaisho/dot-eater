@@ -341,6 +341,24 @@ describe("main on a touch screen", () => {
         pointer(play, "pointerup", 60, 100)
     })
 
+    // Regression (PR #79 review): with the page in the background and no
+    // pointercancel, the drag's direction stayed held.
+    it("lets go of the drag when the window loses focus", () => {
+        const play = el("#play")
+        pointer(play, "pointerdown", 100, 100, 5)
+        pointer(play, "pointermove", 140, 100, 5)
+        vi.advanceTimersByTime(FRAMES_MS)
+        dispatchEvent(new Event("blur"))
+        vi.advanceTimersByTime(FRAMES_MS)
+        expect(screen()).toBe("pause")
+        tap("#overlay li[data-index='0']")
+        expect(screen()).toBe("playing")
+        // The finger's lift never came, yet nothing is held.
+        const from = vi.mocked(step).mock.calls.length
+        vi.advanceTimersByTime(FRAMES_MS)
+        expect(moves(from).at(-1)?.held).toEqual([])
+    })
+
     it("picks an end screen's item once its confirm delay is over", () => {
         nextOutcome = "dead"
         vi.advanceTimersByTime(FRAMES_MS)

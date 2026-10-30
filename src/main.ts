@@ -138,7 +138,9 @@ if (!(canvas instanceof HTMLCanvasElement)) throw new Error("No #game canvas")
 // setting is on (applyDpad, live as the setting changes).
 const playArea = document.getElementById("play") ?? canvas
 const touchControls = createTouchControls()
-const touchSource = new TouchSource(playArea)
+// Losing focus or hiding the page lets go of the drag, since the finger's
+// lift may never come.
+const touchSource = new TouchSource(playArea, { view: window, doc: document })
 let dpadShown = false
 setControls(document, { touch, dpad: false, playing: false })
 

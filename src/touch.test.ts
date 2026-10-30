@@ -393,6 +393,43 @@ describe("TouchSource", () => {
         expect(held()).toEqual([])
     })
 
+    // Regression (PR #79 review): a page sent to the background without a
+    // pointercancel kept the drag's direction held.
+    describe("when the page loses focus or is hidden", () => {
+        let view: EventTarget
+        let doc: EventTarget & { hidden: boolean }
+
+        beforeEach(() => {
+            source.detach()
+            view = new EventTarget()
+            doc = Object.assign(new EventTarget(), { hidden: false })
+            source = new TouchSource(target, { view, doc })
+            source.attach(input)
+        })
+
+        it("lets go on the window's blur, and forgets the finger", () => {
+            down(0, 0)
+            move(40, 0)
+            move(40, -40)
+            view.dispatchEvent(new Event("blur"))
+            expect(held()).toEqual([])
+            // Its lift never came: the next finger steers at once.
+            down(100, 100, 2)
+            move(100, 140, 2)
+            expect(held()).toEqual(["down"])
+        })
+
+        it("lets go when the page is hidden, not when it shows", () => {
+            down(0, 0)
+            move(40, 0)
+            doc.dispatchEvent(new Event("visibilitychange"))
+            expect(held()).toEqual(["right"])
+            doc.hidden = true
+            doc.dispatchEvent(new Event("visibilitychange"))
+            expect(held()).toEqual([])
+        })
+    })
+
     describe("with the keyboard", () => {
         const keys = new EventTarget()
         beforeEach(() =>

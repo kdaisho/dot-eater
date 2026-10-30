@@ -41,9 +41,10 @@ import type {
 //
 // A direction pressed by any other control (a key, a pad, the D-pad) drops
 // the drag's directions (PlayerInput.latch), so the newest input wins; the
-// finger then has to drag SWIPE_DISTANCE again to steer. It has no DOM
-// access beyond the injected event target, so tests drive it with plain
-// events.
+// finger then has to drag SWIPE_DISTANCE again to steer. The window losing
+// focus or the page being hidden forgets every finger, since their lifts
+// may never come. It has no DOM access beyond the injected event targets,
+// so tests drive it with plain events.
 
 // How far (CSS pixels) a finger must drag before it steers, or steers
 // another way.
@@ -108,6 +109,10 @@ export type TouchOptions = {
     // Pointer types that count; mouse is left out so a desktop click on the
     // board doesn't steer.
     pointerTypes?: readonly string[]
+    // The window, whose blur forgets every finger.
+    view?: EventTarget
+    // The document, whose visibilitychange to hidden forgets every finger.
+    doc?: EventTarget & { hidden?: boolean }
 }
 
 const DRAG = "touch:drag"
@@ -121,12 +126,16 @@ export class TouchSource implements InputSource {
     private direction: DirectionAction | undefined
     private fallback: DirectionAction | undefined
     private readonly pointerTypes: readonly string[]
+    private readonly view: EventTarget | undefined
+    private readonly doc: (EventTarget & { hidden?: boolean }) | undefined
 
     constructor(
         private readonly target: EventTarget,
         options: TouchOptions = {}
     ) {
         this.pointerTypes = options.pointerTypes ?? ["touch", "pen"]
+        this.view = options.view
+        this.doc = options.doc
     }
 
     attach(input: InputState): void {
@@ -139,6 +148,8 @@ export class TouchSource implements InputSource {
         this.target.addEventListener("pointermove", this.onMove)
         this.target.addEventListener("pointerup", this.onUp)
         this.target.addEventListener("pointercancel", this.onCancel)
+        this.view?.addEventListener("blur", this.forget)
+        this.doc?.addEventListener("visibilitychange", this.onVisibility)
     }
 
     detach(): void {
@@ -148,6 +159,8 @@ export class TouchSource implements InputSource {
         this.target.removeEventListener("pointermove", this.onMove)
         this.target.removeEventListener("pointerup", this.onUp)
         this.target.removeEventListener("pointercancel", this.onCancel)
+        this.view?.removeEventListener("blur", this.forget)
+        this.doc?.removeEventListener("visibilitychange", this.onVisibility)
         this.input = undefined
     }
 
@@ -172,6 +185,10 @@ export class TouchSource implements InputSource {
         this.release()
         this.fingers.clear()
         this.steering = undefined
+    }
+
+    private readonly onVisibility = () => {
+        if (this.doc?.hidden) this.forget()
     }
 
     private player(): PlayerInput | undefined {
