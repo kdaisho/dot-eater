@@ -31,12 +31,17 @@ import type {
 // held way, however long the drag has been, and a wobble across the way
 // held is forgotten once the finger moves on.
 //
-// The newest finger on the board steers: another finger touching down
-// takes over (the first one's direction is let go of). A direction pressed
-// by any other control (a key, a pad, the D-pad) drops the drag's
-// directions (PlayerInput.latch), so the newest input wins; the finger then
-// has to drag SWIPE_DISTANCE again to steer. It has no DOM access beyond
-// the injected event target, so tests drive it with plain events.
+// One finger steers at a time. Another finger on the board takes over only
+// once it has dragged SWIPE_DISTANCE, so a stray tap (a thumb that misses a
+// button) changes nothing. When the steering finger lifts while an older
+// one is still down, that one steers again from where it is now, holding
+// nothing until it drags SWIPE_DISTANCE, so the player doesn't jump.
+//
+// A direction pressed by any other control (a key, a pad, the D-pad) drops
+// the drag's directions (PlayerInput.latch), so the newest input wins; the
+// finger then has to drag SWIPE_DISTANCE again to steer. It has no DOM
+// access beyond the injected event target, so tests drive it with plain
+// events.
 
 // How far (CSS pixels) a finger must drag before it steers, or steers
 // another way.
@@ -54,6 +59,27 @@ export function swipeDirection(
     return dy < 0 ? "up" : "down"
 }
 
+const OPPOSITE: Record<DirectionAction, DirectionAction> = {
+    up: "down",
+    down: "up",
+    left: "right",
+    right: "left",
+}
+
+// The directions a drag holds after turning `turned`, given the way it held
+// (`direction`) and that one's fallback: the turn, and as its fallback the
+// way it held, unless that is the turn's opposite (a reversal).
+export function dragHeld(
+    direction: DirectionAction | undefined,
+    fallback: DirectionAction | undefined,
+    turned: DirectionAction
+): { direction: DirectionAction; fallback?: DirectionAction } {
+    void fallback
+    const kept =
+        direction && direction !== OPPOSITE[turned] ? direction : undefined
+    return kept ? { direction: turned, fallback: kept } : { direction: turned }
+}
+
 // The parts of a PointerEvent the source reads.
 type Pointer = {
     pointerId: number
@@ -62,26 +88,14 @@ type Pointer = {
     clientY: number
 }
 
-// The finger steering on the play area.
-type Drag = {
-    pointerId: number
+// A finger on the play area.
+type Finger = {
     // Where the distance is measured from (see the top of the file).
     anchorX: number
     anchorY: number
-    // Where the finger last was.
+    // Where it last was.
     x: number
     y: number
-    // The direction it holds, if any, and the one it held before the latest
-    // turn, still held behind it as a fallback, if any.
-    direction?: DirectionAction | undefined
-    fallback?: DirectionAction | undefined
-}
-
-const OPPOSITE: Record<DirectionAction, DirectionAction> = {
-    up: "down",
-    down: "up",
-    left: "right",
-    right: "left",
 }
 
 export type TouchOptions = {
@@ -94,7 +108,12 @@ const DRAG = "touch:drag"
 
 export class TouchSource implements InputSource {
     private input: InputState | undefined
-    private drag: Drag | undefined
+    // The fingers on the board, oldest first.
+    private readonly fingers = new Map<number, Finger>()
+    // The one steering, if any, and what it holds.
+    private steering: number | undefined
+    private direction: DirectionAction | undefined
+    private fallback: DirectionAction | undefined
     private readonly pointerTypes: readonly string[]
 
     constructor(
@@ -118,8 +137,7 @@ export class TouchSource implements InputSource {
 
     detach(): void {
         if (!this.input) return
-        this.release()
-        this.drag = undefined
+        this.forget()
         this.target.removeEventListener("pointerdown", this.onDown)
         this.target.removeEventListener("pointermove", this.onMove)
         this.target.removeEventListener("pointerup", this.onUp)
@@ -131,15 +149,23 @@ export class TouchSource implements InputSource {
     // stops. A finger still down steers again once it drags SWIPE_DISTANCE
     // from where it is now.
     release(): void {
-        const drag = this.drag
-        if (!drag) return
-        for (const held of [drag.direction, drag.fallback]) {
+        for (const held of [this.direction, this.fallback]) {
             if (held) this.player()?.release(held, DRAG)
         }
-        drag.direction = undefined
-        drag.fallback = undefined
-        drag.anchorX = drag.x
-        drag.anchorY = drag.y
+        this.direction = undefined
+        this.fallback = undefined
+        const finger =
+            this.steering === undefined
+                ? undefined
+                : this.fingers.get(this.steering)
+        if (finger) reanchor(finger)
+    }
+
+    // Let go, and forget every finger on the board.
+    private readonly forget = () => {
+        this.release()
+        this.fingers.clear()
+        this.steering = undefined
     }
 
     private player(): PlayerInput | undefined {
@@ -157,85 +183,101 @@ export class TouchSource implements InputSource {
         return e as Pointer
     }
 
-    // The drag of the finger an event is for, if that finger steers.
-    private dragOf(p: Pointer | undefined): Drag | undefined {
-        return p && this.drag?.pointerId === p.pointerId ? this.drag : undefined
-    }
-
     private readonly onDown = (event: Event) => {
         const p = this.pointer(event)
         if (!p || !this.input) return
         // Keep the browser from turning the touch into a scroll, a zoom or
         // a mouse click.
         event.preventDefault()
-        // The newest finger steers.
-        this.lift()
-        this.drag = {
-            pointerId: p.pointerId,
+        // A pointer id seen again: its lift was missed.
+        if (this.fingers.has(p.pointerId)) this.lift(p.pointerId)
+        this.fingers.set(p.pointerId, {
             anchorX: p.clientX,
             anchorY: p.clientY,
             x: p.clientX,
             y: p.clientY,
-        }
+        })
+        // The first finger down steers; a later one only once it drags.
+        this.steering ??= p.pointerId
     }
 
     private readonly onMove = (event: Event) => {
         const p = this.pointer(event)
-        const drag = this.dragOf(p)
-        if (!p || !drag) return
-        drag.x = p.clientX
-        drag.y = p.clientY
-        const dx = drag.x - drag.anchorX
-        const dy = drag.y - drag.anchorY
+        const finger = p && this.fingers.get(p.pointerId)
+        if (!p || !finger) return
+        finger.x = p.clientX
+        finger.y = p.clientY
+        const dx = finger.x - finger.anchorX
+        const dy = finger.y - finger.anchorY
+        if (p.pointerId !== this.steering) {
+            // Another finger takes over once it drags.
+            const direction = swipeDirection(dx, dy)
+            if (!direction) return
+            this.release()
+            this.steering = p.pointerId
+            reanchor(finger)
+            this.turn(direction)
+            return
+        }
         // Moving on the way held: the anchor keeps up.
         const going = dx !== 0 || dy !== 0 ? swipeDirection(dx, dy, 0) : null
-        if (drag.direction && going === drag.direction) {
-            drag.anchorX = drag.x
-            drag.anchorY = drag.y
+        if (this.direction && going === this.direction) {
+            reanchor(finger)
             return
         }
         const direction = swipeDirection(dx, dy)
         if (!direction) return
-        drag.anchorX = drag.x
-        drag.anchorY = drag.y
-        this.turn(drag, direction)
-    }
-
-    // Steer `drag` the new way `direction`, keeping the way it held as the
-    // fallback unless that is a reversal (see the top of the file).
-    private turn(drag: Drag, direction: DirectionAction) {
-        const player = this.player()
-        const previous = drag.direction
-        const fallback =
-            previous && previous !== OPPOSITE[direction] ? previous : undefined
-        // Let go of the rest, the new direction included, so pressing it
-        // is a fresh press edge (it may have been the old fallback).
-        for (const held of [drag.fallback, previous]) {
-            if (held && held !== fallback) player?.release(held, DRAG)
-        }
-        drag.direction = direction
-        drag.fallback = fallback
-        player?.press(direction, DRAG)
+        reanchor(finger)
+        this.turn(direction)
     }
 
     private readonly onUp = (event: Event) => {
         const p = this.pointer(event)
-        if (!this.dragOf(p)) return
+        if (!p || !this.fingers.has(p.pointerId)) return
         // A flick whose movement only shows on the lift still presses (and
         // so moves a cell, like a key tap).
         this.onMove(event)
-        this.lift()
+        this.lift(p.pointerId)
     }
 
     private readonly onCancel = (event: Event) => {
-        if (this.dragOf(this.pointer(event))) this.lift()
+        const p = this.pointer(event)
+        if (p) this.lift(p.pointerId)
     }
 
-    // The steering finger is gone: let go of its direction.
-    private lift() {
-        this.release()
-        this.drag = undefined
+    // Steer the new way `direction` (see dragHeld).
+    private turn(direction: DirectionAction) {
+        const player = this.player()
+        const next = dragHeld(this.direction, this.fallback, direction)
+        // Let go of the rest, the new direction included, so pressing it
+        // is a fresh press edge (it may have been the old fallback).
+        for (const held of [this.fallback, this.direction]) {
+            if (held && held !== next.fallback) player?.release(held, DRAG)
+        }
+        this.direction = next.direction
+        this.fallback = next.fallback
+        player?.press(direction, DRAG)
     }
+
+    // A finger is gone. If it steered, let go of what it held and give the
+    // steering back to the newest finger left, from where it is now.
+    private lift(pointerId: number) {
+        if (!this.fingers.delete(pointerId)) return
+        if (pointerId !== this.steering) return
+        this.release()
+        this.steering = [...this.fingers.keys()].at(-1)
+        const finger =
+            this.steering === undefined
+                ? undefined
+                : this.fingers.get(this.steering)
+        if (finger) reanchor(finger)
+    }
+}
+
+// Measure a finger's distance from where it is now.
+function reanchor(finger: Finger) {
+    finger.anchorX = finger.x
+    finger.anchorY = finger.y
 }
 
 // Whether the device has a touch screen, so the touch-only buttons (pause,

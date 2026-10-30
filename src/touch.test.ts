@@ -234,22 +234,73 @@ describe("TouchSource", () => {
         }
     })
 
-    it("lets the newest finger on the board steer", () => {
-        down(0, 0, 1)
-        move(40, 0, 1)
-        // A second finger takes over: the first one's direction goes...
-        down(300, 300, 2)
-        expect(held()).toEqual([])
-        // ...and the first one's moves count no more.
-        move(40, 80, 1)
-        expect(held()).toEqual([])
-        move(300, 340, 2)
-        expect(held()).toEqual(["down"])
-        // Lifting the first one changes nothing; lifting the second stops.
-        up(40, 80, 1)
-        expect(held()).toEqual(["down"])
-        up(300, 340, 2)
-        expect(held()).toEqual([])
+    describe("with two fingers on the board", () => {
+        // Regression (PR #79 review): a thumb that missed Punch and tapped
+        // the board stopped the player, and the steering finger was dead
+        // until it lifted.
+        it("ignores a stray tap: the steering finger keeps steering", () => {
+            down(100, 100, 1)
+            move(140, 100, 1)
+            down(300, 700, 2)
+            expect(held()).toEqual(["right"])
+            up(300, 700, 2)
+            expect(held()).toEqual(["right"])
+            // Finger 1 still steers, turns included.
+            move(200, 100, 1)
+            move(200, 40, 1)
+            expect(p1().heldSteps()[0]).toEqual(vec2(0, -1))
+        })
+
+        it("lets another finger take over once it drags SWIPE_DISTANCE", () => {
+            down(0, 0, 1)
+            move(40, 0, 1)
+            down(300, 300, 2)
+            move(300, 300 + SWIPE_DISTANCE - 1, 2)
+            expect(held()).toEqual(["right"])
+            move(300, 300 + SWIPE_DISTANCE, 2)
+            // Down alone: the first finger's directions are let go of...
+            expect(p1().heldSteps()).toEqual([vec2(0, 1)])
+            // ...and its small moves don't steer.
+            move(50, 0, 1)
+            expect(held()).toEqual(["down"])
+        })
+
+        it("gives the steering back to the older finger on the lift, from where it is", () => {
+            down(0, 0, 1)
+            move(40, 0, 1)
+            down(300, 300, 2)
+            move(300, 340, 2)
+            // Finger 1 wandered a little meanwhile (not enough to steer).
+            move(40, 20, 1)
+            expect(held()).toEqual(["down"])
+            up(300, 340, 2)
+            // Nothing held: no jump to where finger 1 went.
+            expect(held()).toEqual([])
+            // Measured from where it is now: 20 px more down isn't enough.
+            move(40, 40, 1)
+            expect(held()).toEqual([])
+            move(40 - SWIPE_DISTANCE, 20, 1)
+            expect(held()).toEqual(["left"])
+            up(40 - SWIPE_DISTANCE, 20, 1)
+            expect(held()).toEqual([])
+        })
+
+        it("lets the older finger take back over by dragging", () => {
+            down(0, 0, 1)
+            move(40, 0, 1)
+            down(300, 300, 2)
+            move(300, 340, 2)
+            move(40, -SWIPE_DISTANCE, 1)
+            expect(p1().heldSteps()).toEqual([vec2(0, -1)])
+        })
+
+        it("takes the older finger back when the newer one lifts first without steering", () => {
+            down(0, 0, 1)
+            down(300, 300, 2)
+            up(300, 300, 2)
+            move(40, 0, 1)
+            expect(held()).toEqual(["right"])
+        })
     })
 
     it("drives player 1 only", () => {
