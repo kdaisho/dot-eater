@@ -651,6 +651,53 @@ describe("createRenderer", () => {
             expect(texts()).toEqual(["🐉", "👺", "❄️"])
         })
 
+        // Regression (KDA-260): a player that walked onto a frozen enemy was
+        // hidden under its disc, sprite and badge.
+        it("draws a held enemy under the players, the others over them", () => {
+            const frozen = makeEnemy(2, 1)
+            const moving = makeEnemy(2, 1, AiType.chase)
+            const state = makeState(
+                [
+                    [1, 1, 1, 1, 1],
+                    [1, 0, 0, 0, 1],
+                    [1, 1, 1, 1, 1],
+                ],
+                [
+                    { x: 2, y: 1 },
+                    { x: 2, y: 1 },
+                ],
+                [moving, frozen]
+            )
+            addStatus(
+                frozen,
+                {
+                    name: "test.frozen",
+                    holds: true,
+                    look: { color: "blue", emoji: "🧊" },
+                },
+                1
+            )
+            const { renderer, calls, texts } = setup()
+            renderer.draw(state, 0)
+            // The frozen enemy and its badge, both players with their
+            // markers, then the moving enemy.
+            expect(texts().filter((t) => t !== "1" && t !== "2")).toEqual([
+                "👺",
+                "🧊",
+                "🐉",
+                "🐉",
+                "👹",
+            ])
+            const disc = calls.findIndex(
+                (c) => c.name === "fill" && c.fillStyle === "blue"
+            )
+            const player = calls.findIndex(
+                (c) => c.name === "fillText" && c.args[0] === "🐉"
+            )
+            expect(disc).toBeGreaterThanOrEqual(0)
+            expect(disc).toBeLessThan(player)
+        })
+
         // Regression: the frame alpha moved a held enemy on between ticks,
         // then the next tick drew it back where it was held.
         it("draws a held enemy where it is held, whatever the frame alpha", () => {

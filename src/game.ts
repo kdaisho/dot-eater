@@ -470,10 +470,11 @@ function clearOfEnemies(state: GameState, spawn: Vec2): boolean {
 // Try to move `who` (player 1 unless given) one step, eating (and scoring)
 // any dot there and recording it in its eatenAt (cleared when the step eats
 // nothing), and filling its energy meter. The player then faces that way.
-// Returns true if the player moved; false if a wall, a solid enemy (see
-// EnemyStatus) or, when players bump, another player (see playerBlocks)
-// blocked the step or the step was zero. Otherwise players pass through
-// each other. It doesn't know about sliding: that is up to the caller
+// Returns true if the player moved; false if a wall or, when players bump,
+// another player (see playerBlocks) blocked the step or the step was zero.
+// Enemies never block it (a frozen one included: the player walks over
+// it), and otherwise players pass through each other. It doesn't know about
+// sliding: that is up to the caller
 // (movePlayerTick).
 export function movePlayer(
     state: GameState,
@@ -503,7 +504,6 @@ export function movePlayer(
             throw new Error(`Unknown cell: ${String(unhandled)}`)
         }
     }
-    if (solidAt(state, target)) return false
     if (playerBlocks(state, who, target)) return false
     if (value === Cell.dot) {
         cells[target.y][target.x] = Cell.none
@@ -522,14 +522,6 @@ export function movePlayer(
     who.breather.facing = vec2(step.x, step.y)
     who.eatenAt = ate ? vec2(target.x, target.y) : null
     return true
-}
-
-// Whether an enemy in play with a solid status (see EnemyStatus) stands on
-// `cell`: the player can't go there, as if it were a wall.
-function solidAt(state: GameState, cell: Vec2): boolean {
-    return state.enemies.some(
-        (e) => inPlay(e) && hasStatus(e, "solid") && samePos(e.pos, cell)
-    )
 }
 
 // Whether, when players bump (GameState.playersBump), another player in play
@@ -859,8 +851,8 @@ function playerTurn(
 // Whether `player`'s move this tick waits until the other players have
 // moved: the first way it would go (its slide step, else the buffered tap,
 // then the held directions, newest first; see movePlayerTick) that isn't a
-// wall or a solid enemy is blocked only by a player still to move this tick
-// (in `pending`; see playerBlocks), which may yet move out of the way. So
+// wall is blocked only by a player still to move this tick (in `pending`;
+// see playerBlocks), which may yet move out of the way. So
 // a player right behind the other follows it whichever player is first,
 // instead of turning off down an older held direction or waiting a tick.
 // Put off, nothing is tried or used up (the tap buffer stays); afterwards
@@ -889,9 +881,7 @@ function defersMove(
             cells,
             vec2(character.pos.x + way.x, character.pos.y + way.y)
         )
-        if (cells[cell.y][cell.x] === Cell.wall || solidAt(state, cell)) {
-            continue
-        }
+        if (cells[cell.y][cell.x] === Cell.wall) continue
         const blocker = blockingPlayer(state, player, cell)
         if (!blocker) return false
         if (pending.has(blocker)) return true
@@ -912,10 +902,9 @@ function defersMove(
 // While sliding, the move is the slide step whatever the input. A slide step
 // isn't the player's opportunity, so the buffer is left alone: a tap made
 // during a slide is used at the first opportunity after it ends (a newer tap
-// replaces it, as always). A solid enemy ahead ends a slide as a wall would,
-// so the player is then free to move, and so does another player ahead when
-// players bump (see playerBlocks). A player whose breath walks on ice
-// never slides (see slideTick).
+// replaces it, as always). Another player ahead ends a slide as a wall
+// would when players bump (see playerBlocks), so the player is then free to
+// move. A player whose breath walks on ice never slides (see slideTick).
 function movePlayerTick(
     state: GameState,
     player: Player,
@@ -936,10 +925,12 @@ function movePlayerTick(
 }
 
 // Player's slide step, if it is sliding (see movePlayerTick): whether it
-// moved, or null if it isn't sliding (or a solid enemy or, when players
-// bump, another player ahead ended the slide), so it is free to make a move
-// of its own. A player whose breath walks on ice (BreathDef.walksOnIce)
-// never slides.
+// moved, or null if it isn't sliding (or, when players bump, another
+// player ahead ended the slide), so it is free to make a move of its own.
+// Enemies don't end a slide, but the floor under one may: a frozen enemy on
+// level ice is slid over, while one in breath ice stands on floor (breath
+// ice never forms under a character), so a slide ends on its cell. A
+// player whose breath walks on ice (BreathDef.walksOnIce) never slides.
 function slideTick(state: GameState, player: Player): boolean | null {
     const { cells } = state
     const { character } = player
@@ -947,7 +938,6 @@ function slideTick(state: GameState, player: Player): boolean | null {
     const slide = slideStep(cells, state.ice, character.pos, character.lastPos)
     if (!slide) return null
     const ahead = vec2(character.pos.x + slide.x, character.pos.y + slide.y)
-    if (solidAt(state, loopPos(cells, ahead))) return null
     if (playerBlocks(state, player, loopPos(cells, ahead))) return null
     return movePlayer(state, slide, player)
 }

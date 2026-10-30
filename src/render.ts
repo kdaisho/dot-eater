@@ -8,6 +8,7 @@ import {
     type EnergyHud,
     type Look,
 } from "./breath"
+import type { Character } from "./character"
 import { AiType, Cell, CharacterId, SPRITE_SCALE } from "./constants"
 import {
     fogDistance,
@@ -669,8 +670,9 @@ function drawCharacters(
 ) {
     ctx.textAlign = "center"
     ctx.textBaseline = "middle"
-    // Later characters are drawn on top of earlier ones: the players (player
-    // 1 first), then the enemies. In fog, enemies outside the light are
+    // Later characters are drawn on top of earlier ones: the held enemies
+    // (e.g. frozen, which players walk onto), the players (player 1 first),
+    // then the other enemies. In fog, enemies outside the light are
     // hidden; the players are always in it. A defeated enemy is hidden until
     // it blinks before coming back (enemyVisible). Statuses are drawn by
     // their Look: the colour as a disc behind the sprite, the emoji as a
@@ -683,8 +685,19 @@ function drawCharacters(
     // `arrows`, each player who could breathe also gets its facing arrow (see
     // drawArrow).
     const marked = state.players.length > 1
+    const enemySprite = (enemy: Character) => ({
+        character: enemy,
+        sprite: ENEMY_SPRITES[enemy.ai],
+        rate: 1,
+        marker: null,
+        badge: null,
+        arrow: null,
+    })
+    const held = state.enemies.filter((e) => hasStatus(e, "holds"))
+    const free = state.enemies.filter((e) => !hasStatus(e, "holds"))
     // A player out of play (see takeOut in game.ts) isn't drawn.
     const sprites = [
+        ...held.map(enemySprite),
         ...state.players.flatMap((player, i) =>
             player.out
                 ? []
@@ -704,14 +717,7 @@ function drawCharacters(
                       },
                   ]
         ),
-        ...state.enemies.map((enemy) => ({
-            character: enemy,
-            sprite: ENEMY_SPRITES[enemy.ai],
-            rate: 1,
-            marker: null,
-            badge: null,
-            arrow: null,
-        })),
+        ...free.map(enemySprite),
     ]
     for (const { character, sprite, rate, marker, badge, arrow } of sprites) {
         const isPlayer = character.id === CharacterId.player

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vite-plus/test"
-import type { BreathDef } from "../breath"
+import { addStatus, enemyVisible, type BreathDef } from "../breath"
 import type { Character } from "../character"
 import { AiType, PLAYER_SPEED, TICK_RATE } from "../constants"
 import { step, type GameState, type MoveInput } from "../game"
@@ -82,7 +82,7 @@ describe("penguin's ice breath", () => {
         expect(FROZEN).toMatchObject({
             holds: true,
             harmless: true,
-            solid: true,
+            blinksBeforeEnd: true,
         })
     })
 
@@ -93,19 +93,84 @@ describe("penguin's ice breath", () => {
         tick(state, { breath: true })
         expect(state.players[0].breather.energy).toBe(50)
         expect(enemy.statuses).toEqual([{ status: FROZEN, left: 3 }])
-        // Walking east into it: onto the new ice at x 2, and the slide
-        // stops against the frozen enemy, uncaught.
+        // Walking east over the new ice at x 2 onto the frozen enemy's
+        // cell (floor, not iced under it), and stopping there, uncaught.
         for (let i = 0; i < TICK_RATE * 3 - 1; i++) {
+            expect(tick(state, i <= MOVE ? { held: east } : {})).toBeNull()
+            expect(enemy.pos).toEqual(vec2(3, 1))
+        }
+        expect(state.players[0].character.pos).toEqual(vec2(3, 1))
+        // Thawed, it catches the player on its cell at once, as any enemy
+        // that stops being harmless there would.
+        expect(ticksUntilCaught(state, none, 1)).toBe(1)
+        expect(enemy.statuses).toEqual([])
+    })
+
+    it("blinks a frozen enemy for the last second before it thaws", () => {
+        const enemy = makeEnemy(3, 1, AiType.chase)
+        enemy.moveProgress = 1
+        const state = penguinState(corridor, [enemy])
+        tick(state, { breath: true })
+        // Shown all through the first 2 s.
+        for (let i = 0; i < TICK_RATE * 2; i++) {
+            tick(state)
+            expect(enemyVisible(enemy)).toBe(true)
+        }
+        // Then on and off until the thaw.
+        const shown: boolean[] = []
+        for (let i = 0; i < TICK_RATE - 1; i++) {
+            tick(state)
+            shown.push(enemyVisible(enemy))
+        }
+        expect(enemy.statuses.map((s) => s.status)).toEqual([FROZEN])
+        expect(shown).toContain(false)
+        expect(shown).toContain(true)
+        tick(state)
+        expect(enemy.statuses).toEqual([])
+        expect(enemyVisible(enemy)).toBe(true)
+    })
+
+    // Regression (KDA-260): a frozen enemy blocked the player like a wall,
+    // so it stopped at x 2.
+    it("lets the player walk on past a frozen enemy", () => {
+        const enemy = makeEnemy(3, 1, AiType.chase)
+        enemy.moveProgress = 1
+        const state = penguinState(corridor, [enemy])
+        tick(state, { breath: true })
+        // East held: onto the ice at x 2, over the enemy at x 3, onto the
+        // ice at x 4 and on to the wall. The enemy is held all the while.
+        for (let i = 0; i < TICK_RATE * 2; i++) {
             expect(tick(state, { held: east })).toBeNull()
             expect(enemy.pos).toEqual(vec2(3, 1))
         }
-        expect(state.players[0].character.pos).toEqual(vec2(2, 1))
-        // Thawed, it steps at once towards the player next to it, and
-        // catches it as soon as it has glided close enough.
+        expect(state.players[0].character.pos).toEqual(vec2(8, 1))
+    })
+
+    // Regression (KDA-260): a slide used to end next to a frozen enemy.
+    it("lets a slide pass over a frozen enemy", () => {
+        // Ice from x 2 to 5, a frozen enemy at x 4: a Dragon steps onto the
+        // ice and slides over the enemy to the floor at x 6, uncaught, and
+        // the enemy stays put.
+        const { map, ice } = textMap([
+            "########",
+            "# ~~~~ #",
+            "########",
+            "#.######",
+        ])
+        const enemy = makeEnemy(4, 1, AiType.chase)
+        enemy.moveProgress = 1
+        addStatus(enemy, FROZEN, 100)
+        const state = makeState(map, { x: 1, y: 1 }, [enemy], {
+            breath: dragon,
+            ice,
+        })
+        state.players[0].character.moveProgress = 1
         tick(state, { held: east })
-        expect(enemy.statuses).toEqual([])
-        expect(enemy.pos).toEqual(vec2(2, 1))
-        expect(ticksUntilCaught(state, east, MOVE)).toBeGreaterThan(0)
+        for (let i = 0; i < TICK_RATE * 2; i++) {
+            expect(tick(state)).toBeNull()
+            expect(enemy.pos).toEqual(vec2(4, 1))
+        }
+        expect(state.players[0].character.pos).toEqual(vec2(6, 1))
     })
 
     it("lets walls cast the cone's shadow", () => {
