@@ -221,6 +221,7 @@ export const MusicTrackId = {
     stage5: "stage5",
     stage6: "stage6",
     stage7: "stage7",
+    stage8: "stage8",
 } as const
 export type MusicTrackId = (typeof MusicTrackId)[keyof typeof MusicTrackId]
 
@@ -236,6 +237,7 @@ export const STAGE_TRACKS: readonly MusicTrackId[] = [
     MusicTrackId.stage5,
     MusicTrackId.stage6,
     MusicTrackId.stage7,
+    MusicTrackId.stage8,
 ]
 
 // The tune for a stage index; stages past the list reuse it from the start.
@@ -571,6 +573,58 @@ export const TRACKS: Readonly<Record<MusicTrackId, Track>> = {
                     "k . s s k . s .",
                     "k . s s k . s .",
                     "k . s s s s s s",
+                ],
+            },
+        ],
+    },
+    // Stage 8, Frozen fog: Ice rink's twinkle over Fog's slow heartbeat, in
+    // D minor.
+    stage8: {
+        bpm: 92,
+        voices: [
+            {
+                kind: "notes",
+                wave: "sine",
+                volume: 0.25,
+                hold: true,
+                bars: [
+                    "D5 - - - F5 - E5 -",
+                    "C5 - - - . . A4 -",
+                    "Bb4 - - - D5 - C5 -",
+                    "A4 - - - . . . .",
+                ],
+            },
+            {
+                kind: "notes",
+                wave: "sine",
+                volume: 0.06,
+                bars: [
+                    "D6 F6 A6 F6 D6 F6 A6 F6",
+                    "C6 E6 A6 E6 C6 E6 A6 E6",
+                    "Bb5 D6 F6 D6 Bb5 D6 F6 D6",
+                    "A5 C#6 E6 C#6 A5 C#6 E6 C#6",
+                ],
+            },
+            {
+                kind: "notes",
+                wave: "triangle",
+                volume: 0.35,
+                hold: true,
+                bars: [
+                    "D2 - - - - - - -",
+                    "A1 - - - - - - -",
+                    "Bb1 - - - - - - -",
+                    "A1 - - - - - - -",
+                ],
+            },
+            {
+                kind: "drums",
+                volume: 0.35,
+                bars: [
+                    "k . k . . . h .",
+                    "k . k . . . h .",
+                    "k . k . . . h .",
+                    "k . k . . h . h",
                 ],
             },
         ],
