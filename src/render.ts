@@ -729,6 +729,9 @@ function drawCharacters(
             jab: null,
         })),
     ]
+    // Fists are drawn after every character, so one isn't hidden under the
+    // enemy it hits (players are drawn before enemies).
+    const fists: { x: number; y: number; facing: Vec2 }[] = []
     for (const sprite of sprites) {
         const { character, rate, marker, badge, arrow, jab } = sprite
         const isPlayer = character.id === CharacterId.player
@@ -763,8 +766,7 @@ function drawCharacters(
             }
             ctx.fillText(sprite.sprite, x, y)
             if (marker !== null) drawMarker(ctx, marker, x, y, size)
-            if (arrow) drawArrow(ctx, arrow, x, y, cell)
-            if (jab) drawFist(ctx, jab.facing, x, y, cell)
+            if (jab) fists.push({ x, y, facing: jab.facing })
             // A stunned player (versus) wears the stun badge, and one
             // immune just after a stun the immune badge, like a status's.
             const badges = [
@@ -781,7 +783,13 @@ function drawCharacters(
                 )
             })
         }
+        // The arrow stays with the glide, not the jab's lunge.
+        if (!arrow) continue
+        for (const p of wrapCopies(glide, cols, rows)) {
+            drawArrow(ctx, arrow, (p.x + 0.5) * cell, (p.y + 0.5) * cell, cell)
+        }
     }
+    for (const fist of fists) drawFist(ctx, fist.facing, fist.x, fist.y, cell)
 }
 
 // Particles (see particles.ts), each a disc or a square of its colour,

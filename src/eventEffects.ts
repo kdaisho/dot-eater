@@ -92,17 +92,20 @@ export function effectsForEvent(
 
 // How much the effects move, from the system's reduced motion setting and
 // the player's Screen shake setting: reduced motion makes particles fewer
-// and shorter, and turns the shake off unless the setting turns it on; the
+// and shorter, stops jabs lunging (the fist still shows), and turns the
+// shake off unless the setting turns it on; the
 // setting, when set, decides the shake either way (see shakeEnabled).
 export function applyMotion(
     targets: {
         particles: Pick<Particles, "reduced">
         shake: Pick<Shake, "enabled">
+        jabs?: Pick<Jabs, "reduced">
     },
     settings: Settings,
     prefersReducedMotion: boolean
 ) {
     targets.particles.reduced = prefersReducedMotion
+    if (targets.jabs) targets.jabs.reduced = prefersReducedMotion
     targets.shake.enabled = shakeEnabled(settings, prefersReducedMotion)
 }
 

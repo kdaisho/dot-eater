@@ -1401,6 +1401,7 @@ describe("createRenderer with effects", () => {
                 player: 0,
                 facing: vec2(1, 0),
                 age: JAB_SECONDS / 2,
+                lunge: JAB_LUNGE,
             }
             renderer.draw(corridor(), 0, {}, {}, { jabs: [jab] })
             const cell = cellOf(canvas)
@@ -1414,12 +1415,38 @@ describe("createRenderer with effects", () => {
 
         it("shows nothing without one, or for another player", () => {
             const { calls, canvas, renderer } = setup()
-            const other = { player: 1, facing: vec2(1, 0), age: 0.05 }
+            const other = {
+                player: 1,
+                facing: vec2(1, 0),
+                age: 0.05,
+                lunge: JAB_LUNGE,
+            }
             renderer.draw(corridor(), 0, {}, {}, { jabs: [other] })
             expect(sprite(calls, "🐉")?.args[1]).toBeCloseTo(
                 1.5 * cellOf(canvas)
             )
             expect(sprite(calls, "👊")).toBeUndefined()
+        })
+
+        // Regression: the fist was drawn with the player, before the
+        // enemies, so the enemy it hit covered it.
+        it("draws the fist over the enemy it hits", () => {
+            const { calls, renderer } = setup()
+            const state = corridor()
+            state.enemies.push(makeEnemy(2, 1))
+            const jab = {
+                player: 0,
+                facing: vec2(1, 0),
+                age: 0.05,
+                lunge: JAB_LUNGE,
+            }
+            renderer.draw(state, 0, {}, {}, { jabs: [jab] })
+            const at = (text: string) =>
+                calls.findIndex(
+                    (c) => c.name === "fillText" && c.args[0] === text
+                )
+            expect(at("👺")).toBeGreaterThan(-1)
+            expect(at("👊")).toBeGreaterThan(at("👺"))
         })
     })
 })
@@ -1613,6 +1640,22 @@ describe("createRenderer with the facing guide", () => {
         it("points right before the first move", () => {
             const { calls, canvas, renderer } = setup()
             renderer.draw(charged(), 0, {}, {}, ARROW)
+            expect(arrows(calls, canvas)).toEqual([
+                { color: 0, tip: [2.2, 1.5] },
+            ])
+        })
+
+        // Regression: the arrow was drawn on the lunging sprite, so it
+        // bobbed with every punch.
+        it("stays with the glide while the player jabs", () => {
+            const { calls, canvas, renderer } = setup()
+            const jab = {
+                player: 0,
+                facing: vec2(1, 0),
+                age: JAB_SECONDS / 2,
+                lunge: JAB_LUNGE,
+            }
+            renderer.draw(charged(), 0, {}, {}, { ...ARROW, jabs: [jab] })
             expect(arrows(calls, canvas)).toEqual([
                 { color: 0, tip: [2.2, 1.5] },
             ])

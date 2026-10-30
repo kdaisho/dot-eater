@@ -9,12 +9,13 @@ import { vec2, type Vec2 } from "./vec2"
 
 // How long a jab shows, in seconds.
 export const JAB_SECONDS = 0.15
-// How far the sprite lunges at the jab's peak, in cells.
+// How far the sprite lunges at the jab's peak, in cells. With reduced
+// motion it doesn't lunge: the fist alone shows the jab.
 export const JAB_LUNGE = 0.15
 
-// One player's jab: which player, the unit step it punched along, and how
-// long ago, in seconds.
-export type Jab = { player: number; facing: Vec2; age: number }
+// One player's jab: which player, the unit step it punched along, how long
+// ago, in seconds, and how far it lunges at its peak, in cells.
+export type Jab = { player: number; facing: Vec2; age: number; lunge: number }
 
 export type Jabs = {
     // Start a jab for `player` along `facing`, replacing any it has.
@@ -24,16 +25,23 @@ export type Jabs = {
     // Drop every jab, e.g. when a new game starts.
     clear(): void
     readonly list: readonly Jab[]
+    // Reduced motion (prefers-reduced-motion): jabs started from now on
+    // don't lunge.
+    reduced: boolean
 }
 
-export function createJabs(): Jabs {
+export function createJabs({ reduced = false } = {}): Jabs {
     let list: Jab[] = []
     return {
+        reduced,
         add(player, facing) {
-            list = [
-                ...list.filter((j) => j.player !== player),
-                { player, facing: vec2(facing.x, facing.y), age: 0 },
-            ]
+            const jab = {
+                player,
+                facing: vec2(facing.x, facing.y),
+                age: 0,
+                lunge: this.reduced ? 0 : JAB_LUNGE,
+            }
+            list = [...list.filter((j) => j.player !== player), jab]
         },
         update(dt) {
             list = list
@@ -50,8 +58,8 @@ export function createJabs(): Jabs {
 }
 
 // How far a jab moves its player's sprite along its facing, in cells: out
-// to JAB_LUNGE halfway through and back, 0 once it is over.
+// to its lunge halfway through and back, 0 once it is over.
 export function jabLunge(jab: Jab): number {
     if (jab.age < 0 || jab.age >= JAB_SECONDS) return 0
-    return JAB_LUNGE * Math.sin((Math.PI * jab.age) / JAB_SECONDS)
+    return jab.lunge * Math.sin((Math.PI * jab.age) / JAB_SECONDS)
 }

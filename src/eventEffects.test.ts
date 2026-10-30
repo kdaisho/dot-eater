@@ -9,6 +9,7 @@ import {
 } from "./eventEffects"
 import { takeEvents, type GameEvent } from "./events"
 import { step, type GameState, type MoveInput } from "./game"
+import { createJabs } from "./jab"
 import { createParticles, type ParticleLook } from "./particles"
 import { defaultSettings } from "./settings"
 import { createShake, SHAKES } from "./shake"
@@ -369,6 +370,15 @@ describe("applyMotion", () => {
         applyMotion(t, defaultSettings(), false)
         expect(t.particles.reduced).toBe(false)
         expect(t.shake.enabled).toBe(true)
+    })
+
+    // Regression: the jab lunged even with reduced motion requested.
+    it("stops jabs lunging with reduced motion", () => {
+        const t = { ...targets(), jabs: createJabs() }
+        applyMotion(t, defaultSettings(), true)
+        expect(t.jabs.reduced).toBe(true)
+        applyMotion(t, defaultSettings(), false)
+        expect(t.jabs.reduced).toBe(false)
     })
 
     it("turns the shake on with reduced motion when the setting says so", () => {

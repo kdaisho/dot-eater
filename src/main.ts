@@ -181,7 +181,7 @@ const effects = {
     // settings change and when the system setting does.
     motion() {
         const reduced = reducedMotion?.matches ?? false
-        applyMotion({ particles, shake }, settings, reduced)
+        applyMotion({ particles, shake, jabs }, settings, reduced)
     },
     // The bursts and shakes for a tick's game events (see eventEffects.ts).
     events(events: readonly GameEvent[], game: GameState) {
