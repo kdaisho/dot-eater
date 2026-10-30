@@ -232,8 +232,9 @@ function makeWhole(main: Character) {
 // decide the clear), each Splitter slot in play, whole or a half, drops a
 // dot every SPLITTER_DROP_SECONDS: once due (see tickDrops), on its next
 // move it drops one on the cell it is leaving (its lastPos), if that cell
-// is bare floor (no dot, not a wall a breath opened, which grows back) and
-// no player in play or live boss is drawn on it. A slot that is held (e.g.
+// is bare floor (no dot, not a wall a breath opened, which grows back), no
+// player in play or live boss is drawn on it, and it isn't the spawn of a
+// versus player out of play that will be back there. A slot that is held (e.g.
 // frozen) or harmless (a status) doesn't drop; nor, out of play (defeated,
 // or the spare while whole), does it count down. Until it can drop, it
 // stays due. A dropped dot is an ordinary dot, though never one of the
@@ -253,6 +254,18 @@ export function tickDrops(state: GameState, dt: number) {
 // land on the intended tick.
 const EPSILON = 1e-9
 
+// Whether `cell` is the spawn of a player out of play that will be back
+// (versus): it would come back standing on a dot there, which it could never
+// eat by moving (see bringBack, which eats it as a safety net).
+function awaited(state: GameState, cell: Vec2): boolean {
+    return state.players.some(
+        (p, k) =>
+            p.out &&
+            p.respawnIn !== null &&
+            samePos(state.spawns.players[k], cell)
+    )
+}
+
 // Enemy `i` has just moved: if it is a Splitter slot due to drop (see
 // above), drop a dot on the cell it left, reporting a dotDropped event.
 export function dropDot(state: GameState, i: number) {
@@ -266,7 +279,7 @@ export function dropDot(state: GameState, i: number) {
     const opened = state.tiles.some(
         (t) => t.effect.opensWall && samePos(t.pos, at)
     )
-    if (opened || occupied(state, at, false)) return
+    if (opened || occupied(state, at, false) || awaited(state, at)) return
     state.cells[at.y][at.x] = Cell.dot
     dotBack(state, at)
     part.dropIn = SPLITTER_DROP_SECONDS

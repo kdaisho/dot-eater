@@ -320,7 +320,8 @@ export function totalScore(state: GameState): number {
 // Put `player` back in play on its own spawn (or `at`, see
 // tickPlayersOut), as at the start of a game: ready to move, facing right,
 // nothing buffered, full health. Its score, energy and cooldown are kept.
-// Nobody else is touched.
+// A dot on the cell it comes back on is eaten (KDA-270). Nobody else is
+// touched.
 export function bringBack(state: GameState, player: Player, at?: Vec2) {
     const index = state.players.indexOf(player)
     const spawn = at ?? state.spawns.players[index]
@@ -344,6 +345,12 @@ export function bringBack(state: GameState, player: Player, at?: Vec2) {
         player: index,
         at: vec2(spawn.x, spawn.y),
     })
+    // A safety net (KDA-270): a player eats only by moving onto a cell, so a
+    // dot on the cell it comes back on would be stuck under it. Eat it
+    // there and then. Nothing should put one there (a Splitter doesn't drop
+    // on an awaited spawn, and spawns hold no map dots to regrow), but
+    // the nearest free cell of a held-up spawn can hold one.
+    eatDot(state, player, spawn)
 }
 
 // Take `player` out of play on its own (see Player.out), where it stands:

@@ -8,7 +8,14 @@ import {
     SPLITTER_DROP_SECONDS,
     TICK_RATE,
 } from "./constants"
-import { createGameState, step, type GameState, type MoveInput } from "./game"
+import {
+    createGameState,
+    IDLE,
+    step,
+    takeOut,
+    type GameState,
+    type MoveInput,
+} from "./game"
 import { createRegrow } from "./regrow"
 import {
     createSplitter,
@@ -121,6 +128,43 @@ describe("a Splitter dropping dots", () => {
         expect(player.score).toBe(DOT_POINTS)
         expect(player.dots).toBe(1)
         expect(player.breather.energy).toBe(DOT_ENERGY)
+    })
+})
+
+// Regression: a Splitter walking off an out versus player's spawn dropped a
+// dot there, and the player came back standing on it, unable to eat it.
+describe("a Splitter leaving an out versus player's spawn", () => {
+    it("doesn't drop there, but on its next move", () => {
+        const { state, main } = setup({ at: vec2(8, 2), player: vec2(8, 2) })
+        state.mode = "versus"
+        // Player 2 at the west end draws the Splitter off player 1's spawn.
+        const [p1] = state.players
+        const p2 = makeState(corridor, [vec2(8, 2), vec2(1, 2)]).players[1]
+        state.players.push(p2)
+        state.spawns = { ...state.spawns, players: [vec2(8, 2), vec2(1, 2)] }
+        takeOut(p1, 2)
+        main.part!.dropIn = 0
+        const moves = [IDLE, IDLE]
+        for (let t = 0; t < 30; t++) step(state, TICK, moves, fixedRandom(0))
+        expect(main.pos).toEqual(vec2(7, 2))
+        expect(state.cells[2][8]).toBe(Cell.none)
+        for (let t = 0; t < 30; t++) step(state, TICK, moves, fixedRandom(0))
+        expect(state.cells[2][7]).toBe(Cell.dot)
+        for (let t = 0; t < 2 * TICK_RATE; t++) {
+            step(state, TICK, moves, fixedRandom(0))
+        }
+        expect(p1.out).toBe(false)
+        expect(p1.dots).toBe(0)
+    })
+
+    it("drops on the spawn of a player out for good", () => {
+        const { state, main } = setup({ at: vec2(4, 2), player: vec2(5, 2) })
+        state.mode = "coop"
+        takeOut(state.players[0], null)
+        main.lastPos = vec2(5, 2)
+        main.part!.dropIn = 0
+        dropDot(state, 0)
+        expect(state.cells[2][5]).toBe(Cell.dot)
     })
 })
 
