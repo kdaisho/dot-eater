@@ -70,6 +70,14 @@ export class FakeFilter extends FakeNode {
     frequency = new FakeParam()
 }
 
+export class FakeCompressor extends FakeNode {
+    threshold = { value: -24 }
+    knee = { value: 30 }
+    ratio = { value: 12 }
+    attack = { value: 0.003 }
+    release = { value: 0.25 }
+}
+
 export function fakeContext() {
     const fake = {
         currentTime: 10,
@@ -80,6 +88,7 @@ export function fakeContext() {
         oscillators: [] as FakeOscillator[],
         bufferSources: [] as FakeBufferSource[],
         filters: [] as FakeFilter[],
+        compressors: [] as FakeCompressor[],
         resume: vi.fn(() => {
             fake.state = "running"
             return Promise.resolve()
@@ -102,6 +111,11 @@ export function fakeContext() {
         createBiquadFilter() {
             const node = new FakeFilter()
             fake.filters.push(node)
+            return node
+        },
+        createDynamicsCompressor() {
+            const node = new FakeCompressor()
+            fake.compressors.push(node)
             return node
         },
         createBuffer(_channels: number, length: number) {
