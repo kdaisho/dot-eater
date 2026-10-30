@@ -30,10 +30,12 @@ body * {
     display: block;
 }
 
-/* The play area: the whole window, the maze centred in it. Swipes anywhere
-   on it steer. With the D-pad on, it leaves the controls' band free
-   (DPAD_SPACE in src/layout.ts): below in portrait, both sides in
-   landscape. */
+/* The play area: the whole window, the maze centred in it. Dragging
+   anywhere on it steers, bands included. Where touch is the main input
+   (data-buttons) it leaves the punch and breath buttons' band free
+   (BUTTONS_SPACE in src/layout.ts): below in portrait, on the right in
+   landscape. With the D-pad on, a bigger band
+   (DPAD_SPACE): below in portrait, both sides in landscape. */
 #play {
     align-items: center;
     box-sizing: border-box;
@@ -43,12 +45,22 @@ body * {
     position: fixed;
 }
 
-body[data-dpad="on"] #play {
-    padding-bottom: 180px;
+body[data-buttons="on"] #play {
+    padding-bottom: 104px;
 }
 
 @media (orientation: landscape) {
-    body[data-dpad="on"] #play {
+    body[data-buttons="on"] #play {
+        padding: 0 104px 0 0;
+    }
+}
+
+body[data-dpad="on"][data-touch="on"] #play {
+    padding: 0 0 180px;
+}
+
+@media (orientation: landscape) {
+    body[data-dpad="on"][data-touch="on"] #play {
         padding: 0 180px;
     }
 }
@@ -160,6 +172,13 @@ body[data-dpad="on"] #play {
 .overlay-menu .menu-value {
     margin-left: 0.5em;
     font-variant-numeric: tabular-nums;
+}
+
+/* A short description, on a smaller line under the label. */
+.overlay-menu .menu-detail {
+    display: block;
+    font-size: 0.75em;
+    margin-top: 4px;
 }
 
 .overlay-menu li.locked {
@@ -312,8 +331,10 @@ body[data-dpad="on"] #play {
     z-index: 5;
 }
 
-.touch-controls button:active {
+.touch-controls button:active,
+.touch-controls button.pressed {
     background: rgba(0, 0, 0, 0.25);
+    transform: scale(0.92);
 }
 
 /* Pause: a small button in the top right corner, during play on touch
@@ -330,11 +351,8 @@ body[data-touch="on"][data-playing="on"] .touch-pause {
     width: 44px;
 }
 
-/* The D-pad (bottom left) and breath button (bottom right), in the band
-   #play leaves free: below the maze in portrait, at its sides in
-   landscape. */
-body[data-dpad="on"] .dpad,
-body[data-dpad="on"] .touch-breath {
+/* The D-pad (bottom left), with Show D-pad on. */
+body[data-dpad="on"] .dpad {
     display: block;
 }
 
@@ -384,10 +402,82 @@ body[data-dpad="on"] .touch-breath {
     transform: translateY(-50%);
 }
 
+/* Punch and breath: during play where touch is the main input (a coarse
+   primary pointer, not a laptop's touch screen) or the D-pad shows
+   (data-buttons), on the right of the band
+   #play leaves free. In portrait they sit side by side below the maze,
+   punch in the corner; in landscape breath sits above punch, right of the
+   maze. 72 px each with 16 px margins: BUTTONS_SPACE (104 px) in
+   src/layout.ts. With the D-pad on they sit further in, in its bigger
+   band. */
+body[data-buttons="on"][data-playing="on"] .touch-punch,
+body[data-buttons="on"][data-playing="on"] .touch-breath {
+    display: block;
+}
+
+.touch-punch,
 .touch-breath {
-    bottom: 40px;
-    font-size: 36px;
-    height: 100px;
-    right: 40px;
-    width: 100px;
+    bottom: 16px;
+    font-size: 32px;
+    height: 72px;
+    width: 72px;
+}
+
+.touch-punch {
+    right: 16px;
+}
+
+.touch-breath {
+    right: 100px;
+}
+
+body[data-dpad="on"] .touch-punch,
+body[data-dpad="on"] .touch-breath {
+    bottom: 54px;
+}
+
+@media (orientation: landscape) {
+    .touch-breath {
+        bottom: 100px;
+        right: 16px;
+    }
+
+    body[data-dpad="on"] .touch-punch,
+    body[data-dpad="on"] .touch-breath {
+        right: 54px;
+    }
+
+    body[data-dpad="on"] .touch-punch {
+        bottom: 40px;
+    }
+
+    body[data-dpad="on"] .touch-breath {
+        bottom: 124px;
+    }
+}
+
+/* A narrow phone in portrait with the D-pad: side by side, breath would
+   reach the D-pad under 349 px (172 px of buttons from the right, the
+   D-pad's 165 px from the left, a 12 px gap), so breath sits above punch
+   in the D-pad's band instead. */
+@media (orientation: portrait) and (max-width: 348px) {
+    body[data-dpad="on"] .touch-punch {
+        bottom: 16px;
+    }
+
+    body[data-dpad="on"] .touch-breath {
+        bottom: 100px;
+        right: 16px;
+    }
+}
+
+/* Breath ready: amber, as the HUD meter is when a breath can go. */
+.touch-controls .touch-breath.ready {
+    background: rgba(245, 158, 11, 0.2);
+    border-color: #f59e0b;
+}
+
+.touch-controls .touch-breath.ready.pressed,
+.touch-controls .touch-breath.ready:active {
+    background: rgba(245, 158, 11, 0.45);
 }

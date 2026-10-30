@@ -206,11 +206,16 @@ describe("stageTrack", () => {
             "stage3",
             "stage4",
             "stage5",
+            "stage6",
+            "stage7",
+            "stage8",
+            "stage9",
+            "stage10",
         ])
     })
 
     it("wraps stages past the list", () => {
         expect(stageTrack(STAGE_TRACKS.length)).toBe("stage1")
-        expect(stageTrack(-1)).toBe("stage5")
+        expect(stageTrack(-1)).toBe(STAGE_TRACKS[STAGE_TRACKS.length - 1])
     })
 })

@@ -79,6 +79,12 @@ const SHAKE_OPTIONS = [
 // How each facing guide reads on its row.
 const FACING_GUIDE_LABELS = { arrow: "Arrow", aim: "Aim" } as const
 
+// The Players row's options: settings.playersBump off or on.
+const PLAYERS_BUMP_OPTIONS = [
+    { value: "pass", label: "Pass through" },
+    { value: "bump", label: "Bump" },
+] as const
+
 // Shows a row only on the settings opened from the title (e.g. remapping,
 // which a game in progress shouldn't change under the players).
 export const titleOnly = (context: SettingsContext) => context.from === "title"
@@ -135,6 +141,15 @@ export const SETTINGS_ROWS: readonly SettingsRow[] = [
         get: (s) => s.facingGuide,
         set: (s, facingGuide) =>
             isFacingGuide(facingGuide) ? { ...s, facingGuide } : s,
+    },
+    {
+        // Whether players bump into each other in a 2-player game (KDA-262).
+        id: "playersBump",
+        label: "Players",
+        kind: "choice",
+        options: PLAYERS_BUMP_OPTIONS,
+        get: (s) => (s.playersBump ? "bump" : "pass"),
+        set: (s, value) => ({ ...s, playersBump: value === "bump" }),
     },
     {
         // The on-screen D-pad and breath button (dpad.ts), for touch play.

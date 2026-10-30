@@ -8,7 +8,6 @@ import {
     footprint,
     inFootprint,
     mapFloor,
-    resetBoss,
     squareDistance,
     tickBoss,
 } from "./boss"
@@ -56,6 +55,13 @@ describe("createBoss", () => {
         // A grace period before it first moves, as for enemies.
         expect(boss.moveProgress).toBe(0)
         expect(createBoss(vec2(0, 0), 3).speed).toBe(3)
+    })
+
+    it("starts with the health it is given, full", () => {
+        const boss = createBoss(vec2(0, 0), undefined, undefined, 18)
+        expect(boss.health).toBe(18)
+        expect(boss.maxHealth).toBe(18)
+        expect(boss.speed).toBe(BOSS_SPEED)
     })
 })
 
@@ -121,21 +127,6 @@ describe("damage", () => {
         expect(boss.flash).toBeCloseTo(BOSS_FLASH - 0.1)
         tickBoss(boss, 0.1)
         expect(boss.flash).toBe(0)
-    })
-
-    it("is kept when the boss goes back to its spawn", () => {
-        const boss = makeBoss(1, 1)
-        boss.pos = vec2(3, 3)
-        boss.lastPos = vec2(2, 3)
-        boss.moveProgress = 0.5
-        boss.health = 4
-        boss.flash = 0.1
-        resetBoss(boss)
-        expect(boss.pos).toEqual(vec2(1, 1))
-        expect(boss.lastPos).toEqual(vec2(1, 1))
-        expect(boss.moveProgress).toBe(0)
-        expect(boss.flash).toBe(0)
-        expect(boss.health).toBe(4)
     })
 })
 

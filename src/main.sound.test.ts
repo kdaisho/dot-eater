@@ -79,7 +79,9 @@ describe("main's sound", () => {
 
         // Play, then pause: no new notes while paused.
         for (let i = 0; i < 3; i++) pressAndTick("ArrowUp")
-        for (let i = 0; i < 3; i++) pressAndTick("Space")
+        pressAndTick("Space")
+        pressAndTick("ArrowDown")
+        for (let i = 0; i < 4; i++) pressAndTick("Space")
         expect(screen()).toBe("playing")
         wait(1)
         pressAndTick("KeyP")

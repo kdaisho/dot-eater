@@ -42,6 +42,7 @@ describe("main's settings", () => {
             "Mute Off",
             "Screen shake ◀ Auto ▶",
             "Facing guide ◀ Arrow ▶",
+            "Players ◀ Pass through ▶",
             "Controls",
             "Back",
         ])
@@ -62,6 +63,9 @@ describe("main's settings", () => {
 
         // Play, pause and open the settings from the pause menu.
         for (let i = 0; i < 3; i++) pressAndTick("ArrowUp")
+        pressAndTick("Space")
+        pressAndTick("ArrowDown")
+        pressAndTick("Space")
         pressAndTick("Space")
         pressAndTick("Space")
         pressAndTick("Space")
@@ -96,6 +100,13 @@ describe("main's settings", () => {
         expect(selectedItem()).toBe("Facing guide ◀ Aim ▶")
         pressAndTick("ArrowLeft")
         expect(saved()).toMatchObject({ facingGuide: "arrow" })
+
+        // So does Players (KDA-262).
+        pressAndTick("ArrowDown")
+        expect(selectedItem()).toBe("Players ◀ Pass through ▶")
+        pressAndTick("Space")
+        expect(selectedItem()).toBe("Players ◀ Bump ▶")
+        expect(saved()).toMatchObject({ playersBump: true })
 
         // Back to the paused game, then on with it.
         pressAndTick("Escape")

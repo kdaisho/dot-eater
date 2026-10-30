@@ -23,27 +23,31 @@ export const AiType = {
     // Slow, but passes through walls.
     phantom: 4,
     // Chases; a defeating breath splits it into two faster halves (see
-    // splitter.ts). Takes two enemy slots.
+    // splitter.ts). Takes two enemy slots but counts as one enemy toward
+    // MAX_ENEMIES.
     splitter: 5,
 } as const
 export type AiType = (typeof AiType)[keyof typeof AiType]
 
+// The most enemies a level can have (parseLevel checks it). A Splitter
+// counts as one, though it takes two enemy slots.
+export const MAX_ENEMIES = 8
+// The most enemy slots a game can need: one per enemy, two per Splitter
+// (see splitter.ts), so a level of MAX_ENEMIES Splitters still fits.
+export const MAX_ENEMY_SLOTS = 2 * MAX_ENEMIES
+
+// Every player is CharacterId.player; enemy slots are numbered from 1 in
+// spawn order (ENEMY_IDS).
 export const CharacterId = {
     player: 0,
-    enemy1: 1,
-    enemy2: 2,
-    enemy3: 3,
-    enemy4: 4,
 } as const
-export type CharacterId = (typeof CharacterId)[keyof typeof CharacterId]
+export type CharacterId = number
 
-// Enemy ids in spawn order; also the most enemies a level can have.
-export const ENEMY_IDS: readonly CharacterId[] = [
-    CharacterId.enemy1,
-    CharacterId.enemy2,
-    CharacterId.enemy3,
-    CharacterId.enemy4,
-]
+// Enemy ids in spawn order, one per enemy slot.
+export const ENEMY_IDS: readonly CharacterId[] = Array.from(
+    { length: MAX_ENEMY_SLOTS },
+    (_, i) => i + 1
+)
 
 // Game logic runs this many fixed ticks per second, whatever the frame rate.
 export const TICK_RATE = 60
@@ -59,9 +63,18 @@ export const ENEMY_SPEED = 2
 export const PHANTOM_SPEED = 1.5
 // A Splitter's halves are faster than the whole (see splitter.ts).
 export const SPLITTER_HALF_SPEED = 2.5
+// On a level with rules.splitterDrops (KDA-270), each Splitter in play,
+// whole or a half, drops a dot this often, in seconds (see dropDot in
+// splitter.ts).
+export const SPLITTER_DROP_SECONDS = 4
 
 // How many cells ahead of the player's heading an ambusher aims.
 export const AMBUSH_AHEAD = 4
+
+// How many moves longer than its best way a chaser, ambusher or Splitter
+// takes its next-best way rather than stack on another enemy of its kind
+// (see spreadChoice in ai.ts).
+export const SPREAD_SLACK = 2
 
 // How wide characters are drawn, as a fraction of a cell (the emoji's font
 // size; see render.ts).
@@ -76,15 +89,32 @@ export const CATCH_DISTANCE = 0.6
 
 // Points for eating one dot.
 export const DOT_POINTS = 10
-// Lives at the start of a game.
-export const START_LIVES = 3
-// Seconds a player caught in a 2-player game stays out of play before it is
+// Seconds a player knocked out in versus stays out of play before it is
 // back at its own spawn (see takeOut in game.ts).
 export const PLAYER_RESPAWN_DELAY = 3
+// ---- Health (KDA-257; the numbers are placeholders to tune at preview) ----
+
+// A player's health at the start of every stage, and when it is back in
+// play in versus. A hit takes some off (see hurtPlayer in game.ts); at 0
+// the player is knocked out.
+export const MAX_HEALTH = 100
+// Health an enemy's touch costs.
+export const ENEMY_DAMAGE = 25
+// Health the boss's touch costs.
+export const BOSS_DAMAGE = 40
+// Seconds after a hit in which the player can't be hurt again (counted in
+// ticks), blinking: enemies and the boss pass through it meanwhile.
+export const HURT_INVULNERABLE_SECONDS = 1.5
+
 // How far (in cells, centre to centre) every enemy and the boss must be
-// drawn from a player's spawn for it to come back there (see spawnClear in
-// game.ts): far enough that nothing gliding in can catch it a tick later.
+// drawn from a player's spawn for it to come back there (see
+// clearOfEnemies in game.ts): far enough that nothing gliding in can catch it a tick later.
 export const RESPAWN_CLEAR_DISTANCE = 1.5
+// Seconds a player due back waits while the other player is on its spawn
+// or moving onto it (when players bump, KDA-262) before it comes back on
+// the nearest free cell instead (see tickPlayersOut in game.ts), so a
+// player can't camp on the other's spawn.
+export const RESPAWN_BLOCK_GRACE = 2
 
 // ---- Breaths (see breath.ts) ----
 
@@ -115,8 +145,34 @@ export const BOSS_DAMAGE_PER_ENERGY = 1 / 25
 export const BOSS_SPEED = 1.5
 // Points for defeating the boss.
 export const BOSS_DEFEAT_POINTS = 500
-// Energy per second the player's meter refills by itself once every dot is
-// eaten with the boss still about, so there is always a way to finish it.
-export const BOSS_TRICKLE = 10
 // Seconds the boss flashes white after each hit.
 export const BOSS_FLASH = 0.15
+
+// ---- The punch (see punch.ts; placeholders to tune at preview) ----
+
+// How far ahead of the player's drawn position (in cells, centre to centre,
+// along its facing) a punch reaches an enemy's drawn position: the fist
+// reaches a third of a sprite past the player's front, and touches an
+// enemy whose own front (half a sprite from its centre) is within that.
+// About 1.07, so an enemy resting on the next cell is in reach.
+export const PUNCH_REACH =
+    SPRITE_SCALE / 2 + SPRITE_SCALE / 3 + SPRITE_SCALE / 2
+// How far to either side of the facing line (in cells) a punch still
+// reaches: half a cell, so it hits in its own lane only.
+export const PUNCH_ACROSS = 0.5
+
+// ---- The boss's breath (KDA-268, see bossBreath.ts; placeholders to tune
+// at preview). A level can change each one (LevelData.boss.breath). ----
+
+// Seconds between the boss's breaths: it may breathe again this long after
+// its last one, and first this long into a stage (a grace period).
+export const BOSS_BREATH_EVERY = 4
+// Seconds it winds up (holding still, glowing, the cells it will hit
+// tinted) before it breathes. 0.9 s, up from 0.75 (PM call): on stage 5
+// getting out of its way from a door takes two moves, and 0.75 s left too
+// little time to react.
+export const BOSS_BREATH_WIND_UP = 0.9
+// How far the breath reaches, in cells from the edge of its footprint.
+export const BOSS_BREATH_RANGE = 6
+// Health the breath costs a player it hits.
+export const BOSS_BREATH_DAMAGE = 30

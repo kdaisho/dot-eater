@@ -64,13 +64,17 @@ describe("main with the D-pad on", () => {
 
     it("fits the maze beside the D-pad's bands in landscape", () => {
         tap("#overlay li[data-index='0']")
+        // Stage select.
+        tap("#overlay li[data-index='1']")
         tap("#overlay li[data-index='0']")
+        // Medium.
+        tap("#overlay li[data-index='1']")
         tap("#overlay li.card[data-index='0']")
         expect(document.querySelector("#overlay")).toBeNull()
         const map = levels[0]
         const cols = map.cells[0].length
         const rows = map.cells.length
-        const room = controlsSpace(800, 700, true)
+        const room = controlsSpace(800, 700, "dpad")
         expect(room.width).toBeGreaterThan(0)
         const fitted = computeLayout(800 - room.width, 700, cols, rows)
         const whole = computeLayout(800, 700, cols, rows)

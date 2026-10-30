@@ -58,7 +58,16 @@ export type Particle = {
 
 // The bursts that aren't a breath's (breaths carry their own look). A
 // Record over BurstKind, so a new kind without a look is a type error.
-export type BurstKind = "dot" | "defeat" | "caught" | "bossHit" | "bossDefeat"
+export type BurstKind =
+    | "dot"
+    | "defeat"
+    | "hurt"
+    | "caught"
+    | "bossHit"
+    | "bossDefeat"
+    | "punch"
+    | "regrow"
+    | "drop"
 
 export const BURSTS: Readonly<Record<BurstKind, ParticleLook>> = {
     // A few small crumbs where a dot was eaten.
@@ -82,7 +91,18 @@ export const BURSTS: Readonly<Record<BurstKind, ParticleLook>> = {
         jitter: 0.15,
         drag: 2.5,
     },
-    // Red sparks round a player who was caught.
+    // A few red sparks round a player who was hurt (KDA-257): a smaller
+    // version of the knockout's.
+    hurt: {
+        colors: ["#dc2626", "#f87171"],
+        count: 8,
+        life: 0.4,
+        speed: 2.2,
+        spread: Math.PI * 2,
+        size: 0.1,
+        drag: 2.5,
+    },
+    // Red sparks round a player who was knocked out.
     caught: {
         colors: ["#dc2626", "#f87171", "#7f1d1d"],
         count: 18,
@@ -101,6 +121,40 @@ export const BURSTS: Readonly<Record<BurstKind, ParticleLook>> = {
         spread: Math.PI * 2,
         size: 0.12,
         jitter: 0.4,
+        drag: 2,
+    },
+    // A tiny pop of sparks where a punch lands (a placeholder to tune at
+    // preview).
+    punch: {
+        colors: ["#fbbf24", "#f59e0b", "#9ca3af"],
+        count: 6,
+        life: 0.25,
+        speed: 2.5,
+        spread: Math.PI * 2,
+        size: 0.09,
+        drag: 3,
+    },
+    // A faint green sparkle where an eaten dot grows back (KDA-269): a few
+    // specks, short and slow, since many dots regrow.
+    regrow: {
+        colors: ["#16a34a", "#86efac"],
+        count: 4,
+        life: 0.35,
+        speed: 0.8,
+        spread: Math.PI * 2,
+        size: 0.08,
+        drag: 3,
+    },
+    // A small green splat where a Splitter drops a dot (KDA-270), falling
+    // a little, in the Splitter's colours.
+    drop: {
+        colors: ["#65a30d", "#a3e635", "#000"],
+        count: 5,
+        life: 0.3,
+        speed: 1.2,
+        spread: Math.PI * 2,
+        size: 0.09,
+        gravity: 3,
         drag: 2,
     },
     // A big, colourful blast when the boss goes down.

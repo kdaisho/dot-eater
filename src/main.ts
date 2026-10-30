@@ -8,33 +8,52 @@ import { browserAudioContext, createAudio } from "./audio"
 import { playEventSounds, screenSound } from "./sound"
 import { energyHud } from "./breath"
 import { MAX_FRAME_MS, TICK_MS } from "./constants"
-import { createTouchControls, DpadSource, setControls } from "./dpad"
+import {
+    DIFFICULTIES,
+    DIFFICULTY_LABELS,
+    difficultyDescription,
+    type Difficulty,
+} from "./difficulty"
+import {
+    createTouchControls,
+    DpadSource,
+    setBreathReady,
+    setControls,
+} from "./dpad"
 import { applyMotion, effectsForEvents } from "./eventEffects"
 import { takeEvents, type GameEvent } from "./events"
 import {
     baseScreen,
     END_CHOICES,
+    endChoices,
     ROUND_CHOICES,
     gameOf,
     initialScreen,
-    PAUSE_CHOICES,
+    pauseChoices,
     pauseIfPlaying,
+    PLAY_CHOICES,
     playerCount,
     recordsProgress,
+    runTotal,
     screenSettings,
     selectItem,
     settingsContext,
+    STORY_CHOICES,
+    storyStart,
     TITLE_CHOICES,
     update,
     type EndChoice,
     type Capture,
     type FlowDeps,
     type Mode,
+    type PauseChoice,
+    type PlayChoice,
     type Screen,
+    type StoryChoice,
     type TickInput,
     type TitleChoice,
 } from "./flow"
-import { totalScore, type GameState } from "./game"
+import { bossHud, healthHud, totalScore, type GameState } from "./game"
 import {
     CONTROLS_ROWS,
     controlsRowLabel,
@@ -48,16 +67,23 @@ import {
     type PadChange,
 } from "./gamepad"
 import { InputState, KeyboardSource, keyMapsFor, type Action } from "./input"
-import { loadLastPick, saveLastPick } from "./lastPick"
+import {
+    loadLastDifficulty,
+    loadLastPick,
+    saveLastDifficulty,
+    saveLastPick,
+} from "./lastPick"
 import { controlsSpace } from "./layout"
-import { levels } from "./levels"
+import { levels, stages } from "./levels"
 import { createLoop } from "./loop"
 import {
     loadProgress,
     recordClear,
+    recordStoryBest,
     stageSlots,
     type Progress,
 } from "./progress"
+import { createJabs } from "./jab"
 import { createParticles } from "./particles"
 import { createRenderer, type Effects, type Hud } from "./render"
 import { ANIMAL_IDS, ANIMALS, type AnimalId } from "./roster"
@@ -77,19 +103,24 @@ import {
     overlayTap,
     showCharacterSelect,
     showControls,
+    showDifficultySelect,
     showGameOver,
     showMatchResult,
     showPause,
+    showPlaySelect,
     showRoundResult,
     showSettings,
     showStageClear,
     showStageSelect,
+    showStoryClear,
+    showStoryEnd,
+    showStoryMenu,
     setHintBindings,
     showTitle,
     showToast,
     type EndScreenView,
 } from "./ui"
-import { isTouchDevice, TouchSource } from "./touch"
+import { isTouchDevice, isTouchFirst, TouchSource } from "./touch"
 import { roundWins, stunned, tallyText } from "./versus"
 
 let screen: Screen = initialScreen()
@@ -107,6 +138,9 @@ const storage = browserStorage()
 let progress: Progress = loadProgress(storage)
 // Kept here too, so the last pick holds for the session if saving fails.
 let lastAnimal: AnimalId = loadLastPick(storage)
+// The difficulty picked last, kept the same way: where difficulty select
+// opens, and whose bests stage select shows.
+let lastDifficulty: Difficulty = loadLastDifficulty(storage)
 // Likewise the settings: saved on every change on the settings screen.
 let settings: Settings = loadSettings(storage)
 
@@ -122,20 +156,35 @@ function mediaQuery(query: string): MediaQueryList | undefined {
 }
 const reducedMotion = mediaQuery("(prefers-reduced-motion: reduce)")
 const touch = isTouchDevice(window)
+// Whether the window has focus and the tab shows (see autoPause): what
+// flow needs so a game never starts unwatched (FlowDeps.focused).
+let focused = !document.hidden
+// Touch is the main input (a phone or tablet, not a laptop's touch screen):
+// the punch and breath buttons show, with room kept for them.
+const touchFirst = isTouchFirst(window)
 
 const canvas = document.getElementById("game")
 if (!(canvas instanceof HTMLCanvasElement)) throw new Error("No #game canvas")
-// Touch: swipes and taps on the play area steer player 1 (TouchSource);
-// the optional on-screen D-pad, breath and pause buttons (dpad.ts) do too.
-// The D-pad shows on touch devices when the Show D-pad setting is on
-// (applyDpad, live as the setting changes).
+// Touch: dragging on the play area steers player 1 while the finger is
+// down (TouchSource). The on-screen pause button (dpad.ts) shows during
+// play on touch devices, and the punch and breath buttons where touch is
+// the main input or the D-pad shows. The optional D-pad steers too,
+// alongside the drag: it shows on touch devices when the Show D-pad
+// setting is on (applyDpad, live as the setting changes).
 const playArea = document.getElementById("play") ?? canvas
 const touchControls = createTouchControls()
-const touchSource = new TouchSource(playArea)
+// Losing focus or hiding the page lets go of the drag, since the finger's
+// lift may never come.
+const touchSource = new TouchSource(playArea, { view: window, doc: document })
 let dpadShown = false
-setControls(document, { touch, dpad: false, playing: false })
+setControls(document, {
+    touch,
+    buttons: touchFirst,
+    dpad: false,
+    playing: false,
+})
 
-// The renderer fits the maze into the window less the D-pad's band.
+// The renderer fits the maze into the window less the touch controls' band.
 const renderer = createRenderer(canvas, {
     view: {
         get innerWidth() {
@@ -152,16 +201,18 @@ const renderer = createRenderer(canvas, {
 addEventListener("resize", () => renderer.resize())
 
 function controlsRoom() {
-    return controlsSpace(innerWidth, innerHeight, dpadShown)
+    const shown = dpadShown ? "dpad" : touchFirst ? "buttons" : "none"
+    return controlsSpace(innerWidth, innerHeight, shown)
 }
 
-// Show or hide the on-screen D-pad and breath button as the settings say,
-// refitting the maze when that changes.
+// Show or hide the on-screen D-pad as the settings say, refitting the maze
+// when that changes. Punch and breath show beside it, on a laptop's touch
+// screen too.
 function applyDpad() {
     const on = touch && settings.showDpad
     if (on === dpadShown) return
     dpadShown = on
-    setControls(document, { dpad: on })
+    setControls(document, { dpad: on, buttons: touchFirst || on })
     renderer.resize()
 }
 applyDpad()
@@ -173,24 +224,28 @@ applyDpad()
 // shorter; the Screen shake setting, when set, overrides the shake part.
 const particles = createParticles({ random: Math.random })
 const shake = createShake()
+// The players' jab looks after a punch (KDA-258; see jab.ts).
+const jabs = createJabs()
 const effects = {
     // Follow reduced motion and the Screen shake setting: on load, when the
     // settings change and when the system setting does.
     motion() {
         const reduced = reducedMotion?.matches ?? false
-        applyMotion({ particles, shake }, settings, reduced)
+        applyMotion({ particles, shake, jabs }, settings, reduced)
     },
     // The bursts and shakes for a tick's game events (see eventEffects.ts).
     events(events: readonly GameEvent[], game: GameState) {
-        effectsForEvents(events, game, { particles, shake })
+        effectsForEvents(events, game, { particles, shake, jabs })
     },
     tick(dt: number) {
         particles.update(dt)
         shake.update(dt)
+        jabs.update(dt)
     },
     reset() {
         particles.clear()
         shake.clear()
+        jabs.clear()
     },
     of(s: Screen): Effects {
         if (
@@ -203,12 +258,16 @@ const effects = {
         const moving = s.kind !== "paused"
         return {
             particles: particles.list,
+            jabs: jabs.list,
             ...(moving ? { shake: shake.offset(Math.random) } : {}),
             // The facing guide the settings pick (KDA-247). The arrow shows
             // with the rings, paused and ending too; the aim preview only
             // while playing.
             guide: settings.facingGuide,
             ...(s.kind === "playing" ? { aim: true } : {}),
+            // The boss's wind-up (its glow and warning tint), on the board
+            // in play, paused and ending, as the rings are.
+            bossBreath: true,
         }
     },
 }
@@ -228,6 +287,7 @@ const tickInput: TickInput = {
             held: p.heldSteps(),
             pressed: p.pressedStep(),
             breath: p.wasPressed("breath"),
+            punch: p.wasPressed("punch"),
         }
     },
     captured: () => pendingCapture,
@@ -361,13 +421,15 @@ function tick(dt: number) {
 
 function flowDeps(dt: number): FlowDeps {
     return {
-        levels,
+        levels: stages,
         progress,
         lastAnimal,
+        lastDifficulty,
         dt,
         random: Math.random,
         settings,
         touch,
+        focused,
     }
 }
 
@@ -395,45 +457,75 @@ function enter(prev: Screen, next: Screen) {
     screen = next
     pads.setAssignment(padAssignment(next))
     setControls(document, { playing: next.kind === "playing" })
-    // A swipe holds its direction until newer input; a game starting or
-    // ending (not a pause or resume) lets go of it, so it neither steers
-    // the next game nor sets that direction aside for the keys there.
+    // A drag holds its direction while the finger is down; a game starting
+    // or ending (not a pause or resume) lets go of it, so it neither steers
+    // the next game nor sets that direction aside for the keys there. A
+    // finger still down steers again once it drags anew.
     const wasPlaying = prev.kind === "playing"
     const isPlaying = next.kind === "playing"
-    if (
-        (isPlaying && !wasPlaying && prev.kind !== "paused") ||
-        (wasPlaying && !isPlaying && next.kind !== "paused")
-    ) {
+    // A game starts: playing, or paused when it starts in an unfocused
+    // window (see FlowDeps.focused); not a pause or resume of the same one.
+    const started =
+        (isPlaying || next.kind === "paused") && gameOf(next) !== gameOf(prev)
+    if (started || (wasPlaying && !isPlaying && next.kind !== "paused")) {
         touchSource.release()
     }
-    // Play started from a menu (character select or Retry): a direction
-    // still held from the menu waits for a fresh press. Resuming from pause
-    // keeps held directions, so holding through a pause carries on moving.
-    // A new game also starts with no particles or shake left over.
-    if (next.kind === "playing" && prev.kind !== "paused") {
+    // Play started from a menu (character select, Retry or the story
+    // card): a direction still held from the menu waits for a fresh press.
+    // Resuming from pause keeps held directions, so holding through a pause
+    // carries on moving. A new game also starts with no particles or shake
+    // left over.
+    if (started) {
         input.ignoreHeld()
         effects.reset()
     }
-    // Only 1-player games remember the pick: 2-player games leave saved
+    // Only 1-player games remember the picks: 2-player games leave saved
     // data alone.
     if (
-        next.kind === "playing" &&
+        next.kind === "characterSelect" &&
+        prev.kind === "difficultySelect" &&
+        playerCount(next.mode) === 1
+    ) {
+        lastDifficulty = next.difficulty
+        saveLastDifficulty(storage, lastDifficulty)
+    }
+    if (
+        started &&
         prev.kind === "characterSelect" &&
         playerCount(next.mode) === 1
     ) {
         lastAnimal = next.animals[0]
         saveLastPick(storage, lastAnimal)
     }
-    if (next.kind === "stageClear" && prev.kind === "ending") {
+    // A clear in stage mode or in a story run (KDA-271) records its stars
+    // and bests alike, but only a story run's unlocks the next stage
+    // (KDA-272): stages unlock only by story progress.
+    const cleared =
+        next.kind === "stageClear" ||
+        next.kind === "storyClear" ||
+        next.kind === "storyEnd"
+    if (cleared && prev.kind === "ending") {
         // 2-player games leave saved progress alone.
         if (recordsProgress(next.mode)) {
             const { stars, ticks } = next.rating
-            progress = recordClear(progress, storage, next.level, {
-                stars,
-                ticks,
+            const clear = { difficulty: next.difficulty, stars, ticks }
+            progress = recordClear(progress, storage, next.level, clear, {
+                unlocks: next.kind !== "stageClear",
             })
+            // A run that reached the ending: its total may be the best.
+            if (next.kind === "storyEnd") {
+                const total = runTotal(next)
+                progress = recordStoryBest(
+                    progress,
+                    storage,
+                    next.difficulty,
+                    total
+                )
+            }
         }
         celebrate(10)
+        // The ending gets a burst on top.
+        if (next.kind === "storyEnd") burst()
     }
     if (next.kind === "matchResult" && prev.kind === "ending") celebrate(10)
     // Every change on the settings and controls screens is saved, and
@@ -471,17 +563,49 @@ function render(alpha: number) {
     const shown = baseScreen(screen)
     const game = gameOf(shown)
     if (!game) return renderer.clear()
+    showBreathReady(energyHud(game).ready)
     if (shown.kind === "playing" || shown.kind === "ending") {
         lastAlpha = alpha
     }
     // Every screen with a game also says which level it is.
     const rules = "level" in shown ? levels[shown.level]?.rules : undefined
     const hud = game.mode === "versus" ? versusHud(game, shown) : hudOf(game)
+    const boss = bossHud(game)
+    if (boss) hud.boss = boss
+    if ("difficulty" in shown) {
+        hud.difficulty = DIFFICULTY_LABELS[shown.difficulty]
+    }
+    if ("run" in shown && shown.run) {
+        // On game over, the total Retry plays on from, as the card says:
+        // the failed stage's score is lost.
+        const total =
+            shown.kind === "gameOver"
+                ? shown.run.total
+                : runTotal({ run: shown.run, game })
+        withRunTotal(hud, total)
+    }
     renderer.draw(game, lastAlpha, hud, rules, effects.of(shown))
 }
 
-// The versus HUD: each player's dots, meter, stun or respawn countdown, and
-// the round tally (no lives). The result screens keep showing the round
+// In a story run (KDA-271) the HUD shows the run total so far, this
+// stage's score included: in place of the score with one player, and in
+// the middle (above the difficulty) with two, whose own scores stay.
+function withRunTotal(hud: Hud, total: number) {
+    if (hud.players) hud.round = `Total ${total}`
+    else hud.score = total
+}
+
+// The breath button looks ready while player 1's meter shows ready
+// (amber). Set on the DOM only when that changes.
+let breathReady: boolean | undefined
+function showBreathReady(ready: boolean) {
+    if (ready === breathReady) return
+    breathReady = ready
+    setBreathReady(touchControls, ready)
+}
+
+// The versus HUD: each player's dots, meter, stun or respawn countdown,
+// health, and the round tally. The result screens keep showing the round
 // just played as it was during play.
 function versusHud(game: GameState, s: Screen): Hud {
     const match =
@@ -496,26 +620,28 @@ function versusHud(game: GameState, s: Screen): Hud {
             score: p.score,
             dots: p.dots,
             energy: energyHud(game, i),
+            health: healthHud(p),
             ...(p.out ? { out: { respawnIn: p.respawnIn } } : {}),
             ...(stunned(p) ? { stunned: p.stunnedFor } : {}),
         })),
     }
 }
 
-// The HUD: with one player its score and meter; with two, each one's.
+// The HUD: with one player its score, meter and health; with two, each
+// one's.
 function hudOf(game: GameState): Hud {
     if (game.players.length === 1) {
         return {
             score: totalScore(game),
-            lives: game.lives,
+            health: healthHud(game.players[0]),
             energy: energyHud(game),
         }
     }
     return {
-        lives: game.lives,
         players: game.players.map((p, i) => ({
             score: p.score,
             energy: energyHud(game, i),
+            health: healthHud(p),
             ...(p.out ? { out: { respawnIn: p.respawnIn } } : {}),
         })),
     }
@@ -572,13 +698,41 @@ function showOverlay(s: Screen) {
                     : {}),
             })
         }
+        case "playSelect":
+            return showPlaySelect(
+                MODE_LABELS[s.mode],
+                PLAY_CHOICES.map((c) => ({
+                    label: PLAY_LABELS[c],
+                    selected: c === s.choice,
+                }))
+            )
+        case "storyMenu":
+            return showStoryMenu(
+                STORY_CHOICES.map((c) => ({
+                    label: storyLabel(c),
+                    selected: c === s.choice,
+                    ...(storyStart(c, progress) >= levels.length
+                        ? { locked: true }
+                        : {}),
+                }))
+            )
         case "stageSelect":
             return showStageSelect(
                 stageSlots(
                     progress,
-                    levels.map((level) => level.name)
+                    levels.map((level) => level.name),
+                    lastDifficulty
                 ),
-                s.selected
+                s.selected,
+                DIFFICULTY_LABELS[lastDifficulty]
+            )
+        case "difficultySelect":
+            return showDifficultySelect(
+                DIFFICULTIES.map((d) => ({
+                    label: DIFFICULTY_LABELS[d],
+                    detail: difficultyDescription(d),
+                    selected: d === s.difficulty,
+                }))
             )
         case "characterSelect":
             return showCharacterSelect(
@@ -592,21 +746,46 @@ function showOverlay(s: Screen) {
         case "paused":
             return showPause(
                 s.game.players.length,
-                PAUSE_CHOICES.map((c) => ({
+                pauseChoices(s).map((c) => ({
                     label: PAUSE_LABELS[c],
                     selected: c === (s.choice ?? "resume"),
                 }))
             )
         case "stageClear":
-            return showStageClear({
-                ...endView(s.game, s.choice),
-                rating: s.rating,
-            })
+            return showStageClear({ ...endView(s), rating: s.rating })
         case "gameOver":
-            return showGameOver(endView(s.game, s.choice))
+            return showGameOver(endView(s))
+        case "storyClear":
+            return showStoryClear({
+                difficulty: DIFFICULTY_LABELS[s.difficulty],
+                score: totalScore(s.game),
+                runTotal: runTotal(s),
+                rating: s.rating,
+                ...(s.next === undefined
+                    ? {}
+                    : { next: `Stage ${s.next + 1}: ${levels[s.next].name}` }),
+                items: [
+                    {
+                        label: s.next === undefined ? "Title" : "Next stage",
+                        selected: true,
+                    },
+                ],
+            })
+        case "storyEnd": {
+            const best = recordsProgress(s.mode)
+                ? progress.storyBests?.[s.difficulty]
+                : undefined
+            return showStoryEnd({
+                difficulty: DIFFICULTY_LABELS[s.difficulty],
+                runTotal: runTotal(s),
+                ...(best === undefined ? {} : { best }),
+                items: [{ label: "Title", selected: true }],
+            })
+        }
         case "roundResult": {
             const last = s.match[s.match.length - 1]
             return showRoundResult({
+                difficulty: DIFFICULTY_LABELS[s.difficulty],
                 round: s.match.length,
                 winner: last.winner,
                 dots: last.dots,
@@ -620,6 +799,7 @@ function showOverlay(s: Screen) {
         }
         case "matchResult":
             return showMatchResult({
+                difficulty: DIFFICULTY_LABELS[s.difficulty],
                 winner: s.winner,
                 rounds: s.match,
                 wins: roundWins(s.match),
@@ -637,7 +817,27 @@ const ROUND_LABELS = { nextRound: "Next round", quit: "Quit" } as const
 // The match result's menu: Retry plays a new match.
 const MATCH_LABELS = { retry: "Rematch", stageSelect: "Stage select" } as const
 
-const END_LABELS = { retry: "Retry", stageSelect: "Stage select" } as const
+const END_LABELS: Record<EndChoice, string> = {
+    retry: "Retry",
+    stageSelect: "Stage select",
+    quit: "Quit",
+}
+
+// The choice of story or stage mode (KDA-271).
+const PLAY_LABELS: Record<PlayChoice, string> = {
+    story: "Story",
+    stage: "Stage select",
+}
+
+// The story menu's items. Continue names the stage it starts on (e.g.
+// "Continue (stage 3: Ice)"), or says it is coming soon when that stage
+// isn't built yet.
+function storyLabel(choice: StoryChoice): string {
+    if (choice === "newStory") return "New story"
+    const index = storyStart(choice, progress)
+    const name = levels[index]?.name ?? "coming soon"
+    return `Continue (stage ${index + 1}: ${name})`
+}
 
 // The mode select's labels, one per mode; the title offers them all, in
 // MODE_CHOICES order, then Settings.
@@ -652,10 +852,20 @@ const TITLE_LABELS: Record<TitleChoice, string> = {
     settings: "Settings",
 }
 
-const PAUSE_LABELS = { resume: "Resume", settings: "Settings" } as const
+const PAUSE_LABELS: Record<PauseChoice, string> = {
+    resume: "Resume",
+    settings: "Settings",
+    quit: "Quit",
+}
 
-function endView(game: GameState, choice: EndChoice): EndScreenView {
+// An end screen's view. In a story run (KDA-271), game over also shows the
+// run total the stage started with: what Retry plays on from.
+function endView(
+    s: Extract<Screen, { kind: "stageClear" | "gameOver" }>
+): EndScreenView {
+    const { game } = s
     return {
+        difficulty: DIFFICULTY_LABELS[s.difficulty],
         score: totalScore(game),
         ...(game.players.length > 1
             ? {
@@ -663,23 +873,37 @@ function endView(game: GameState, choice: EndChoice): EndScreenView {
                   playerDots: game.players.map((p) => p.dots),
               }
             : {}),
-        items: END_CHOICES.map((c) => ({
+        ...("run" in s && s.run ? { runTotal: s.run.total } : {}),
+        items: endChoices(s).map((c) => ({
             label: END_LABELS[c],
-            selected: c === choice,
+            selected: c === s.choice,
         })),
     }
 }
 
 // Auto-pause: leaving the window or hiding the tab mid-game pauses it, so
-// the game doesn't play on unwatched.
+// the game doesn't play on unwatched. Whether the window is focused also
+// goes to flow (FlowDeps.focused), so a game doesn't start unwatched
+// either: the story card waits, and a game that starts meanwhile starts
+// paused.
 function autoPause() {
     const next = pauseIfPlaying(screen)
     if (next !== screen) enter(screen, next)
 }
-addEventListener("blur", autoPause)
+function unfocus() {
+    focused = false
+    autoPause()
+}
+addEventListener("blur", unfocus)
 document.addEventListener("visibilitychange", () => {
-    if (document.hidden) autoPause()
+    if (document.hidden) unfocus()
 })
+// Focus back, or a key or pointer press, which only a focused page gets.
+for (const type of ["focus", "keydown", "pointerdown"]) {
+    addEventListener(type, () => {
+        focused = true
+    })
+}
 
 // Taps and clicks on the overlays: a menu item or card puts player 1's
 // cursor on it and confirms (on settings that flips a toggle or runs

@@ -26,6 +26,9 @@ describe("main with a saved pick", () => {
         await import("./main")
 
         pressAndTick("Space")
+        pressAndTick("ArrowDown")
+        pressAndTick("Space")
+        pressAndTick("Space")
         pressAndTick("Space")
         expect(screen()).toBe("character-select")
         expect(pick()).toBe("skunk")
