@@ -147,5 +147,3 @@ export const PUNCH_REACH =
 // How far to either side of the facing line (in cells) a punch still
 // reaches: half a cell, so it hits in its own lane only.
 export const PUNCH_ACROSS = 0.5
-// Cells a punch knocks what it hits back, along the puncher's facing.
-export const PUNCH_KNOCKBACK = 1

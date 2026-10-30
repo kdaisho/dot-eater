@@ -116,7 +116,7 @@ describe("punching an enemy", () => {
         const inside = gliding(3, 1, { x: 2, y: 1 }, 0.06)
         const state = makeState(room, { x: 1, y: 1 }, [inside])
         tick(state)
-        expect(inside.pos).toEqual(vec2(4, 1))
+        expect(ofType(state, "punchHit")).toHaveLength(1)
 
         const outside = gliding(3, 1, { x: 2, y: 1 }, 0.08)
         const missed = makeState(room, { x: 1, y: 1 }, [outside])
@@ -130,7 +130,7 @@ describe("punching an enemy", () => {
         const near = gliding(3, 2, { x: 3, y: 1 }, 0.4)
         const state = makeState(room, { x: 2, y: 1 }, [near])
         tick(state)
-        expect(near.pos).toEqual(vec2(4, 2))
+        expect(ofType(state, "punchHit")).toHaveLength(1)
 
         const far = gliding(3, 2, { x: 3, y: 1 }, 0.6)
         const missed = makeState(room, { x: 2, y: 1 }, [far])
@@ -284,14 +284,83 @@ describe("punching an enemy", () => {
         expect(ofType(state, "punchHit")).toEqual([])
     })
 
-    it("never lets the knocked-back enemy catch on its own tick", () => {
-        // On the player's cell, its sprite still 0.7 cells off, gliding in.
+    // Regression: the knockback started from the enemy's cell, not where it
+    // was drawn, so it jumped up to a cell and caught a player it had been
+    // well clear of.
+    it("knocks from where the enemy is drawn, with no jump to its cell", () => {
+        // Gliding down from (4, 1), a tenth of the way: drawn (4, 1.1).
+        const enemy = gliding(4, 2, { x: 4, y: 1 }, 0.1)
+        const state = makeState(
+            room,
+            [
+                { x: 3, y: 1 },
+                { x: 5, y: 2 },
+            ],
+            [enemy],
+            { mode: "coop" }
+        )
+        // Player 2 half way from (4, 2) to (5, 2).
+        const p2 = state.players[1].character
+        p2.lastPos = vec2(4, 2)
+        p2.moveProgress = 0.5
+        tick(state, [PUNCH, IDLE])
+        expect(state.players.map((p) => p.out)).toEqual([false, false])
+        // Knocked from (4, 1), the cell it is drawn nearest, to (5, 1).
+        expect(enemy.lastPos).toEqual(vec2(4, 1))
+        expect(enemy.pos).toEqual(vec2(5, 1))
+    })
+
+    it("lets an enemy gliding away go on a cell from where it is drawn", () => {
+        // Drawn at (3.05, 1), on its way from (3, 1) to (4, 1).
+        const enemy = gliding(4, 1, { x: 3, y: 1 }, 0.05)
+        const state = makeState(room, { x: 2, y: 1 }, [enemy])
+        tick(state)
+        expect(enemy.pos).toEqual(vec2(4, 1))
+        expect(drawnPos(enemy, 9, 6).x).toBeCloseTo(3.05 + 2 / TICK_RATE)
+    })
+
+    it("turns an enemy gliding in round, from where it is drawn", () => {
+        // Drawn at (3.05, 1), nearly in from (4, 1): it heads back there.
+        const enemy = gliding(3, 1, { x: 4, y: 1 }, 0.95)
+        const state = makeState(room, { x: 2, y: 1 }, [enemy])
+        tick(state)
+        expect(enemy.lastPos).toEqual(vec2(3, 1))
+        expect(enemy.pos).toEqual(vec2(4, 1))
+        expect(drawnPos(enemy, 9, 6).x).toBeCloseTo(3.05 + 2 / TICK_RATE)
+    })
+
+    it("knocks an enemy drawn short of its nearest cell from where it is", () => {
+        // Gliding in from (3, 1) onto the player's cell, drawn (2.7, 1):
+        // nearest (3, 1), so it is knocked to (4, 1), gliding from 2.7.
         const enemy = gliding(2, 1, { x: 3, y: 1 }, 0.3)
         const state = makeState(room, { x: 2, y: 1 }, [enemy])
         expect(tick(state)).toBeNull()
+        expect(enemy.lastPos).toEqual(vec2(3, 1))
+        expect(enemy.pos).toEqual(vec2(4, 1))
+        expect(drawnPos(enemy, 9, 6).x).toBeCloseTo(2.7 + 2 / TICK_RATE)
+    })
+
+    it("snaps an enemy gliding across the punch onto its nearest cell", () => {
+        // Drawn (2, 1.4), gliding down from (2, 1) to (2, 2): knocked along
+        // row 1, the row it is drawn nearest.
+        const enemy = gliding(2, 2, { x: 2, y: 1 }, 0.4)
+        const state = makeState(room, { x: 1, y: 1 }, [enemy])
+        tick(state)
+        expect(enemy.lastPos).toEqual(vec2(2, 1))
         expect(enemy.pos).toEqual(vec2(3, 1))
-        // Drawn on its new cell at once, not gliding in from the player's.
-        expect(drawnPos(enemy, 9, 6)).toEqual(vec2(3, 1))
+    })
+
+    it("never catches anyone with the enemy it knocks, on the punch's tick", () => {
+        // The player glides in towards an enemy gliding in at it: they would
+        // touch this tick, punch or not.
+        const enemy = gliding(2, 1, { x: 3, y: 1 }, 0.88)
+        const state = makeState(room, { x: 2, y: 1 }, [enemy])
+        const player = state.players[0].character
+        player.lastPos = vec2(1, 1)
+        player.moveProgress = 0.5
+        expect(tick(state)).toBeNull()
+        // It is a hazard again from the next tick.
+        expect(tick(state, IDLE)).toBe("dead")
     })
 
     it("knocks back a chaser about to step onto the player", () => {
@@ -332,14 +401,16 @@ describe("punching", () => {
     it("has no cooldown or cost: every press punches", () => {
         const enemy = makeEnemy(3, 1)
         const state = makeState(room, { x: 2, y: 1 }, [enemy])
-        // A knocked-back enemy glides in from its old cell, so on the next
-        // tick it is still drawn in reach, and is knocked on again.
+        // A knocked-back enemy glides on from where it was drawn, so on the
+        // next tick it is still in reach and hit again. It is knocked a cell
+        // on from the cell it is drawn nearest, still (3, 1), so it keeps
+        // going to (4, 1) rather than being thrown further.
         tick(state)
         expect(ofType(state, "punched")).toHaveLength(1)
         tick(state)
         expect(ofType(state, "punched")).toHaveLength(1)
         expect(ofType(state, "punchHit")).toHaveLength(1)
-        expect(enemy.pos).toEqual(vec2(5, 1))
+        expect(enemy.pos).toEqual(vec2(4, 1))
         expect(state.players[0].breather.energy).toBe(0)
     })
 

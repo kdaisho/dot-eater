@@ -804,6 +804,8 @@ export function step(
         // enemy from where it is after it, not along a sweep across the
         // jump. A player a punch knocked back (versus) has made its move
         // this tick, so it stays where it now is drawn for the rest of it.
+        // (Known gap, rare and left: the bit of its own move it made this
+        // tick, before the shove, isn't checked for catches.)
         const after = tickStarts(state, dt)
         start = {
             ...after,

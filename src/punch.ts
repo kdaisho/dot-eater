@@ -1,8 +1,10 @@
-import { hasStatus, inPlay, playerCharacters, pushEnemy } from "./breath"
-import { PUNCH_ACROSS, PUNCH_KNOCKBACK, PUNCH_REACH } from "./constants"
+import { addStatus, hasStatus, inPlay, type EnemyStatus } from "./breath"
+import type { Character } from "./character"
+import { Cell, PUNCH_ACROSS, PUNCH_REACH } from "./constants"
 import { emit } from "./events"
 import { drawnPos, knockBack, type GameState, type Player } from "./game"
 import { wrapDelta } from "./glide"
+import { loopPos } from "./level"
 import { vec2, type Vec2 } from "./vec2"
 import { stunned } from "./versus"
 
@@ -18,11 +20,11 @@ import { stunned } from "./versus"
 // nearest: enemies overlap, and a jab that left one of two stacked enemies
 // standing wouldn't clear the way.
 //
-// - An enemy hit is knocked back PUNCH_KNOCKBACK cells along the facing
-//   by the breaths' push (pushEnemy in breath.ts): it stops before walls,
-//   glides in, slides on if it lands on ice and never catches on its own
+// - An enemy hit is knocked back a cell along the facing from where it is
+//   drawn (see knockEnemy): it doesn't move into a wall, glides there with
+//   no jump, slides on if it lands on ice and never catches on the punch's
 //   tick. It is never defeated (a Splitter doesn't split), and a held one
-//   (e.g. frozen) is hit but not moved. Harmless ones are pushed too.
+//   (e.g. frozen) is hit but not moved. Harmless ones are knocked too.
 // - The boss is hit on any part of its body (the square of its four cell
 //   centres) but isn't hurt or moved: the hit is reported, for its thud.
 // - The other player is never hit in co-op: the punch passes through.
@@ -69,10 +71,7 @@ export function punch(state: GameState, who: Player): Punched {
     for (const { enemy, i, at } of hits) {
         emit(state, { type: "punchHit", player, at, target: "enemy", enemy: i })
         if (hasStatus(enemy, "holds")) continue
-        const players = playerCharacters(state)
-        if (pushEnemy(state.cells, enemy, step, PUNCH_KNOCKBACK, players)) {
-            result.enemies = true
-        }
+        if (knockEnemy(state, enemy, step)) result.enemies = true
     }
     const boss = bossHitAt(state, from, step)
     if (boss) {
@@ -87,6 +86,52 @@ export function punch(state: GameState, who: Player): Punched {
         if (knockBack(state, other, step)) result.players.push(i)
     })
     return result
+}
+
+// What a knocked-back enemy wears for the rest of the punch's tick (it is
+// gone at the next tick's start; see tickEffects in breath.ts): harmless,
+// so the knock never catches anyone on the punch's tick. No look.
+export const KNOCKED: EnemyStatus = { name: "punch.knocked", harmless: true }
+
+// Knock `enemy` back a cell along the unit `step`, from where it is drawn:
+// to the cell one on from the cell it is drawn nearest (its pos, or the
+// cell it is leaving while less than halfway out of it), unless that is a
+// wall. Returns whether it moved.
+//
+// It glides there from exactly where it is drawn, with no jump, as if it
+// were that far into a move from the nearest cell: its move progress is
+// how far ahead of that cell it is drawn, along `step`. Drawn short of the
+// nearest cell (gliding in towards the puncher, or away from it but past
+// halfway), that is below 0, down to -0.5, and the glide in is up to 1.5
+// cells long. So it carries on the way it was going, turns round, or is
+// stopped short, but always ends a cell past its nearest cell. An enemy
+// gliding across the punch (from a cell beside the punch's line, or
+// towards one) can't glide on a slant: it is snapped across onto its
+// nearest cell (at most half a cell), and knocked from there.
+//
+// Like the breaths' push, it goes through tunnels, lands on a cell that
+// blocks enemies (and leaves by the shortest way), and slides on if it
+// lands on ice (its latest move was the knock). Unlike the push, it can't
+// jump onto anyone. It is harmless for the rest of the tick (KNOCKED).
+function knockEnemy(state: GameState, enemy: Character, step: Vec2): boolean {
+    const cols = state.cells[0].length
+    const rows = state.cells.length
+    const drawn = drawnPos(enemy, cols, rows)
+    const base = enemy.moveProgress < 0.5 ? enemy.lastPos : enemy.pos
+    const target = loopPos(state.cells, vec2(base.x + step.x, base.y + step.y))
+    if (state.cells[target.y][target.x] === Cell.wall) return false
+    const { along } = punchOffset(
+        vec2(
+            wrapDelta(drawn.x - base.x, cols),
+            wrapDelta(drawn.y - base.y, rows)
+        ),
+        step
+    )
+    enemy.lastPos = vec2(base.x, base.y)
+    enemy.pos = target
+    enemy.moveProgress = along
+    addStatus(enemy, KNOCKED, 0)
+    return true
 }
 
 // An offset from the puncher split along its facing (`along`, positive

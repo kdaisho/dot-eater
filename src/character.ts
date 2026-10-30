@@ -21,7 +21,9 @@ export type Character = {
     // move). It grows by speed * dt each tick and stays at 1 while the
     // character can't or doesn't want to move. Just after a move it can be a
     // little above 0: the progress left over past 1, so slow ticks don't
-    // round speeds down.
+    // round speeds down. An enemy a punch knocked back from short of its
+    // cell starts below 0 (down to -0.5; see knockEnemy in punch.ts): it is
+    // drawn that far before lastPos, and its glide in is that much longer.
     moveProgress: number
     // Patrollers only: the waypoints walked in a loop, and the index of the
     // one it is heading for. Other characters have no route.
