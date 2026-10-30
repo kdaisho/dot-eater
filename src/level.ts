@@ -377,8 +377,11 @@ export function parseMaps(data: LevelData): Readonly<Record<MapSize, Level>> {
         return map
     })
     // The boss is part of what the stage is, at every difficulty.
-    if (new Set(built.map((map) => map.bossPositions.length > 0)).size > 1) {
+    const bosses = new Set(built.map((map) => map.bossPositions.length > 0))
+    if (bosses.size > 1) {
         problems.push(`both maps must have a boss ("${BOSS}") or neither`)
+    } else {
+        problems.push(...bossEnergyProblems(data.rules, bosses.has(true)))
     }
     if (problems.length > 0) throw fail()
 
@@ -770,6 +773,21 @@ function regrowDotsProblems(rule: unknown): string[] {
         )
     }
     return problems
+}
+
+// A boss level (`hasBoss`) must have rules.regrowDots. A boss takes many
+// breaths to defeat and the breaths' energy comes only from dots, so
+// without dots coming back the stage could run out of them with the boss
+// still standing, and could never be won.
+function bossEnergyProblems(
+    rules: LevelRules | undefined,
+    hasBoss: boolean
+): string[] {
+    return hasBoss && rules?.regrowDots === undefined
+        ? [
+              "a boss level needs rules.regrowDots, so the dots (its ammunition) come back",
+          ]
+        : []
 }
 
 // A copy of the (already validated) rules, so the parsed level shares no

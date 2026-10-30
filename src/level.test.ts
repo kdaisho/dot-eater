@@ -897,11 +897,26 @@ describe("parseLevel with a boss", () => {
         parTime: 60,
         map: ["#######", "#P....#", "#..B .#", "#.....#", "#E....#", "#######"],
         enemies: [{ ai: "chase" }],
+        rules: { regrowDots: { seconds: 10 } },
     }
     // `lair` with its map rows replaced by `map`.
     const withMap = (map: readonly string[]): FlatLevelData => ({
         ...lair,
         map,
+    })
+
+    // Regression: with the energy refill gone (KDA-267), a boss level
+    // without dots coming back could run out of them with the boss alive.
+    it("needs rules.regrowDots, so it can always be won", () => {
+        const needs =
+            "a boss level needs rules.regrowDots, so the dots (its ammunition) come back"
+        const { rules: _, ...bare } = lair
+        expect(problemsOf(bare)).toEqual([needs])
+        expect(problemsOf({ ...lair, rules: { fog: { radius: 3 } } })).toEqual([
+            needs,
+        ])
+        // A level without a boss doesn't need it.
+        expect(problemsOf(valid)).toEqual([])
     })
     // Boss settings come from JSON-like data, so tests pass shapes the type
     // forbids.
@@ -1358,6 +1373,7 @@ describe("parseStage", () => {
                 ],
                 enemies: [],
             }),
+            rules: { regrowDots: { seconds: 10 } },
         }
         expect(problemsWith(lair, parseStage)).toEqual([
             `the boss at (2, 2) is too near the "P" at (3, 4): 1.00 cells, less than ${SPAWN_GAP}`,
