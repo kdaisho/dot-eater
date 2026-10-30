@@ -1,5 +1,6 @@
 import type { GameEvent } from "./events"
 import type { GameState } from "./game"
+import type { Jabs } from "./jab"
 import type { Particles } from "./particles"
 import { shakeEnabled, type Settings } from "./settings"
 import { SHAKES, type Shake } from "./shake"
@@ -10,11 +11,12 @@ import { vec2, type Vec2 } from "./vec2"
 // from the particle system and shake it is handed; main.ts calls it with
 // each tick's events. Visual only: the game never reads any of it.
 
-// What the effects go to: the particle system and the shake (or test
-// doubles of them).
+// What the effects go to: the particle system, the shake and the players'
+// jab looks (or test doubles of them). Without `jabs`, punches show none.
 export type EffectTargets = {
     particles: Pick<Particles, "burst" | "emit">
     shake: Pick<Shake, "add">
+    jabs?: Pick<Jabs, "add">
 }
 
 // The effects of every event of a tick, in order. `state` is the game
@@ -30,7 +32,7 @@ export function effectsForEvents(
 export function effectsForEvent(
     event: GameEvent,
     state: GameState,
-    { particles, shake }: EffectTargets
+    { particles, shake, jabs }: EffectTargets
 ) {
     switch (event.type) {
         case "dotEaten":
@@ -57,6 +59,13 @@ export function effectsForEvent(
             return
         case "playerStunned":
             shake.add(SHAKES.stun)
+            return
+        case "punched":
+            jabs?.add(event.player, event.facing)
+            return
+        case "punchHit":
+            particles.burst("punch", event.at)
+            shake.add(SHAKES.punch)
             return
         case "playerRespawned":
         case "gameWon":

@@ -117,6 +117,32 @@ describe("effectsForEvent", () => {
         expect(SHAKES.stun).toBeLessThan(SHAKES.hit)
     })
 
+    it("a jab look, nothing else, for a punch", () => {
+        const r = recorder()
+        const jabs: { player: number; facing: Vec2 }[] = []
+        r.targets.jabs = {
+            add: (player, facing) => jabs.push({ player, facing }),
+        }
+        effectsForEvent(
+            { type: "punched", player: 1, at: vec2(2, 2), facing: vec2(0, -1) },
+            room(),
+            r.targets
+        )
+        expect(jabs).toEqual([{ player: 1, facing: vec2(0, -1) }])
+        expect(r.bursts).toEqual([])
+        expect(r.shakes).toEqual([])
+    })
+
+    it("a tiny burst and a very small shake where a punch lands", () => {
+        for (const target of ["enemy", "boss", "player"] as const) {
+            const at = vec2(2.4, 2)
+            const r = run({ type: "punchHit", player: 0, at, target })
+            expect(r.bursts).toEqual([{ kind: "punch", at }])
+            expect(r.shakes).toEqual([SHAKES.punch])
+        }
+        expect(SHAKES.punch).toBeLessThan(SHAKES.stun)
+    })
+
     it.each([
         { type: "playerRespawned", player: 0, at: vec2(1, 2) },
         { type: "gameWon" },

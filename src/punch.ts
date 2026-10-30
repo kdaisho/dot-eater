@@ -27,8 +27,9 @@ import { stunned } from "./versus"
 //   centres) but isn't hurt or moved: the hit is reported, for its thud.
 // - The other player is never hit in co-op: the punch passes through.
 // - In versus, the other player in play is knocked back a cell along the
-//   facing (knockBack in game.ts: it stays put against a wall or a solid
-//   enemy), but not stunned or hurt, stunned, immune or not.
+//   facing (knockBack in game.ts: it stays put against anything that
+//   blocks its move), but not stunned or hurt. A stunned or immune player
+//   is shoved all the same.
 
 // Tolerance for the reach's edges, as in game.ts.
 const EPSILON = 1e-9

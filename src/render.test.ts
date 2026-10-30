@@ -24,6 +24,7 @@ import {
     STUN_BADGE,
     stunLabel,
 } from "./render"
+import { JAB_LUNGE, JAB_SECONDS } from "./jab"
 import type { Particle } from "./particles"
 import { createSplitter } from "./splitter"
 import {
@@ -1386,6 +1387,40 @@ describe("createRenderer with effects", () => {
         calls.length = 0
         renderer.resize()
         expect(calls.filter((c) => c.name === "arc")).toHaveLength(1)
+    })
+
+    describe("a jab", () => {
+        const sprite = (
+            calls: ReturnType<typeof setup>["calls"],
+            text: string
+        ) => calls.find((c) => c.name === "fillText" && c.args[0] === text)
+
+        it("lunges the player along it, with a fist just ahead", () => {
+            const { calls, canvas, renderer } = setup()
+            const jab = {
+                player: 0,
+                facing: vec2(1, 0),
+                age: JAB_SECONDS / 2,
+            }
+            renderer.draw(corridor(), 0, {}, {}, { jabs: [jab] })
+            const cell = cellOf(canvas)
+            const player = sprite(calls, "🐉")
+            expect(player?.args[1]).toBeCloseTo((1.5 + JAB_LUNGE) * cell)
+            expect(player?.args[2]).toBeCloseTo(1.5 * cell)
+            const fist = sprite(calls, "👊")
+            expect(fist?.args[1]).toBeGreaterThan(player?.args[1] as number)
+            expect(fist?.args[2]).toBeCloseTo(1.5 * cell)
+        })
+
+        it("shows nothing without one, or for another player", () => {
+            const { calls, canvas, renderer } = setup()
+            const other = { player: 1, facing: vec2(1, 0), age: 0.05 }
+            renderer.draw(corridor(), 0, {}, {}, { jabs: [other] })
+            expect(sprite(calls, "🐉")?.args[1]).toBeCloseTo(
+                1.5 * cellOf(canvas)
+            )
+            expect(sprite(calls, "👊")).toBeUndefined()
+        })
     })
 })
 

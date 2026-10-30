@@ -94,6 +94,16 @@ describe("soundForEvent", () => {
                 "caught",
             ],
             [{ type: "playerStunned", player: 1, by: 0, at }, "stunned"],
+            [{ type: "punched", player: 0, at, facing: vec2(1, 0) }, "punch"],
+            [
+                { type: "punchHit", player: 0, at, target: "enemy", enemy: 1 },
+                "punchHit",
+            ],
+            [{ type: "punchHit", player: 1, at, target: "player" }, "punchHit"],
+            [
+                { type: "punchHit", player: 0, at, target: "boss" },
+                "punchHit.boss",
+            ],
             [{ type: "gameWon" }, "stageClear"],
             [{ type: "gameLost" }, "gameOver"],
             [{ type: "playerRespawned", player: 0, at }, undefined],
@@ -145,6 +155,28 @@ describe("eventSounds", () => {
                 { type: "gameLost" },
             ])
         ).toEqual(["gameOver"])
+    })
+
+    it("plays a landed punch as its hit only, not a whiff too", () => {
+        const punched: GameEvent = {
+            type: "punched",
+            player: 0,
+            at,
+            facing: vec2(1, 0),
+        }
+        expect(eventSounds([punched])).toEqual(["punch"])
+        expect(
+            eventSounds([
+                punched,
+                { type: "punchHit", player: 0, at, target: "enemy", enemy: 0 },
+            ])
+        ).toEqual(["punchHit"])
+        expect(
+            eventSounds([
+                punched,
+                { type: "punchHit", player: 0, at, target: "boss" },
+            ])
+        ).toEqual(["punchHit.boss"])
     })
 
     it("plays them on the audio engine", () => {
