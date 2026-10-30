@@ -313,13 +313,65 @@ describe("parseBindings", () => {
         expect(parseBindings(value)).toEqual(stored)
     })
 
-    it("resets every key when the default punch key is taken", () => {
+    // Regression: a missing punch took its default even when a stored key
+    // or button already had it, and the clash reset every key (or the
+    // pad), wiping the player's remaps.
+    it("gives a missing punch a free key when its default is taken", () => {
         const value = JSON.parse(JSON.stringify(stored))
-        delete value.players[0].keys.punch
+        for (const player of value.players) delete player.keys.punch
+        // P2's breath on Z, P2's default punch; P1's breath on /, P1's.
+        value.players[1].keys.breath = "KeyZ"
         value.players[0].keys.breath = "Slash"
+        const b = parseBindings(value)
+        expect(p1(b).keys.breath).toBe("Slash")
+        expect(p2(b).keys.breath).toBe("KeyZ")
+        expect(p1(b).keys.up).toBe("ArrowUp")
+        // The first spare keys that are free, P1 first.
+        expect(p1(b).keys.punch).toBe("Period")
+        expect(p2(b).keys.punch).toBe("Comma")
+        expect(new Set(allKeys(b)).size).toBe(KEY_COUNT)
+    })
+
+    it("still resets every key when a stored punch clashes", () => {
+        const value = JSON.parse(JSON.stringify(stored))
+        value.players[0].keys.punch = "ArrowUp"
         expect(parseBindings(value).players[0].keys).toEqual(
             DEFAULT_BINDINGS.players[0].keys
         )
+    })
+
+    it("gives a missing pad punch a button it can have", () => {
+        const value = JSON.parse(JSON.stringify(stored))
+        for (const player of value.players) delete player.pad.punch
+        // P1's breath on X, the default punch button; P2's pause there.
+        value.players[0].pad.breath = PAD_X
+        value.players[1].pad.pause = PAD_X
+        const b = parseBindings(value)
+        expect(p1(b).pad).toEqual({
+            breath: PAD_X,
+            punch: Y,
+            confirm: PAD_A,
+            pause: PAD_START,
+        })
+        expect(p2(b).pad).toEqual({
+            breath: PAD_A,
+            punch: Y,
+            confirm: PAD_A,
+            pause: PAD_X,
+        })
+    })
+
+    it("shares a missing pad punch with confirm when it can", () => {
+        const value = JSON.parse(JSON.stringify(stored))
+        delete value.players[0].pad.punch
+        value.players[0].pad.breath = Y
+        value.players[0].pad.confirm = PAD_X
+        expect(p1(parseBindings(value)).pad).toEqual({
+            breath: Y,
+            punch: PAD_X,
+            confirm: PAD_X,
+            pause: PAD_START,
+        })
     })
 
     it("falls back for a missing player", () => {

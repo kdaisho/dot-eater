@@ -273,8 +273,10 @@ function withKey(
 //
 // Each entry falls back on its own: a missing or invalid key or button (not
 // a string or number, or an unbindable one) takes its default, so a save
-// from an older version with fewer actions keeps the rest. Then the whole
-// is checked: when two actions end up on one key (stored duplicates, or a
+// from an older version with fewer actions keeps the rest. An action the
+// save predates (the punch) takes its default only where that is free,
+// else a spare key or button (see fillLaterActions). Then the whole is
+// checked: when two actions end up on one key (stored duplicates, or a
 // fallback default that a stored key already uses), every key falls back to
 // the defaults; when a player's pad has two actions on one button that
 // can't share (see canShare), that player's pad buttons fall back.
@@ -289,9 +291,14 @@ export function parseBindings(value: unknown): Bindings {
     const entries = DEFAULT_BINDINGS.players.map((_, i) =>
         Array.isArray(stored) ? (stored[i] as unknown) : undefined
     )
-    const players = DEFAULT_BINDINGS.players.map((defaults, i) =>
+    const parsed = DEFAULT_BINDINGS.players.map((defaults, i) =>
         parsePlayer(entries[i], defaults)
-    ) as [PlayerBindings, PlayerBindings]
+    )
+    fillLaterActions(parsed)
+    const players = parsed.map(({ keys, pad }) => ({ keys, pad })) as [
+        PlayerBindings,
+        PlayerBindings,
+    ]
     const codes = players.flatMap((p) => KEY_ACTIONS.map((a) => p.keys[a]))
     const keysOk = new Set(codes).size === codes.length
     return {
@@ -337,22 +344,116 @@ export function sameBindings(a: Bindings, b: Bindings): boolean {
     })
 }
 
-function parsePlayer(value: unknown, defaults: PlayerBindings): PlayerBindings {
+// One player's stored bindings, each entry parsed on its own (a missing or
+// invalid one takes its default), with which of the LATER_ACTIONS were
+// missing or invalid (see fillLaterActions).
+type ParsedPlayer = {
+    keys: Record<Action, string>
+    pad: Record<PadAction, number>
+    missingKeys: Action[]
+    missingPad: PadAction[]
+}
+
+function parsePlayer(value: unknown, defaults: PlayerBindings): ParsedPlayer {
     const keys = field(value, "keys")
     const pad = field(value, "pad")
-    const parsedKeys = {} as Record<Action, string>
+    const parsed: ParsedPlayer = {
+        keys: {} as Record<Action, string>,
+        pad: {} as Record<PadAction, number>,
+        missingKeys: [],
+        missingPad: [],
+    }
     for (const action of KEY_ACTIONS) {
         const code = field(keys, action)
-        parsedKeys[action] = isBindableKey(code) ? code : defaults.keys[action]
+        if (isBindableKey(code)) parsed.keys[action] = code
+        else {
+            parsed.keys[action] = defaults.keys[action]
+            if (LATER_ACTIONS.includes(action)) parsed.missingKeys.push(action)
+        }
     }
-    const parsedPad = {} as Record<PadAction, number>
     for (const action of PAD_ACTIONS) {
         const button = field(pad, action)
-        parsedPad[action] = isBindableButton(button)
-            ? button
-            : defaults.pad[action]
+        if (isBindableButton(button)) parsed.pad[action] = button
+        else {
+            parsed.pad[action] = defaults.pad[action]
+            if (LATER_ACTIONS.includes(action)) parsed.missingPad.push(action)
+        }
     }
-    return { keys: parsedKeys, pad: parsedPad }
+    return parsed
+}
+
+// Actions added after bindings were first saved: the punch (KDA-258). A
+// save from before one has no key or button for it, which isn't the
+// player's doing, so it must never reset the bindings they made.
+const LATER_ACTIONS: readonly Action[] = ["punch"]
+
+// Keys a later action missing from a save tries, after its own default,
+// when that is taken. More than the 15 keys the other actions can hold,
+// so one is always free.
+const SPARE_KEYS: readonly string[] = [
+    "Slash",
+    "KeyZ",
+    "Period",
+    "Comma",
+    "Semicolon",
+    "Quote",
+    "KeyX",
+    "KeyC",
+    "KeyV",
+    "KeyB",
+    "KeyN",
+    "KeyM",
+    "KeyF",
+    "KeyG",
+    "KeyH",
+    "KeyJ",
+    "KeyK",
+    "KeyL",
+    "KeyR",
+    "KeyT",
+]
+
+// Buttons a later pad action missing from a save tries, after its own
+// default: the face and shoulder buttons first. Every bindable button is
+// here, so with only three other pad actions one always fits.
+const SPARE_BUTTONS: readonly number[] = [
+    2, 3, 1, 5, 4, 7, 6, 0, 8, 10, 11, 16, 9,
+]
+
+// Give each later action missing from a save (see parsePlayer) its default
+// key and button when they are free, else the first spare one that is,
+// player 1 first: a key no other action of either player holds, a button
+// whose actions may all share with it (see canShare). So a save from
+// before an action keeps every binding it has, and only a clash among
+// the stored bindings themselves resets anything.
+function fillLaterActions(players: ParsedPlayer[]) {
+    const taken = new Set(
+        players.flatMap((p) =>
+            KEY_ACTIONS.filter((a) => !p.missingKeys.includes(a)).map(
+                (a) => p.keys[a]
+            )
+        )
+    )
+    for (const p of players) {
+        for (const action of p.missingKeys) {
+            const code = [p.keys[action], ...SPARE_KEYS].find(
+                (c) => !taken.has(c)
+            )!
+            p.keys[action] = code
+            taken.add(code)
+        }
+    }
+    for (const p of players) {
+        for (const action of p.missingPad) {
+            const others = PAD_ACTIONS.filter(
+                (a) => a !== action && !p.missingPad.includes(a)
+            )
+            const fits = (button: number) =>
+                others.every((a) => p.pad[a] !== button || canShare(a, action))
+            p.pad[action] = [p.pad[action], ...SPARE_BUTTONS].find(fits)!
+            p.missingPad = p.missingPad.filter((a) => a !== action)
+        }
+    }
 }
 
 // Whether every pad action sharing a button with another may share it.
