@@ -1,138 +1,125 @@
 # Handover
 
-Last updated: 2026-10-27. Read `CLAUDE.md` first for project conventions.
+Last updated: 2026-10-30. Read `CLAUDE.md` first for project conventions.
 
 ## Where things stand
 
-- **Organize code & tooling** (#2–#12), **Engine foundations** (#14–#21), **Characters & breaths** (#37–#43), **Stages** (#23–#34, #44, #46) and **Controllers & local 2-player** (#49–#52) are done and live.
-- **Controllers & local 2-player** (KDA-210, 211, 221, 222, all Done):
-    - Gamepads: https://github.com/kdaisho/dot-eater/pull/49
-    - Two players in state and input: https://github.com/kdaisho/dot-eater/pull/50
-    - Co-op: https://github.com/kdaisho/dot-eater/pull/51
-    - Versus: https://github.com/kdaisho/dot-eater/pull/52
-    - The user played co-op and versus in a preview and approved them.
-- `main` is at `6a54c0f`, with 1132 tests passing (checked on the KDA-222 branch head, which `main` matches) and the Pages deploy green. No open PRs, no feature branches, no worktrees.
-- Nothing is in progress. Open Linear issues, all in Backlog:
-    - Polish (KDA-212–215)
+- **Done and live:**
+    - Organize code & tooling (#2–#12)
+    - Engine foundations (#14–#21)
+    - Characters & breaths (#37–#43)
+    - Stages (#23–#34, #44, #46)
+    - Controllers & local 2-player (#49–#52)
+    - Polish (#55–#59)
+- **"Harder and more exciting" upgrade: done and live** (planned with the user on 2026-10-29). Six milestones, PRs #67–#95, Linear KDA-257 to KDA-286:
+    - **Health & punch** (#71, #73): a 100-health gauge replaces lives; a spammable punch knocks enemies back.
+    - **Rule & control tweaks** (#67, #68, #69, #79):
+        - 2P Bump setting.
+        - The Penguin walks normally on ice.
+        - Frozen enemies are walkable.
+        - Touch is drag-to-move, with Punch and Breath buttons.
+    - **Difficulty & bigger mazes** (#70, #72, #75, #86):
+        - Easy, Medium, Hard and Super Hard, with 3/4/6/8 enemies.
+        - Every stage has a medium (~21×17) and a large (~29×21) map.
+        - The view follows the player on big mazes.
+        - The enemy cap is 8.
+    - **Boss fight** (#74, #76, #77, #78): a boss stage is won by defeating the boss. The boss breathes, dots regrow, and Splitters drop dots.
+    - **Story & stage modes** (#88, #90): stages unlock only through story mode.
+    - **Ten stages:**
+        - Stages 1–4 remade (#84, #85, #80, #81).
+        - Stage 5 remade (#89, #94).
+        - New stages 6–9 (#82, #83, #91, #92).
+        - Stage 10, the final boss (#93).
+        - Same-type enemies no longer merge into one sprite (#87, #95).
+- `main` is at `5107f7b`. CI is green, with about 2770 tests passing.
+- **Backlog:**
+    - KDA-287 (polish on the spread rule)
     - the idea backlog (KDA-223–227)
-    - KDA-245
+    - the Promo video milestone (another session)
+- **Open PRs from other sessions:**
+    - #60 rewrites this handover for Polish and is now superseded; ask the user to close it.
+    - #61 and #62, Polish follow-ups.
+    - #63 → #64 → #66, the promo video stack.
+    - #65, a music volume fix.
 
 ### Start here (new session)
 
-1. Read this file and `CLAUDE.md`.
-2. Ask the user which milestone is next. Recommend **Polish** (KDA-212 sound and music, KDA-213 particles and screen shake, KDA-214 touch controls, KDA-215 remap controls). They are mostly independent, so they suit one parallel batch.
-    - KDA-215 overlaps gamepads (`src/gamepad.ts`, `PAD_BUTTONS`) and the key maps in `input.ts`.
-    - KDA-214 adds a third input source next to the keyboard and pads.
-3. Read the chosen issues in Linear, settle their product questions with the user (ask with a recommendation), and write the answers into the issues and into "Decisions already made".
-4. Plan, delegate to agents in worktrees, verify, review, and offer a playable preview before asking to merge (see "How we work").
+1. Ask the user to play the preview and give feedback on the tuning list under "Open questions". Preview: `pnpm dev --port 5199 --strictPort` from a detached worktree of `main`.
+2. Turn their feedback into Linear issues (milestone "Ten stages", or a new "Tuning" milestone), then run them as a batch (see "How we work").
+3. Ask whether the promo video (KDA-250 and the #63–#66 stack) should show the new game. Its recorded runs predate health and punch, so `src/replay.ts` (PR #63) needs its checksum (`lives` → health) and the punch letter added, and the scenes need re-recording.
 
 ## Code map
 
-| Module                                    | What it does                                                                                                                                                                  |
-| ----------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `main.ts`                                 | Entry and wiring (loop, input, pads, screen machine, renderer, overlays, toast); the only place with listeners and timers; `padAssignment` by mode                            |
-| `loop.ts`                                 | Fixed-timestep loop (`createLoop`), clock and frame scheduler injected                                                                                                        |
-| `flow.ts`                                 | Screen machine; screens carry `mode`, `animals`, versus `match`; `MODE_CHOICES`, `TITLE_CHOICES`, `PAUSE_CHOICES`, settings screen (`back`), `playerCount`, `recordsProgress` |
-| `progress.ts`, `lastPick.ts`              | Saved progress (unlocks, bests, `recordClear`) and the last pick, solo only. Storage injected, every access in try/catch                                                      |
-| `settings.ts`                             | Saved settings (volumes, mute, `screenShake`, `showDpad`), `loadSettings`/`saveSettings`, `shakeEnabled`; storage injected like progress                                      |
-| `settingsMenu.ts`                         | The settings screen's rows as data (`SETTINGS_ROWS`: slider, toggle, action; `titleOnly`/`touchOnly`), `changeRow`, `rowValue`                                                |
-| `events.ts`                               | `GameEvent` union reported by `step` in `GameState.events`; `takeEvents` (main drains them each tick into `onGameEvents`)                                                     |
-| `game.ts`                                 | `GameState` (`players`, `mode`), `createGameState(level, animals, mode)`, `step`, collisions, `resolveCatch` per mode, `takeOut`/`bringBack`                                  |
-| `versus.ts`                               | Versus rules: stuns and immunity (`opponentsStruck`), `loseDots`, round and match results (`roundWinner`, `matchWinner`, `tallyText`)                                         |
-| `breath.ts`, `breaths/`                   | Breath engine (`BreathDef`, `breathe`, statuses, tile effects, `defeatEnemy`, `energyHud`, `playersInPlay`); one `BreathDef` per animal                                       |
-| `roster.ts`                               | `AnimalId`, `ANIMALS`, `ANIMAL_IDS`, `DEFAULT_ANIMAL`, `isAnimalId`                                                                                                           |
-| `splitter.ts`, `boss.ts`                  | Splitter slots, spread and dropped dots (`dropDot`); the 2×2 boss (`bossTarget`, `bossMove`, `bossHomeStep`, `damageBoss`)                                                    |
-| `regrow.ts`                               | Regrowing dots (`rules.regrowDots`): `createRegrow`, `dotGone`, `dotBack`, `tickRegrow`, `occupied`                                                                           |
-| `ai.ts`, `path.ts`                        | Enemy AI and `nearestTarget`; `blockedView`/`goalView`; BFS `distanceMap`                                                                                                     |
-| `ice.ts`, `fog.ts`                        | Sliding (`slideStep`, `slideReach`, `slideDistances`); fog distance and light centres                                                                                         |
-| `level.ts`, `levels/`                     | `LevelData`, `parseLevel` (`P`/`Q` spawns); `levels/index.ts` lists stages 1–5                                                                                                |
-| `input.ts`, `gamepad.ts`                  | Actions, `InputState`/`PlayerInput`, `KeyboardSource` (P1 + P2 maps); `GamepadSource` (`"shared"`/`"perPad"`, `browserPadList`)                                               |
-| `render.ts`, `glide.ts`, `layout.ts`      | Canvas renderer (maze, ice, fog, breath looks, 1P/2P/versus HUD, P1/P2 markers, 💫/🛡️ badges), glide maths, layout/DPR                                                        |
-| `ui.ts`                                   | DOM overlays (title mode menu, stage/character select, pause, end screens, round and match results), toast, confetti                                                          |
-| `constants.ts`, `character.ts`, `vec2.ts` | Cells, AI types, ids, tick rate, speeds, points, lives, `PLAYER_RESPAWN_DELAY`, `RESPAWN_CLEAR_DISTANCE`; the `Character` record                                              |
+The older modules are listed in `CLAUDE.md`. These are the ones the upgrade added or reshaped:
+
+| Module                             | What it does                                                                                                                               |
+| ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| `difficulty.ts`                    | `Difficulty`, `ENEMY_COUNT` (3/4/6/8), `MAP_SIZE`, labels                                                                                  |
+| `level.ts`                         | `LevelData` with `medium`/`large` variants, `parseStage`, `sameForBoth`. Rejects sealed and trapped areas. A boss level needs `regrowDots` |
+| `game.ts`                          | `hurtPlayer`, `knockBack`, `checkEnd`/`cleared`, `playerBlocks` (Bump), and `playerTurn`/`defersMove`                                      |
+| `punch.ts`, `jab.ts`               | The punch and `knockEnemy`; the jab look                                                                                                   |
+| `ai.ts`                            | `ChaseDistances` (shared per tick), and the spread rule (`stacksOn`, `spreadChoice`, `mayHold`) for chase, ambusher, Splitter and phantom  |
+| `bossBreath.ts`, `boss.ts`         | The boss breath (wind-up, 2-wide line) and `boss.health`                                                                                   |
+| `regrow.ts`, `splitter.ts`         | Regrowing dots; Splitter drops                                                                                                             |
+| `camera.ts`, `layout.ts`           | The follow view (`MIN_CELL_PX` 20, `MIN_FIT_CELL_PX` 16)                                                                                   |
+| `touch.ts`, `dpad.ts`              | Drag to move (with a fallback), and the Punch/Breath buttons                                                                               |
+| `flow.ts`                          | The difficulty select, story mode (`Run`, `storyClear`, `storyEnd`) and stage mode                                                         |
+| `progress.ts`                      | `byDifficulty` bests, `storyBests`, `recordClear(..., { unlocks })`, `STAGE_COUNT` 10                                                      |
+| `src/test/bossArena.ts`, `maze.ts` | Arena escape and dodge sweeps (`dodgeHits`), and maze chokepoint checks                                                                    |
 
 ## Open questions and follow-ups
 
-- **Playtests to watch:**
-    - Boss lair: the arena doors are quite safe, and a player can be caught right after a Boar wall regrows next to the boss.
-    - Breath ranges and sizes have had no comment yet. A frozen Penguin enemy can block a 1-wide corridor for long.
-    - Versus stun tuning: 2 s stun, then 1.5 s immunity.
-- **PM calls this milestone the user hasn't commented on:**
-    - In co-op, enemies head home while nobody is in play.
-    - A stunned player finishes an ice slide.
-    - Pads: the A button does both breath and confirm, and a pad disconnect pauses only if that pad was in use.
-- **Still open with the user:** after a win, "Stage select" puts the cursor on the stage just played, not the newly unlocked one.
-- **Gamepads:**
-    - Pads whose `mapping` isn't `"standard"` (common on Firefox for macOS and Linux) are still read with the standard layout.
-    - It's unconfirmed whether the user tried a real controller.
-    - On-screen hints only name keys.
-- **Filed:** KDA-245 (reject sealed-off open areas in `parseLevel`); KDA-225 (runtime shape check for untrusted level JSON).
-- **Noted, not filed:**
-    - `README.md` is out of date: it still mentions the fly and doesn't mention 2-player.
-    - `bossReach` runs twice per boss move in 2P.
-    - `bringBack` finds the spawn with `indexOf`.
-    - The `!p.out` filter is repeated instead of calling `playersInPlay`.
-    - Behaviour gaps:
-        - The phantom ignores wrap tunnels.
-        - There's no fog test for levels with tunnels.
-        - A Skunk cloud over another shows two 💨.
-        - An enemy pushed off the player's cell doesn't slide on ice.
+- **Tuning to judge at preview.** Every number below is a PM placeholder:
+    - **Damage:** enemy touch 25, boss touch 40, boss breath 30 (stage 10: 35), invulnerability 1.5 s.
+    - **Punch:** a reach of about 1.07 cells, and whether `/` is a good P1 key.
+    - **Touch:** whether a 24 px drag, 72 px buttons and the fallback feel right on a real phone.
+    - **Pars:** stages 3, 4 and 8 have long pars (110–220 s).
+    - **Stage 9:** enemy speed 2.25.
+    - **Boss stages:** the Boar is weak at Hard and above.
+    - **Stage 8:** blind slides into fog.
+    - **View:** `MIN_CELL_PX` and `MIN_FIT_CELL_PX`.
+- **Known gaps:**
+    - During a deploy, a tab still open on the old 5-stage build can cut stage 6+ progress from the save.
+    - Stage 7's middle patroller crosses the spawn corridor.
+    - A thawing enemy catches a player standing on it, but it blinks first.
+- **Filed:** KDA-287. The README is still out of date.
 
 ## Decisions already made
 
-Everything settled lives in `docs/decisions.md`, grouped by topic. That includes the full "Two players" section: targeting, catches, co-op, respawning, versus, modes, gamepads and progress. These are the parts the Polish milestone is likely to touch:
+All of these are in `docs/decisions.md`, by topic. The ones made with the user on 2026-10-29:
 
-- **Input** (product decision): keys are matched by `KeyboardEvent.code`.
-    - P1: arrows, ShiftRight breath, P/Escape pause, Space confirm.
-    - P2: WASD, ShiftLeft breath, Q pause, E confirm.
-    - Auto-repeat never presses.
-- **Gamepads** (with the user):
-    - Standard mapping: D-pad and left stick (dead zone 0.5, stronger axis only), A for breath and confirm, Start for pause.
-    - In 1P any pad drives P1. In 2P, pad 1 drives P1 and pad 2 drives P2.
-    - End screens ignore confirm for their first 0.5 s.
-- **Two players** (with the user): players pass through each other, and enemies chase the nearest player they can reach. 2-player modes never touch saved data. Both players may pick the same animal.
-- **Co-op** (with the user): one shared pool of `START_LIVES`. A caught player is out alone for 3 s. A player caught with the pool empty is out for good, and the game is lost when all are out for good.
-- **Versus** (with the user):
-    - A breath hit stuns for 2 s, then gives 1.5 s of immunity.
-    - There are no lives. A catch costs −5 dots, even on the last-dot tick.
-    - Best of 3 on the same stage, decided by most dots. A tie goes to the higher score; an exact tie replays the round.
-    - The round result offers Next round or Quit.
-- **Code:** game logic takes randomness, time and input as parameters. An unknown AI type throws. Breath looks come from data; `render.ts` has no per-breath code.
+- **Health:** health is the only life bar, with no lives. At 0 the stage is failed. In story mode you retry that stage.
+- **Maze sizes:** two map sizes per stage.
+- **Touch:** drag to move plus two buttons.
+- **Unlocks:** shared across difficulties, with bests kept per difficulty. Stages unlock only through story mode, in order.
+- **PM calls the user delegated** ("I trust your judgement"):
+    - Co-op plays story mode but saves nothing.
+    - Versus is stage-only.
+    - Stage themes 6–10.
+    - The spread rule: slack 2, hold for at most one move.
+    - The `RESPAWN_BLOCK_GRACE` spawn-camping cap.
 
 ## How we work
 
-- **PM role:** the main session creates and updates Linear issues, delegates each issue to an agent in its own worktree, verifies the result itself, and comments the outcome on the issue. Product and judgment calls go to the user, asked with a recommendation (`AskUserQuestion`, up to 4 per call).
-- **Parallel work:** give each agent the files it owns and the API the others call.
-    - **Shared foundation first:** when parallel branches need the same foundation, build it first and branch both from it. KDA-221's phase 1 (per-player out/respawn, `GameState.mode`) was committed alone, KDA-222 branched from that commit, and KDA-221 phase 2 continued in parallel.
-    - **Shared field names:** tell the other agent mid-run when one side adds a field both need (`Player.dots`).
-- **Agent worktrees:**
-    - `isolation: "worktree"` puts each agent in `.claude/worktrees/agent-*` on a `worktree-agent-*` branch. Brief the agent to `git checkout -b KDA-NNN/... <base>`, or `git checkout` an existing branch. Agents commit but don't push.
-    - When an agent is done: `git worktree remove --force` its worktree and `git branch -D` its `worktree-agent-*` branch.
-    - An agent can't check out a branch another worktree holds.
-- **Verify on a clean copy:** `git archive <branch> | tar -x -C <scratch dir>`, `pnpm install --frozen-lockfile`, then check, test and build.
-    - `pnpm check` must print two `pass:` lines; empty output means there's no `node_modules`.
-    - Read the test count from the `Tests` line together with `Test Files`.
-    - `console.log` from a test doesn't show in `pnpm test`'s output. To read a value, assert it against a dummy and read "Received".
-- **Combine and stack:** to check that parallel branches combine, merge them all into a detached worktree and run check and test there. When they conflict (KDA-210 × 211), have an agent merge one into the other and open the second PR stacked on the first.
-- **Review:** one subagent per PR runs `code-review` at high effort, report only, and tries the repro in a scratch copy.
-    - Fix real bugs as new commits with regression tests that fail without the fix, verify, push, and comment on the PR and the issue.
-    - Treat a reviewer's numbers as claims. One review's dot counts were wrong, and the fixer caught it.
-- **No force-push:** the auto-mode safety check blocks `git push --force-with-lease`. To bring a branch up to date, merge `main` into it and push normally. If a rebase is really needed, ask the user to run the force-push.
+- **PM role:** the main session plans in Linear and delegates each issue to an agent in its own worktree (`isolation: "worktree"`). Agents push their branches; the main session opens the PRs, gets them reviewed, merges them and comments on the issues. Product calls go to the user with a recommendation.
 - **Merging:**
-    - The auto-mode check blocks merging unless the user's own message says to merge. "This is the plan" wasn't enough; "merge" was.
+    - Only when the user's own message authorizes it, once per session. In this session it was "merge PRs once CI is green and the review is clean".
     - Use merge commits only: `gh api -X PUT repos/kdaisho/dot-eater/pulls/N/merge -f merge_method=merge`.
-    - For a stack, retarget the next PR to `main` (`gh api -X PATCH .../pulls/N -f base=main`) before deleting the merged branch (`gh api -X DELETE .../git/refs/heads/<branch>`).
-    - Check CI first: poll `commits/<sha>/check-runs`, or for the deploy `actions/runs?head_sha=<sha>`, in an `until` loop with `perl -e 'select(undef,undef,undef,10)'`. Plain `sleep` is blocked.
-    - Then mark the issues Done and watch the Pages deploy.
-- **Previews for the user:**
-    - Offer one for every gameplay or visual PR before asking to merge; the user judges feel by playing.
-    - Use a detached worktree (`.claude/worktrees/preview-*`) holding the top of the batch, and make preview-only edits there.
-    - Run `pnpm dev --port 5199 --strictPort` in the background, then `open` the URL.
-    - When showing a placeholder rule, say up front that it's a placeholder and which issue replaces it. The user was confused by 2P's temporary shared-life reset.
-    - Never commit preview edits. Stop the server (`pkill -f "vite.*5199"`) and remove the worktree afterwards.
+    - For a stack, retarget the next PR (`gh api -X PATCH .../pulls/N -f base=main`) before deleting the merged branch.
+- **Reviews:** one subagent per PR, at high effort, report only. Real bugs are fixed with regression tests that fail without the fix, then re-reviewed when the fix is sizeable.
+    - Tell reviewers to work only in their own `git worktree add --detach` copy. The `code-review` skill once ran `git checkout` in the main checkout.
+    - Treat a reviewer's numbers as claims. Fuzzes and differential runs against `main` were the strongest evidence.
+- **Merge order and conflicts:**
+    - Many branches hit the same `docs/decisions.md` lines (the par line, Stages, Progress), so expect a conflict on every merge.
+    - Resolving them in the finished agent's worktree with a small Python edit plus `pnpm fmt` was faster than asking agents.
+    - GitHub's `mergeable_state: clean` can be stale. Test the merged result locally before trusting it.
+- **CI:** the tests that sweep every stage's maps need `describe(..., { timeout: 30_000 }, ...)`. Some hit 5 s on CI as stages were added.
+- **Previews:** run `pnpm dev --port 5199 --strictPort` from a detached worktree (`.claude/worktrees/preview-*`). Never commit preview edits.
 - **Gotchas:**
-    - zsh: write `${B}:path`, not `$B:path`.
-    - Use `rm -rf "${VAR:?}/..."`, never an unguarded variable.
-    - Disk space is tight, so remove worktrees and scratch copies when done.
-    - In Linear, write full GitHub PR URLs; a bare "PR #N" links to another repo.
-    - The user may merge docs PRs themselves, so check `merged` before adding to one.
+    - The local `gh` is 2.3.0, so use `gh api`.
+    - `gh run view --log-failed` needs `--allow-escape-sequences` or a grep.
+    - The GitHub API sometimes resets connections, so check whether a PR was created before retrying.
+    - The Linear workspace has a free-plan issue cap; the user clears old issues when it's hit.
+    - The auto-mode check sometimes returns no verdict; just retry once.
+    - In Linear, write full GitHub PR URLs.
+    - Disk is tight: remove worktrees when done (`git worktree remove --force --force` if an agent holds the lock).
