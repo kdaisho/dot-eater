@@ -330,22 +330,34 @@ function spreadChoice(
     return other?.v ?? null
 }
 
-// Whether `enemy` stepping to `to` stacks on another enemy of its kind in
+// Whether `enemy` moving to `to` stacks on another enemy of its kind in
 // `crowd`: one on that cell (standing there or gliding in) that came from
 // the cell `enemy` is leaving, whether it moved earlier this tick or not.
-function stacksOn(
+// Only chasers, ambushers and Splitters keep from stacking: random enemies
+// part by chance, patrollers keep to their routes and phantoms are left to
+// go as they do.
+export function stacksOn(
     crowd: readonly Character[],
     enemy: Character,
     to: Vec2
 ): boolean {
-    return crowd.some(
-        (other) =>
-            other !== enemy &&
-            other.ai === enemy.ai &&
-            samePos(other.pos, to) &&
-            samePos(other.lastPos, enemy.pos)
+    return (
+        SPREADS.has(enemy.ai) &&
+        crowd.some(
+            (other) =>
+                other !== enemy &&
+                other.ai === enemy.ai &&
+                samePos(other.pos, to) &&
+                samePos(other.lastPos, enemy.pos)
+        )
     )
 }
+
+const SPREADS: ReadonlySet<AiType> = new Set([
+    AiType.chase,
+    AiType.ambusher,
+    AiType.splitter,
+])
 
 // Distances to targets with nothing blocked, by target cell, for chaseStep.
 // One set serves one tick of enemy moves (see enemyMove): the cells, ice

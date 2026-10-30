@@ -20,6 +20,7 @@ import {
     blockedView,
     enemyMove,
     nearestTarget,
+    stacksOn,
     targetPaths,
     type ChaseDistances,
     type Random,
@@ -936,18 +937,23 @@ export function step(
             enemy.ai === AiType.phantom
                 ? null
                 : slideStep(enemyCells, state.ice, enemy.pos, enemy.lastPos)
-        if (slide) {
-            // A patroller has reached its waypoint when it stands on it as
-            // the slide carries it off (patrolStep, which would notice, is
-            // skipped) or slides onto it; otherwise it could keep sliding
-            // past and turning back for it.
-            reachWaypoint(enemy)
-            enemy.lastPos = vec2(enemy.pos.x, enemy.pos.y)
-            enemy.pos = loopPos(
-                cells,
-                vec2(enemy.pos.x + slide.x, enemy.pos.y + slide.y)
-            )
-            reachWaypoint(enemy)
+        const slideTo =
+            slide &&
+            loopPos(cells, vec2(enemy.pos.x + slide.x, enemy.pos.y + slide.y))
+        if (slideTo) {
+            // A slide is no choice, but it may still carry a chaser,
+            // ambusher or Splitter onto one of its kind: then it holds, as
+            // a choice would, and slides on a cell behind.
+            if (!stacksOn(crowd, enemy, slideTo)) {
+                // A patroller has reached its waypoint when it stands on
+                // it as the slide carries it off (patrolStep, which would
+                // notice, is skipped) or slides onto it; otherwise it could
+                // keep sliding past and turning back for it.
+                reachWaypoint(enemy)
+                enemy.lastPos = vec2(enemy.pos.x, enemy.pos.y)
+                enemy.pos = slideTo
+                reachWaypoint(enemy)
+            }
         } else if (goingHome) {
             const home = state.spawns.enemies[i]
             enemyMove(
