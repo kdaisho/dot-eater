@@ -36,6 +36,7 @@ import {
     testBreath,
     textMap,
     ticksUntilCaught,
+    withoutBreath,
     type MapLiteral,
 } from "./test/helpers"
 import { vec2, type Vec2 } from "./vec2"
@@ -294,6 +295,8 @@ describe("the boss moving", () => {
             map: lair,
             ready: true,
         })
+        // Waiting at the mouth, it would breathe down the corridor.
+        withoutBreath(state.boss!)
         for (let i = 0; i < TICK_RATE * 5; i++) {
             expect(tick(state)).toBeNull()
         }
@@ -332,8 +335,10 @@ describe("the boss moving", () => {
             "########",
             "#.######",
         ])
+        // Without its breath, which would hold it still to breathe at the
+        // player pushed out next to it.
         const state = makeState(map, { x: 5, y: 1 }, [], {
-            boss: makeBoss(1, 1),
+            boss: withoutBreath(makeBoss(1, 1)),
             health: MAX_HEALTH,
         })
         state.cells[1][5] = Cell.none

@@ -25,6 +25,8 @@ export const SHAKES = {
     punch: 0.15,
     // A player hurt with health left (KDA-257).
     hurt: 0.3,
+    // The boss breathing (KDA-268), whoever it hits.
+    bossBreath: 0.25,
     // A player knocked out: its health gone.
     caught: 0.7,
     // The boss going down.

@@ -151,3 +151,19 @@ export const PUNCH_REACH =
 // How far to either side of the facing line (in cells) a punch still
 // reaches: half a cell, so it hits in its own lane only.
 export const PUNCH_ACROSS = 0.5
+
+// ---- The boss's breath (KDA-268, see bossBreath.ts; placeholders to tune
+// at preview). A level can change each one (LevelData.boss.breath). ----
+
+// Seconds between the boss's breaths: it may breathe again this long after
+// its last one, and first this long into a stage (a grace period).
+export const BOSS_BREATH_EVERY = 4
+// Seconds it winds up (holding still, glowing, the cells it will hit
+// tinted) before it breathes. 0.9 s, up from 0.75 (PM call): on stage 5
+// getting out of its way from a door takes two moves, and 0.75 s left too
+// little time to react.
+export const BOSS_BREATH_WIND_UP = 0.9
+// How far the breath reaches, in cells from the edge of its footprint.
+export const BOSS_BREATH_RANGE = 6
+// Health the breath costs a player it hits.
+export const BOSS_BREATH_DAMAGE = 30

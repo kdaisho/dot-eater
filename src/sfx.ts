@@ -18,6 +18,9 @@ export const SfxId = {
     enemyDefeated: "enemyDefeated",
     bossHit: "bossHit",
     bossDefeated: "bossDefeated",
+    // The boss's breath (KDA-268): a low rumble as it winds up, then a roar.
+    bossWindUp: "boss.windUp",
+    bossBreath: "boss.breath",
     // A player hurt with health left (KDA-257): a short knock.
     hurt: "hurt",
     // A player knocked out: its health gone.
@@ -229,6 +232,49 @@ export const SFX: Readonly<Record<SfxId, readonly Tone[]>> = {
             freq: 120,
             freqEnd: 35,
             volume: 0.5,
+        },
+    ],
+    // A low rumble swelling over the wind-up (about as long as the default
+    // BOSS_BREATH_WIND_UP), a growl over a deep hiss.
+    "boss.windUp": [
+        {
+            wave: "sawtooth",
+            at: 0,
+            duration: 0.9,
+            freq: 50,
+            freqEnd: 75,
+            volume: 0.3,
+            attack: 0.5,
+        },
+        {
+            wave: "noise",
+            at: 0,
+            duration: 0.9,
+            freq: 180,
+            freqEnd: 260,
+            volume: 0.35,
+            attack: 0.5,
+        },
+    ],
+    // A roar: a loud falling blast of noise over a deep, falling growl.
+    "boss.breath": [
+        {
+            wave: "noise",
+            at: 0,
+            duration: 0.6,
+            freq: 1100,
+            freqEnd: 180,
+            volume: 0.75,
+            attack: 0.02,
+        },
+        {
+            wave: "sawtooth",
+            at: 0,
+            duration: 0.5,
+            freq: 130,
+            freqEnd: 45,
+            volume: 0.35,
+            attack: 0.02,
         },
     ],
     // A short, dull thump with a crunch: less dramatic than the knockout's

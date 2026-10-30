@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vite-plus/test"
+import { BOSS_BREATH } from "./bossBreath"
 import { BREATHS } from "./breaths"
 import { TICK_RATE } from "./constants"
 import {
@@ -90,6 +91,37 @@ describe("effectsForEvent", () => {
         const r = run({ type: "bossDefeated", player: 1, at: vec2(2, 2) })
         expect(r.bursts).toEqual([{ kind: "bossDefeat", at: vec2(2.5, 2.5) }])
         expect(r.shakes).toEqual([SHAKES.bossDefeat])
+    })
+
+    it("the boss's breath look on every cell it struck, and a small shake", () => {
+        const cells = [vec2(3, 1), vec2(3, 2), vec2(4, 1), vec2(4, 2)]
+        const r = run({
+            type: "bossBreathed",
+            at: vec2(1, 1),
+            facing: vec2(1, 0),
+            cells,
+        })
+        expect(r.emits).toEqual(
+            cells.map((at) => ({
+                look: BOSS_BREATH.particles,
+                at,
+                direction: vec2(1, 0),
+            }))
+        )
+        expect(r.bursts).toEqual([])
+        expect(r.shakes).toEqual([SHAKES.bossBreath])
+        expect(SHAKES.bossBreath).toBeLessThan(SHAKES.hit)
+    })
+
+    it("nothing for the boss winding up (drawn from its state)", () => {
+        const r = run({
+            type: "bossWindUp",
+            at: vec2(1, 1),
+            facing: vec2(0, 1),
+        })
+        expect(r.emits).toEqual([])
+        expect(r.bursts).toEqual([])
+        expect(r.shakes).toEqual([])
     })
 
     it("a small red burst and a small shake when a player is hurt", () => {
