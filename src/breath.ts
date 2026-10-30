@@ -89,9 +89,10 @@ export type EnemyStatus = {
     holds?: boolean
     // The enemy doesn't catch the player.
     harmless?: boolean
-    // The player can't walk into the enemy's cell; it blocks like a wall,
-    // and a slide into it ends next to it.
-    solid?: boolean
+    // The enemy blinks for the status's last RESPAWN_BLINK seconds, as a
+    // respawning one does, warning that it is about to end (see
+    // enemyVisible). Drawing only: nothing else changes.
+    blinksBeforeEnd?: boolean
     look?: Look
 }
 
@@ -530,7 +531,7 @@ export function inPlay(enemy: Character): boolean {
 // Whether any of the enemy's statuses has `flag` set.
 export function hasStatus(
     enemy: Character,
-    flag: "holds" | "harmless" | "solid"
+    flag: "holds" | "harmless"
 ): boolean {
     return enemy.statuses.some((s) => s.status[flag] === true)
 }
@@ -589,15 +590,29 @@ export function defeatEnemy(
     if (isSplitterHalf(enemy)) halfDefeated(state, i)
 }
 
-// Whether to draw an enemy: always while in play; while defeated, only in
-// the last RESPAWN_BLINK seconds, on and off BLINK_RATE times a second
-// (starting on).
+// Whether to draw an enemy. While defeated, only in the last RESPAWN_BLINK
+// seconds, blinking. In play, always, except that it blinks in the last
+// RESPAWN_BLINK seconds of a status that blinksBeforeEnd (e.g. a freeze).
 export function enemyVisible(enemy: Character): boolean {
-    if (inPlay(enemy)) return true
-    if (enemy.respawnIn > RESPAWN_BLINK + EPSILON) return false
-    const phase = Math.floor(
-        (RESPAWN_BLINK - enemy.respawnIn) * BLINK_RATE * 2 + EPSILON
+    if (!inPlay(enemy)) {
+        return (
+            enemy.respawnIn <= RESPAWN_BLINK + EPSILON &&
+            blinkOn(enemy.respawnIn)
+        )
+    }
+    return enemy.statuses.every(
+        (s) =>
+            !s.status.blinksBeforeEnd ||
+            s.left > RESPAWN_BLINK + EPSILON ||
+            blinkOn(s.left)
     )
+}
+
+// Within the last RESPAWN_BLINK seconds of a wait with `left` seconds to go,
+// whether the blink is on: on and off BLINK_RATE times a second, starting
+// on.
+function blinkOn(left: number): boolean {
+    const phase = Math.floor((RESPAWN_BLINK - left) * BLINK_RATE * 2 + EPSILON)
     return phase % 2 === 0
 }
 
