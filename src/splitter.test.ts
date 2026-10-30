@@ -23,7 +23,7 @@ import {
     TICK_RATE,
 } from "./constants"
 import { createGameState, step, type GameState } from "./game"
-import { parseLevel } from "./level"
+import { parseFlat } from "./test/helpers"
 import { createSplitter, isSplitterHalf, isWholeSplitter } from "./splitter"
 import {
     drawn,
@@ -103,7 +103,7 @@ describe("a whole Splitter", () => {
     })
 
     it("is built from a level's splitter, the next enemy after both slots", () => {
-        const level = parseLevel({
+        const level = parseFlat({
             name: "test",
             parTime: 60,
             map: ["#######", "#PE.E.#", "#.....#", "#######"],
@@ -130,7 +130,7 @@ describe("a whole Splitter", () => {
     })
 
     it("has slots for a level of MAX_ENEMIES Splitters, and the last one splits", () => {
-        const level = parseLevel({
+        const level = parseFlat({
             name: "test",
             parTime: 60,
             map: ["###########", "#PEEEEEEEE#", "#.........#", "###########"],

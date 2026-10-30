@@ -3,15 +3,16 @@ import { AiType, Cell } from "../constants"
 import { parseLevel, type Cells } from "../level"
 import { distanceMap, openNeighbours } from "../path"
 import { vec2 } from "../vec2"
-import { levels } from "./index"
+import { EACH_MAP } from "../test/helpers"
+import { stages } from "./index"
 import { stage4 } from "./stage4"
 
-describe("stage 4", () => {
-    const level = parseLevel(stage4)
+describe.each(EACH_MAP)("stage 4 (%s)", (difficulty) => {
+    const level = parseLevel(stage4, difficulty)
     const cells: Cells = level.cells.map((row) => [...row])
 
     it("is the fourth level", () => {
-        expect(levels[3]).toEqual(level)
+        expect(stages[3][difficulty]).toEqual(level)
     })
 
     it("parses, is named Fog and has fog", () => {

@@ -30,6 +30,7 @@ const characterSelect: Screen = {
     kind: "characterSelect",
     mode: "coop",
     level: 0,
+    difficulty: "medium",
     picks: ["dragon", "owl"],
     ready: [false, false],
 }
@@ -37,6 +38,7 @@ const playing = (level = 0): Screen => ({
     kind: "playing",
     mode: "solo",
     level,
+    difficulty: "medium",
     animals: ["dragon"],
     game,
 })
@@ -44,6 +46,7 @@ const paused = (level = 0): ScreenOf<"paused"> => ({
     kind: "paused",
     mode: "solo",
     level,
+    difficulty: "medium",
     animals: ["dragon"],
     game,
 })
@@ -51,6 +54,7 @@ const ending: Screen = {
     kind: "ending",
     mode: "solo",
     level: 0,
+    difficulty: "medium",
     animals: ["dragon"],
     game,
     outcome: "won",
@@ -59,6 +63,7 @@ const gameOver: Screen = {
     kind: "gameOver",
     mode: "solo",
     level: 0,
+    difficulty: "medium",
     animals: ["dragon"],
     game,
     choice: "retry",

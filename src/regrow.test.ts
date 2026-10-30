@@ -8,7 +8,6 @@ import {
     type GameState,
     type MoveInput,
 } from "./game"
-import { parseLevel, type LevelData } from "./level"
 import { createRegrow } from "./regrow"
 import {
     fixedRandom,
@@ -16,7 +15,9 @@ import {
     makeEnemy,
     makeState,
     p2Move,
+    parseFlat,
     textMap,
+    type FlatLevelData,
     type MapLiteral,
 } from "./test/helpers"
 import { vec2, type Vec2 } from "./vec2"
@@ -212,7 +213,7 @@ describe("regrowing dots", () => {
 })
 
 describe("createGameState with rules.regrowDots", () => {
-    const data: LevelData = {
+    const data: FlatLevelData = {
         name: "regrow",
         parTime: 60,
         map: ["#######", "#PQ...#", "#######"],
@@ -221,7 +222,7 @@ describe("createGameState with rules.regrowDots", () => {
     }
 
     it("regrows the level's dots, at its seconds", () => {
-        const game = createGameState(parseLevel(data))
+        const game = createGameState(parseFlat(data))
         expect(game.regrow?.seconds).toBe(2.5)
         expect(game.regrow?.pending).toEqual([])
         expect(game.regrow?.home[1]).toEqual([
@@ -236,16 +237,12 @@ describe("createGameState with rules.regrowDots", () => {
     })
 
     it("doesn't regrow player 2's spawn in a 2-player game", () => {
-        const game = createGameState(
-            parseLevel(data),
-            ["dragon", "owl"],
-            "coop"
-        )
+        const game = createGameState(parseFlat(data), ["dragon", "owl"], "coop")
         expect(game.regrow?.home[1][2]).toBe(false)
     })
 
     it("has none without the rule", () => {
         const { rules: _, ...plain } = data
-        expect(createGameState(parseLevel(plain)).regrow).toBeNull()
+        expect(createGameState(parseFlat(plain)).regrow).toBeNull()
     })
 })
