@@ -372,6 +372,78 @@ describe("same-kind enemies holding a move", () => {
         expect(movesOver(state, enemies, TICK_RATE * 10)).toBeGreaterThan(20)
     })
 
+    // Two of a kind in a row, the one behind in the earlier slot: the one
+    // ahead came from the trailer's cell and moves on this tick, so the
+    // trailer follows it straight (KDA-287). Before, it counted the one
+    // ahead where it stood and stepped a cell away from the player.
+    it.each([
+        [
+            "phantom",
+            AiType.phantom,
+            ["       ", "       ", "       "],
+            [
+                [1, 1, 0, 1],
+                [2, 1, 1, 1],
+            ],
+            { x: 6, y: 1 },
+        ],
+        [
+            "chaser",
+            AiType.chase,
+            ["#########", "#       #", "#       #", "#       #", "#########"],
+            [
+                [2, 2, 1, 2],
+                [3, 2, 2, 2],
+            ],
+            { x: 7, y: 2 },
+        ],
+    ] as const)(
+        "lets a %s follow a twin that is leaving",
+        (_, ai, rows, at, player) => {
+            const [trailer, leader] = ready(ai, at)
+            const state = makeState(
+                textMap(rows).map,
+                player,
+                [trailer, leader],
+                {
+                    health: Infinity,
+                }
+            )
+            step(state, 1 / TICK_RATE, IDLE, seededRandom(1))
+            expect(leader.pos).toEqual(vec2(at[1][0] + 1, at[1][1]))
+            expect(trailer.pos).toEqual(vec2(at[1][0], at[1][1]))
+            expect(stacked(trailer, leader)).toBe(false)
+        }
+    )
+
+    // The same, but the one ahead holds after all: it is ready, and later
+    // in slot order, but its way on is a twin that holds behind a frozen
+    // one, down a corridor. So it stays, and the trailer holds behind it
+    // instead of stepping onto it.
+    it("doesn't step onto a ready twin that holds after all", () => {
+        const { map } = textMap(["#########", "#       #", "#########"])
+        const enemies = ready(AiType.chase, [
+            [2, 1, 1, 1],
+            [3, 1, 2, 1],
+            [4, 1, 3, 1],
+            [5, 1, 4, 1],
+        ])
+        const [trailer, , , frozen] = enemies
+        addStatus(frozen, { name: "test.hold", holds: true }, 100)
+        const state = makeState(map, { x: 7, y: 1 }, enemies, {
+            health: Infinity,
+        })
+        const pairs = enemies.flatMap((a, i) =>
+            enemies.slice(i + 1).map((b) => [a, b] as const)
+        )
+        // Every tick of a whole hold: none moves, none stacks.
+        for (let t = 0; t < TICK_RATE / trailer.speed - 1; t++) {
+            step(state, 1 / TICK_RATE, IDLE, seededRandom(1))
+            expect(trailer.pos).toEqual(vec2(2, 1))
+            expect(pairs.filter(([a, b]) => stacked(a, b))).toEqual([])
+        }
+    })
+
     // An ice slide carries a chaser towards a twin that came up the same
     // ice and is holding behind a frozen one: it holds too, a cell behind.
     it("doesn't slide onto a twin", () => {

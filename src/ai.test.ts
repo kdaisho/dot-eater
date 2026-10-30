@@ -4,6 +4,7 @@ import {
     ambushTarget,
     candidateMoves,
     enemyMove,
+    turnOrder,
     type ChaseDistances,
 } from "./ai"
 import {
@@ -1293,5 +1294,57 @@ describe("chasing on shared distances", { timeout: 30_000 }, () => {
             )
         }
         expect(slideDistances).toHaveBeenCalledTimes(1)
+    })
+})
+
+describe("turnOrder", () => {
+    // Enemies of `ai`, each at its [x, y] having come from [x, y].
+    const at = (
+        ai: AiType,
+        cells: readonly (readonly [number, number, number, number])[]
+    ) => cells.map(([x, y, lx, ly]) => makeEnemy(x, y, ai, { x: lx, y: ly }))
+
+    it("puts one behind a twin that came from its cell after it", () => {
+        const enemies = at(AiType.chase, [
+            [1, 1, 0, 1],
+            [5, 5, 5, 4],
+            [2, 1, 1, 1],
+        ])
+        expect(turnOrder(enemies, [0, 1, 2])).toEqual([1, 2, 0])
+    })
+
+    it("keeps slot order for other kinds and enemies not ready", () => {
+        const enemies = [
+            makeEnemy(1, 1, AiType.chase, { x: 0, y: 1 }),
+            makeEnemy(2, 1, AiType.ambusher, { x: 1, y: 1 }),
+            makeEnemy(2, 1, AiType.random, { x: 1, y: 1 }),
+            makeEnemy(3, 1, AiType.random, { x: 2, y: 1 }),
+            makeEnemy(4, 1, AiType.chase, { x: 3, y: 1 }),
+            makeEnemy(2, 1, AiType.chase, { x: 1, y: 1 }),
+        ]
+        // The chaser doesn't wait on the ambusher ahead (another kind),
+        // random enemies never wait, and the chaser's twin ahead (5) isn't
+        // ready, so it takes no turn and stays where it is.
+        expect(turnOrder(enemies, [0, 1, 2, 3, 4])).toEqual([0, 1, 2, 3, 4])
+    })
+
+    it("goes down a chain from the front", () => {
+        const enemies = at(AiType.phantom, [
+            [1, 1, 0, 1],
+            [2, 1, 1, 1],
+            [3, 1, 2, 1],
+        ])
+        expect(turnOrder(enemies, [0, 1, 2])).toEqual([2, 1, 0])
+    })
+
+    // Two that just passed each other wait on each other: one of them
+    // goes, not the one waiting behind them (0), whose wait is real.
+    it("breaks a loop of waits on the loop", () => {
+        const enemies = at(AiType.chase, [
+            [2, 1, 1, 1],
+            [2, 1, 3, 1],
+            [3, 1, 2, 1],
+        ])
+        expect(turnOrder(enemies, [0, 1, 2])).toEqual([1, 2, 0])
     })
 })

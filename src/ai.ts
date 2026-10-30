@@ -316,9 +316,9 @@ function chaseStep(
 // corridor has no other way, and a much longer one would let the player
 // go), it holds this move (HOLD) and chooses again on the next tick, which
 // it moves on as soon as the one ahead has moved on: it follows a cell
-// behind instead of stacking. Enemies move in slot order, so of two that
-// arrive together the first goes the best way and the second the next-best
-// or a cell behind.
+// behind instead of stacking. Enemies move in slot order (but one behind
+// a twin goes after it, see turnOrder), so of two that arrive together the
+// first goes the best way and the second the next-best or a cell behind.
 //
 // A hold lasts one move's time at most (`hold` false once it has, see
 // mayHold): then it takes the best way and may stack for a moment. A twin
@@ -345,6 +345,9 @@ function spreadChoice(
 // Whether `enemy` moving to `to` stacks on another enemy of its kind in
 // `crowd`: one on that cell (standing there or gliding in) that came from
 // the cell `enemy` is leaving, whether it moved earlier this tick or not.
+// One still to take its turn this tick counts where it is, so it had
+// better not be about to leave that cell: turnOrder gives it its turn
+// first (but on a loop of waits).
 // Only chasers, ambushers, Splitters and phantoms keep from stacking:
 // random enemies part by chance and patrollers keep to their routes.
 export function stacksOn(
@@ -370,6 +373,69 @@ const SPREADS: ReadonlySet<AiType> = new Set([
     AiType.splitter,
     AiType.phantom,
 ])
+
+// The order the `ready` enemies (indexes into `enemies`, in slot order)
+// take their turns in this tick: slot order, except that one goes after
+// any of its twins still to go that came from the cell it stands on
+// (KDA-287). Such a twin is the only kind stacksOn could count against it
+// before that twin has had its turn, and it may yet move on: then the one
+// behind would have stepped aside, or held, for nothing, when it could
+// follow straight. Going after it, it sees where that twin ended up: moved
+// on, or still there (it held, was boxed in, or is a phantom on the
+// player's cell), when stacksOn counts it as before.
+//
+// Any order keeps twins apart as well: of two that would end a tick
+// stacked, at least one moved, and the later of them to move saw the other
+// already where it ended the tick (moved before, or staying put all tick)
+// and kept off (unless its hold had run out, see mayHold). So the order
+// only decides which of two counts the other,
+// and this one keeps a twin's turn from coming before the turn of the twin
+// it may follow, which is the one way a twin counts one that leaves. If
+// every enemy still to go waits on another, some wait on each other round
+// a loop (twins going round a loop of cells, or two that just passed each
+// other): the first in slot order on that loop goes, not one merely
+// waiting on it. Enemies only move on their own turns, so the order is the
+// same worked out from where they stand at the start of the tick. No
+// randomness: random enemies, the only ones that draw on it, never wait.
+export function turnOrder(
+    enemies: readonly Character[],
+    ready: readonly number[]
+): number[] {
+    const left = [...ready]
+    const order: number[] = []
+    // The first twin still to go that `i` waits on, if any.
+    const ahead = (i: number) =>
+        left.find((j) => j !== i && follows(enemies[i], enemies[j]))
+    while (left.length > 0) {
+        let next = left.find((i) => ahead(i) === undefined)
+        if (next === undefined) {
+            // Every one waits on another, so going from one to the one it
+            // waits on comes round to one seen before: that is on a loop.
+            const seen: number[] = []
+            let i = left[0]
+            while (!seen.includes(i)) {
+                seen.push(i)
+                i = ahead(i) ?? i
+            }
+            const loop = seen.slice(seen.indexOf(i))
+            next = Math.min(...loop)
+        }
+        left.splice(left.indexOf(next), 1)
+        order.push(next)
+    }
+    return order
+}
+
+// Whether `enemy` is behind `ahead`, a twin that came from its cell (see
+// turnOrder).
+function follows(enemy: Character, ahead: Character): boolean {
+    return (
+        SPREADS.has(enemy.ai) &&
+        ahead.ai === enemy.ai &&
+        samePos(ahead.lastPos, enemy.pos) &&
+        !samePos(ahead.pos, enemy.pos)
+    )
+}
 
 // Whether `enemy` may hold its move to keep from stacking (see
 // spreadChoice): not once it has held for a whole move's time in a row
