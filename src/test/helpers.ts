@@ -93,25 +93,25 @@ type Cell2 = { x: number; y: number }
 
 // Like createGameState, the players' start cells never hold a dot, and the
 // spawns are where the characters start. `player` is player 1's start, or
-// every player's (player 1 first) for a 2-player game. The players are on
-// their last life unless `lives` says otherwise, so any collision ends the
-// game. There is no ice unless `ice` says where (see textMap). Every player
+// every player's (player 1 first) for a 2-player game. The players have
+// 1 health unless `health` says otherwise, so any hit knocks one out (in
+// solo, ending the game). There is no ice unless `ice` says where (see textMap). Every player
 // has the default character's breath unless `breath` says otherwise (one
 // breath for all, or one per player), with an empty meter. There is no boss
 // unless `boss` gives one (see makeBoss). The game plays by `mode`'s rules
-// (solo unless given; see resolveCatch).
+// (solo unless given; see knockOut).
 export function makeState(
     map: MapLiteral,
     player: Cell2 | readonly Cell2[],
     enemies: Character[] = [],
     {
-        lives = 1,
+        health = 1,
         ice,
         breath = BREATHS[DEFAULT_ANIMAL],
         boss = null,
         mode = "solo",
     }: {
-        lives?: number
+        health?: number
         ice?: IceMap
         breath?: BreathDef | readonly BreathDef[]
         boss?: Boss | null
@@ -132,16 +132,16 @@ export function makeState(
         ice: floorIce,
         floorIce,
         tiles: [],
-        players: starts.map(({ x, y }, i) =>
-            newPlayer(
+        players: starts.map(({ x, y }, i) => ({
+            ...newPlayer(
                 createCharacter(CharacterId.player, vec2(x, y)),
                 breathOf(i)
-            )
-        ),
+            ),
+            health,
+        })),
         enemies,
         boss,
         ticks: 0,
-        lives,
         spawns: {
             players: starts.map(({ x, y }) => vec2(x, y)),
             enemies: enemies.map((e) => vec2(e.pos.x, e.pos.y)),
@@ -226,25 +226,25 @@ export function p2Move(move: MoveInput): MoveInput[] {
 export const fixedRandom = (value: number) => () => value
 
 // Step one tick at a time with player 1 holding `held` (nothing by
-// default; enemies use fixedRandom(0)) until a player is caught, i.e. the
-// game is lost, a life is lost or (in a 2-player mode) a player in play is
-// taken out, out for good included, and return how many ticks that took.
-// Fails after `max` ticks, or if the game ends another way.
+// default; enemies use fixedRandom(0)) until a player is hurt or knocked
+// out (so the game may be lost, or in a 2-player mode a player taken out),
+// and return how many ticks that took. Fails after `max` ticks, or if the
+// game ends another way.
 export function ticksUntilCaught(
     state: GameState,
     held: Vec2 = vec2(0, 0),
     max = TICK_RATE * 2
 ): number {
-    const lives = state.lives
     const move = {
         held: held.x === 0 && held.y === 0 ? [] : [held],
         pressed: vec2(0, 0),
     }
     for (let i = 1; i <= max; i++) {
-        const wasIn = state.players.map((p) => !p.out)
         const outcome = step(state, 1 / TICK_RATE, move, fixedRandom(0))
-        const takenOut = state.players.some((p, j) => wasIn[j] && p.out)
-        if (outcome === "dead" || state.lives < lives || takenOut) return i
+        const hit = state.events.some(
+            (e) => e.type === "hurt" || e.type === "playerCaught"
+        )
+        if (outcome === "dead" || hit) return i
         if (outcome) throw new Error(`Ended without a catch: ${outcome}`)
     }
     throw new Error(`Not caught within ${max} ticks`)

@@ -71,16 +71,16 @@ describe("levels", () => {
         }
     )
 
-    // With both players out, player 1 with a life to come back on and
+    // With both players out, player 1 coming back (as in versus) and
     // player 2 for good, the game goes on: player 1 is back within a
     // couple of seconds of its wait.
     it.each(levels.map((level, i) => [i + 1, level] as const))(
-        "stage %i brings a co-op player back while nobody is in play",
+        "stage %i brings a versus player back while nobody is in play",
         (_n, level) => {
             const state = createGameState(
                 level,
                 [DEFAULT_ANIMAL, DEFAULT_ANIMAL],
-                "coop"
+                "versus"
             )
             const [p1, p2] = state.players
             takeOut(p1, PLAYER_RESPAWN_DELAY)

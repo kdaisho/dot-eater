@@ -190,8 +190,8 @@ export type Breather = {
     // tried to move into a wall (see movePlayerTick in game.ts). Starts
     // facing right; kept while standing still.
     facing: Vec2
-    // From 0 to breath.maxEnergy. Starts empty each stage, kept when a life
-    // is lost.
+    // From 0 to breath.maxEnergy. Starts empty each stage, kept when the
+    // player is hurt or knocked out.
     energy: number
     // Seconds until it can breathe again (0 when ready).
     cooldown: number

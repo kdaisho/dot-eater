@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 import { describe, expect, it, vi } from "vite-plus/test"
 import { createGameState, type GameState, type Outcome } from "./game"
+import { MAX_HEALTH } from "./constants"
 import { LAST_PICK_KEY } from "./lastPick"
 import { emptyProgress, PROGRESS_KEY, serializeProgress } from "./progress"
 
@@ -95,12 +96,14 @@ describe("main in versus", () => {
         expect(screen()).toBe("playing")
         expect(vi.mocked(createGameState).mock.lastCall?.[2]).toBe("versus")
 
-        // The HUD: dots per player and the round tally, no lives.
+        // The HUD: dots and health per player and the round tally.
         expect(hud()).toMatchObject({
             round: "Round 1 · 0–0",
-            players: [{ dots: 0 }, { dots: 0 }],
+            players: [
+                { dots: 0, health: { health: MAX_HEALTH } },
+                { dots: 0, health: { health: MAX_HEALTH } },
+            ],
         })
-        expect(hud()).not.toHaveProperty("lives")
         expect(hud()).not.toHaveProperty("players.1.stunned")
         // A stun shows in its player's slot.
         game().players[1].stunnedFor = 1.5

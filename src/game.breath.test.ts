@@ -10,6 +10,8 @@ import {
     AiType,
     DEFEAT_POINTS,
     DOT_ENERGY,
+    ENEMY_DAMAGE,
+    MAX_HEALTH,
     PLAYER_SPEED,
     RESPAWN_DELAY,
     TICK_RATE,
@@ -135,17 +137,17 @@ describe("facing", () => {
         expect(hits[0].origin).toEqual(vec2(4, 1))
     })
 
-    it("faces right again after a lost life", () => {
+    it("keeps its facing when hurt and knocked back", () => {
         const enemy = makeEnemy(4, 1, AiType.chase)
         const state = makeState(corridor, { x: 2, y: 1 }, [enemy], {
-            lives: 2,
+            health: MAX_HEALTH,
         })
         state.players[0].breather.facing = west
         state.players[0].character.pos = vec2(4, 1)
         state.players[0].character.lastPos = vec2(4, 1)
         tick(state)
-        expect(state.lives).toBe(1)
-        expect(state.players[0].breather.facing).toEqual(east)
+        expect(state.players[0].health).toBe(MAX_HEALTH - ENEMY_DAMAGE)
+        expect(state.players[0].breather.facing).toEqual(west)
     })
 })
 
@@ -165,18 +167,18 @@ describe("energy", () => {
         expect(state.players[0].breather.energy).toBe(12)
     })
 
-    it("starts empty in a new game and is kept when a life is lost", () => {
+    it("starts empty in a new game and is kept when hurt", () => {
         const game = createGameState(levels[0])
         expect(game.players[0].breather.energy).toBe(0)
         const enemy = makeEnemy(4, 1, AiType.chase)
         const state = makeState(corridor, { x: 2, y: 1 }, [enemy], {
-            lives: 2,
+            health: MAX_HEALTH,
         })
         state.players[0].breather.energy = 40
         state.players[0].character.pos = vec2(4, 1)
         state.players[0].character.lastPos = vec2(4, 1)
         tick(state)
-        expect(state.lives).toBe(1)
+        expect(state.players[0].health).toBe(MAX_HEALTH - ENEMY_DAMAGE)
         expect(state.players[0].breather.energy).toBe(40)
     })
 })
@@ -301,13 +303,10 @@ describe("pushed enemies", () => {
 })
 
 describe("defeated enemies", () => {
-    function defeatedSetup(lives = 1) {
+    function defeatedSetup() {
         const enemy = makeEnemy(3, 1, AiType.chase)
         const { breath } = defeating()
-        const state = makeState(corridor, { x: 1, y: 1 }, [enemy], {
-            breath,
-            lives,
-        })
+        const state = makeState(corridor, { x: 1, y: 1 }, [enemy], { breath })
         state.spawns.enemies = [vec2(6, 1)]
         state.players[0].breather.energy = 100
         tick(state, { breath: true })
@@ -353,23 +352,26 @@ describe("defeated enemies", () => {
         expect(tick(state)).toBe("dead")
     })
 
-    it("are all back in play when the player loses a life", () => {
+    it("stay gone when the player is hurt", () => {
         const catcher = makeEnemy(8, 1, AiType.chase)
         const victim = makeEnemy(3, 1, AiType.chase)
         const { breath } = defeating()
         const state = makeState(corridor, { x: 1, y: 1 }, [victim, catcher], {
             breath,
-            lives: 2,
+            health: MAX_HEALTH,
         })
+        state.spawns.enemies = [vec2(6, 1), vec2(8, 1)]
         state.players[0].breather.energy = 100
         tick(state, { breath: true })
         expect(inPlay(victim)).toBe(false)
+        const wait = victim.respawnIn
         state.players[0].character.pos = vec2(8, 1)
         state.players[0].character.lastPos = vec2(8, 1)
         tick(state)
-        expect(state.lives).toBe(1)
-        expect(inPlay(victim)).toBe(true)
-        expect(victim.pos).toEqual(vec2(3, 1))
+        expect(state.players[0].health).toBe(MAX_HEALTH - ENEMY_DAMAGE)
+        expect(inPlay(victim)).toBe(false)
+        expect(victim.respawnIn).toBeCloseTo(wait - 1 / TICK_RATE)
+        expect(victim.pos).toEqual(vec2(6, 1))
     })
 })
 

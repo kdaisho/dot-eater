@@ -4,7 +4,7 @@ import confetti from "canvas-confetti"
 import { createBoss } from "./boss"
 import { END_CONFIRM_DELAY } from "./flow"
 import { energyHud } from "./breath"
-import { DOT_POINTS, START_LIVES, TICK_MS, TICK_RATE } from "./constants"
+import { DOT_POINTS, MAX_HEALTH, TICK_MS, TICK_RATE } from "./constants"
 import {
     createGameState,
     step,
@@ -701,15 +701,15 @@ describe("main", () => {
     })
 
     it("shows the clear time and stars, saves the bests and lists them on stage select", () => {
-        // The step is mocked, so set the clear: one life lost, 1:02.5.
+        // The step is mocked, so set the clear: under half health, 1:02.5.
         const game = drawnGame()
         game.ticks = 62.5 * TICK_RATE
-        game.lives = START_LIVES - 1
+        game.players[0].health = MAX_HEALTH / 2 - 1
         gameOver("won")
         expect(overlayLines().slice(1)).toEqual([
             "Time 1:02.5",
             "★ Cleared",
-            "☆ No lives lost",
+            "☆ At least half health",
             "☆ Under par (1:00)",
         ])
         const saved = parseProgress(localStorage.getItem(PROGRESS_KEY))
@@ -753,14 +753,14 @@ describe("main", () => {
         )
     })
 
-    it("draws the game's score and lives in the HUD", () => {
+    it("draws the game's score and health in the HUD", () => {
         const game = drawnGame()
         game.players[0].score = 7 * DOT_POINTS
-        game.lives = 2
+        game.players[0].health = 60
         vi.advanceTimersByTime(FRAMES_MS)
         expect(drawn.last?.[2]).toEqual({
             score: 7 * DOT_POINTS,
-            lives: 2,
+            health: { health: 60, max: MAX_HEALTH },
             energy: energyHud(game),
         })
     })
@@ -826,7 +826,7 @@ describe("main", () => {
             expect(screen()).toBe("playing")
             expect(drawn.last?.[2]).toMatchObject({
                 score: 0,
-                lives: START_LIVES,
+                health: { health: MAX_HEALTH, max: MAX_HEALTH },
             })
         }
     )

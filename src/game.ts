@@ -1,18 +1,19 @@
 import {
     AiType,
     BLINK_RATE,
+    BOSS_DAMAGE,
     BOSS_TRICKLE,
     CATCH_DISTANCE,
     Cell,
     CharacterId,
     DOT_POINTS,
+    ENEMY_DAMAGE,
     ENEMY_IDS,
     HURT_INVULNERABLE_SECONDS,
     MAX_HEALTH,
     PLAYER_RESPAWN_DELAY,
     PLAYER_SPEED,
     RESPAWN_CLEAR_DISTANCE,
-    START_LIVES,
     TICK_RATE,
 } from "./constants"
 import {
@@ -44,7 +45,6 @@ import {
     bossTarget,
     createBoss,
     footprint,
-    resetBoss,
     squareDistance,
     type Boss,
 } from "./boss"
@@ -56,19 +56,19 @@ import { hasDots, loopPos, type Cells, type Level } from "./level"
 import { levels } from "./levels"
 import { distanceMap } from "./path"
 import { DEFAULT_ANIMAL, type AnimalId } from "./roster"
-import { createSplitter, resetSplitter } from "./splitter"
+import { createSplitter } from "./splitter"
 import { loseDots, stunned, tickStuns } from "./versus"
 import { samePos, vec2, type Vec2 } from "./vec2"
 
 export type Outcome = "dead" | "won"
 
 // How a game is played: by one player, or by two together (co-op) or
-// against each other (versus). The mode decides what a catch costs (see
-// resolveCatch).
+// against each other (versus). The mode decides what running out of health
+// costs (see knockOut).
 export type Mode = "solo" | "coop" | "versus"
 
 export type GameState = {
-    // The rules the game is played by (see resolveCatch).
+    // The rules the game is played by (see knockOut).
     mode: Mode
     cells: Cells
     // Where the floor is ice (see ice.ts): the level's ice plus any ice tile
@@ -88,17 +88,10 @@ export type GameState = {
     boss: Boss | null
     // Ticks stepped so far: the clear time, in ticks (TICK_RATE per second).
     // Only `step` counts, and it only runs during play (see flow.ts), so
-    // pauses and the ending outro don't add to it. A lost life doesn't reset
-    // it.
+    // pauses and the ending outro don't add to it.
     ticks: number
-    // Lives left, shared by the players. In solo it counts the one being
-    // played: a collision costs one and losing the last ends the game. In
-    // co-op it is a pool of respawns: each catch spends one, and a player
-    // caught with none left is out for good (see resolveCatch). Versus has
-    // no lives and ignores it: a catch costs dots instead.
-    lives: number
-    // Where everyone starts, and goes back to after losing a life (copied
-    // from the level).
+    // Where everyone starts (copied from the level). A versus player
+    // knocked out comes back to its own (see bringBack).
     spawns: Spawns
     // What happened in the latest tick, in order (see events.ts). `step`
     // empties it first.
@@ -119,12 +112,12 @@ export type Player = {
     // (see totalScore for the whole game's).
     score: number
     // Dots eaten so far, for the end screens' per-player breakdown. In
-    // versus a catch also lowers it (CATCH_DOTS, see versus.ts), and it
+    // versus a knockout also lowers it (CATCH_DOTS, see versus.ts), and it
     // decides each round.
     dots: number
     // The cell of the dot eaten on the player's latest move, or null if that
-    // move ate nothing (or the player hasn't moved since the start or a
-    // respawn). The dot is gone from `cells` and scored at once, but the
+    // move ate nothing (or the player hasn't moved since the start or
+    // coming back). The dot is gone from `cells` and scored at once, but the
     // renderer keeps drawing it until the player's glide reaches it (see
     // eatenDotVisible in glide.ts). Purely visual.
     eatenAt: Vec2 | null
@@ -134,9 +127,9 @@ export type Player = {
     // frames between ticks glide at the same rate (see glideT).
     rate: number
     // Whether the player has been taken out of play (see takeOut): it isn't
-    // drawn, doesn't move, breathe, eat or get caught, enemies and the boss
+    // drawn, doesn't move, breathe, eat or get hurt, enemies and the boss
     // don't go after it, and its input is ignored. Only the 2-player rules
-    // take a player out; in solo a catch respawns everyone instead.
+    // take a player out (see knockOut); in solo a knockout loses the game.
     out: boolean
     // While out, the seconds until it is back at its spawn (0 once due, while
     // it waits for the spawn to be clear; see tickPlayersOut), or null if it
@@ -191,7 +184,7 @@ const EPSILON = 1e-9
 // A new game of `level`, played as `animals`, one per player (one animal on
 // its own for a 1-player game), whose breaths and stats come from BREATHS
 // (src/breaths/). Player i starts on the level's spawn i.
-// `mode` is the rules it is played by (see resolveCatch).
+// `mode` is the rules it is played by (see knockOut).
 export function createGameState(
     level: Level = levels[0],
     animals: AnimalId | readonly AnimalId[] = DEFAULT_ANIMAL,
@@ -247,7 +240,6 @@ export function createGameState(
         enemies,
         boss: level.boss ? createBoss(level.boss.pos, level.boss.speed) : null,
         ticks: 0,
-        lives: START_LIVES,
         spawns: {
             players: players.map(({ character: c }) => vec2(c.pos.x, c.pos.y)),
             enemies: enemySpawns,
@@ -298,35 +290,9 @@ export function totalScore(state: GameState): number {
     return state.players.reduce((sum, p) => sum + p.score, 0)
 }
 
-// Put everyone back where they started, as at the start of a game: the
-// players ready to move, the enemies waiting out the grace period again, no
-// tap buffered, the players facing right again. Every enemy is back in play
-// with no statuses, including one that was defeated and waiting to respawn,
-// and a Splitter is whole again (see resetSplitter). The boss is back at its
-// spawn too, keeping its damage (see resetBoss); a defeated one stays gone.
-// Dots, scores, energy, the breath cooldowns and tile effects are left alone.
-// A player out of play is back in it too.
-function respawn(state: GameState) {
-    const { enemies, spawns } = state
-    state.players.forEach((player) => bringBack(state, player))
-    enemies.forEach((enemy, i) => {
-        const spawn = spawns.enemies[i]
-        enemy.pos = vec2(spawn.x, spawn.y)
-        enemy.lastPos = vec2(spawn.x, spawn.y)
-        enemy.moveProgress = 0
-        // A patroller starts its route again from the first waypoint.
-        enemy.routeIndex = 0
-        enemy.statuses = []
-        enemy.respawnIn = 0
-        resetSplitter(enemy)
-    })
-    if (state.boss) resetBoss(state.boss)
-}
-
 // Put `player` back in play on its own spawn, as at the start of a game:
 // ready to move, facing right, nothing buffered, full health. Its score,
-// energy and cooldown are kept. Nobody else is touched (see respawn for
-// everyone).
+// energy and cooldown are kept. Nobody else is touched.
 export function bringBack(state: GameState, player: Player) {
     const index = state.players.indexOf(player)
     const spawn = state.spawns.players[index]
@@ -630,6 +596,14 @@ function awayFrom(state: GameState, player: Player, from: Vec2): Vec2 {
         : vec2(0, Math.sign(dy))
 }
 
+// What the HUD's health gauge shows for a player: its health out of
+// MAX_HEALTH.
+export type HealthHud = { health: number; max: number }
+
+export function healthHud(player: Player): HealthHud {
+    return { health: player.health, max: MAX_HEALTH }
+}
+
 // Whether to draw `player` now: not while out of play, and while
 // invulnerable after a hit, on and off BLINK_RATE times a second (starting
 // on, so the knockback is seen).
@@ -680,7 +654,8 @@ function wait(character: Glider) {
 // on the first tick it can. All moves in a tick happen together: enemies aim
 // at where the players stood at the start of the tick, and collisions are
 // checked once, after everyone has moved, on where the characters are drawn
-// over the tick (see collides, and checkEnd for what a collision costs).
+// over the tick (see collides, and checkEnd for what a collision costs: an
+// enemy's or the boss's touch hurts, see hurtPlayer).
 // Callers stop stepping once a step returns an outcome (see flow.ts), so
 // nothing changes after the game ends.
 //
@@ -690,10 +665,12 @@ function wait(character: Glider) {
 // bossTarget).
 //
 // A player out of play (see takeOut) sits the tick out: its input is
-// ignored, it doesn't move, breathe or get caught, and enemies and the boss
+// ignored, it doesn't move, breathe or get hurt, and enemies and the boss
 // go after the players in play only (while nobody is, each heads back to
 // its own spawn). Its wait counts down first, with the breath timers,
-// so one that is back (see tickPlayersOut) plays the whole tick.
+// so one that is back (see tickPlayersOut) plays the whole tick. A
+// player's invulnerability after a hit (Player.invulnerableFor) counts down
+// a tick at a time there too.
 //
 // On ice (see ice.ts), a sliding character's move is its slide step, taken
 // at its normal move opportunity: input and AI are ignored until the slide
@@ -906,7 +883,7 @@ function trickle(state: GameState, dt: number) {
 // Finish the glides in progress after the game has ended, for the short
 // outro before the end screen (see flow.ts). Every character's moveProgress
 // rises by speed * dt, capped at 1 (progress already at or past 1 is left
-// alone). Nobody moves and nothing else changes (cells, score, lives,
+// alone). Nobody moves and nothing else changes (cells, score, health,
 // positions). Returns true once every player's glide is complete, i.e. the
 // players are drawn on their cells.
 export function settle(state: GameState, dt: number): boolean {
@@ -1172,17 +1149,22 @@ function collides(
     return false
 }
 
-// Settle the end of a tick: collisions, lives and winning. `start` holds
-// everyone's TickStart, taken at the start of the tick (see tickStarts). The
-// default is a tick of no time, so only where they are drawn now counts.
+// Settle the end of a tick: touches, health and winning. `start` holds
+// everyone's TickStart, taken at the start of the tick (see tickStarts).
+// The default is a tick of no time, so only where they are drawn now
+// counts.
 //
 // No dots left (and, on a boss level, the boss defeated) is won, checked
 // first: eating the last dot (whichever player eats it), or defeating the
-// boss when that comes last, clears the stage even if a player is caught
-// on that same tick, and costs no life. Otherwise any player in play caught
-// this tick goes to resolveCatch. In versus a catch on that tick still
-// counts (it costs dots and takes the player out) before the round is won,
-// so the round is scored with it.
+// boss when that comes last, clears the stage even if a player is touched
+// on that same tick, and costs it nothing. Otherwise each player in play
+// and not invulnerable that an enemy or the boss touched this tick is hurt
+// (see touchedBy and hurtPlayer), player 1 first. In versus a touch on that
+// tick still counts (a knockout costs dots and takes the player out)
+// before the round is won, so the round is scored with it.
+//
+// The game is lost (see lost) once a hit has taken the solo player's last
+// health, or no co-op player is left in play.
 export function checkEnd(
     state: GameState,
     start: TickStarts = tickStarts(state, 0)
@@ -1190,40 +1172,26 @@ export function checkEnd(
     const bossLeft = state.boss !== null && !state.boss.defeated
     const cleared = !hasDots(state.cells) && !bossLeft
     if (cleared && state.mode !== "versus") return "won"
-    const caughtPlayers = state.players.filter(
-        (p, i) => !p.out && caught(state, start, i)
-    )
-    const outcome =
-        caughtPlayers.length > 0 ? resolveCatch(state, caughtPlayers) : null
-    return cleared ? "won" : outcome
+    state.players.forEach((player, i) => {
+        if (player.out || player.invulnerableFor > 0) return
+        const hit = touchedBy(state, start, i)
+        if (hit) hurtPlayer(state, player, hit.damage, hit.from)
+    })
+    if (cleared) return "won"
+    return lost(state) ? "dead" : null
 }
 
-// What catching `caught` (one or more players in play, caught on the same
-// tick, player 1 first) costs. This is the one place that decides it, by
-// the game's mode:
-//
-// - solo (and any game whose players all go together): caught on the last
-//   life, lives drop to 0 and the game is lost ("dead"); caught with lives
-//   left, one life is lost, however many players were caught, and everyone
-//   respawns at once (see respawn), keeping the dots and scores. That is no
-//   outcome; the game goes on, and callers can watch `lives` to notice it.
-// - coop: see coopCatch.
-// - versus: see versusCatch.
-//
-// Each caught player is reported once (a playerCaught event, see
-// events.ts), where it was caught.
-export function resolveCatch(
-    state: GameState,
-    caught: readonly Player[]
-): Outcome | null {
-    if (caught.length === 0) return null
+// Whether the game is lost, by its mode: in solo once the player's health
+// is gone (see knockOut), in co-op once no player is in play (each one
+// knocked out is out for good). A versus game is never lost.
+function lost(state: GameState): boolean {
     switch (state.mode) {
         case "solo":
-            return soloCatch(state, caught)
+            return state.players.some((p) => p.health <= 0)
         case "coop":
-            return coopCatch(state, caught)
+            return state.players.every(outForGood)
         case "versus":
-            return versusCatch(state, caught)
+            return false
         default: {
             // Compile-time check that every Mode is handled above.
             const unhandled: never = state.mode
@@ -1232,113 +1200,47 @@ export function resolveCatch(
     }
 }
 
-function soloCatch(
-    state: GameState,
-    caught: readonly Player[]
-): Outcome | null {
-    const last = state.lives <= 1
-    // Reported before the respawn moves them.
-    for (const player of caught) reportCatch(state, player, last)
-    if (last) {
-        state.lives = 0
-        return "dead"
-    }
-    state.lives--
-    respawn(state)
-    return null
-}
+// A touch that hurts: the damage it does and where what touched is drawn
+// (see hurtPlayer).
+type Touch = { damage: number; from: Vec2 }
 
-// A playerCaught event for `player`, on its cell.
-function reportCatch(state: GameState, player: Player, outForGood: boolean) {
-    const { pos } = player.character
-    emit(state, {
-        type: "playerCaught",
-        player: state.players.indexOf(player),
-        at: vec2(pos.x, pos.y),
-        outForGood,
-    })
-}
-
-// Co-op: the lives are a shared pool of respawns. Each caught player, in
-// player order, spends a life if one is left and is out for
-// PLAYER_RESPAWN_DELAY seconds; with none left it is out for good. Only the
-// caught player goes out: the other player, the enemies, the boss and the
-// dots carry on. The game is lost ("dead") once no player is in play and
-// none is waiting to come back.
-function coopCatch(
-    state: GameState,
-    caught: readonly Player[]
-): Outcome | null {
-    for (const player of caught) {
-        if (state.lives > 0) {
-            state.lives--
-            takeOut(player, PLAYER_RESPAWN_DELAY)
-        } else {
-            takeOut(player, null)
-        }
-        // takeOut leaves it where it was caught.
-        reportCatch(state, player, outForGood(player))
-    }
-    return state.players.every(outForGood) ? "dead" : null
-}
-
-// Versus (see versus.ts): there are no lives. Each caught player loses
-// CATCH_DOTS of its dot count (not below 0) and is out for
-// PLAYER_RESPAWN_DELAY seconds, then back at its spawn. A versus game is
-// never lost: it only ends when the stage is cleared (see checkEnd).
-function versusCatch(state: GameState, caught: readonly Player[]): null {
-    for (const player of caught) {
-        loseDots(player)
-        takeOut(player, PLAYER_RESPAWN_DELAY)
-        reportCatch(state, player, false)
-    }
-    return null
-}
-
-// Whether any enemy, or the boss, collides with player `index` this tick
-// (see collides). `start` is everyone's TickStart for the tick (see
+// What touches player `index` this tick (see collides), if anything: the
+// boss (BOSS_DAMAGE, from its footprint's centre) before any enemy
+// (ENEMY_DAMAGE, from where it is drawn), so the harder hit counts when
+// both touch on one tick. `start` is everyone's TickStart for the tick (see
 // tickStarts). Enemies out of play and harmless ones (see EnemyStatus)
-// don't catch, nor does a defeated boss. Players never catch each other.
+// don't touch, nor does a defeated boss. Players never hurt each other.
 //
 // Boss levels have no tunnels. The wrap-aware offsets in collides may still
 // take a far-off player the short way round the map, but on a map without
 // tunnels that leaves it at least a cell from the boss's square, so it never
-// makes a catch.
-function caught(state: GameState, start: TickStarts, index: number): boolean {
-    const cols = state.cells[0].length
-    const rows = state.cells.length
-    const player = drawnPos(state.players[index].character, cols, rows)
-    return caughtBy(state, start, start.players[index], player)
-}
-
-// Whether any enemy, or the boss, collides with a player that starts the
-// tick as `from` and is drawn at `player` at its end (see caught). The
-// enemies and the boss come from `start`, as in caught.
-function caughtBy(
+// makes a touch.
+function touchedBy(
     state: GameState,
     start: TickStarts,
-    from: TickStart,
-    player: Vec2
-): boolean {
+    index: number
+): Touch | null {
     const cols = state.cells[0].length
     const rows = state.cells.length
-    const byEnemy = state.enemies.some((e, i) => {
-        if (!inPlay(e) || hasStatus(e, "harmless")) return false
-        const enemy = drawnPos(e, cols, rows)
-        return collides(from, player, start.enemies[i], enemy, cols, rows)
-    })
-    if (byEnemy) return true
+    const from = start.players[index]
+    const player = drawnPos(state.players[index].character, cols, rows)
     const { boss } = state
-    if (!boss || boss.defeated || !start.boss) return false
-    return collides(
-        start.boss,
-        drawnPos(boss, cols, rows),
-        from,
-        player,
-        cols,
-        rows,
-        squareDistance
-    )
+    if (boss && !boss.defeated && start.boss) {
+        const at = drawnPos(boss, cols, rows)
+        if (
+            collides(start.boss, at, from, player, cols, rows, squareDistance)
+        ) {
+            return { damage: BOSS_DAMAGE, from: vec2(at.x + 0.5, at.y + 0.5) }
+        }
+    }
+    for (const [i, e] of state.enemies.entries()) {
+        if (!inPlay(e) || hasStatus(e, "harmless")) continue
+        const enemy = drawnPos(e, cols, rows)
+        if (collides(from, player, start.enemies[i], enemy, cols, rows)) {
+            return { damage: ENEMY_DAMAGE, from: enemy }
+        }
+    }
+    return null
 }
 
 // Move a patroller on to its next waypoint if it stands on the current one.

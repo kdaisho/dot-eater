@@ -29,10 +29,10 @@ function rink(
     rows: readonly string[],
     player: Vec2,
     enemies: Character[] = [],
-    lives = 1
+    health = 1
 ): GameState {
     const { map, ice } = textMap(rows)
-    const state = makeState(map, player, enemies, { lives, ice })
+    const state = makeState(map, player, enemies, { health, ice })
     state.players[0].character.moveProgress = 1
     for (const enemy of enemies) enemy.moveProgress = 1
     return state
@@ -334,7 +334,7 @@ describe("step: collisions while sliding", () => {
             vec2(4, 1),
             vec2(5, 1),
         ])
-        expect(state.lives).toBe(1)
+        expect(state.players[0].health).toBe(1)
         // 0.4 cells at 1/30 of a cell a tick.
         expect(ticksUntilCaught(state)).toBe(12)
         expect(enemy.pos).toEqual(vec2(5, 1))
