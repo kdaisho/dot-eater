@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vite-plus/test"
-import { AiType, Cell, MAX_ENEMIES, TICK_RATE } from "./constants"
+import { AiType, Cell, MAX_ENEMIES, MAX_HEALTH, TICK_RATE } from "./constants"
 import {
     DIFFICULTIES,
     ENEMY_COUNT,
@@ -828,11 +828,53 @@ describe("parseLevel rules", () => {
 
     it("rejects unknown rules and fog settings", () => {
         expect(problemsOf(withRules({ fogg: { radius: 3 } }))).toEqual([
-            'unknown rule "fogg" (known rules: fog)',
+            'unknown rule "fogg" (known rules: fog, regrowDots, splitterDrops)',
         ])
         expect(problemsOf(withRules({ fog: { radius: 3, soft: 1 } }))).toEqual([
             'unknown rules.fog setting "soft"',
         ])
+    })
+
+    describe("regrowDots", () => {
+        it("keeps a valid rule, as a copy", () => {
+            const data = withRules({ regrowDots: { seconds: 10 } })
+            const level = parseFlat(data)
+            expect(level.rules).toEqual({ regrowDots: { seconds: 10 } })
+            expect(level.rules.regrowDots).not.toBe(
+                (data.rules as { regrowDots: unknown }).regrowDots
+            )
+            expect(
+                parseFlat(withRules({ regrowDots: { seconds: 0.5 } })).rules
+            ).toEqual({ regrowDots: { seconds: 0.5 } })
+        })
+
+        it("keeps it alongside fog", () => {
+            const rules = { fog: { radius: 3 }, regrowDots: { seconds: 2.5 } }
+            expect(parseFlat(withRules(rules)).rules).toEqual(rules)
+        })
+
+        it("rejects seconds that aren't positive whole tenths", () => {
+            for (const seconds of [0, -1, 0.05, 10.25, NaN, Infinity, "10"]) {
+                expect(
+                    problemsOf(withRules({ regrowDots: { seconds } })),
+                    String(seconds)
+                ).toEqual([
+                    `rules.regrowDots.seconds must be a positive number of seconds in whole tenths, got ${String(seconds)}`,
+                ])
+            }
+            expect(problemsOf(withRules({ regrowDots: {} }))).toEqual([
+                "rules.regrowDots.seconds must be a positive number of seconds in whole tenths, got undefined",
+            ])
+        })
+
+        it("rejects unknown settings, and a rule that isn't an object", () => {
+            expect(
+                problemsOf(withRules({ regrowDots: { seconds: 10, delay: 1 } }))
+            ).toEqual(['unknown rules.regrowDots setting "delay"'])
+            expect(problemsOf(withRules({ regrowDots: 10 }))).toEqual([
+                "rules.regrowDots must be an object, got 10",
+            ])
+        })
     })
 
     it("rejects rules or fog that aren't objects", () => {
@@ -855,11 +897,68 @@ describe("parseLevel with a boss", () => {
         parTime: 60,
         map: ["#######", "#P....#", "#..B .#", "#.....#", "#E....#", "#######"],
         enemies: [{ ai: "chase" }],
+        rules: { regrowDots: { seconds: 10 } },
     }
+
+    describe("rules.splitterDrops", () => {
+        const withDrops = (data: FlatLevelData, splitterDrops: unknown) =>
+            ({
+                ...data,
+                rules: { ...data.rules, splitterDrops },
+            }) as FlatLevelData
+        const regrowDots = { seconds: 10 }
+
+        it("keeps true or false on a level with a boss", () => {
+            expect(parseFlat(withDrops(lair, true)).rules).toEqual({
+                regrowDots,
+                splitterDrops: true,
+            })
+            expect(parseFlat(withDrops(lair, false)).rules).toEqual({
+                regrowDots,
+                splitterDrops: false,
+            })
+        })
+
+        it("rejects drops on a level without a boss, where dots decide the clear", () => {
+            const plain = {
+                ...lair,
+                map: lair.map.map((r) => r.replace("B", ".")),
+            }
+            expect(problemsOf(withDrops(plain, true))).toEqual([
+                'rules.splitterDrops needs a boss ("B"): elsewhere dots decide the clear',
+            ])
+            expect(parseFlat(withDrops(plain, false)).rules).toEqual({
+                regrowDots,
+                splitterDrops: false,
+            })
+        })
+
+        it("rejects anything but true or false", () => {
+            for (const value of [1, "yes", null, {}]) {
+                expect(problemsOf(withDrops(lair, value))).toEqual([
+                    `rules.splitterDrops must be true or false, got ${JSON.stringify(value)}`,
+                ])
+            }
+        })
+    })
     // `lair` with its map rows replaced by `map`.
     const withMap = (map: readonly string[]): FlatLevelData => ({
         ...lair,
         map,
+    })
+
+    // Regression: with the energy refill gone (KDA-267), a boss level
+    // without dots coming back could run out of them with the boss alive.
+    it("needs rules.regrowDots, so it can always be won", () => {
+        const needs =
+            "a boss level needs rules.regrowDots, so the dots (its ammunition) come back"
+        const { rules: _, ...bare } = lair
+        expect(problemsOf(bare)).toEqual([needs])
+        expect(problemsOf({ ...lair, rules: { fog: { radius: 3 } } })).toEqual([
+            needs,
+        ])
+        // A level without a boss doesn't need it.
+        expect(problemsOf(valid)).toEqual([])
     })
     // Boss settings come from JSON-like data, so tests pass shapes the type
     // forbids.
@@ -899,6 +998,70 @@ describe("parseLevel with a boss", () => {
         expect(problemsOf(withBoss(2))).toEqual([
             "boss must be an object, got 2",
         ])
+    })
+
+    it("takes the boss's breath tuning from its settings", () => {
+        const breath = { every: 2.5, windUp: 0.5, range: 8, damage: 45 }
+        const level = parseFlat(withBoss({ speed: 2, breath }))
+        expect(level.boss).toEqual({ pos: vec2(3, 2), speed: 2, breath })
+        // A copy, not the level data's own object.
+        expect(level.boss!.breath).not.toBe(breath)
+        // Any part may be left out (the defaults apply).
+        expect(parseFlat(withBoss({ breath: {} })).boss).toEqual({
+            pos: vec2(3, 2),
+            breath: {},
+        })
+        expect(parseFlat(withBoss({ breath: { range: 1 } })).boss).toEqual({
+            pos: vec2(3, 2),
+            breath: { range: 1 },
+        })
+    })
+
+    it("accepts breath settings at the ends of their ranges", () => {
+        for (const breath of [
+            { every: 1, windUp: 0.25, range: 1, damage: 1 },
+            { every: 60, windUp: 5, range: 30, damage: MAX_HEALTH },
+        ]) {
+            expect(problemsOf(withBoss({ breath }))).toEqual([])
+        }
+    })
+
+    it("rejects bad breath settings", () => {
+        const problems = (breath: unknown) => problemsOf(withBoss({ breath }))
+        expect(problems(3)).toEqual(["boss.breath must be an object, got 3"])
+        expect(problems([])).toEqual(["boss.breath must be an object, got []"])
+        expect(problems({ cooldown: 2 })).toEqual([
+            'unknown boss.breath setting "cooldown"',
+        ])
+        expect(problems({ every: 0 })).toEqual([
+            "boss.breath.every must be a number of seconds from 1 to 60, got 0",
+        ])
+        expect(problems({ every: 61 })).toEqual([
+            "boss.breath.every must be a number of seconds from 1 to 60, got 61",
+        ])
+        expect(problems({ every: "4" })).toEqual([
+            'boss.breath.every must be a number of seconds from 1 to 60, got "4"',
+        ])
+        expect(problems({ windUp: 0.1 })).toEqual([
+            "boss.breath.windUp must be a number of seconds from 0.25 to 5, got 0.1",
+        ])
+        expect(problems({ windUp: -1 })).toEqual([
+            "boss.breath.windUp must be a number of seconds from 0.25 to 5, got -1",
+        ])
+        expect(problems({ range: 2.5 })).toEqual([
+            "boss.breath.range must be a whole number of cells from 1 to 30, got 2.5",
+        ])
+        expect(problems({ range: 0 })).toEqual([
+            "boss.breath.range must be a whole number of cells from 1 to 30, got 0",
+        ])
+        expect(problems({ damage: MAX_HEALTH + 1 })).toEqual([
+            `boss.breath.damage must be a whole number of health from 1 to ${MAX_HEALTH}, got ${MAX_HEALTH + 1}`,
+        ])
+        expect(problems({ damage: Number.NaN })).toEqual([
+            "boss.breath.damage must be a whole number of health from 1 to 100, got null",
+        ])
+        // Every problem is listed.
+        expect(problems({ every: 0, damage: 0 })).toHaveLength(2)
     })
 
     it("rejects boss settings without a boss", () => {
@@ -1316,6 +1479,7 @@ describe("parseStage", () => {
                 ],
                 enemies: [],
             }),
+            rules: { regrowDots: { seconds: 10 } },
         }
         expect(problemsWith(lair, parseStage)).toEqual([
             `the boss at (2, 2) is too near the "P" at (3, 4): 1.00 cells, less than ${SPAWN_GAP}`,
