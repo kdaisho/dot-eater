@@ -1,7 +1,7 @@
 // The audio engine (KDA-212): plays the sound effects in sfx.ts and the
 // tunes in music.ts with Web Audio, all synthesized. It owns the
 // AudioContext and three gain nodes: effects and music feed master, which
-// feeds the speakers. The context and the timer that drives music
+// feeds the speakers through a limiter. The context and the timer that drives music
 // scheduling are injected, so tests run it on a fake without a browser.
 //
 // Pause: `pauseMusic` freezes the tune where it is (cutting the notes
@@ -44,6 +44,7 @@ export type AudioContextLike = Pick<
     | "createBufferSource"
     | "createBiquadFilter"
     | "createBuffer"
+    | "createDynamicsCompressor"
 >
 
 // The volume settings (KDA-246's musicVolume, effectsVolume and muted):
@@ -72,10 +73,21 @@ export const DEFAULT_VOLUMES: Volumes = volumesOf(defaultSettings())
 // clip.
 export const MASTER_LEVEL = 0.5
 // The music bus's gain at full music volume. The tunes' voices are written
-// quiet (a melody at 0.1, under effects at up to 0.6) so they mix under the
-// effects, so the bus lifts them back up; at 0.5 the title melody was too
-// faint to hear on laptop speakers.
+// quiet (melodies at 0.1 to 0.12, under effects at up to 0.75) so they mix
+// under the effects, so the bus lifts them back up; at 0.5 the title melody
+// was too faint to hear on laptop speakers.
 export const MUSIC_LEVEL = 2
+// The limiter between master and the speakers: with the music lifted, loud
+// music at full volume plus a loud effect or two can top full scale, which
+// the speakers would hard-clip into clicks. It squashes peaks over the
+// threshold (dBFS) instead and leaves quieter sound alone.
+export const LIMITER = {
+    threshold: -3,
+    knee: 0,
+    ratio: 20,
+    attack: 0.003,
+    release: 0.1,
+}
 
 // Music scheduling: every SCHEDULE_MS the engine schedules the notes that
 // start in the next LOOKAHEAD seconds on the AudioContext clock, so timer
@@ -251,8 +263,15 @@ export function createAudio(options: AudioOptions): Audio {
     }
 
     function setUp(ctx: AudioContextLike) {
+        const limiter = ctx.createDynamicsCompressor()
+        limiter.threshold.value = LIMITER.threshold
+        limiter.knee.value = LIMITER.knee
+        limiter.ratio.value = LIMITER.ratio
+        limiter.attack.value = LIMITER.attack
+        limiter.release.value = LIMITER.release
+        limiter.connect(ctx.destination)
         const master = ctx.createGain()
-        master.connect(ctx.destination)
+        master.connect(limiter)
         const musicBus = ctx.createGain()
         musicBus.connect(master)
         const effects = ctx.createGain()

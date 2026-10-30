@@ -4,6 +4,7 @@ import {
     busGains,
     createAudio,
     DEFAULT_VOLUMES,
+    LIMITER,
     LOOKAHEAD,
     MASTER_LEVEL,
     MUSIC_LEVEL,
@@ -139,13 +140,30 @@ describe("unlock", () => {
         expect(context.resume).toHaveBeenCalledTimes(2)
     })
 
-    it("wires effects and music through master to the speakers", () => {
+    it("wires effects and music through master and a limiter to the speakers", () => {
         const { audio, context, bus } = setup()
         audio.unlock()
         const { master, music, effects } = bus()
-        expect(master.connections).toEqual([context.destination])
+        const [limiter] = context.compressors
+        expect(context.compressors).toHaveLength(1)
+        expect(master.connections).toEqual([limiter])
+        expect(limiter.connections).toEqual([context.destination])
         expect(music.connections).toEqual([master])
         expect(effects.connections).toEqual([master])
+    })
+
+    // Regression (PR #65 review): with the music lifted, music and effects at
+    // full volume could top full scale and hard-clip at the speakers.
+    it("limits peaks hard and fast before the speakers", () => {
+        const { audio, context } = setup()
+        audio.unlock()
+        const [limiter] = context.compressors
+        expect(limiter.threshold.value).toBe(LIMITER.threshold)
+        expect(LIMITER.threshold).toBeLessThan(0)
+        expect(limiter.ratio.value).toBeGreaterThanOrEqual(20)
+        expect(limiter.knee.value).toBe(0)
+        expect(limiter.attack.value).toBeLessThanOrEqual(0.005)
+        expect(limiter.release.value).toBe(LIMITER.release)
     })
 
     it("drops effects played before it", () => {
