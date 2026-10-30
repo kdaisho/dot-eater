@@ -1,59 +1,93 @@
 import { describe, expect, it } from "vite-plus/test"
-import { bossDamage, bossReach, footprint, mapFloor } from "../boss"
+import { bossDamage, footprint } from "../boss"
 import { BREATHS } from "../breaths"
 import { AiType, BOSS_HEALTH, BOSS_SPEED, Cell, DOT_ENERGY } from "../constants"
+import { MAP_SIZE } from "../difficulty"
 import { createGameState } from "../game"
-import { parseLevel, type Cells } from "../level"
+import { parseLevel } from "../level"
 import { distanceMap, openNeighbours } from "../path"
 import { ANIMAL_IDS } from "../roster"
-import { vec2, type Vec2 } from "../vec2"
+import {
+    bossArena,
+    breathEscapes,
+    cellKey,
+    safeAround,
+} from "../test/bossArena"
+import { allDirections } from "../vec2"
 import { EACH_MAP } from "../test/helpers"
 import { stages } from "./index"
 import { stage5 } from "./stage5"
 
+// Per map size: its size, par, doors and every enemy it lists.
+const MAPS = {
+    medium: {
+        width: 21,
+        height: 17,
+        parTime: 60,
+        doors: 6,
+        enemies: [
+            AiType.splitter,
+            AiType.splitter,
+            AiType.chase,
+            AiType.ambusher,
+        ],
+    },
+    large: {
+        width: 29,
+        height: 21,
+        parTime: 75,
+        doors: 8,
+        enemies: [
+            AiType.splitter,
+            AiType.chase,
+            AiType.ambusher,
+            AiType.splitter,
+            AiType.chase,
+            AiType.splitter,
+            AiType.chase,
+            AiType.ambusher,
+        ],
+    },
+}
+
 describe.each(EACH_MAP)("stage 5 (%s)", (difficulty) => {
     const level = parseLevel(stage5, difficulty)
-    const cells: Cells = level.cells.map((row) => [...row])
+    const map = MAPS[MAP_SIZE[difficulty]]
+    const arena = bossArena(level)
+    const { cells, open, dots, reach, bossCells, safe, doors } = arena
     const spawn = level.playerSpawns[0]
-    const open: Vec2[] = []
-    cells.forEach((row, y) =>
-        row.forEach((cell, x) => {
-            if (cell !== Cell.wall) open.push(vec2(x, y))
-        })
-    )
-    const dots = open.filter(({ x, y }) => cells[y][x] === Cell.dot)
-    // Every top-left position the boss can get to from its spawn, through
-    // positions where it fits (as bossMove moves it, with no tile effects).
-    const reachable: Vec2[] = bossReach(level.boss!.pos, mapFloor(cells)).map(
-        (r) => r.pos
-    )
-    // Cells the boss's footprint can ever cover.
-    const bossCells = new Set(
-        reachable.flatMap((p) => footprint(p).map((c) => `${c.x},${c.y}`))
-    )
+    const escapes = breathEscapes(level)
+    // Every other stage there is, at the same difficulty.
+    const others = stages
+        .filter((_, i) => i !== 4)
+        .map((stage) => stage[difficulty])
 
     it("is the fifth level, the Boss lair", () => {
         expect(stages[4][difficulty]).toEqual(level)
         expect(level.name).toBe("Boss lair")
-        expect(level.parTime).toBe(90)
+        expect(level.parTime).toBe(map.parTime)
     })
 
     it("starts a game with its boss, the only stage that has one", () => {
         const game = createGameState(level)
         expect(game.boss?.pos).toEqual(level.boss!.pos)
         expect(game.boss?.speed).toBe(BOSS_SPEED)
-        for (const other of stages.slice(0, 4).map((s) => s[difficulty])) {
+        for (const other of others) {
             expect(other.boss).toBeNull()
         }
     })
 
-    it("has a boss at the default speed, a Splitter and a chaser", () => {
-        expect(level.boss).not.toBeNull()
+    // The mid-game boss: the defaults, its breath the gentle one.
+    it("has a boss at the default speed and breath", () => {
+        expect(stage5.boss).toEqual({})
         expect(level.boss!.speed).toBeUndefined()
-        expect(level.enemies.map((e) => e.ai)).toEqual([
-            AiType.splitter,
-            AiType.chase,
-        ])
+        expect(level.boss!.breath).toBeUndefined()
+    })
+
+    it("lists Splitters among its enemies, at the default speed", () => {
+        expect(level.enemies.map((e) => e.ai)).toEqual(map.enemies)
+        // Easy's three include two Splitters.
+        expect(map.enemies.slice(0, 3)).toContain(AiType.splitter)
         for (const enemy of level.enemies) {
             expect(enemy.speed).toBeUndefined()
         }
@@ -64,27 +98,27 @@ describe.each(EACH_MAP)("stage 5 (%s)", (difficulty) => {
         expect(level.rules.regrowDots).toEqual({ seconds: 10 })
         const game = createGameState(level)
         expect(game.regrow?.seconds).toBe(10)
-        for (const other of stages.slice(0, 4).map((s) => s[difficulty])) {
+        for (const other of others) {
             expect(other.rules.regrowDots).toBeUndefined()
         }
     })
 
-    it("has its Splitter drop dots, and only it does", () => {
+    it("has its Splitters drop dots, and only it does", () => {
         expect(level.rules.splitterDrops).toBe(true)
         expect(createGameState(level).splitterDrops).toBe(true)
-        for (const other of stages.slice(0, 4).map((s) => s[difficulty])) {
+        for (const other of others) {
             expect(other.rules.splitterDrops).toBeUndefined()
         }
     })
 
-    it("is stage 1's size, with no tunnels, ice or fog", () => {
-        expect(level.width).toBe(17)
-        expect(level.height).toBe(15)
+    it("is its map's size, with no tunnels, ice or fog", () => {
+        expect(level.width).toBe(map.width)
+        expect(level.height).toBe(map.height)
         const edges = [
-            ...level.cells[0],
-            ...level.cells[level.height - 1],
-            ...level.cells.map((row) => row[0]),
-            ...level.cells.map((row) => row[level.width - 1]),
+            ...cells[0],
+            ...cells[level.height - 1],
+            ...cells.map((row) => row[0]),
+            ...cells.map((row) => row[level.width - 1]),
         ]
         expect(edges.every((c) => c === Cell.wall)).toBe(true)
         expect(level.ice.flat().some(Boolean)).toBe(false)
@@ -97,15 +131,14 @@ describe.each(EACH_MAP)("stage 5 (%s)", (difficulty) => {
     })
 
     it("has no dead ends", () => {
-        const deadEnds = open.filter((p) => openNeighbours(cells, p).length < 2)
-        expect(deadEnds).toEqual([])
+        const ends = open.filter((p) => openNeighbours(cells, p).length < 2)
+        expect(ends).toEqual([])
     })
 
     // Every character needs 300 energy for 12 health at cost / 25 a hit;
-    // the dots alone must cover that, with room to spare for misses (dots
-    // growing back are the backstop, not the plan).
+    // the dots alone must cover that twice over, for misses (dots growing
+    // back are the backstop, not the plan).
     it("has dots enough for every character to bring the boss down", () => {
-        expect(dots.length).toBeGreaterThanOrEqual(60)
         for (const animal of ANIMAL_IDS) {
             const { cost } = BREATHS[animal]
             const needed = Math.ceil(BOSS_HEALTH / bossDamage(cost)) * cost
@@ -114,18 +147,61 @@ describe.each(EACH_MAP)("stage 5 (%s)", (difficulty) => {
         }
     })
 
-    it("gives the boss an arena to roam with most of the dots", () => {
-        expect(reachable.length).toBeGreaterThanOrEqual(40)
-        const arenaDots = dots.filter(({ x, y }) => bossCells.has(`${x},${y}`))
-        expect(arenaDots.length / dots.length).toBeGreaterThan(0.5)
+    it("gives the boss an arena to roam that holds the dots", () => {
+        expect(reach.length).toBeGreaterThanOrEqual(80)
+        // Outside it only the spawns hold one (every "E" and the "Q").
+        const spawns = new Set(
+            [...level.enemies.map((e) => e.pos), ...level.playerSpawns].map(
+                cellKey
+            )
+        )
+        const outside = dots.filter((p) => !bossCells.has(cellKey(p)))
+        expect(outside.every((p) => spawns.has(cellKey(p)))).toBe(true)
     })
 
     it("keeps a corridor all round the arena that the boss can't enter", () => {
-        const safe = open.filter(({ x, y }) => !bossCells.has(`${x},${y}`))
-        expect(safe.length).toBeGreaterThanOrEqual(40)
-        // The player and the enemies start there.
-        for (const p of [spawn, ...level.enemies.map((e) => e.pos)]) {
-            expect(bossCells.has(`${p.x},${p.y}`)).toBe(false)
+        expect(safe.length).toBeGreaterThanOrEqual(60)
+        expect(safeAround(arena)).toEqual({
+            sides: allDirections,
+            joined: true,
+        })
+        // The players and the enemies start there.
+        for (const p of [
+            ...level.playerSpawns,
+            ...level.enemies.map((e) => e.pos),
+        ]) {
+            expect(bossCells.has(cellKey(p))).toBe(false)
+        }
+    })
+
+    // Single cells through the arena's wall, every one where the boss can
+    // come right up to it.
+    it("has doors into the arena", () => {
+        expect(doors).toHaveLength(map.doors)
+        for (const door of doors) {
+            expect(
+                [...bossCells].filter((c) => {
+                    const [x, y] = c.split(",").map(Number)
+                    return Math.abs(x - door.x) + Math.abs(y - door.y) === 1
+                })
+            ).toHaveLength(1)
+        }
+    })
+
+    // The breath winds up for 0.9 s (54 ticks); a player moves 4 cells a
+    // second, so 3 moves take 45 ticks. Never through the boss's body.
+    it("lets a player get out of any breath in time", () => {
+        const worst = Math.max(...escapes.worst.values())
+        expect(worst).toBeLessThanOrEqual(3)
+        // Two moves from a door: out and to the side.
+        for (const door of doors) {
+            expect(escapes.worst.get(cellKey(door))).toBeLessThanOrEqual(2)
+        }
+    })
+
+    it("starts the players out of every line the boss breathes along", () => {
+        for (const p of level.playerSpawns) {
+            expect(escapes.struck.has(cellKey(p))).toBe(false)
         }
     })
 
