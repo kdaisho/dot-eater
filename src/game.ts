@@ -23,6 +23,7 @@ import {
     nearestTarget,
     stacksOn,
     targetPaths,
+    turnOrder,
     type ChaseDistances,
     type Random,
 } from "./ai"
@@ -936,18 +937,25 @@ export function step(
     // The enemies a chaser, ambusher or Splitter keeps from stacking on,
     // where each is as the loop goes (see spreadChoice in ai.ts).
     const crowd = enemies.filter(inPlay)
-    enemies.forEach((enemy, i) => {
+    // The enemies ready to move this tick (all gain their progress first).
+    const movers = enemies.flatMap((enemy, i) => {
         if (!inPlay(enemy) || hasStatus(enemy, "holds")) {
             enemy.heldFor = 0
-            return
+            return []
         }
         // Still gliding: not holding (a hold is always ready to move), so a
         // push, knock-back or split that cut a hold short leaves none to
         // count against the next.
         if (!advance(enemy, dt)) {
             enemy.heldFor = 0
-            return
+            return []
         }
+        return [i]
+    })
+    // Mostly slot order, but one behind a twin goes after it (see
+    // turnOrder in ai.ts).
+    for (const i of turnOrder(enemies, movers)) {
+        const enemy = enemies[i]
         const slide =
             enemy.ai === AiType.phantom
                 ? null
@@ -1014,7 +1022,7 @@ export function step(
             spend(enemy)
             dropDot(state, i)
         }
-    })
+    }
     const { boss } = state
     // The boss's glide moves on first, then its breath (see bossBreath.ts),
     // which winds up only once the boss is drawn on its cell; while it
