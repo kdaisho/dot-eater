@@ -176,8 +176,8 @@ export type BreathDef = {
     particles?: ParticleLook
     // Whether the breath acts on `wall`, the wall its shape stopped at
     // (BreathHit.wall), e.g. to break it. The aim preview (see aimCells)
-    // marks that wall when this says yes. Leave it out for a breath that
-    // does nothing to walls.
+    // marks only that wall, when this says yes, and nothing else for such a
+    // breath. Leave it out for a breath that does nothing to walls.
     targetsWall?: (cells: Cells, wall: Vec2) => boolean
     // What the breath does once its cost is paid. Return false (before
     // changing anything) to refuse, e.g. when there is nothing to hit; then
@@ -350,19 +350,22 @@ function aimOf(
 
 // The cells player `index`'s breath (player 1's unless given) would hit if
 // it breathed now, nearest first, whether or not it can: the cells its shape
-// reaches (see aimOf), plus the wall it stopped at if the breath acts on
-// that wall (BreathDef.targetsWall: the Boar's target). Not the player's
-// own cell for a line or a cone, though enemies there are hit too: the
-// preview shows where the breath goes, and the sprite covers that cell.
+// reaches (see aimOf). Not the player's own cell for a line or a cone,
+// though enemies there are hit too: the preview shows where the breath
+// goes, and the sprite covers that cell. A breath that acts on walls
+// (BreathDef.targetsWall: the Boar) shows only the wall it would act on,
+// or nothing, since that wall is all it does (with the user, KDA-252).
 export function aimCells(state: GameState, index = 0): Vec2[] {
     const who = state.players[index]
     const { reach } = aimOf(state, who)
-    const cells = reach.cells.map((c) => vec2(c.x, c.y))
-    const { wall } = reach
-    if (wall && who.breather.breath.targetsWall?.(state.cells, wall)) {
-        cells.push(vec2(wall.x, wall.y))
+    const { targetsWall } = who.breather.breath
+    if (targetsWall) {
+        const { wall } = reach
+        return wall && targetsWall(state.cells, wall)
+            ? [vec2(wall.x, wall.y)]
+            : []
     }
-    return cells
+    return reach.cells.map((c) => vec2(c.x, c.y))
 }
 
 // One player's aim preview: its index and the cells its breath would hit.
