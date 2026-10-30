@@ -303,6 +303,28 @@ describe("a stunned player", () => {
         expect(p2.character.pos).toEqual(vec2(7, 1))
     })
 
+    it("stays on its cell if it is a Penguin, which walks on ice", () => {
+        // The same ice. The Penguin has just stepped east onto (4, 1), so a
+        // sliding animal would slide on; the stunned path must not slide it.
+        const { map, ice } = textMap([
+            "############",
+            "#  ~~~~    #",
+            "############",
+            "#.##########",
+        ])
+        const state = makeState(map, [vec2(10, 1), vec2(4, 1)], [], {
+            mode: "versus",
+            ice,
+            breath: [BREATHS[AnimalId.dragon], BREATHS[AnimalId.penguin]],
+        })
+        const p2 = state.players[1]
+        p2.character.lastPos = vec2(3, 1)
+        p2.stunnedFor = STUN_SECONDS
+        run(state, [IDLE, hold(east)], STUN_TICKS - 1)
+        expect(stunned(p2)).toBe(true)
+        expect(p2.character.pos).toEqual(vec2(4, 1))
+    })
+
     it("can't breathe", () => {
         const state = stunnedP2()
         const p2 = state.players[1]

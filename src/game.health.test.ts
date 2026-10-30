@@ -65,12 +65,12 @@ describe("knockBack", () => {
         expect(character.moveProgress).toBe(1)
     })
 
-    it("stays put against a solid enemy", () => {
+    it("goes onto an enemy's cell, a frozen one's too", () => {
         const enemy = makeEnemy(4, 2)
         const state = makeState(room.map, vec2(3, 2), [enemy])
-        addStatus(enemy, { name: "test.solid", solid: true }, 1)
-        expect(knockBack(state, state.players[0], east)).toBe(false)
-        expect(state.players[0].character.pos).toEqual(vec2(3, 2))
+        addStatus(enemy, { name: "test.frozen", holds: true }, 1)
+        expect(knockBack(state, state.players[0], east)).toBe(true)
+        expect(state.players[0].character.pos).toEqual(vec2(4, 2))
     })
 
     it("eats a dot where it lands", () => {
