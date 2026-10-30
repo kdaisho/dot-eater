@@ -1,8 +1,14 @@
 import type { BreathDef, TileEffect } from "../breath"
 import { AnimalId } from "../roster"
 
-// Skunk 🦨, smelly breath (KDA-219): a stink cloud on the area around it for
-// 5 s; enemies won't go in and turn back inside it. Stat: a bigger meter.
+// Skunk 🦨, smelly breath (KDA-219): a stink cloud around it for 5 s;
+// enemies won't go in and turn back inside it. Stat: a bigger meter.
+//
+// The cloud flows along the corridors like a gas (KDA-289, with the user):
+// it fills the open cells within a few steps' walk of the player (a flood
+// shape), so it reaches round corners but never through a wall. Charging it
+// makes it reach further (cloudReach), for 30 energy a level: the 150 meter
+// holds one full charge.
 //
 // The cloud covers the player's own cell too, so standing in it is safe,
 // and it stays where it was breathed: walking out leaves it behind. It is
@@ -11,13 +17,20 @@ import { AnimalId } from "../roster"
 // Collisions still apply on the way out: an enemy already on the player's
 // cell when the cloud appears catches the player as usual.
 //
-// Radius 1 (a 3x3 square through open cells): in the maze's one-cell
-// corridors that is the player's cell and one either side, enough to stop
-// enemies (at half the player's speed) a cell short. A wider cloud would
-// seal off whole corridors and junctions for 5 s, more a trap than a
-// shield.
+// The breath before charging was a 3x3 square, one cell either side in a
+// corridor; user feedback found it too weak (2026-10-30). A tap's cloud now
+// reaches 2 steps, enough to stop an enemy (at half the player's speed) a
+// couple of cells short, and a full charge fills 6 cells down every
+// corridor from where it is breathed.
 
 const DURATION = 5
+
+// Steps the cloud walks out from the player at charge `level`: 2 for a
+// tap, one more a level, 6 at the top (KDA-289; placeholders to tune at
+// preview).
+export function cloudReach(level: number): number {
+    return level + 1
+}
 
 // A sickly green haze, translucent so dots stay readable.
 const HAZE = "rgba(132, 204, 22, 0.4)"
@@ -43,8 +56,8 @@ const stinkCentre: TileEffect = {
 
 export const skunk: BreathDef = {
     animal: AnimalId.skunk,
-    shape: { kind: "area", radius: 1 },
-    cost: 50,
+    shape: (level) => ({ kind: "flood", reach: cloudReach(level) }),
+    cost: 30,
     cooldown: 1,
     duration: DURATION,
     maxEnergy: 150,

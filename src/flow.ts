@@ -1,5 +1,6 @@
 import type { Random } from "./ai"
 import { rebind } from "./bindings"
+import { cancelCharges } from "./breath"
 import { CONTROLS_ROWS } from "./controlsMenu"
 import {
     createGameState,
@@ -666,8 +667,14 @@ function updateScreen(
 // same object). For events outside the tick input, such as the window losing
 // focus or the tab being hidden. The `ending` outro isn't paused: it has no
 // gameplay left, and it must finish on its own.
+//
+// Pausing drops every breath charge without firing it (KDA-289), so a
+// pause, a blur or a hidden tab never fires one: the breath let go of
+// meanwhile isn't the player choosing a level.
 export function pauseIfPlaying(screen: Screen): Screen {
-    return screen.kind === "playing" ? { ...screen, kind: "paused" } : screen
+    if (screen.kind !== "playing") return screen
+    cancelCharges(screen.game)
+    return { ...screen, kind: "paused" }
 }
 
 // Put player 1's menu cursor on item `index` of the screen's menu (in the
@@ -1180,9 +1187,7 @@ function updatePlaying(
     input: TickInput,
     deps: FlowDeps
 ): Screen {
-    if (anyPressed(screen.mode, input, "pause")) {
-        return { ...screen, kind: "paused" }
-    }
+    if (anyPressed(screen.mode, input, "pause")) return pauseIfPlaying(screen)
     // The game plays by the saved Players setting (KDA-262) as it is on
     // each tick, so a change made from pause applies once play resumes.
     screen.game.playersBump = (deps.settings ?? defaultSettings()).playersBump
