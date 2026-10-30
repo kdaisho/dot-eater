@@ -117,8 +117,9 @@ export type SlideReach = {
     stuck: MoveState[]
 }
 
-// Breadth-first search of the player's slide-aware moves from standing free
-// at `start`, ignoring enemies. Without ice every state is free and moves
+// Breadth-first search of a sliding player's moves from standing free at
+// `start`, ignoring enemies (a player that walks on ice, the Penguin, moves
+// as with no ice at all, and reaches at least as much). Without ice every state is free and moves
 // are symmetric, so this is plain reachability and nothing is stuck.
 export function slideReach(cells: Grid, ice: IceMap, start: Vec2): SlideReach {
     const origin: MoveState = { pos: vec2(start.x, start.y), heading: FREE }
