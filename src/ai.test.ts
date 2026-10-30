@@ -987,7 +987,9 @@ describe("enemyMove keeps same-kind enemies from stacking", () => {
     })
 })
 
-describe("chasing on shared distances", () => {
+// Its checks sweep every stage's maps, which outgrows vitest's 5 s default
+// on slow CI machines as stages are added.
+describe("chasing on shared distances", { timeout: 30_000 }, () => {
     // What chaseStep chose before the distances were shared: each candidate
     // scored by a search of its own with the enemy's cell blocked.
     function blockedChoice(

@@ -219,6 +219,10 @@ export const MusicTrackId = {
     stage3: "stage3",
     stage4: "stage4",
     stage5: "stage5",
+    stage6: "stage6",
+    stage7: "stage7",
+    stage8: "stage8",
+    stage9: "stage9",
 } as const
 export type MusicTrackId = (typeof MusicTrackId)[keyof typeof MusicTrackId]
 
@@ -232,6 +236,10 @@ export const STAGE_TRACKS: readonly MusicTrackId[] = [
     MusicTrackId.stage3,
     MusicTrackId.stage4,
     MusicTrackId.stage5,
+    MusicTrackId.stage6,
+    MusicTrackId.stage7,
+    MusicTrackId.stage8,
+    MusicTrackId.stage9,
 ]
 
 // The tune for a stage index; stages past the list reuse it from the start.
@@ -475,6 +483,190 @@ export const TRACKS: Readonly<Record<MusicTrackId, Track>> = {
                     "k h s h k k s h",
                     "k h s h k k s h",
                     "k h s h k s s s",
+                ],
+            },
+        ],
+    },
+    // Stage 6, Haunted halls: a creeping D minor tune over a low organ, the
+    // lead edging up and down by half steps like footsteps behind you.
+    stage6: {
+        bpm: 120,
+        voices: [
+            {
+                kind: "notes",
+                wave: "square",
+                volume: 0.09,
+                hold: true,
+                bars: [
+                    "D5 - F5 - A5 - G#5 -",
+                    "G5 - F5 - E5 - C#5 -",
+                    "D5 - F5 - A5 - D6 -",
+                    "C#6 - A5 - Bb5 - A5 -",
+                ],
+            },
+            {
+                kind: "notes",
+                wave: "sine",
+                volume: 0.2,
+                hold: true,
+                bars: [
+                    "A3 - - - - - - -",
+                    "A3 - - - G3 - - -",
+                    "F3 - - - - - - -",
+                    "E3 - - - - - - -",
+                ],
+            },
+            {
+                kind: "notes",
+                wave: "triangle",
+                volume: 0.35,
+                bars: [
+                    "D2 . A2 . D2 . A2 .",
+                    "C#2 . A2 . C#2 . A2 .",
+                    "Bb1 . F2 . Bb1 . F2 .",
+                    "A1 . E2 . A1 . C#2 .",
+                ],
+            },
+            {
+                kind: "drums",
+                volume: 0.4,
+                bars: [
+                    "k . . h s . . h",
+                    "k . . h s . . h",
+                    "k . . h s . . h",
+                    "k . . h s . h h",
+                ],
+            },
+        ],
+    },
+    // Stage 7, Patrol base: a G minor march, with a snare roll at the end of
+    // each phrase like guards changing watch.
+    stage7: {
+        bpm: 132,
+        voices: [
+            {
+                kind: "notes",
+                wave: "square",
+                volume: 0.1,
+                gate: 0.7,
+                bars: [
+                    "G4 . G4 . Bb4 - D5 .",
+                    "C5 . Bb4 . A4 - F4 .",
+                    "G4 . G4 . Bb4 - D5 .",
+                    "Eb5 - D5 . C5 . A4 .",
+                ],
+            },
+            {
+                kind: "notes",
+                wave: "triangle",
+                volume: 0.35,
+                bars: [
+                    "G2 . D3 . G2 . D3 .",
+                    "F2 . C3 . F2 . C3 .",
+                    "Eb2 . Bb2 . Eb2 . Bb2 .",
+                    "D2 . A2 . D2 . F#2 .",
+                ],
+            },
+            {
+                kind: "drums",
+                volume: 0.5,
+                bars: [
+                    "k . s s k . s .",
+                    "k . s s k . s .",
+                    "k . s s k . s .",
+                    "k . s s s s s s",
+                ],
+            },
+        ],
+    },
+    // Stage 8, Frozen fog: Ice rink's twinkle over Fog's slow heartbeat, in
+    // D minor.
+    stage8: {
+        bpm: 92,
+        voices: [
+            {
+                kind: "notes",
+                wave: "sine",
+                volume: 0.25,
+                hold: true,
+                bars: [
+                    "D5 - - - F5 - E5 -",
+                    "C5 - - - . . A4 -",
+                    "Bb4 - - - D5 - C5 -",
+                    "A4 - - - . . . .",
+                ],
+            },
+            {
+                kind: "notes",
+                wave: "sine",
+                volume: 0.06,
+                bars: [
+                    "D6 F6 A6 F6 D6 F6 A6 F6",
+                    "C6 E6 A6 E6 C6 E6 A6 E6",
+                    "Bb5 D6 F6 D6 Bb5 D6 F6 D6",
+                    "A5 C#6 E6 C#6 A5 C#6 E6 C#6",
+                ],
+            },
+            {
+                kind: "notes",
+                wave: "triangle",
+                volume: 0.35,
+                hold: true,
+                bars: [
+                    "D2 - - - - - - -",
+                    "A1 - - - - - - -",
+                    "Bb1 - - - - - - -",
+                    "A1 - - - - - - -",
+                ],
+            },
+            {
+                kind: "drums",
+                volume: 0.35,
+                bars: [
+                    "k . k . . . h .",
+                    "k . k . . . h .",
+                    "k . k . . . h .",
+                    "k . k . . h . h",
+                ],
+            },
+        ],
+    },
+    // Stage 9, Gauntlet: the fastest dot-stage tune, a pounding E minor run
+    // with a rising climb in the last bar.
+    stage9: {
+        bpm: 160,
+        voices: [
+            {
+                kind: "notes",
+                wave: "square",
+                volume: 0.1,
+                bars: [
+                    "E5 . E5 G5 . B5 A5 G5",
+                    "F#5 . F#5 A5 . D6 C6 B5",
+                    "E5 . E5 G5 . B5 A5 G5",
+                    "C6 B5 A5 G5 A5 B5 C6 D#6",
+                ],
+            },
+            {
+                kind: "notes",
+                wave: "sawtooth",
+                volume: 0.12,
+                gate: 0.6,
+                bars: [
+                    "E2 E2 E3 E2 E2 E2 E3 E2",
+                    "D2 D2 D3 D2 D2 D2 D3 D2",
+                    "C2 C2 C3 C2 C2 C2 C3 C2",
+                    "B1 B1 B2 B1 B1 B2 B1 B2",
+                ],
+            },
+            {
+                kind: "drums",
+                volume: 0.5,
+                bars: [
+                    "k h s h k k s h",
+                    "k h s h k h s k",
+                    "k h s h k k s h",
+                    "k s k s k s s s",
                 ],
             },
         ],
