@@ -95,6 +95,8 @@ describe("main with a saved difficulty", () => {
 
         // Stage select shows Hard's bests, and says so.
         pressAndTick("Space")
+        pressAndTick("ArrowDown")
+        pressAndTick("Space")
         expect(screen()).toBe("stage-select")
         expect(lines()[0]).toBe("Bests on Hard")
         expect(selectedItem()).toBe(`${stages[0].hard.name} · ★★★ · 0:10.0`)

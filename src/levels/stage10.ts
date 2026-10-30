@@ -25,8 +25,8 @@ import type { LevelData } from "../level"
 // and no ice (the boss uses neither), no dead ends, left-right symmetric
 // walls.
 //
-// Not in levels/index.ts yet: it is stage 10, index 9, once stages 6-9 are
-// in.
+// The last stage (index 9 in levels/index.ts, the last of STAGE_COUNT):
+// clearing it in story mode goes to the ending.
 export const stage10: LevelData = {
     name: "Final boss",
     medium: {

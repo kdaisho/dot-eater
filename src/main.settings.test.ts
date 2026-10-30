@@ -64,6 +64,8 @@ describe("main's settings", () => {
         // Play, pause and open the settings from the pause menu.
         for (let i = 0; i < 3; i++) pressAndTick("ArrowUp")
         pressAndTick("Space")
+        pressAndTick("ArrowDown")
+        pressAndTick("Space")
         pressAndTick("Space")
         pressAndTick("Space")
         pressAndTick("Space")

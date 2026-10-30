@@ -91,6 +91,9 @@ describe("main with two players", () => {
         pressAndTick("ArrowDown")
         expect(selectedItem()).toBe("Co-op")
         pressAndTick("Space")
+        expect(screen()).toBe("play-select")
+        pressAndTick("ArrowDown")
+        pressAndTick("Space")
         expect(screen()).toBe("stage-select")
         pressAndTick("Space")
 

@@ -1,4 +1,7 @@
-// Saved progress: which stages have been cleared, and so which are open.
+// Saved progress: which stages have been cleared, and so which are open,
+// with each stage's bests, and the best story run scores (KDA-271). Story
+// mode keeps no unlocks of its own: its furthest stage reached is the
+// highest unlocked one, so stages cleared before it count.
 //
 // There is no DOM access here: storage is passed in (window.localStorage in
 // main), so the rules are tested without a browser. Every storage access is
@@ -60,7 +63,14 @@ export type Progress = {
     version: typeof PROGRESS_VERSION
     // Exactly STAGE_COUNT entries, in stage order.
     stages: readonly StageProgress[]
+    // The best story run score at each difficulty (KDA-271), an optional
+    // field added without a version bump.
+    storyBests?: StoryBests
 }
+
+// The best story run score at each difficulty: the highest run total of a
+// 1-player story run that reached the ending, a whole number from 0.
+export type StoryBests = Partial<Record<Difficulty, number>>
 
 // The part of the Web Storage API this module uses.
 export type ProgressStorage = Pick<Storage, "getItem" | "setItem">
@@ -98,12 +108,32 @@ export function parseProgress(raw: string | null): Progress {
         return emptyProgress()
     }
     const saved = stages as Record<string, unknown>[]
+    const storyBests = parseStoryBests(data.storyBests)
     return {
         version: PROGRESS_VERSION,
         stages: Array.from({ length: STAGE_COUNT }, (_, i) =>
             saved[i] ? parseStage(saved[i]) : { cleared: false }
         ),
+        ...(storyBests ? { storyBests } : {}),
     }
+}
+
+// Saved story bests: a malformed score is dropped on its own, and entries
+// under keys that aren't difficulties are kept as they are. Not an object:
+// none.
+function parseStoryBests(saved: unknown): StoryBests | undefined {
+    if (!isRecord(saved)) return undefined
+    // Built with fromEntries, as parseByDifficulty is, so a saved
+    // "__proto__" key is an own field and never an inherited best.
+    return Object.fromEntries(
+        Object.entries(saved).filter(
+            ([key, value]) => !isDifficulty(key) || isScore(value)
+        )
+    )
+}
+
+function isScore(value: unknown): value is number {
+    return Number.isInteger(value) && (value as number) >= 0
 }
 
 // One saved stage, already known to have a boolean `cleared`.
@@ -157,29 +187,48 @@ function isTicks(value: unknown): value is number {
 // Combine two copies of progress, e.g. this tab's and what another tab has
 // saved since, keeping the better of each record: a stage cleared in either
 // stays cleared, and the bests are the most stars and the fastest time of
-// either, at each difficulty. Other per-stage fields come from `saved` where
-// it has them.
+// either, at each difficulty, and so is each difficulty's best story score.
+// Other per-stage fields, and unknown story best entries, come from `saved`
+// where it has them.
 export function mergeProgress(mine: Progress, saved: Progress): Progress {
+    const stages = mine.stages.map((s, i) => {
+        const other = saved.stages[i]
+        const byDifficulty = mergeByDifficulty(
+            s.byDifficulty,
+            other.byDifficulty
+        )
+        return withBests(
+            {
+                ...s,
+                ...other,
+                cleared: s.cleared || other.cleared,
+                ...(byDifficulty ? { byDifficulty } : {}),
+            },
+            s,
+            other
+        )
+    })
+    const storyBests = mergeStoryBests(mine.storyBests, saved.storyBests)
     return {
         version: PROGRESS_VERSION,
-        stages: mine.stages.map((s, i) => {
-            const other = saved.stages[i]
-            const byDifficulty = mergeByDifficulty(
-                s.byDifficulty,
-                other.byDifficulty
-            )
-            return withBests(
-                {
-                    ...s,
-                    ...other,
-                    cleared: s.cleared || other.cleared,
-                    ...(byDifficulty ? { byDifficulty } : {}),
-                },
-                s,
-                other
-            )
-        }),
+        stages,
+        ...(storyBests ? { storyBests } : {}),
     }
+}
+
+// Two copies' story bests, the higher of each difficulty's; other entries
+// come from `saved` where it has them.
+function mergeStoryBests(
+    mine: StoryBests | undefined,
+    saved: StoryBests | undefined
+): StoryBests | undefined {
+    if (!mine && !saved) return undefined
+    const merged = { ...mine, ...saved }
+    for (const difficulty of DIFFICULTIES) {
+        const higher = best([mine?.[difficulty], saved?.[difficulty]], Math.max)
+        if (higher !== undefined) merged[difficulty] = higher
+    }
+    return merged
 }
 
 // Two stages' bests by difficulty, the better of each; other entries come
@@ -284,6 +333,15 @@ export function isUnlocked(progress: Progress, index: number): boolean {
     return index === 0 || progress.stages[index - 1].cleared
 }
 
+// The furthest stage reached (KDA-271): the highest stage slot that is
+// unlocked, where story mode's Continue starts. It may have no level yet.
+export function furthestStage(progress: Progress): number {
+    for (let i = STAGE_COUNT - 1; i > 0; i--) {
+        if (isUnlocked(progress, i)) return i
+    }
+    return 0
+}
+
 // Mark a stage cleared, which unlocks the next. Returns the same object when
 // nothing changes (already cleared, or not a stage slot), so callers can
 // skip the save.
@@ -343,22 +401,59 @@ export function recordBests(
     }
 }
 
-// A win: mark stage `index` cleared, which unlocks the next (whatever the
-// difficulty), record the clear's stars and time as bests at its difficulty
-// where they improve, and save unless storage already holds exactly that
-// (in any key order). Storage is read again first and merged (see
-// mergeProgress), so clears and bests another tab saved since this one
-// loaded aren't overwritten, and this tab's better bests aren't lost either.
-// Returns the new progress.
+// Whether a clear unlocks the next stage (KDA-272): stages unlock only by
+// story progress, so a story mode clear does and a stage mode clear
+// doesn't. Every caller says which.
+export type ClearUnlocks = { unlocks: boolean }
+
+// A win: when it `unlocks`, mark stage `index` cleared, which unlocks the
+// next (whatever the difficulty); either way, record the clear's stars and
+// time as bests at its difficulty where they improve, and save unless
+// storage already holds exactly that (in any key order). Storage is read
+// again first and merged (see mergeProgress), so clears and bests another
+// tab saved since this one loaded aren't overwritten, and this tab's better
+// bests aren't lost either. Returns the new progress.
 export function recordClear(
     progress: Progress,
     storage: ProgressStorage | undefined,
     index: number,
-    clear: ClearRecord
+    clear: ClearRecord,
+    { unlocks }: ClearUnlocks
 ): Progress {
     const stored = loadProgress(storage)
     const latest = mergeProgress(progress, stored)
-    const next = recordBests(markCleared(latest, index), index, clear)
+    const marked = unlocks ? markCleared(latest, index) : latest
+    const next = recordBests(marked, index, clear)
+    if (!sameData(next, stored)) {
+        saveProgress(storage, next)
+    }
+    return next
+}
+
+// A story run reached the ending (KDA-271): record its total as the best
+// story score at `difficulty` where it beats the one there, and save unless
+// storage already holds exactly that, merging what storage holds first, as
+// recordClear does. A score a save couldn't hold (not a whole number from
+// 0) records nothing. Returns the new progress.
+export function recordStoryBest(
+    progress: Progress,
+    storage: ProgressStorage | undefined,
+    difficulty: Difficulty,
+    score: number
+): Progress {
+    const stored = loadProgress(storage)
+    const latest = mergeProgress(progress, stored)
+    const current = latest.storyBests?.[difficulty]
+    const better =
+        isDifficulty(difficulty) &&
+        isScore(score) &&
+        (current === undefined || score > current)
+    const next = better
+        ? {
+              ...latest,
+              storyBests: { ...latest.storyBests, [difficulty]: score },
+          }
+        : latest
     if (!sameData(next, stored)) {
         saveProgress(storage, next)
     }
@@ -367,8 +462,10 @@ export function recordClear(
 
 // What one stage select slot shows.
 export type StageSlot =
-    // A cleared stage also shows its bests at the difficulty stage select
-    // shows (see bestsAt).
+    // An open stage also shows its bests at the difficulty stage select
+    // shows (see bestsAt), if it has any. A stage mode clear records bests
+    // without clearing the stage (KDA-272), so an open stage that isn't
+    // cleared may have them too.
     | { kind: "open"; name: string; stars?: number; bestTime?: number }
     | { kind: "locked"; name: string }
     // No level exists for this slot yet.
@@ -385,9 +482,11 @@ export function stageSlots(
         if (i >= names.length) return { kind: "comingSoon" }
         const name = names[i]
         if (!isUnlocked(progress, i)) return { kind: "locked", name }
-        const stage = progress.stages[i]
-        if (!stage.cleared) return { kind: "open", name }
-        return { kind: "open", name, ...bestsAt(stage, difficulty) }
+        return {
+            kind: "open",
+            name,
+            ...bestsAt(progress.stages[i], difficulty),
+        }
     })
 }
 

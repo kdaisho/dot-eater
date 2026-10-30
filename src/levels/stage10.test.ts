@@ -26,12 +26,18 @@ import {
     safeAround,
 } from "../test/bossArena"
 import { EACH_MAP } from "../test/helpers"
+import { STAGE_COUNT } from "../progress"
+import { stages } from "./index"
 import { stage5 } from "./stage5"
 import { stage10 } from "./stage10"
 
-// Not in levels/index.ts yet (it will be stage 10, index 9), so it is
-// parsed here as index.ts parses stages.
-const stage = parseStage(stage10)
+// Stage 10, the last: index 9 in levels/index.ts.
+const stage = stages[9]
+
+it("is the tenth and last stage", () => {
+    expect(stages).toHaveLength(STAGE_COUNT)
+    expect(stage).toEqual(parseStage(stage10))
+})
 
 // Per map size: its size, par, doors and every enemy it lists.
 const MAPS = {

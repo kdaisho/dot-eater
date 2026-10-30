@@ -169,7 +169,12 @@ describe("main", () => {
         expect(starts()).toBe(0)
         expect(steps()).toBe(0)
 
-        // Space: the stage list, with the first stage selected.
+        // Space: story or stage mode, on Story; Down, Space: the stage
+        // list, with the first stage selected.
+        pressAndTick("Space")
+        expect(screen()).toBe("play-select")
+        expect(selectedItem()).toBe("Story")
+        pressAndTick("ArrowDown")
         pressAndTick("Space")
         expect(screen()).toBe("stage-select")
         expect(selectedItem()).toBe(levels[0].name)
@@ -358,8 +363,9 @@ describe("main", () => {
             expect(lastStartedLevel()).toBe(levels[0])
             expect(screen()).toBe("playing")
         }
-        // The keyboard source's, and the controls screen's capture.
-        expect(keydownListeners.size).toBe(2)
+        // The keyboard source's, the controls screen's capture, and the
+        // focus tracker (a key press means the window has focus).
+        expect(keydownListeners.size).toBe(3)
     })
 
     it("does nothing on Space during play", () => {
@@ -738,11 +744,13 @@ describe("main", () => {
     })
 
     // Order-independent: an earlier win may already have saved it.
-    it("saves stage 1 as cleared on a win, unlocking stage 2", () => {
+    // Stages unlock only by story progress (KDA-272).
+    it("saves a stage mode win's bests, but doesn't clear or unlock anything", () => {
         gameOver("won")
         const saved = parseProgress(localStorage.getItem(PROGRESS_KEY))
-        expect(saved.stages[0].cleared).toBe(true)
-        expect(isUnlocked(saved, 1)).toBe(true)
+        expect(saved.stages[0].stars).toBeGreaterThanOrEqual(1)
+        expect(saved.stages[0].cleared).toBe(false)
+        expect(isUnlocked(saved, 1)).toBe(false)
     })
 
     it("shows the clear time and stars, saves the bests and lists them on stage select", () => {
