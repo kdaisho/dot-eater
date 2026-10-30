@@ -14,10 +14,9 @@ import {
 } from "./flow"
 import { step, type MoveInput } from "./game"
 import type { Action } from "./input"
-import { parseLevel } from "./level"
 import { emptyProgress, markCleared } from "./progress"
 import { AnimalId, DEFAULT_ANIMAL } from "./roster"
-import { fixedRandom } from "./test/helpers"
+import { fixedRandom, parseFlat, sameAtEvery } from "./test/helpers"
 import { vec2, type Vec2 } from "./vec2"
 
 // The screen machine with a mode picked on the title, and two players
@@ -28,25 +27,25 @@ const east = vec2(1, 0)
 const west = vec2(-1, 0)
 
 const levels = [
-    parseLevel({
+    parseFlat({
         name: "corridor",
         parTime: 60,
         map: ["######", "#PQ..#", "######"],
         enemies: [],
     }),
-    parseLevel({
+    parseFlat({
         name: "second",
         parTime: 60,
         map: ["#####", "#P.E#", "#####"],
         enemies: [{ ai: "random" }],
     }),
-    parseLevel({
+    parseFlat({
         name: "third",
         parTime: 60,
         map: ["#####", "#P.E#", "#####"],
         enemies: [{ ai: "random" }],
     }),
-]
+].map(sameAtEvery)
 
 // Input for one tick: the actions each player pressed (player 1 first) and
 // the direction each holds.
@@ -80,7 +79,14 @@ function characterSelect(
     ready: readonly boolean[] = [false, false],
     level = 0
 ): Extract<Screen, { kind: "characterSelect" }> {
-    return { kind: "characterSelect", mode: "coop", level, picks, ready }
+    return {
+        kind: "characterSelect",
+        mode: "coop",
+        level,
+        difficulty: "medium",
+        picks,
+        ready,
+    }
 }
 
 function playing(

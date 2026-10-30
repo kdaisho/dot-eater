@@ -4,12 +4,13 @@ import { canStopAt, slideReach } from "../ice"
 import { parseLevel, type Cells } from "../level"
 import { distanceMap, openNeighbours } from "../path"
 import { vec2 } from "../vec2"
-import { levels } from "./index"
+import { EACH_MAP } from "../test/helpers"
+import { stages } from "./index"
 import { stage1 } from "./stage1"
 import { stage3 } from "./stage3"
 
-describe("stage 3", () => {
-    const level = parseLevel(stage3)
+describe.each(EACH_MAP)("stage 3 (%s)", (difficulty) => {
+    const level = parseLevel(stage3, difficulty)
     const cells: Cells = level.cells.map((row) => [...row])
     const spawn = level.playerSpawns[0]
     const open: { x: number; y: number }[] = []
@@ -22,7 +23,7 @@ describe("stage 3", () => {
     const reach = slideReach(cells, level.ice, spawn)
 
     it("is the third level", () => {
-        expect(levels[2]).toEqual(level)
+        expect(stages[2][difficulty]).toEqual(level)
         expect(level.name).toBe("Ice rink")
     })
 
@@ -40,7 +41,7 @@ describe("stage 3", () => {
     })
 
     it("is stage 1's size", () => {
-        const first = parseLevel(stage1)
+        const first = parseLevel(stage1, difficulty)
         expect(level.width).toBe(first.width)
         expect(level.height).toBe(first.height)
     })
