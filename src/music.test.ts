@@ -207,6 +207,7 @@ describe("stageTrack", () => {
             "stage4",
             "stage5",
             "stage6",
+            "stage7",
         ])
     })
 
