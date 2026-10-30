@@ -12,7 +12,15 @@ import {
     SPRITE_SCALE,
 } from "./constants"
 import { createCharacter } from "./character"
-import { createGameState, movePlayer, takeOut } from "./game"
+import {
+    createGameState,
+    movePlayer,
+    takeOut,
+    type GameState,
+    type Player,
+} from "./game"
+import { MIN_CELL_PX } from "./layout"
+import type { LevelRules } from "./level"
 import {
     BOSS_SCALE,
     BOSS_SPRITE,
@@ -23,10 +31,13 @@ import {
     IMMUNE_BADGE,
     STUN_BADGE,
     stunLabel,
+    type Effects,
 } from "./render"
 import type { Particle } from "./particles"
 import { createSplitter } from "./splitter"
+import { DEFAULT_ANIMAL } from "./roster"
 import {
+    BIG_LEVEL,
     makeBoss,
     makeEnemy,
     makeState,
@@ -222,13 +233,13 @@ describe("createRenderer", () => {
     it("refits and redraws the last frame on resize", () => {
         const { canvas, calls, renderer, view } = setup()
         renderer.draw(createGameState(OLD_LEVEL), 0)
-        view.innerHeight = 200
+        view.innerHeight = 280
         view.devicePixelRatio = 1
         const before = calls.length
         renderer.resize()
-        // (200 - 32) / 10 rows: 16 px cells.
-        expect(canvas.style.width).toBe(`${16 * 9}px`)
-        expect(canvas.width).toBe(16 * 9)
+        // (280 - 32) / 10 rows: 24 px cells.
+        expect(canvas.style.width).toBe(`${24 * 9}px`)
+        expect(canvas.width).toBe(24 * 9)
         expect(calls.length).toBeGreaterThan(before)
     })
 
@@ -248,11 +259,11 @@ describe("createRenderer", () => {
         const { calls, canvas, renderer, texts, view } = setup()
         renderer.draw(createGameState(OLD_LEVEL), 0)
         renderer.clear()
-        view.innerHeight = 200
+        view.innerHeight = 280
         view.devicePixelRatio = 1
         calls.length = 0
         renderer.resize()
-        expect(canvas.width).toBe(16 * 9)
+        expect(canvas.width).toBe(24 * 9)
         expect(texts()).toEqual([])
         expect(calls.filter((c) => c.name === "fillRect")).toHaveLength(1)
     })
@@ -1648,6 +1659,261 @@ describe("createRenderer with the facing guide", () => {
                 renderer.draw(state, 0, {}, {}, effects)
                 expect(arrows(calls, canvas)).toEqual([])
             }
+        })
+    })
+})
+
+describe("createRenderer on a maze too big for the screen", () => {
+    afterEach(() => {
+        vi.restoreAllMocks()
+    })
+
+    // BIG_LEVEL (29x21) in a 390 x 400 window: 12 px cells to fit it whole,
+    // so MIN_CELL_PX (20 px) cells and a 358 x 368 canvas, 348 px of it maze
+    // below the HUD: 17.9 x 17.4 cells in view.
+    const VIEWPORT = { width: 358, height: 348 }
+    const CELL = MIN_CELL_PX
+    // How far the view scrolls at most, in CSS pixels.
+    const MAX_X = 29 * CELL - VIEWPORT.width
+    const MAX_Y = 21 * CELL - VIEWPORT.height
+
+    function bigSetup() {
+        const view = { innerWidth: 390, innerHeight: 400, devicePixelRatio: 1 }
+        const clock = { now: 0 }
+        const canvas = document.createElement("canvas")
+        const { ctx, calls } = stubContext()
+        vi.spyOn(canvas, "getContext").mockReturnValue(ctx as never)
+        const renderer = createRenderer(canvas, {
+            view,
+            now: () => clock.now,
+        })
+        const texts = () =>
+            calls.filter((c) => c.name === "fillText").map((c) => c.args[0])
+        // How far the view scrolled the maze this frame: the translate after
+        // the HUD's, undone; [0, 0] without one.
+        const scroll = () => {
+            const move = calls.filter((c) => c.name === "translate")[1]
+            const [x, y] = (move?.args ?? [0, 0]) as number[]
+            // + 0 turns -0 into 0.
+            return [-x + 0, -y + 0]
+        }
+        // Draw a frame `ms` after the last one.
+        const frame = (
+            state: GameState,
+            ms = 0,
+            rules: LevelRules = {},
+            effects: Effects = {}
+        ) => {
+            calls.length = 0
+            clock.now += ms
+            renderer.draw(state, 0, {}, rules, effects)
+        }
+        return { calls, canvas, texts, scroll, frame, view }
+    }
+
+    // Put `player` at `pos`, standing still.
+    function place(player: Player, pos: { x: number; y: number }) {
+        player.character.pos = vec2(pos.x, pos.y)
+        player.character.lastPos = vec2(pos.x, pos.y)
+        player.character.moveProgress = 1
+    }
+
+    const coop = () =>
+        createGameState(BIG_LEVEL, [DEFAULT_ANIMAL, DEFAULT_ANIMAL], "coop")
+
+    const font = (cell: number) =>
+        `${Math.round(cell * SPRITE_SCALE)}px sans-serif`
+
+    it("zooms in to the minimum cell size and shows the player's corner", () => {
+        const { canvas, calls, frame, scroll, texts } = bigSetup()
+        // Player 1 starts bottom left.
+        frame(createGameState(BIG_LEVEL))
+        expect(canvas.style.width).toBe(`${VIEWPORT.width}px`)
+        expect(canvas.style.height).toBe(`${VIEWPORT.height + CELL}px`)
+        // Held at the maze's left and bottom edges.
+        expect(scroll()).toEqual([0, MAX_Y])
+        const sprite = calls.find((c) => c.args[0] === "🐉")
+        expect(sprite?.args.slice(1)).toEqual([1.5 * CELL, 19.5 * CELL])
+        expect(sprite?.font).toBe(font(CELL))
+        // The enemy top right is out of view; the one in the middle isn't.
+        expect(texts()).toEqual(["🐉", "👹"])
+    })
+
+    it("centres the player when it is away from the edges", () => {
+        const { frame, scroll } = bigSetup()
+        const state = createGameState(BIG_LEVEL)
+        place(state.players[0], { x: 14, y: 9 })
+        frame(state)
+        const [x, y] = scroll()
+        expect(x).toBeCloseTo(14.5 * CELL - VIEWPORT.width / 2)
+        expect(y).toBeCloseTo(9.5 * CELL - VIEWPORT.height / 2)
+    })
+
+    it("keeps the maze inside its part of the canvas, off the HUD", () => {
+        const { calls, frame } = bigSetup()
+        frame(createGameState(BIG_LEVEL))
+        const clip = calls.findIndex((c) => c.name === "clip")
+        const rect = calls[clip - 1]
+        expect(rect.name).toBe("rect")
+        expect(rect.args).toEqual([0, 0, VIEWPORT.width, VIEWPORT.height])
+        // The view moves the maze inside the clip.
+        const translates = calls.filter((c) => c.name === "translate")
+        expect(calls.indexOf(translates[1])).toBeGreaterThan(clip)
+    })
+
+    it("draws only the cells in view", () => {
+        const { calls, frame } = bigSetup()
+        frame(createGameState(BIG_LEVEL))
+        // Wall blocks, not dots.
+        const walls = calls.filter(
+            (c) => c.name === "fillRect" && (c.args[2] as number) > CELL / 2
+        )
+        // The maze has 211 walls; about 19 columns by 19 rows of it are in
+        // or near the view, none past column 19.
+        expect(walls.length).toBeLessThan(150)
+        expect(walls.every((c) => (c.args[0] as number) < 19 * CELL)).toBe(true)
+    })
+
+    it("eases after the player over time, not by frames", () => {
+        const { frame, scroll } = bigSetup()
+        const state = createGameState(BIG_LEVEL)
+        place(state.players[0], { x: 14, y: 9 })
+        frame(state)
+        const [x0] = scroll()
+        place(state.players[0], { x: 18, y: 9 })
+        // No time passed: the view hasn't moved.
+        frame(state)
+        expect(scroll()[0]).toBeCloseTo(x0)
+        frame(state, 50)
+        const [x1] = scroll()
+        const target = 18.5 * CELL - VIEWPORT.width / 2
+        expect(x1).toBeGreaterThan(x0)
+        expect(x1).toBeLessThan(target)
+        frame(state, 10_000)
+        expect(scroll()[0]).toBeCloseTo(target)
+    })
+
+    it("starts a new game's view right on its player", () => {
+        const { frame, scroll } = bigSetup()
+        const first = createGameState(BIG_LEVEL)
+        place(first.players[0], { x: 27, y: 1 })
+        frame(first)
+        frame(createGameState(BIG_LEVEL), 16)
+        expect(scroll()).toEqual([0, MAX_Y])
+    })
+
+    it("draws an enemy in a tunnel whose other half is in view", () => {
+        const { calls, frame, scroll } = bigSetup()
+        const state = createGameState(BIG_LEVEL)
+        place(state.players[0], { x: 27, y: 10 })
+        // The chaser halfway through the tunnel, from the right edge to the
+        // left: half off the left edge, out of view, and half on the right.
+        const enemy = state.enemies[1]
+        enemy.lastPos = vec2(28, 10)
+        enemy.pos = vec2(0, 10)
+        enemy.moveProgress = 0.5
+        frame(state)
+        expect(scroll()[0]).toBeCloseTo(MAX_X)
+        const drawn = calls.filter((c) => c.args[0] === "👹")
+        expect(drawn.map((c) => c.args[1])).toEqual([0, 29 * CELL])
+    })
+
+    it("draws a maze that fits whole as before, unmoved", () => {
+        const { calls, frame, view } = bigSetup()
+        view.innerWidth = 1000
+        view.innerHeight = 800
+        frame(createGameState(BIG_LEVEL))
+        // (1000 - 32) / 29 columns: 33 px cells.
+        expect(calls.filter((c) => c.name === "translate")).toHaveLength(1)
+        const rect = calls.find((c) => c.name === "rect")
+        expect(rect?.args).toEqual([0, 0, 29 * 33, 21 * 33])
+    })
+
+    describe("with two players", () => {
+        it("follows their midpoint while they are close", () => {
+            const { calls, frame, scroll } = bigSetup()
+            const state = coop()
+            place(state.players[0], { x: 12, y: 9 })
+            place(state.players[1], { x: 16, y: 9 })
+            frame(state)
+            expect(scroll()[0]).toBeCloseTo(14.5 * CELL - VIEWPORT.width / 2)
+            const sprite = calls.find((c) => c.args[0] === "🐉")
+            expect(sprite?.args[1]).toBe(12.5 * CELL)
+        })
+
+        it("zooms out to keep both in view, down to the whole maze", () => {
+            const { calls, frame, scroll } = bigSetup()
+            // On their spawns, bottom left and bottom right.
+            frame(coop())
+            const cell = VIEWPORT.width / 29
+            const sprites = calls.filter((c) => c.args[0] === "🐉")
+            expect(sprites.map((c) => c.args[1])).toEqual([
+                1.5 * cell,
+                27.5 * cell,
+            ])
+            expect(sprites[0].font).toBe(font(cell))
+            // The whole maze across, and centred down.
+            const [x, y] = scroll()
+            expect(x).toBe(0)
+            expect(y).toBeCloseTo((21 * cell - VIEWPORT.height) / 2, 0)
+        })
+
+        it("ignores a player out of play", () => {
+            const { calls, frame, scroll } = bigSetup()
+            const state = coop()
+            takeOut(state.players[1], PLAYER_RESPAWN_DELAY)
+            frame(state)
+            expect(scroll()).toEqual([0, MAX_Y])
+            const sprite = calls.find((c) => c.args[0] === "🐉")
+            expect(sprite?.font).toBe(font(CELL))
+        })
+
+        it("holds the view while nobody is in play", () => {
+            const { frame, scroll } = bigSetup()
+            const state = coop()
+            place(state.players[0], { x: 12, y: 9 })
+            place(state.players[1], { x: 16, y: 9 })
+            frame(state)
+            const held = scroll()
+            takeOut(state.players[0], PLAYER_RESPAWN_DELAY)
+            takeOut(state.players[1], PLAYER_RESPAWN_DELAY)
+            // Out far from where the view is.
+            place(state.players[0], { x: 1, y: 19 })
+            place(state.players[1], { x: 27, y: 19 })
+            frame(state, 1000)
+            expect(scroll()).toEqual(held)
+        })
+
+        it("draws the fog's darkness over the screen, with only the lights on it", () => {
+            const { calls, frame } = bigSetup()
+            const layerCanvas = document.createElement("canvas")
+            const layer = stubContext()
+            vi.spyOn(layerCanvas, "getContext").mockReturnValue(
+                layer.ctx as never
+            )
+            vi.spyOn(document, "createElement").mockReturnValue(layerCanvas)
+            const state = coop()
+            place(state.players[1], { x: 3, y: 19 })
+            frame(state, 0, { fog: { radius: 2 } })
+            // The layer covers the screen, not the whole maze.
+            expect(layerCanvas.width).toBe(VIEWPORT.width)
+            expect(layerCanvas.height).toBe(VIEWPORT.height)
+            const image = calls.find((c) => c.name === "drawImage")
+            expect(image?.args.slice(1)).toEqual([
+                0,
+                MAX_Y,
+                VIEWPORT.width,
+                VIEWPORT.height,
+            ])
+            // The maze wraps across, but the lights' copies one maze-width
+            // away are off screen.
+            const lights = layer.calls.filter(
+                (c) => c.name === "createRadialGradient"
+            )
+            expect(lights.map((c) => c.args[0])).toEqual([
+                1.5 * CELL,
+                3.5 * CELL,
+            ])
         })
     })
 })

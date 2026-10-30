@@ -54,6 +54,41 @@ export const OLD_LEVEL_DATA: LevelData = {
 
 export const OLD_LEVEL: Level = parseLevel(OLD_LEVEL_DATA)
 
+// A 29x21 maze, the size of the large mazes to come (KDA-266): too big to
+// fit whole on a phone, so the view follows the player. Pillars on a grid,
+// a tunnel through the middle row, player 1 bottom left, player 2 bottom
+// right and enemies top right and in the middle. Not a stage.
+export const BIG_LEVEL_DATA: LevelData = {
+    name: "Big",
+    parTime: 120,
+    map: [
+        "#############################",
+        "#..........................E#",
+        "#.#.#.#.#.#.#.#.#.#.#.#.#.#.#",
+        "#...........................#",
+        "#.#.#.#.#.#.#.#.#.#.#.#.#.#.#",
+        "#...........................#",
+        "#.#.#.#.#.#.#.#.#.#.#.#.#.#.#",
+        "#...........................#",
+        "#.#.#.#.#.#.#.#.#.#.#.#.#.#.#",
+        "#.............E.............#",
+        ".............................",
+        "#...........................#",
+        "#.#.#.#.#.#.#.#.#.#.#.#.#.#.#",
+        "#...........................#",
+        "#.#.#.#.#.#.#.#.#.#.#.#.#.#.#",
+        "#...........................#",
+        "#.#.#.#.#.#.#.#.#.#.#.#.#.#.#",
+        "#...........................#",
+        "#.#.#.#.#.#.#.#.#.#.#.#.#.#.#",
+        "#P.........................Q#",
+        "#############################",
+    ],
+    enemies: [{ ai: "random" }, { ai: "chase" }],
+}
+
+export const BIG_LEVEL: Level = parseLevel(BIG_LEVEL_DATA)
+
 // Copy a literal map into a fresh, mutable Cells grid.
 export function cellsFrom(map: MapLiteral): Cells {
     return map.map((row) => [...row])

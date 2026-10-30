@@ -5,7 +5,7 @@ import {
     DPAD_SPACE,
     HUD_ROWS,
     MAX_CELL,
-    MIN_CELL,
+    MIN_CELL_PX,
     PADDING,
 } from "./layout"
 
@@ -21,17 +21,42 @@ describe("computeLayout", () => {
     })
 
     it("fits a wide maze into the width", () => {
-        // 20 columns into 300 - 32 px: 13.4 -> 13 px cells.
-        const layout = computeLayout(300, 1000, 20, 5)
-        expect(layout.cell).toBe(13)
-        expect(layout.width).toBe(260)
-        expect(layout.height).toBe(13 * 6)
+        // 20 columns into 500 - 32 px: 23.4 -> 23 px cells.
+        const layout = computeLayout(500, 1000, 20, 5)
+        expect(layout.cell).toBe(23)
+        expect(layout.width).toBe(460)
+        expect(layout.height).toBe(23 * 6)
     })
 
     it("keeps cells square, whole and within bounds", () => {
         expect(computeLayout(5000, 5000, 9, 9).cell).toBe(MAX_CELL)
-        expect(computeLayout(50, 50, 9, 9).cell).toBe(MIN_CELL)
+        expect(computeLayout(50, 50, 9, 9).cell).toBe(MIN_CELL_PX)
         expect(Number.isInteger(computeLayout(777, 555, 9, 9).cell)).toBe(true)
+    })
+
+    it("keeps cells at the minimum and the canvas to the viewport when the maze won't fit", () => {
+        // 29 columns on a phone in portrait with the D-pad's band: 12 px
+        // cells to fit, so 20 px cells and as wide as the screen allows.
+        const layout = computeLayout(390, 844 - DPAD_SPACE, 29, 21)
+        expect(layout.cell).toBe(MIN_CELL_PX)
+        expect(layout.hudHeight).toBe(MIN_CELL_PX * HUD_ROWS)
+        expect(layout.width).toBe(390 - 2 * PADDING)
+        // The height still fits all 21 rows.
+        expect(layout.height).toBe(MIN_CELL_PX * 22)
+        expect(layout.pixelWidth).toBe(layout.width)
+    })
+
+    it("cuts the canvas along each axis the maze doesn't fit", () => {
+        const layout = computeLayout(1000, 300, 29, 21)
+        expect(layout.cell).toBe(MIN_CELL_PX)
+        expect(layout.width).toBe(MIN_CELL_PX * 29)
+        expect(layout.height).toBe(300 - 2 * PADDING)
+    })
+
+    it("keeps a cell of maze below the HUD on a tiny viewport", () => {
+        const layout = computeLayout(20, 20, 29, 21)
+        expect(layout.width).toBe(MIN_CELL_PX)
+        expect(layout.height).toBe(MIN_CELL_PX * (HUD_ROWS + 1))
     })
 
     it("sizes the backing store in device pixels", () => {
