@@ -65,6 +65,9 @@ export type LevelRules = {
     fog?: FogRule
     // Eaten dots grow back (see regrow.ts).
     regrowDots?: RegrowRule
+    // Splitters drop dots as they go (KDA-270, see dropDot in splitter.ts).
+    // Only on a level with a boss, where dots don't decide the clear.
+    splitterDrops?: boolean
 }
 
 // rules.regrowDots (KDA-269): an eaten dot grows back on its own cell after
@@ -312,6 +315,9 @@ export function parseLevel(data: LevelData): Level {
     }
     problems.push(...tunnelProblems(cells))
     problems.push(...bossProblems(rows, bossPositions, data.boss))
+    problems.push(
+        ...splitterDropsProblems(data.rules, bossPositions.length > 0)
+    )
     data.enemies.forEach((enemy, i) => {
         enemy.route?.forEach(([x, y], j) => {
             const field = `enemies[${i}].route[${j}]`
@@ -455,7 +461,11 @@ function bossProblems(
     return problems
 }
 
-const RULE_KEYS: ReadonlySet<string> = new Set(["fog", "regrowDots"])
+const RULE_KEYS: ReadonlySet<string> = new Set([
+    "fog",
+    "regrowDots",
+    "splitterDrops",
+])
 const FOG_KEYS: ReadonlySet<string> = new Set(["radius"])
 // The smallest fog radius: the renderer's soft edge is 1.5 cells, and a
 // smaller radius would darken the player's own cell.
@@ -530,6 +540,27 @@ function regrowDotsProblems(rule: unknown): string[] {
     return problems
 }
 
+// rules.splitterDrops, if given: true or false, and true only on a level
+// with a boss (`hasBoss`). Elsewhere the dots decide the clear, and a
+// Splitter dropping them would keep adding dots to clear.
+function splitterDropsProblems(
+    rules: LevelRules | undefined,
+    hasBoss: boolean
+): string[] {
+    const drops: unknown = rules?.splitterDrops
+    if (drops === undefined) return []
+    if (typeof drops !== "boolean") {
+        return [
+            `rules.splitterDrops must be true or false, got ${JSON.stringify(drops)}`,
+        ]
+    }
+    return drops && !hasBoss
+        ? [
+              `rules.splitterDrops needs a boss ("${BOSS}"): elsewhere dots decide the clear`,
+          ]
+        : []
+}
+
 // A copy of the (already validated) rules, so the parsed level shares no
 // objects with the level data.
 function copyRules(rules: LevelRules | undefined): LevelRules {
@@ -538,6 +569,9 @@ function copyRules(rules: LevelRules | undefined): LevelRules {
         : {}
     if (rules?.regrowDots) {
         copy.regrowDots = { seconds: rules.regrowDots.seconds }
+    }
+    if (rules?.splitterDrops !== undefined) {
+        copy.splitterDrops = rules.splitterDrops
     }
     return copy
 }

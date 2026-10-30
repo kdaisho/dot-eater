@@ -1,12 +1,17 @@
+import { hasStatus, inPlay } from "./breath"
 import {
     AiType,
+    Cell,
     RESPAWN_DELAY,
+    SPLITTER_DROP_SECONDS,
     SPLITTER_HALF_SPEED,
     type CharacterId,
 } from "./constants"
 import { createCharacter, type Character } from "./character"
+import { emit } from "./events"
 import type { GameState } from "./game"
 import { distanceMap, openNeighbours } from "./path"
+import { dotBack, occupied } from "./regrow"
 import { samePos, vec2, type Vec2 } from "./vec2"
 
 // The Splitter (AiType.splitter): an enemy that a defeating breath splits in
@@ -32,6 +37,9 @@ import { samePos, vec2, type Vec2 } from "./vec2"
 //
 // Everything else (statuses, pushes, tile effects, collisions) treats each
 // slot in play like any other enemy.
+//
+// On a level with rules.splitterDrops (KDA-270), each slot in play drops a
+// dot behind it every SPLITTER_DROP_SECONDS (see dropDot).
 
 export type SplitterPart = {
     slot: "main" | "spare"
@@ -41,6 +49,8 @@ export type SplitterPart = {
     // The whole Splitter's speed (the level's, or the default), for when it
     // is whole again.
     wholeSpeed: number
+    // Seconds until this slot drops its next dot (see dropDot); 0 once due.
+    dropIn: number
 }
 
 // Character.respawnIn for a slot that is out of play with no timer: it
@@ -66,8 +76,18 @@ export function createSplitter(
         AiType.splitter,
         SPLITTER_HALF_SPEED
     )
-    main.part = { slot: "main", half: false, wholeSpeed: main.speed }
-    spare.part = { slot: "spare", half: true, wholeSpeed: main.speed }
+    main.part = {
+        slot: "main",
+        half: false,
+        wholeSpeed: main.speed,
+        dropIn: SPLITTER_DROP_SECONDS,
+    }
+    spare.part = {
+        slot: "spare",
+        half: true,
+        wholeSpeed: main.speed,
+        dropIn: SPLITTER_DROP_SECONDS,
+    }
     spare.respawnIn = GONE
     return [main, spare]
 }
@@ -99,6 +119,7 @@ export function splitSplitter(state: GameState, i: number) {
     spare.moveProgress = main.moveProgress
     for (const half of [main, spare]) {
         half.part!.half = true
+        half.part!.dropIn = SPLITTER_DROP_SECONDS
         half.speed = SPLITTER_HALF_SPEED
         half.statuses = []
         half.respawnIn = 0
@@ -201,5 +222,53 @@ export function halfDefeated(state: GameState, i: number) {
 
 function makeWhole(main: Character) {
     main.part!.half = false
+    main.part!.dropIn = SPLITTER_DROP_SECONDS
     main.speed = main.part!.wholeSpeed
+}
+
+// ---- Dropping dots (KDA-270) ----
+//
+// On a level with rules.splitterDrops (only boss levels, where dots don't
+// decide the clear), each Splitter slot in play, whole or a half, drops a
+// dot every SPLITTER_DROP_SECONDS: once due (see tickDrops), on its next
+// move it drops one on the cell it is leaving (its lastPos), if that cell
+// is bare floor (no dot, not a wall a breath opened, which grows back) and
+// no player in play or live boss is drawn on it. A slot that is held (e.g.
+// frozen) or harmless (a status) doesn't drop; nor, out of play (defeated,
+// or the spare while whole), does it count down. Until it can drop, it
+// stays due. A dropped dot is an ordinary dot, though never one of the
+// map's that regrow (see regrow.ts).
+
+// Count each Splitter slot in play down towards its next drop by `dt`
+// seconds.
+export function tickDrops(state: GameState, dt: number) {
+    if (!state.splitterDrops) return
+    for (const enemy of state.enemies) {
+        if (!enemy.part || !inPlay(enemy)) continue
+        enemy.part.dropIn = Math.max(0, enemy.part.dropIn - dt)
+    }
+}
+
+// Tolerance for a countdown reaching 0, so floating-point sums of dt still
+// land on the intended tick.
+const EPSILON = 1e-9
+
+// Enemy `i` has just moved: if it is a Splitter slot due to drop (see
+// above), drop a dot on the cell it left, reporting a dotDropped event.
+export function dropDot(state: GameState, i: number) {
+    const enemy = state.enemies[i]
+    const { part } = enemy
+    if (!state.splitterDrops || !part || part.dropIn > EPSILON) return
+    if (!inPlay(enemy) || hasStatus(enemy, "holds")) return
+    if (hasStatus(enemy, "harmless")) return
+    const at = enemy.lastPos
+    if (state.cells[at.y][at.x] !== Cell.none) return
+    const opened = state.tiles.some(
+        (t) => t.effect.opensWall && samePos(t.pos, at)
+    )
+    if (opened || occupied(state, at, false)) return
+    state.cells[at.y][at.x] = Cell.dot
+    dotBack(state, at)
+    part.dropIn = SPLITTER_DROP_SECONDS
+    emit(state, { type: "dotDropped", enemy: i, at: vec2(at.x, at.y) })
 }

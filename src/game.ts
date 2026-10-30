@@ -57,7 +57,7 @@ import { levels } from "./levels"
 import { distanceMap, openNeighbours } from "./path"
 import { DEFAULT_ANIMAL, type AnimalId } from "./roster"
 import { createRegrow, dotGone, tickRegrow, type Regrow } from "./regrow"
-import { createSplitter } from "./splitter"
+import { createSplitter, dropDot, tickDrops } from "./splitter"
 import { loseDots, stunned, tickStuns } from "./versus"
 import { samePos, vec2, type Vec2 } from "./vec2"
 
@@ -106,6 +106,9 @@ export type GameState = {
     // The eaten dots growing back, on a level with rules.regrowDots (see
     // regrow.ts); null on one without.
     regrow: Regrow | null
+    // Whether Splitters drop dots (rules.splitterDrops, see dropDot in
+    // splitter.ts).
+    splitterDrops: boolean
 }
 
 // One player: its character on the board, plus everything else that is its
@@ -263,6 +266,7 @@ export function createGameState(
         },
         events: [],
         regrow: createRegrow(level.rules.regrowDots, cells),
+        splitterDrops: level.rules.splitterDrops ?? false,
     }
 }
 
@@ -808,7 +812,9 @@ function wait(character: Glider) {
 //
 // On a level with rules.regrowDots, eaten dots due back grow back with the
 // timers, on cells no character is on (see regrow.ts), so a player moving
-// onto one this tick eats it.
+// onto one this tick eats it. On one with rules.splitterDrops, a Splitter
+// due to drop a dot drops it on the cell it leaves as it moves (see dropDot
+// in splitter.ts).
 //
 // What happened is reported in GameState.events (see events.ts), which is
 // emptied first, so it holds this tick's events only.
@@ -833,6 +839,7 @@ export function step(
         if (player.invulnerableFor > 0) player.invulnerableFor--
     }
     tickRegrow(state, dt)
+    tickDrops(state, dt)
     const from = positions(state)
     let start = tickStarts(state, dt)
     // Where each player came from on its latest move before this tick, for
@@ -933,8 +940,12 @@ export function step(
                 aims
             )
         }
-        if (samePos(enemy.pos, from.enemies[i])) wait(enemy)
-        else spend(enemy)
+        if (samePos(enemy.pos, from.enemies[i])) {
+            wait(enemy)
+        } else {
+            spend(enemy)
+            dropDot(state, i)
+        }
     })
     const { boss } = state
     if (boss && !boss.defeated && advance(boss, dt)) {

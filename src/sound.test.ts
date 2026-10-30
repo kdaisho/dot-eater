@@ -99,6 +99,7 @@ describe("soundForEvent", () => {
             [{ type: "gameLost" }, "gameOver"],
             [{ type: "playerRespawned", player: 0, at }, undefined],
             [{ type: "dotRegrown", at }, undefined],
+            [{ type: "dotDropped", enemy: 0, at }, "dotDropped"],
         ]
         for (const [event, sound] of cases)
             expect(soundForEvent(event), event.type).toBe(sound)

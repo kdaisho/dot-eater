@@ -24,6 +24,8 @@ export const SfxId = {
     caught: "caught",
     // Versus: a player stunned by the other's breath.
     stunned: "stunned",
+    // A Splitter dropped a dot (KDA-270): a soft, low plop.
+    dotDropped: "dotDropped",
     // Results: also fit a won or lost versus round.
     stageClear: "stageClear",
     gameOver: "gameOver",
@@ -264,6 +266,18 @@ export const SFX: Readonly<Record<SfxId, readonly Tone[]>> = {
         freqEnd: 900,
         volume: 0.3,
     }),
+    // A soft, low plop, falling: quieter than the dot blip, since every
+    // Splitter makes one every few seconds, wherever it is.
+    dotDropped: [
+        {
+            wave: "triangle",
+            at: 0,
+            duration: 0.08,
+            freq: 520,
+            freqEnd: 260,
+            volume: 0.12,
+        },
+    ],
     // A short rising jingle on a major chord.
     stageClear: [
         ...arpeggio(["C5", "E5", "G5"], 0.1, 0.1, {

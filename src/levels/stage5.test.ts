@@ -68,6 +68,14 @@ describe("stage 5", () => {
         }
     })
 
+    it("has its Splitter drop dots, and only it does", () => {
+        expect(level.rules.splitterDrops).toBe(true)
+        expect(createGameState(level).splitterDrops).toBe(true)
+        for (const other of levels.slice(0, 4)) {
+            expect(other.rules.splitterDrops).toBeUndefined()
+        }
+    })
+
     it("is stage 1's size, with no tunnels, ice or fog", () => {
         expect(level.width).toBe(17)
         expect(level.height).toBe(15)
