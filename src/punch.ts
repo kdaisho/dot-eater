@@ -1,7 +1,7 @@
 import { hasStatus, inPlay, playerCharacters, pushEnemy } from "./breath"
 import { PUNCH_ACROSS, PUNCH_KNOCKBACK, PUNCH_REACH } from "./constants"
 import { emit } from "./events"
-import { drawnPos, type GameState, type Player } from "./game"
+import { drawnPos, knockBack, type GameState, type Player } from "./game"
 import { wrapDelta } from "./glide"
 import { vec2, type Vec2 } from "./vec2"
 import { stunned } from "./versus"
@@ -26,16 +26,27 @@ import { stunned } from "./versus"
 // - The boss is hit on any part of its body (the square of its four cell
 //   centres) but isn't hurt or moved: the hit is reported, for its thud.
 // - The other player is never hit in co-op: the punch passes through.
+// - In versus, the other player in play is knocked back a cell along the
+//   facing (knockBack in game.ts: it stays put against a wall or a solid
+//   enemy), but not stunned or hurt, stunned, immune or not.
 
 // Tolerance for the reach's edges, as in game.ts.
 const EPSILON = 1e-9
 
+// What a punch moved, so the caller traces it from where it now is.
+export type Punched = {
+    // Whether it knocked any enemy back.
+    enemies: boolean
+    // The players it knocked back (versus), by index.
+    players: number[]
+}
+
 // Punch as `who`, if it can: a player out of play or stunned (versus)
 // can't. Reports a punched event, then a punchHit per hit (enemies nearest
-// first, then the boss). Returns true if the punch moved anything, so the
-// caller traces it from where it now is.
-export function punch(state: GameState, who: Player): boolean {
-    if (who.out || stunned(who)) return false
+// first, then the boss, then the other player). Returns what it moved.
+export function punch(state: GameState, who: Player): Punched {
+    const result: Punched = { enemies: false, players: [] }
+    if (who.out || stunned(who)) return result
     const cols = state.cells[0].length
     const rows = state.cells.length
     const player = state.players.indexOf(who)
@@ -54,19 +65,27 @@ export function punch(state: GameState, who: Player): boolean {
             return inReach(ahead) ? [{ enemy, i, at, along: ahead.along }] : []
         })
         .sort((a, b) => a.along - b.along)
-    let moved = false
     for (const { enemy, i, at } of hits) {
         emit(state, { type: "punchHit", player, at, target: "enemy", enemy: i })
         if (hasStatus(enemy, "holds")) continue
         const players = playerCharacters(state)
         if (pushEnemy(state.cells, enemy, step, PUNCH_KNOCKBACK, players)) {
-            moved = true
+            result.enemies = true
         }
     }
     const boss = bossHitAt(state, from, step)
-    if (boss)
+    if (boss) {
         emit(state, { type: "punchHit", player, at: boss, target: "boss" })
-    return moved
+    }
+    if (state.mode !== "versus") return result
+    state.players.forEach((other, i) => {
+        if (other === who || other.out) return
+        const at = drawnPos(other.character, cols, rows)
+        if (!inReach(punchOffset(offset(at), step))) return
+        emit(state, { type: "punchHit", player, at, target: "player" })
+        if (knockBack(state, other, step)) result.players.push(i)
+    })
+    return result
 }
 
 // An offset from the puncher split along its facing (`along`, positive

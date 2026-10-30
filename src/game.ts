@@ -791,16 +791,26 @@ export function step(
     })
     // Punches come after the breaths, player 1's first (see punch.ts).
     let punched = false
+    const shoved = new Set<number>()
     players.forEach((player, i) => {
-        if (inputs[i]?.punch && punch(state, player)) punched = true
+        if (!inputs[i]?.punch) return
+        const moved = punch(state, player)
+        if (moved.enemies) punched = true
+        for (const j of moved.players) shoved.add(j)
     })
-    if (breathed || punched) {
+    if (breathed || punched || shoved.size > 0) {
         // The breath or punch comes before the enemies move, but it may
         // have moved some (pushed or defeated) or held them: trace each
         // enemy from where it is after it, not along a sweep across the
-        // jump.
+        // jump. A player a punch knocked back (versus) has made its move
+        // this tick, so it stays where it now is drawn for the rest of it.
         const after = tickStarts(state, dt)
-        start = { ...after, players: start.players }
+        start = {
+            ...after,
+            players: start.players.map((s, i) =>
+                shoved.has(i) ? { ...after.players[i], arrive: Infinity } : s
+            ),
+        }
     }
     const blocked = enemyBlocks(state)
     // Cells as enemies see them, so blocked cells also end slides.

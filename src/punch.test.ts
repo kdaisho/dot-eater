@@ -486,3 +486,62 @@ describe("punching in co-op", () => {
         expect(ofType(state, "punchHit")).toEqual([])
     })
 })
+
+describe("punching in versus", () => {
+    const versus = (p2: { x: number; y: number }) =>
+        makeState(room, [{ x: 2, y: 1 }, p2], [], { mode: "versus" })
+
+    it("knocks the other player back a cell, without stunning or hurting it", () => {
+        const state = versus({ x: 3, y: 1 })
+        const other = state.players[1]
+        const health = other.health
+        tick(state, [PUNCH, IDLE])
+        expect(other.character.pos).toEqual(vec2(4, 1))
+        expect(other.stunnedFor).toBe(0)
+        expect(other.health).toBe(health)
+        // Shoved, it still faces the way it did.
+        expect(other.breather.facing).toEqual(vec2(1, 0))
+        expect(ofType(state, "punchHit")).toEqual([
+            { type: "punchHit", player: 0, at: vec2(3, 1), target: "player" },
+        ])
+        expect(ofType(state, "playerStunned")).toEqual([])
+    })
+
+    it("leaves the other player put against a wall, still a hit", () => {
+        const state = versus({ x: 7, y: 1 })
+        state.players[0].character.pos = vec2(6, 1)
+        state.players[0].character.lastPos = vec2(6, 1)
+        tick(state, [PUNCH, IDLE])
+        expect(state.players[1].character.pos).toEqual(vec2(7, 1))
+        expect(ofType(state, "punchHit")).toHaveLength(1)
+    })
+
+    it("misses the other player out of reach or out of play", () => {
+        const far = versus({ x: 4, y: 1 })
+        tick(far, [PUNCH, IDLE])
+        expect(far.players[1].character.pos).toEqual(vec2(4, 1))
+        expect(ofType(far, "punchHit")).toEqual([])
+        const out = versus({ x: 3, y: 1 })
+        takeOut(out.players[1], 3)
+        tick(out, [PUNCH, IDLE])
+        expect(ofType(out, "punchHit")).toEqual([])
+    })
+
+    it("shoves a stunned player too", () => {
+        const state = versus({ x: 3, y: 1 })
+        stun(state.players[1])
+        tick(state, [PUNCH, IDLE])
+        expect(state.players[1].character.pos).toEqual(vec2(4, 1))
+    })
+
+    it("lets both players shove each other on one tick", () => {
+        const state = versus({ x: 3, y: 1 })
+        state.players[1].breather.facing = vec2(-1, 0)
+        tick(state, [PUNCH, PUNCH])
+        // Player 2 is still drawn on its old cell, gliding out, so its
+        // punch back reaches player 1.
+        expect(state.players[1].character.pos).toEqual(vec2(4, 1))
+        expect(state.players[0].character.pos).toEqual(vec2(1, 1))
+        expect(ofType(state, "punchHit").map((e) => e.player)).toEqual([0, 1])
+    })
+})
