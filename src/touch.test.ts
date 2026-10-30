@@ -11,6 +11,7 @@ import { fixedRandom, makeState } from "./test/helpers"
 import {
     isTouchDevice,
     SWIPE_DISTANCE,
+    dragHeld,
     swipeDirection,
     TouchSource,
 } from "./touch"
@@ -34,6 +35,32 @@ describe("swipeDirection", () => {
         // 18 px each way is 25 px along the diagonal; a tie goes sideways.
         expect(swipeDirection(18, 18)).toBe("right")
         expect(swipeDirection(-18, -18)).toBe("left")
+    })
+})
+
+describe("dragHeld", () => {
+    it("keeps the way held behind a turn", () => {
+        expect(dragHeld(undefined, undefined, "up")).toEqual({
+            direction: "up",
+        })
+        expect(dragHeld("right", undefined, "up")).toEqual({
+            direction: "up",
+            fallback: "right",
+        })
+        expect(dragHeld("up", "right", "left")).toEqual({
+            direction: "left",
+            fallback: "up",
+        })
+    })
+
+    it("drops the way held on a reversal, keeping an older fallback", () => {
+        expect(dragHeld("right", undefined, "left")).toEqual({
+            direction: "left",
+        })
+        expect(dragHeld("up", "right", "down")).toEqual({
+            direction: "down",
+            fallback: "right",
+        })
     })
 })
 
@@ -161,7 +188,8 @@ describe("TouchSource", () => {
         expect(held()).toEqual(["up", "right"])
         move(200, -60 + SWIPE_DISTANCE)
         expect(p1().wasPressed("down")).toBe(true)
-        expect(p1().heldSteps()).toEqual([vec2(0, 1)])
+        // Up goes; right stays behind (see the fallback).
+        expect(p1().heldSteps()).toEqual([vec2(0, 1), vec2(1, 0)])
     })
 
     it("forgets a wobble across the held way once the finger moves on", () => {
@@ -198,13 +226,27 @@ describe("TouchSource", () => {
             expect(p1().heldSteps()).toEqual([vec2(1, 0), vec2(0, -1)])
         })
 
-        it("is dropped by a reversal", () => {
+        it("is dropped by a reversal of the way the player goes", () => {
+            down(0, 0)
+            move(40, 0)
+            // Left, back the way it was going: right goes.
+            move(0, 0)
+            expect(p1().heldSteps()).toEqual([vec2(-1, 0)])
+        })
+
+        // Regression (PR #79 review): moving right, an early up then down
+        // dropped right too, so the player stopped mid-corridor, while
+        // holding → and pressing ↑ then ↓ keeps going right.
+        it("stays behind a reversal of the latest turn, as with the keys", () => {
             down(0, 0)
             move(40, 0)
             move(40, -40)
-            // Down, back the way it was going: up and right both go.
+            // Down, back from the turn up: up goes, right stays behind.
             move(40, 0)
-            expect(p1().heldSteps()).toEqual([vec2(0, 1)])
+            expect(p1().heldSteps()).toEqual([vec2(0, 1), vec2(1, 0)])
+            // Another reversal: up again, right still behind.
+            move(40, -40)
+            expect(p1().heldSteps()).toEqual([vec2(0, -1), vec2(1, 0)])
         })
 
         it("is let go of on the lift, with the direction", () => {
@@ -501,6 +543,26 @@ describe("TouchSource", () => {
             // The glide into (1, 1) finishes; neither up nor right moves it.
             run(state, ticksPerCell * 3)
             expect(at(state)).toEqual(vec2(1, 1))
+        })
+
+        // Regression (PR #79 review): changing an early turn from up to
+        // down dropped right as well, so the player stopped at (1, 1).
+        it("keeps going when an early turn is changed to the other side, like the keys", () => {
+            // A corridor on row 1, opening north at x = 2, south at x = 4.
+            const crossing = [
+                [1, 1, 2, 1, 1, 1],
+                [2, 2, 2, 2, 2, 2],
+                [1, 1, 1, 1, 2, 1],
+            ] as const
+            const state = makeState(crossing, { x: 0, y: 1 })
+            down(0, 0)
+            move(40, 0)
+            run(state, ticksPerCell)
+            expect(at(state)).toEqual(vec2(1, 1))
+            move(40, -40)
+            move(40, 0)
+            run(state, ticksPerCell * 4)
+            expect(at(state)).toEqual(vec2(4, 2))
         })
     })
 })

@@ -20,8 +20,10 @@ import type {
 // stays held behind it as a fallback, the way a keyboard player holds the
 // old arrow while pressing the new one: a turn dragged before a junction
 // waits for it while the player carries on, rather than stopping the player
-// against the wall. Only that one direction is kept, and a reversal (back
-// the way it was going) drops it, so the player never bounces back. The
+// against the wall. Only one fallback is kept. Reversing the latest turn
+// drops that turn but keeps the fallback (moving right, an early up then
+// down holds down and right, as holding → and pressing ↓ would); reversing
+// the way the player goes drops it, so the player never bounces back. The
 // lift lets go of both.
 //
 // Dragging another way re-steers without lifting. The distance is measured
@@ -68,15 +70,19 @@ const OPPOSITE: Record<DirectionAction, DirectionAction> = {
 
 // The directions a drag holds after turning `turned`, given the way it held
 // (`direction`) and that one's fallback: the turn, and as its fallback the
-// way it held, unless that is the turn's opposite (a reversal).
+// way it held, unless that is the turn's opposite (a reversal). A reversal
+// keeps the older fallback instead, unless that is the turn's opposite too.
 export function dragHeld(
     direction: DirectionAction | undefined,
     fallback: DirectionAction | undefined,
     turned: DirectionAction
 ): { direction: DirectionAction; fallback?: DirectionAction } {
-    void fallback
     const kept =
-        direction && direction !== OPPOSITE[turned] ? direction : undefined
+        direction && direction !== OPPOSITE[turned]
+            ? direction
+            : fallback && fallback !== OPPOSITE[turned] && fallback !== turned
+              ? fallback
+              : undefined
     return kept ? { direction: turned, fallback: kept } : { direction: turned }
 }
 
