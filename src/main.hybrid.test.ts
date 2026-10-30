@@ -59,6 +59,8 @@ describe("main on a laptop with a touch screen", () => {
         expect(document.body.dataset.touch).toBe("on")
         expect(document.body.dataset.buttons).toBe("off")
         tap("#overlay li[data-index='0']")
+        // Stage select.
+        tap("#overlay li[data-index='1']")
         tap("#overlay li[data-index='0']")
         // Medium.
         tap("#overlay li[data-index='1']")

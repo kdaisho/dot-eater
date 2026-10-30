@@ -128,6 +128,10 @@ describe("main with a gamepad", () => {
             tapPad(0, UP)
             expect(selectedItem()).toBe("1 player")
             tapPad(1, A)
+            expect(screen()).toBe("play-select")
+            tapPad(0, DOWN)
+            expect(selectedItem()).toBe("Stage select")
+            tapPad(1, A)
             expect(screen()).toBe("stage-select")
             tapPad(0, A)
             expect(screen()).toBe("difficulty-select")
@@ -145,6 +149,8 @@ describe("main with a gamepad", () => {
             tapPad(0, START)
             expect(screen()).toBe("stage-select")
             tapPad(0, START)
+            expect(screen()).toBe("play-select")
+            tapPad(1, START)
             expect(screen()).toBe("title")
         })
 
@@ -152,8 +158,15 @@ describe("main with a gamepad", () => {
             tapPad(1, DOWN)
             expect(selectedItem()).toBe("Co-op")
             tapPad(0, A)
+            expect(screen()).toBe("play-select")
+            // The choice of story or stage mode follows player 1, and pad
+            // 2 is player 2's now.
+            tapPad(1, DOWN)
+            expect(selectedItem()).toBe("Story")
+            tapPad(0, DOWN)
+            tapPad(0, A)
             expect(screen()).toBe("stage-select")
-            // Stage select follows player 1, and pad 2 is player 2's now.
+            // So does stage select.
             tapPad(1, A)
             expect(screen()).toBe("stage-select")
             tapPad(0, A)
@@ -187,9 +200,14 @@ describe("main with a gamepad", () => {
 
         it("shares the pads again on the title and in 1-player", () => {
             tapPad(0, START)
+            expect(screen()).toBe("play-select")
+            tapPad(0, START)
             expect(screen()).toBe("title")
             tapPad(1, UP)
             expect(selectedItem()).toBe("1 player")
+            tapPad(1, A)
+            expect(screen()).toBe("play-select")
+            tapPad(1, DOWN)
             tapPad(1, A)
             expect(screen()).toBe("stage-select")
             tapPad(1, A)
@@ -201,6 +219,7 @@ describe("main with a gamepad", () => {
             tapPad(1, START)
             tapPad(0, START)
             tapPad(0, START)
+            tapPad(1, START)
             expect(screen()).toBe("title")
             // The tests below use one pad.
             pads = [pad()]
@@ -210,6 +229,9 @@ describe("main with a gamepad", () => {
     })
 
     it("plays through the menus with A", () => {
+        tap(A)
+        expect(screen()).toBe("play-select")
+        tap(DOWN)
         tap(A)
         expect(screen()).toBe("stage-select")
         tap(A)

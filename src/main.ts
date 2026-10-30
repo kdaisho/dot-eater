@@ -25,23 +25,31 @@ import { takeEvents, type GameEvent } from "./events"
 import {
     baseScreen,
     END_CHOICES,
+    endChoices,
     ROUND_CHOICES,
     gameOf,
     initialScreen,
-    PAUSE_CHOICES,
+    pauseChoices,
     pauseIfPlaying,
+    PLAY_CHOICES,
     playerCount,
     recordsProgress,
+    runTotal,
     screenSettings,
     selectItem,
     settingsContext,
+    STORY_CHOICES,
+    storyStart,
     TITLE_CHOICES,
     update,
     type EndChoice,
     type Capture,
     type FlowDeps,
     type Mode,
+    type PauseChoice,
+    type PlayChoice,
     type Screen,
+    type StoryChoice,
     type TickInput,
     type TitleChoice,
 } from "./flow"
@@ -71,6 +79,7 @@ import { createLoop } from "./loop"
 import {
     loadProgress,
     recordClear,
+    recordStoryBest,
     stageSlots,
     type Progress,
 } from "./progress"
@@ -98,10 +107,14 @@ import {
     showGameOver,
     showMatchResult,
     showPause,
+    showPlaySelect,
     showRoundResult,
     showSettings,
     showStageClear,
     showStageSelect,
+    showStoryClear,
+    showStoryEnd,
+    showStoryMenu,
     setHintBindings,
     showTitle,
     showToast,
@@ -143,6 +156,9 @@ function mediaQuery(query: string): MediaQueryList | undefined {
 }
 const reducedMotion = mediaQuery("(prefers-reduced-motion: reduce)")
 const touch = isTouchDevice(window)
+// Whether the window has focus and the tab shows (see autoPause): what
+// flow needs so a game never starts unwatched (FlowDeps.focused).
+let focused = !document.hidden
 // Touch is the main input (a phone or tablet, not a laptop's touch screen):
 // the punch and breath buttons show, with room kept for them.
 const touchFirst = isTouchFirst(window)
@@ -414,6 +430,7 @@ function flowDeps(dt: number): FlowDeps {
         settings,
         touch,
         prefersReducedMotion: reducedMotion?.matches ?? false,
+        focused,
     }
 }
 
@@ -447,17 +464,19 @@ function enter(prev: Screen, next: Screen) {
     // finger still down steers again once it drags anew.
     const wasPlaying = prev.kind === "playing"
     const isPlaying = next.kind === "playing"
-    if (
-        (isPlaying && !wasPlaying && prev.kind !== "paused") ||
-        (wasPlaying && !isPlaying && next.kind !== "paused")
-    ) {
+    // A game starts: playing, or paused when it starts in an unfocused
+    // window (see FlowDeps.focused); not a pause or resume of the same one.
+    const started =
+        (isPlaying || next.kind === "paused") && gameOf(next) !== gameOf(prev)
+    if (started || (wasPlaying && !isPlaying && next.kind !== "paused")) {
         touchSource.release()
     }
-    // Play started from a menu (character select or Retry): a direction
-    // still held from the menu waits for a fresh press. Resuming from pause
-    // keeps held directions, so holding through a pause carries on moving.
-    // A new game also starts with no particles or shake left over.
-    if (next.kind === "playing" && prev.kind !== "paused") {
+    // Play started from a menu (character select, Retry or the story
+    // card): a direction still held from the menu waits for a fresh press.
+    // Resuming from pause keeps held directions, so holding through a pause
+    // carries on moving. A new game also starts with no particles or shake
+    // left over.
+    if (started) {
         input.ignoreHeld()
         effects.reset()
     }
@@ -472,24 +491,42 @@ function enter(prev: Screen, next: Screen) {
         saveLastDifficulty(storage, lastDifficulty)
     }
     if (
-        next.kind === "playing" &&
+        started &&
         prev.kind === "characterSelect" &&
         playerCount(next.mode) === 1
     ) {
         lastAnimal = next.animals[0]
         saveLastPick(storage, lastAnimal)
     }
-    if (next.kind === "stageClear" && prev.kind === "ending") {
+    // A clear in stage mode or in a story run (KDA-271) records its stars
+    // and bests alike, but only a story run's unlocks the next stage
+    // (KDA-272): stages unlock only by story progress.
+    const cleared =
+        next.kind === "stageClear" ||
+        next.kind === "storyClear" ||
+        next.kind === "storyEnd"
+    if (cleared && prev.kind === "ending") {
         // 2-player games leave saved progress alone.
         if (recordsProgress(next.mode)) {
             const { stars, ticks } = next.rating
-            progress = recordClear(progress, storage, next.level, {
-                difficulty: next.difficulty,
-                stars,
-                ticks,
+            const clear = { difficulty: next.difficulty, stars, ticks }
+            progress = recordClear(progress, storage, next.level, clear, {
+                unlocks: next.kind !== "stageClear",
             })
+            // A run that reached the ending: its total may be the best.
+            if (next.kind === "storyEnd") {
+                const total = runTotal(next)
+                progress = recordStoryBest(
+                    progress,
+                    storage,
+                    next.difficulty,
+                    total
+                )
+            }
         }
         celebrate(10)
+        // The ending gets a burst on top.
+        if (next.kind === "storyEnd") burst()
     }
     if (next.kind === "matchResult" && prev.kind === "ending") celebrate(10)
     // Every change on the settings and controls screens is saved, and
@@ -539,7 +576,24 @@ function render(alpha: number) {
     if ("difficulty" in shown) {
         hud.difficulty = DIFFICULTY_LABELS[shown.difficulty]
     }
+    if ("run" in shown && shown.run) {
+        // On game over, the total Retry plays on from, as the card says:
+        // the failed stage's score is lost.
+        const total =
+            shown.kind === "gameOver"
+                ? shown.run.total
+                : runTotal({ run: shown.run, game })
+        withRunTotal(hud, total)
+    }
     renderer.draw(game, lastAlpha, hud, rules, effects.of(shown))
+}
+
+// In a story run (KDA-271) the HUD shows the run total so far, this
+// stage's score included: in place of the score with one player, and in
+// the middle (above the difficulty) with two, whose own scores stay.
+function withRunTotal(hud: Hud, total: number) {
+    if (hud.players) hud.round = `Total ${total}`
+    else hud.score = total
 }
 
 // The breath button looks ready while player 1's meter shows ready
@@ -645,6 +699,24 @@ function showOverlay(s: Screen) {
                     : {}),
             })
         }
+        case "playSelect":
+            return showPlaySelect(
+                MODE_LABELS[s.mode],
+                PLAY_CHOICES.map((c) => ({
+                    label: PLAY_LABELS[c],
+                    selected: c === s.choice,
+                }))
+            )
+        case "storyMenu":
+            return showStoryMenu(
+                STORY_CHOICES.map((c) => ({
+                    label: storyLabel(c),
+                    selected: c === s.choice,
+                    ...(storyStart(c, progress) >= levels.length
+                        ? { locked: true }
+                        : {}),
+                }))
+            )
         case "stageSelect":
             return showStageSelect(
                 stageSlots(
@@ -675,18 +747,42 @@ function showOverlay(s: Screen) {
         case "paused":
             return showPause(
                 s.game.players.length,
-                PAUSE_CHOICES.map((c) => ({
+                pauseChoices(s).map((c) => ({
                     label: PAUSE_LABELS[c],
                     selected: c === (s.choice ?? "resume"),
                 }))
             )
         case "stageClear":
-            return showStageClear({
-                ...endView(s.game, s.choice, s.difficulty),
-                rating: s.rating,
-            })
+            return showStageClear({ ...endView(s), rating: s.rating })
         case "gameOver":
-            return showGameOver(endView(s.game, s.choice, s.difficulty))
+            return showGameOver(endView(s))
+        case "storyClear":
+            return showStoryClear({
+                difficulty: DIFFICULTY_LABELS[s.difficulty],
+                score: totalScore(s.game),
+                runTotal: runTotal(s),
+                rating: s.rating,
+                ...(s.next === undefined
+                    ? {}
+                    : { next: `Stage ${s.next + 1}: ${levels[s.next].name}` }),
+                items: [
+                    {
+                        label: s.next === undefined ? "Title" : "Next stage",
+                        selected: true,
+                    },
+                ],
+            })
+        case "storyEnd": {
+            const best = recordsProgress(s.mode)
+                ? progress.storyBests?.[s.difficulty]
+                : undefined
+            return showStoryEnd({
+                difficulty: DIFFICULTY_LABELS[s.difficulty],
+                runTotal: runTotal(s),
+                ...(best === undefined ? {} : { best }),
+                items: [{ label: "Title", selected: true }],
+            })
+        }
         case "roundResult": {
             const last = s.match[s.match.length - 1]
             return showRoundResult({
@@ -722,7 +818,27 @@ const ROUND_LABELS = { nextRound: "Next round", quit: "Quit" } as const
 // The match result's menu: Retry plays a new match.
 const MATCH_LABELS = { retry: "Rematch", stageSelect: "Stage select" } as const
 
-const END_LABELS = { retry: "Retry", stageSelect: "Stage select" } as const
+const END_LABELS: Record<EndChoice, string> = {
+    retry: "Retry",
+    stageSelect: "Stage select",
+    quit: "Quit",
+}
+
+// The choice of story or stage mode (KDA-271).
+const PLAY_LABELS: Record<PlayChoice, string> = {
+    story: "Story",
+    stage: "Stage select",
+}
+
+// The story menu's items. Continue names the stage it starts on (e.g.
+// "Continue (stage 3: Ice)"), or says it is coming soon when that stage
+// isn't built yet.
+function storyLabel(choice: StoryChoice): string {
+    if (choice === "newStory") return "New story"
+    const index = storyStart(choice, progress)
+    const name = levels[index]?.name ?? "coming soon"
+    return `Continue (stage ${index + 1}: ${name})`
+}
 
 // The mode select's labels, one per mode; the title offers them all, in
 // MODE_CHOICES order, then Settings.
@@ -737,15 +853,20 @@ const TITLE_LABELS: Record<TitleChoice, string> = {
     settings: "Settings",
 }
 
-const PAUSE_LABELS = { resume: "Resume", settings: "Settings" } as const
+const PAUSE_LABELS: Record<PauseChoice, string> = {
+    resume: "Resume",
+    settings: "Settings",
+    quit: "Quit",
+}
 
+// An end screen's view. In a story run (KDA-271), game over also shows the
+// run total the stage started with: what Retry plays on from.
 function endView(
-    game: GameState,
-    choice: EndChoice,
-    difficulty: Difficulty
+    s: Extract<Screen, { kind: "stageClear" | "gameOver" }>
 ): EndScreenView {
+    const { game } = s
     return {
-        difficulty: DIFFICULTY_LABELS[difficulty],
+        difficulty: DIFFICULTY_LABELS[s.difficulty],
         score: totalScore(game),
         ...(game.players.length > 1
             ? {
@@ -753,23 +874,37 @@ function endView(
                   playerDots: game.players.map((p) => p.dots),
               }
             : {}),
-        items: END_CHOICES.map((c) => ({
+        ...("run" in s && s.run ? { runTotal: s.run.total } : {}),
+        items: endChoices(s).map((c) => ({
             label: END_LABELS[c],
-            selected: c === choice,
+            selected: c === s.choice,
         })),
     }
 }
 
 // Auto-pause: leaving the window or hiding the tab mid-game pauses it, so
-// the game doesn't play on unwatched.
+// the game doesn't play on unwatched. Whether the window is focused also
+// goes to flow (FlowDeps.focused), so a game doesn't start unwatched
+// either: the story card waits, and a game that starts meanwhile starts
+// paused.
 function autoPause() {
     const next = pauseIfPlaying(screen)
     if (next !== screen) enter(screen, next)
 }
-addEventListener("blur", autoPause)
+function unfocus() {
+    focused = false
+    autoPause()
+}
+addEventListener("blur", unfocus)
 document.addEventListener("visibilitychange", () => {
-    if (document.hidden) autoPause()
+    if (document.hidden) unfocus()
 })
+// Focus back, or a key or pointer press, which only a focused page gets.
+for (const type of ["focus", "keydown", "pointerdown"]) {
+    addEventListener(type, () => {
+        focused = true
+    })
+}
 
 // Taps and clicks on the overlays: a menu item or card puts player 1's
 // cursor on it and confirms (on settings that flips a toggle or runs
