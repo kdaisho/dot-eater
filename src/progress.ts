@@ -131,12 +131,15 @@ function parseByDifficulty(
     saved: unknown
 ): StageProgress["byDifficulty"] | undefined {
     if (!isRecord(saved)) return undefined
-    const records: Record<string, unknown> = {}
-    for (const [key, value] of Object.entries(saved)) {
-        if (!isDifficulty(key)) records[key] = value
-        else if (isRecord(value)) records[key] = parseBests(value)
-    }
-    return records
+    // Built with fromEntries, which makes every key an own field: assigning
+    // a saved "__proto__" key would set the object's prototype instead, and
+    // its fields would read as inherited bests.
+    return Object.fromEntries(
+        Object.entries(saved).flatMap(([key, value]) => {
+            if (!isDifficulty(key)) return [[key, value]]
+            return isRecord(value) ? [[key, parseBests(value)]] : []
+        })
+    )
 }
 
 function isStars(value: unknown): value is number {

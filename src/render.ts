@@ -1259,8 +1259,9 @@ function drawPlayersHud(
         }
     })
     // The middle, between the two meters: the round and the difficulty, one
-    // above the other when there are both. Player 1's meter ends at 35% of
-    // the width, and player 2's starts at 65%.
+    // above the other when there are both, the lower one clear of a boss
+    // band. Player 1's meter ends at 35% of the width, and player 2's starts
+    // at 65%.
     const middle = width * 0.3 - 2 * pad
     if (hud.round !== undefined && hud.difficulty !== undefined) {
         const size = height * LABEL_SIZE
@@ -1268,7 +1269,7 @@ function drawPlayersHud(
             width: middle,
             size,
         })
-        drawLabel(ctx, hud.difficulty, width / 2, height * 0.74, {
+        drawLabel(ctx, hud.difficulty, width / 2, height * 0.69, {
             width: middle,
             size,
         })
