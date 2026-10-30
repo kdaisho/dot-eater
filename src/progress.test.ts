@@ -56,6 +56,9 @@ const run = (
     difficulty: Difficulty = "medium"
 ): ClearRecord => ({ difficulty, stars, ticks })
 
+// How a story mode clear is recorded: it unlocks the next stage.
+const unlocking = { unlocks: true }
+
 // A cleared stage with these bests on Medium, as recordBests writes them:
 // in byDifficulty and at the top (see StageProgress).
 const medium = (bests: Bests): StageProgress => ({
@@ -361,7 +364,7 @@ describe("recordBests", () => {
 describe("recordClear", () => {
     it("saves the clear, unlocking the next stage", () => {
         const storage = memoryStorage()
-        const next = recordClear(emptyProgress(), storage, 0, run())
+        const next = recordClear(emptyProgress(), storage, 0, run(), unlocking)
         expect(isUnlocked(next, 1)).toBe(true)
         expect(loadProgress(storage)).toEqual(next)
     })
@@ -371,7 +374,7 @@ describe("recordClear", () => {
     it("keeps clears another tab saved since this one loaded", () => {
         const storage = memoryStorage()
         saveProgress(storage, cleared(0, 1))
-        const next = recordClear(emptyProgress(), storage, 0, run())
+        const next = recordClear(emptyProgress(), storage, 0, run(), unlocking)
         expect(clearedFlags(loadProgress(storage)).slice(0, 2)).toEqual([
             true,
             true,
@@ -381,7 +384,7 @@ describe("recordClear", () => {
 
     it("saves the clear's stars and time as the stage's bests", () => {
         const storage = memoryStorage()
-        recordClear(emptyProgress(), storage, 0, run(2, 1800))
+        recordClear(emptyProgress(), storage, 0, run(2, 1800), unlocking)
         expect(loadProgress(storage).stages[0]).toEqual(
             medium({ stars: 2, bestTime: 1800 })
         )
@@ -389,18 +392,30 @@ describe("recordClear", () => {
 
     it("only improves the saved bests", () => {
         const storage = memoryStorage()
-        let p = recordClear(emptyProgress(), storage, 0, run(3, 1800))
-        p = recordClear(p, storage, 0, run(1, 1200))
-        p = recordClear(p, storage, 0, run(2, 3000))
+        let p = recordClear(
+            emptyProgress(),
+            storage,
+            0,
+            run(3, 1800),
+            unlocking
+        )
+        p = recordClear(p, storage, 0, run(1, 1200), unlocking)
+        p = recordClear(p, storage, 0, run(2, 3000), unlocking)
         expect(p.stages[0]).toEqual(medium({ stars: 3, bestTime: 1200 }))
         expect(loadProgress(storage)).toEqual(p)
     })
 
     it("doesn't save when nothing improves", () => {
         const storage = memoryStorage()
-        const p = recordClear(emptyProgress(), storage, 0, run(3, 600))
+        const p = recordClear(
+            emptyProgress(),
+            storage,
+            0,
+            run(3, 600),
+            unlocking
+        )
         storage.setItem.mockClear()
-        recordClear(p, storage, 0, run(2, 900))
+        recordClear(p, storage, 0, run(2, 900), unlocking)
         expect(storage.setItem).not.toHaveBeenCalled()
     })
 
@@ -412,7 +427,7 @@ describe("recordClear", () => {
         // This tab: 3 stars, slow. The other tab saved 2 stars, fast.
         const mine = withStage0({ stars: 3, bestTime: 3000 })
         saveProgress(storage, withStage0({ stars: 2, bestTime: 1000 }))
-        const next = recordClear(mine, storage, 0, run(1, 2000))
+        const next = recordClear(mine, storage, 0, run(1, 2000), unlocking)
         const best = { cleared: true, stars: 3, bestTime: 1000 }
         expect(next.stages[0]).toEqual(best)
         expect(loadProgress(storage).stages[0]).toEqual(best)
@@ -420,10 +435,16 @@ describe("recordClear", () => {
 
     it("still records the clear in memory when storage is unusable", () => {
         expect(
-            isUnlocked(recordClear(emptyProgress(), throwing, 0, run()), 1)
+            isUnlocked(
+                recordClear(emptyProgress(), throwing, 0, run(), unlocking),
+                1
+            )
         ).toBe(true)
         expect(
-            isUnlocked(recordClear(cleared(0), undefined, 1, run()), 2)
+            isUnlocked(
+                recordClear(cleared(0), undefined, 1, run(), unlocking),
+                2
+            )
         ).toBe(true)
     })
 })
@@ -529,16 +550,21 @@ describe("stageSlots", () => {
         ])
     })
 
-    it("shows the bests of cleared stages only", () => {
+    it("shows an open stage's bests, cleared or not, and a locked one's none", () => {
         const p = recordBests(
-            recordBests(cleared(0), 0, run(3, 1234)),
-            1,
-            run(2, 999)
+            recordBests(
+                recordBests(cleared(0), 0, run(3, 1234)),
+                1,
+                run(2, 999)
+            ),
+            2,
+            run(1, 500)
         )
-        // Stage 1 has bests but isn't cleared (e.g. an odd save): none shown.
+        // Stage 2 has bests but isn't cleared, as a stage mode clear leaves
+        // it (KDA-272); stage 3 is locked (e.g. an odd save).
         expect(stageSlots(p, ["A", "B", "C"], "medium").slice(0, 3)).toEqual([
             { kind: "open", name: "A", stars: 3, bestTime: 1234 },
-            { kind: "open", name: "B" },
+            { kind: "open", name: "B", stars: 2, bestTime: 999 },
             { kind: "locked", name: "C" },
         ])
     })

@@ -135,6 +135,8 @@ describe("main's particles and shake", () => {
         pressAndTick("Escape")
         for (let i = 0; i < 3; i++) pressAndTick("ArrowUp")
         pressAndTick("Space")
+        pressAndTick("ArrowDown")
+        pressAndTick("Space")
         pressAndTick("Space")
         pressAndTick("Space")
         pressAndTick("Space")

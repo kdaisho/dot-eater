@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vite-plus/test"
 import { type Audio } from "./audio"
 import { DEFAULT_BINDINGS, rebind } from "./bindings"
 import type { GameEvent } from "./events"
-import { initialScreen, type Screen } from "./flow"
+import { initialScreen, STORY_CARD_SECONDS, type Screen } from "./flow"
 import type { GameState } from "./game"
 import { ANIMAL_IDS } from "./roster"
 import { defaultSettings } from "./settings"
@@ -484,5 +484,97 @@ describe("the controls screen", () => {
         expect(menuSound({ ...controls, settings: rebound }, controls)).toBe(
             "confirm"
         )
+    })
+})
+
+describe("story mode (KDA-271)", () => {
+    const playSelect: ScreenOf<"playSelect"> = {
+        kind: "playSelect",
+        mode: "solo",
+        choice: "story",
+    }
+    const storyMenu: ScreenOf<"storyMenu"> = {
+        kind: "storyMenu",
+        mode: "solo",
+        choice: "continue",
+    }
+    const run = { total: 100, from: "continue" } as const
+    const rating = {
+        ticks: 600,
+        parTime: 60,
+        healthy: true,
+        underPar: true,
+        stars: 3,
+    } as const
+    const cleared = {
+        mode: "solo",
+        level: 0,
+        difficulty: "medium",
+        animals: ["dragon"],
+        game,
+        run,
+        rating,
+    } as const
+    const storyClear: Screen = { kind: "storyClear", ...cleared, next: 1 }
+    const storyEnd: Screen = { kind: "storyEnd", ...cleared }
+
+    it("plays the title tune on the story menus", () => {
+        for (const screen of [playSelect, storyMenu])
+            expect(musicForScreen(screen), screen.kind).toEqual({
+                track: "title",
+                paused: false,
+            })
+    })
+
+    it("plays the stage's tune in a run's game", () => {
+        expect(musicForScreen({ ...playing(1), run } as Screen)).toEqual({
+            track: "stage2",
+            paused: false,
+        })
+    })
+
+    it("leaves the clear card and the ending to the stage clear jingle", () => {
+        expect(musicForScreen(storyClear)).toBeUndefined()
+        expect(musicForScreen(storyEnd)).toBeUndefined()
+    })
+
+    it("blips on the story menus' moves", () => {
+        expect(menuSound(playSelect, { ...playSelect, choice: "stage" })).toBe(
+            "menuMove"
+        )
+        expect(menuSound(storyMenu, { ...storyMenu, choice: "newStory" })).toBe(
+            "menuMove"
+        )
+    })
+
+    it("confirms going forward and goes back one menu up", () => {
+        expect(menuSound(title, playSelect)).toBe("confirm")
+        expect(menuSound(playSelect, storyMenu)).toBe("confirm")
+        expect(menuSound(playSelect, stageSelect)).toBe("confirm")
+        expect(menuSound(playSelect, title)).toBe("back")
+        expect(menuSound(storyMenu, playSelect)).toBe("back")
+        expect(menuSound(stageSelect, playSelect)).toBe("back")
+        const storyDifficulty: Screen = { ...difficultySelect, back: storyMenu }
+        expect(menuSound(storyMenu, storyDifficulty)).toBe("confirm")
+        expect(menuSound(storyDifficulty, storyMenu)).toBe("back")
+    })
+
+    it("confirms the next stage from the clear card, quietly entered", () => {
+        expect(menuSound(storyClear, playing(1))).toBe("confirm")
+        expect(menuSound(ending, storyClear)).toBeUndefined()
+        expect(menuSound(ending, storyEnd)).toBeUndefined()
+    })
+
+    // Regression: the card starting the next stage by itself played the
+    // confirm sound, with nothing pressed.
+    it("is quiet when the card starts the next stage by itself", () => {
+        const waited = (seconds: number): Screen => ({
+            ...(storyClear as ScreenOf<"storyClear">),
+            waited: { seconds },
+        })
+        expect(
+            menuSound(waited(STORY_CARD_SECONDS), playing(1))
+        ).toBeUndefined()
+        expect(menuSound(waited(1), playing(1))).toBe("confirm")
     })
 })

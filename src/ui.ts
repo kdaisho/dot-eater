@@ -69,6 +69,9 @@ export type EndScreenView = {
     // With two players, the dots each one ate, player 1 first. Given with
     // playerScores, each player gets a line of its own with both.
     playerDots?: readonly number[]
+    // In a story run (KDA-271), the run total, shown after the score (the
+    // stage's).
+    runTotal?: number
     // The menu, in order; exactly one item is selected.
     items: readonly MenuItem[]
 }
@@ -338,6 +341,101 @@ export function showGameOver(view: EndScreenView) {
     show({ id: "game-over", title: "💀 Game over", ...endScreen(view) })
 }
 
+// The choice of story or stage mode (KDA-271), headed with the players
+// picked on the title (e.g. "1 player").
+export function showPlaySelect(heading: string, items: readonly MenuItem[]) {
+    show({
+        id: "play-select",
+        title: heading,
+        lines: [
+            `${keyPair("up", "down")} to choose, ${key("confirm")} to pick, Esc to go back`,
+        ],
+        keyHints: true,
+        back: true,
+        items,
+    })
+}
+
+// The story menu: Continue (locked while its stage isn't built yet) and
+// New story.
+export function showStoryMenu(items: readonly MenuItem[]) {
+    show({
+        id: "story-menu",
+        title: "Story",
+        lines: [
+            `${keyPair("up", "down")} to choose, ${key("confirm")} to pick a difficulty, Esc to go back`,
+        ],
+        keyHints: true,
+        back: true,
+        items,
+    })
+}
+
+// What the card between a story run's stages shows (see storyClear in
+// flow.ts).
+export type StoryClearView = {
+    // The difficulty's name (e.g. "Hard"), shown first.
+    difficulty?: string
+    // The stage's score, and the run's total with it.
+    score: number
+    runTotal: number
+    rating: ClearRating
+    // The stage that comes next (e.g. "Stage 3: Ice"); left out when it
+    // isn't built yet, and the card says "To be continued".
+    next?: string
+    // The card's one item: what confirm does.
+    items: readonly MenuItem[]
+}
+
+// A story run's stage is cleared: its score and the run total, its time
+// and stars, and what comes next.
+export function showStoryClear(view: StoryClearView) {
+    const { rating } = view
+    show({
+        id: "story-clear",
+        title: view.next === undefined ? "To be continued…" : "Stage clear!",
+        lines: [
+            ...difficultyLine(view.difficulty),
+            `Score ${view.score}`,
+            `Run total ${view.runTotal}`,
+            `Time ${formatTicks(rating.ticks)}`,
+            ...starList(rating).map(
+                (star) => `${star.earned ? "★" : "☆"} ${star.label}`
+            ),
+            view.next === undefined
+                ? "More stages are coming soon"
+                : `Next: ${view.next}`,
+        ],
+        items: view.items,
+    })
+}
+
+// What the story mode's ending shows.
+export type StoryEndView = {
+    difficulty?: string
+    runTotal: number
+    // The best story score at the difficulty, this run's included; left
+    // out when there is none to show (a 2-player run records nothing).
+    best?: number
+    items: readonly MenuItem[]
+}
+
+// The last stage of a story run is cleared: the run total, the best, and
+// thanks.
+export function showStoryEnd(view: StoryEndView) {
+    show({
+        id: "story-end",
+        title: "🎉 The end",
+        lines: [
+            ...difficultyLine(view.difficulty),
+            `Run total ${view.runTotal}`,
+            ...(view.best === undefined ? [] : [`Best ${view.best}`]),
+            "Thanks for playing!",
+        ],
+        items: view.items,
+    })
+}
+
 // The difficulty, the score, then with two players each one's share: on
 // one line, or a line each with the dots it ate when playerDots are given.
 function endScreen({
@@ -345,6 +443,7 @@ function endScreen({
     score,
     playerScores = [],
     playerDots,
+    runTotal,
     items,
 }: EndScreenView) {
     const shares =
@@ -355,8 +454,14 @@ function endScreen({
                     (s, i) => `${i + 1}P ${s} · ${dotCount(playerDots[i] ?? 0)}`
                 )
               : [playerScores.map((s, i) => `${i + 1}P ${s}`).join(" · ")]
+    const run = runTotal === undefined ? [] : [`Run total ${runTotal}`]
     return {
-        lines: [...difficultyLine(difficulty), `Score ${score}`, ...shares],
+        lines: [
+            ...difficultyLine(difficulty),
+            `Score ${score}`,
+            ...shares,
+            ...run,
+        ],
         items,
     }
 }

@@ -102,7 +102,7 @@ describe("opening the settings", () => {
     })
 
     it("still starts a game from a mode on the title", () => {
-        expect(press(initialScreen(), ["confirm"]).kind).toBe("stageSelect")
+        expect(press(initialScreen(), ["confirm"]).kind).toBe("playSelect")
     })
 
     it("opens from the pause menu's Settings entry", () => {

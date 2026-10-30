@@ -151,9 +151,9 @@ describe("initialScreen", () => {
 })
 
 describe("title", () => {
-    it("goes to stage select on confirm, with the first stage selected", () => {
+    it("goes to the choice of story or stage mode on confirm, on story", () => {
         expect(update(initialScreen(), tickInput(["confirm"]), deps())).toEqual(
-            { kind: "stageSelect", mode: "solo", selected: 0 }
+            { kind: "playSelect", mode: "solo", choice: "story" }
         )
     })
 
@@ -253,10 +253,11 @@ describe("stageSelect", () => {
         )
     })
 
-    it("goes back to the title on pause", () => {
+    it("goes back to the choice of story or stage mode on pause, on stage", () => {
         expect(update(select(0), tickInput(["pause"]), deps())).toEqual({
-            kind: "title",
+            kind: "playSelect",
             mode: "solo",
+            choice: "stage",
         })
     })
 
@@ -886,7 +887,7 @@ describe("no input carry-over", () => {
     it("doesn't confirm twice when a confirm starts a stage", () => {
         // One confirm press moves the title on by exactly one screen.
         const next = update(initialScreen(), tickInput(["confirm"]), deps())
-        expect(next.kind).toBe("stageSelect")
+        expect(next.kind).toBe("playSelect")
     })
 })
 
@@ -912,9 +913,9 @@ describe("selectItem", () => {
         const coop = selectItem(initialScreen(), 1)
         expect(coop).toEqual({ kind: "title", mode: "coop" })
         expect(update(coop, tickInput(["confirm"]), deps())).toEqual({
-            kind: "stageSelect",
+            kind: "playSelect",
             mode: "coop",
-            selected: 0,
+            choice: "story",
         })
     })
 
