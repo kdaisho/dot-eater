@@ -43,18 +43,20 @@ export function soundForEvent(event: GameEvent): SfxId | undefined {
 
 // The effects a tick's events play, each once (two dots eaten on one tick
 // are one blip), in the order they first happened. The game over jingle
-// replaces the catch that lost the game, and a punch that lands is its hit
-// sound only, not a whiff as well.
+// replaces the catch that lost the game. Each punch is one sound: its hit
+// if it landed, else its whiff (a player punches once a tick at most, so
+// one player's hit never silences the other's miss).
 export function eventSounds(events: readonly GameEvent[]): SfxId[] {
+    const landed = new Set(
+        events.flatMap((e) => (e.type === "punchHit" ? [e.player] : []))
+    )
     const ids = new Set<SfxId>()
     for (const event of events) {
+        if (event.type === "punched" && landed.has(event.player)) continue
         const id = soundForEvent(event)
         if (id) ids.add(id)
     }
     if (ids.has(SfxId.gameOver)) ids.delete(SfxId.caught)
-    if (ids.has(SfxId.punchHit) || ids.has(SfxId.punchHitBoss)) {
-        ids.delete(SfxId.punch)
-    }
     return [...ids]
 }
 

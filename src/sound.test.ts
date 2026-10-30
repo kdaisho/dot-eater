@@ -179,6 +179,24 @@ describe("eventSounds", () => {
         ).toEqual(["punchHit.boss"])
     })
 
+    // Regression: any landed punch dropped the whiff for the whole tick,
+    // so player 1's miss was silent when player 2's punch landed.
+    it("plays one player's whiff alongside the other's hit", () => {
+        const punched = (player: number): GameEvent => ({
+            type: "punched",
+            player,
+            at,
+            facing: vec2(1, 0),
+        })
+        expect(
+            eventSounds([
+                punched(0),
+                punched(1),
+                { type: "punchHit", player: 1, at, target: "player" },
+            ])
+        ).toEqual(["punch", "punchHit"])
+    })
+
     it("plays them on the audio engine", () => {
         const audio = { playSfx: vi.fn() }
         playEventSounds(audio, [
