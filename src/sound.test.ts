@@ -122,6 +122,10 @@ describe("soundForEvent", () => {
                 { type: "punchHit", player: 0, at, target: "boss" },
                 "punchHit.boss",
             ],
+            [
+                { type: "punchBlocked", player: 0, at, enemy: 1 },
+                "punch.blocked",
+            ],
             [{ type: "gameWon" }, "stageClear"],
             [{ type: "gameLost" }, "gameOver"],
             [{ type: "playerRespawned", player: 0, at }, undefined],
@@ -241,6 +245,44 @@ describe("eventSounds", () => {
                 { type: "punchHit", player: 1, at, target: "player" },
             ])
         ).toEqual(["punch", "punchHit"])
+    })
+
+    it("plays a blocked punch as its tok, under a landed hit (KDA-288)", () => {
+        const punched = (player: number): GameEvent => ({
+            type: "punched",
+            player,
+            at,
+            facing: vec2(1, 0),
+        })
+        const blocked = (player: number): GameEvent => ({
+            type: "punchBlocked",
+            player,
+            at,
+            enemy: 0,
+        })
+        // A tok over the whiff.
+        expect(eventSounds([punched(0), blocked(0)])).toEqual(["punch.blocked"])
+        // A hit's thwack over the tok, whichever is nearer.
+        expect(
+            eventSounds([
+                punched(0),
+                blocked(0),
+                { type: "punchHit", player: 0, at, target: "enemy", enemy: 1 },
+            ])
+        ).toEqual(["punchHit"])
+        // The boss's thud is a hit too.
+        expect(
+            eventSounds([
+                punched(0),
+                blocked(0),
+                { type: "punchHit", player: 0, at, target: "boss" },
+            ])
+        ).toEqual(["punchHit.boss"])
+        // One player's block doesn't silence the other's whiff.
+        expect(eventSounds([punched(0), blocked(0), punched(1)])).toEqual([
+            "punch.blocked",
+            "punch",
+        ])
     })
 
     it("plays them on the audio engine", () => {

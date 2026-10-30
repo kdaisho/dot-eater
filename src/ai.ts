@@ -20,9 +20,13 @@ export type Random = () => number
 
 // Neighbouring cells the enemy may step into: not a wall, and not where it
 // just came from. In a dead end, turning back is the only way out, so the
-// previous cell is allowed after all. Empty only when boxed in on every side.
+// previous cell is allowed after all, and so it is for an enemy a punch
+// just knocked a full cell back (Character.turnsBack, KDA-288), which came
+// from the punch's side and may now come straight back at the player.
+// Empty only when boxed in on every side.
 export function candidateMoves(cells: Cells, enemy: Character): Vec2[] {
     const open = openNeighbours(cells, enemy.pos)
+    if (enemy.turnsBack) return open
     const forward = open.filter((v) => !samePos(v, enemy.lastPos))
     return forward.length > 0 ? forward : open
 }
@@ -172,6 +176,9 @@ export function enemyMove(
 
     enemy.lastPos = vec2(enemy.pos.x, enemy.pos.y)
     enemy.pos = next
+    // A move of its own: a punch's turning back is used up (see
+    // candidateMoves).
+    enemy.turnsBack = false
     return false
 }
 

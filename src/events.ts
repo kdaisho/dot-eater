@@ -82,7 +82,8 @@ export type GameEvent =
     | { type: "playerStunned"; player: number; by: number; at: Vec2 }
     // A player punched (see punch.ts), whether it hit anything or not. `at`
     // is where the player is drawn (not a whole cell) and `facing` the unit
-    // step it punched along. Its hits follow, one punchHit each.
+    // step it punched along. Its hits follow, one punchHit (or
+    // punchBlocked) each.
     | { type: "punched"; player: number; at: Vec2; facing: Vec2 }
     // A player's punch hit an enemy (`enemy`, its index in
     // GameState.enemies), the boss or the other player (versus), at `at`:
@@ -95,6 +96,10 @@ export type GameEvent =
           target: "enemy" | "boss" | "player"
           enemy?: number
       }
+    // Enemy `enemy` (its index in GameState.enemies) blocked a player's
+    // punch with its guard (KDA-288, see guard.ts), in place of a
+    // punchHit: it wasn't moved. `at` is where it was drawn.
+    | { type: "punchBlocked"; player: number; at: Vec2; enemy: number }
     // The stage is cleared: the game is won. In versus this is the end of
     // a round; whether it also ends the match is up to flow.ts (the next
     // screen is roundResult or matchResult).

@@ -586,7 +586,12 @@ export function startLevel(
         level,
         difficulty,
         animals: picks,
-        game: createGameState(levels[level][difficulty], picks, mode),
+        game: createGameState(
+            levels[level][difficulty],
+            picks,
+            mode,
+            difficulty
+        ),
         ...(mode === "versus" ? { match } : {}),
         ...(run ? { run } : {}),
     }

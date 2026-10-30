@@ -7,7 +7,7 @@ import {
     RESPAWN_DELAY,
 } from "./constants"
 import { bossDamage, damageBoss, inFootprint, tickBoss } from "./boss"
-import type { Character } from "./character"
+import { endKnock, freshFromPunches, type Character } from "./character"
 import { emit } from "./events"
 import type { ParticleLook } from "./particles"
 import type { GameState, Player } from "./game"
@@ -555,8 +555,9 @@ export function addStatus(
 // Take `enemy` out of play: DEFEAT_POINTS for `by` (the player whose breath
 // did it, player 1 unless given), then back at its spawn after
 // RESPAWN_DELAY (see tickEffects). It waits at its spawn meanwhile, so the
-// blink before it is back is drawn there. Statuses are dropped and a
-// patroller will start its route again. Defeating an enemy already out of
+// blink before it is back is drawn there. Statuses are dropped, a
+// patroller will start its route again, and the punches it took and its
+// guard roll are forgotten (see freshFromPunches). Defeating an enemy already out of
 // play does nothing.
 //
 // A Splitter (see splitter.ts) scores the same, but a whole one splits into
@@ -590,6 +591,8 @@ export function defeatEnemy(
     enemy.lastPos = vec2(spawn.x, spawn.y)
     enemy.moveProgress = 0
     enemy.routeIndex = 0
+    // It comes back fresh from the punch: no decay, and a new guard roll.
+    freshFromPunches(enemy)
     if (isSplitterHalf(enemy)) halfDefeated(state, i)
 }
 
@@ -654,6 +657,7 @@ export function pushEnemy(
     enemy.lastPos = vec2(start.x, start.y)
     enemy.pos = vec2(to.x, to.y)
     enemy.moveProgress = 0
+    endKnock(enemy)
     return moved
 }
 
@@ -817,6 +821,7 @@ function regrowWall(state: GameState, pos: Vec2) {
         if (!back) continue
         c.pos = vec2(back.x, back.y)
         c.lastPos = vec2(back.x, back.y)
+        endKnock(c)
     }
 }
 

@@ -5,6 +5,7 @@ import type { Jabs } from "./jab"
 import type { Particles } from "./particles"
 import { shakeEnabled, type Settings } from "./settings"
 import { SHAKES, type Shake } from "./shake"
+import type { Shields } from "./shield"
 import { vec2, type Vec2 } from "./vec2"
 
 // Particles and screen shake for what happened in a tick (KDA-213): which
@@ -12,18 +13,20 @@ import { vec2, type Vec2 } from "./vec2"
 // from the particle system and shake it is handed; main.ts calls it with
 // each tick's events. Visual only: the game never reads any of it.
 
-// What the effects go to: the particle system, the shake and the players'
-// jab looks (or test doubles of them). Without `jabs`, punches show none.
+// What the effects go to: the particle system, the shake, the players' jab
+// looks and the enemies' block looks (or test doubles of them). Without
+// `jabs`, punches show none; without `shields`, blocks show none.
 export type EffectTargets = {
     particles: Pick<Particles, "burst" | "emit">
     shake: Pick<Shake, "add">
     jabs?: Pick<Jabs, "add">
+    shields?: Pick<Shields, "add">
 }
 
 // The effects of every event of a tick, in order. `state` is the game
 // after the tick (a breath's cells are worked out on it). A punch shakes
 // once however many things it hits (a player punches once a tick at most),
-// with a burst on each.
+// with a burst on each; a block (KDA-288) only shows its shield.
 export function effectsForEvents(
     events: readonly GameEvent[],
     state: GameState,
@@ -49,7 +52,7 @@ const NO_SHAKE: EffectTargets["shake"] = { add() {} }
 export function effectsForEvent(
     event: GameEvent,
     state: GameState,
-    { particles, shake, jabs }: EffectTargets
+    { particles, shake, jabs, shields }: EffectTargets
 ) {
     switch (event.type) {
         case "dotEaten":
@@ -107,6 +110,10 @@ export function effectsForEvent(
         case "punchHit":
             particles.burst("punch", event.at)
             shake.add(SHAKES.punch)
+            return
+        case "punchBlocked":
+            // A 🛡 over the enemy, and no burst or shake: nothing landed.
+            shields?.add(event.enemy)
             return
         case "playerRespawned":
         case "gameWon":

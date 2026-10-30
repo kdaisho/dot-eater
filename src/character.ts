@@ -46,6 +46,27 @@ export type Character = {
     // Splitters only: which of the Splitter's two enemy slots this is, and
     // whether it is whole or a half (see splitter.ts).
     part?: SplitterPart
+    // The punch (KDA-288; see punch.ts). Enemies only: a player's stay at
+    // their starting values.
+    //
+    // Landed punches counting towards the knockback's decay (see
+    // knockLevel), from 0 (a full cell) up to the last of KNOCK_STEPS, and
+    // the seconds since the latest of them. 0 and 0 to start with, and
+    // again once it is defeated.
+    knocks: number
+    sinceKnock: number
+    // While a short knock (less than a cell) glides it out, the move
+    // progress at which it turns round and glides back into the cell it
+    // was knocked from (see turnKnock); null otherwise.
+    knockTurn: number | null
+    // Whether its next move may turn back into the cell it came from, the
+    // no-reverse rule aside (see candidateMoves in ai.ts): set by a full
+    // knock, so it comes straight back at the player, until it next makes
+    // a move of its own.
+    turnsBack: boolean
+    // Its guard skill, the chance it blocks a quick punch (see guard.ts):
+    // 0 for none, null until it is rolled, as it comes into play.
+    guard: number | null
 }
 
 export function createCharacter(
@@ -72,7 +93,28 @@ export function createCharacter(
         statuses: [],
         respawnIn: 0,
         heldFor: 0,
+        knocks: 0,
+        sinceKnock: 0,
+        knockTurn: null,
+        turnsBack: false,
+        guard: null,
     }
+}
+
+// Stop any knock `character` is in the middle of (see punch.ts), for when
+// something else moves it: it no longer turns round or turns back.
+export function endKnock(character: Character) {
+    character.knockTurn = null
+    character.turnsBack = false
+}
+
+// Forget the punches `character` has taken (see punch.ts) and its guard
+// roll, as when it is defeated: it comes back fresh and rolls again.
+export function freshFromPunches(character: Character) {
+    endKnock(character)
+    character.knocks = 0
+    character.sinceKnock = 0
+    character.guard = null
 }
 
 function defaultSpeed(id: CharacterId, ai: AiType): number {
