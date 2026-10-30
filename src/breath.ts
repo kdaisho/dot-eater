@@ -784,22 +784,33 @@ export function tickEffects(state: GameState, dt: number) {
 // (direction order on ties). They arrive there at rest, not gliding. Cells
 // under a boss in play don't count as open: it treats an opened wall as a
 // wall, so it often waits right where they came from, and landing there
-// would be a catch they did nothing to earn.
+// would be a catch they did nothing to earn. When players bump
+// (GameState.playersBump), a player isn't put on another player in play's
+// cell either, so the two never stack.
 function regrowWall(state: GameState, pos: Vec2) {
     state.cells[pos.y][pos.x] = Cell.wall
     const boss = state.boss && !state.boss.defeated ? state.boss : null
     const open = (p: Vec2) =>
         state.cells[p.y][p.x] !== Cell.wall &&
         !(boss && inFootprint(boss.pos, p))
+    // Another player in play on `p`, which `c` mustn't be put on.
+    const bumped = (c: Character, p: Vec2) =>
+        state.playersBump &&
+        state.players.some(
+            (o) => o.character !== c && !o.out && samePos(o.character.pos, p)
+        )
     // Players out of play too, so none is left inside the wall (enemies
     // may go after where an out player stands).
     const players = state.players.map((p) => p.character)
     for (const c of [...players, ...state.enemies]) {
         if (!samePos(c.pos, pos)) continue
+        const free = players.includes(c)
+            ? (p: Vec2) => open(p) && !bumped(c, p)
+            : open
         const back =
-            !samePos(c.lastPos, pos) && open(c.lastPos)
+            !samePos(c.lastPos, pos) && free(c.lastPos)
                 ? c.lastPos
-                : nearestOpen(state.cells, pos, open)
+                : nearestOpen(state.cells, pos, free)
         if (!back) continue
         c.pos = vec2(back.x, back.y)
         c.lastPos = vec2(back.x, back.y)

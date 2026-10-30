@@ -32,6 +32,7 @@ describe("SETTINGS_ROWS", () => {
             ["Mute", "toggle"],
             ["Screen shake", "toggle"],
             ["Facing guide", "choice"],
+            ["Players", "choice"],
             ["Show D-pad", "toggle"],
             ["Controls", "action"],
             ["Back", "action"],
@@ -130,6 +131,29 @@ describe("changeRow", () => {
             expect(settingsRows(context({ from })).map((r) => r.id)).toContain(
                 "facingGuide"
             )
+        }
+    })
+
+    it("switches Players between pass through (default) and bump", () => {
+        const players = row("playersBump")
+        const s = defaultSettings()
+        expect(rowValue(players, s, context())).toBe("◀ Pass through ▶")
+        const bump = changeRow(players, s, context(), 1)
+        expect(bump.playersBump).toBe(true)
+        expect(rowValue(players, bump, context())).toBe("◀ Bump ▶")
+        expect(changeRow(players, s, context(), -1).playersBump).toBe(true)
+        expect(changeRow(players, bump, context(), 1).playersBump).toBe(false)
+        expect(changeRow(players, bump, context(), -1).playersBump).toBe(false)
+    })
+
+    it("shows Players from the title and from pause", () => {
+        for (const from of ["title", "pause"] as const) {
+            for (const touch of [false, true]) {
+                const ids = settingsRows(context({ from, touch })).map(
+                    (r) => r.id
+                )
+                expect(ids).toContain("playersBump")
+            }
         }
     })
 

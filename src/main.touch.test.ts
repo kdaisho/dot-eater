@@ -155,7 +155,7 @@ describe("main on a touch screen", () => {
         expect(document.body.dataset.playing).toBe("on")
     })
 
-    it("taps through the settings from pause: a slider, Show D-pad, Back", () => {
+    it("taps through the settings from pause: a slider, Players, Show D-pad, Back", () => {
         const button = el("#touch-controls [data-action=pause]")
         pointer(button, "pointerdown", 0, 0)
         pointer(button, "pointerup", 0, 0)
@@ -164,7 +164,7 @@ describe("main on a touch screen", () => {
         expect(screen()).toBe("settings")
         const label = (i: number) =>
             el(`#overlay li[data-index='${i}']`).textContent
-        expect(label(5)).toBe("Show D-pad Off")
+        expect(label(6)).toBe("Show D-pad Off")
         // Music volume's ◀: one step down, the cursor on it.
         tap("#overlay li[data-index='0'] [data-step='-1']")
         expect(label(0)).toBe("Music volume ◀ 6 ▶")
@@ -181,15 +181,21 @@ describe("main on a touch screen", () => {
         expect(localStorage.getItem(SETTINGS_KEY)).toContain(
             '"facingGuide":"aim"'
         )
+        // Players' ▶ steps it to Bump, which is saved.
+        tap("#overlay li[data-index='5'] [data-step='1']")
+        expect(label(5)).toBe("Players ◀ Bump ▶")
+        expect(localStorage.getItem(SETTINGS_KEY)).toContain(
+            '"playersBump":true'
+        )
         // Show D-pad: shows at once and is saved.
-        tap("#overlay li[data-index='5']")
-        expect(label(5)).toBe("Show D-pad On")
+        tap("#overlay li[data-index='6']")
+        expect(label(6)).toBe("Show D-pad On")
         expect(document.body.dataset.dpad).toBe("on")
         expect(localStorage.getItem(SETTINGS_KEY)).toContain('"showDpad":true')
-        tap("#overlay li[data-index='5']")
+        tap("#overlay li[data-index='6']")
         expect(document.body.dataset.dpad).toBe("off")
         // Back returns to the pause menu.
-        tap("#overlay li[data-index='6']")
+        tap("#overlay li[data-index='7']")
         expect(screen()).toBe("pause")
         tap("#overlay li[data-index='0']")
         expect(screen()).toBe("playing")

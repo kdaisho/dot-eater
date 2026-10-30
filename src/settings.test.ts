@@ -57,6 +57,7 @@ describe("defaultSettings", () => {
             screenShake: null,
             showDpad: false,
             facingGuide: "arrow",
+            playersBump: false,
         })
     })
 })
@@ -86,6 +87,7 @@ describe("parseSettings", () => {
             screenShake: false,
             showDpad: true,
             facingGuide: "aim",
+            playersBump: true,
         }
         expect(parseSettings(JSON.stringify(settings))).toEqual(settings)
     })
@@ -110,6 +112,9 @@ describe("parseSettings", () => {
         ["facingGuide", "arrows"],
         ["facingGuide", 1],
         ["facingGuide", null],
+        ["playersBump", "bump"],
+        ["playersBump", 1],
+        ["playersBump", null],
     ])("drops an invalid %s (%j) alone", (field, value) => {
         const parsed = parseSettings(saved({ [field]: value, muted: true }))
         expect(parsed).toEqual({ ...defaultSettings(), muted: true })
@@ -124,6 +129,15 @@ describe("parseSettings", () => {
         )
         expect(parseSettings(saved({ screenShake: null })).screenShake).toBe(
             null
+        )
+    })
+
+    it("reads a save from before the Players setting as pass through", () => {
+        const older = saved({ musicVolume: 3 })
+        expect(JSON.parse(older)).not.toHaveProperty("playersBump")
+        expect(parseSettings(older).playersBump).toBe(false)
+        expect(parseSettings(saved({ playersBump: true })).playersBump).toBe(
+            true
         )
     })
 
