@@ -14,8 +14,15 @@ import type {
 // went, by its stronger axis, as an arrow key is held: the direction is
 // pressed when it changes, so a turn made just before a junction is
 // buffered like a key tap, and released when the finger lifts, so the
-// player stops at the next cell like letting go of a key. Only the newest
-// direction is held: there is no fallback to the one before.
+// player stops at the next cell like letting go of a key.
+//
+// While the finger stays down, the direction held before the latest turn
+// stays held behind it as a fallback, the way a keyboard player holds the
+// old arrow while pressing the new one: a turn dragged before a junction
+// waits for it while the player carries on, rather than stopping the player
+// against the wall. Only that one direction is kept, and a reversal (back
+// the way it was going) drops it, so the player never bounces back. The
+// lift lets go of both.
 //
 // Dragging another way re-steers without lifting. The distance is measured
 // from an anchor that keeps up with the finger while it moves on the way
@@ -27,7 +34,7 @@ import type {
 // The newest finger on the board steers: another finger touching down
 // takes over (the first one's direction is let go of). A direction pressed
 // by any other control (a key, a pad, the D-pad) drops the drag's
-// direction (PlayerInput.latch), so the newest input wins; the finger then
+// directions (PlayerInput.latch), so the newest input wins; the finger then
 // has to drag SWIPE_DISTANCE again to steer. It has no DOM access beyond
 // the injected event target, so tests drive it with plain events.
 
@@ -64,8 +71,17 @@ type Drag = {
     // Where the finger last was.
     x: number
     y: number
-    // The direction it holds, if any.
+    // The direction it holds, if any, and the one it held before the latest
+    // turn, still held behind it as a fallback, if any.
     direction?: DirectionAction | undefined
+    fallback?: DirectionAction | undefined
+}
+
+const OPPOSITE: Record<DirectionAction, DirectionAction> = {
+    up: "down",
+    down: "up",
+    left: "right",
+    right: "left",
 }
 
 export type TouchOptions = {
@@ -91,7 +107,7 @@ export class TouchSource implements InputSource {
     attach(input: InputState): void {
         this.detach()
         this.input = input
-        // Newer input from another source drops the drag's direction (see
+        // Newer input from another source drops the drag's directions (see
         // latch); the finger has to drag again to steer.
         input.players[0]?.latch(DRAG, () => this.release())
         this.target.addEventListener("pointerdown", this.onDown)
@@ -111,13 +127,17 @@ export class TouchSource implements InputSource {
         this.input = undefined
     }
 
-    // Let go of the dragged direction, so the player stops. A finger still
-    // down steers again once it drags SWIPE_DISTANCE from where it is now.
+    // Let go of the dragged direction and its fallback, so the player
+    // stops. A finger still down steers again once it drags SWIPE_DISTANCE
+    // from where it is now.
     release(): void {
         const drag = this.drag
         if (!drag) return
-        if (drag.direction) this.player()?.release(drag.direction, DRAG)
+        for (const held of [drag.direction, drag.fallback]) {
+            if (held) this.player()?.release(held, DRAG)
+        }
         drag.direction = undefined
+        drag.fallback = undefined
         drag.anchorX = drag.x
         drag.anchorY = drag.y
     }
@@ -178,9 +198,23 @@ export class TouchSource implements InputSource {
         if (!direction) return
         drag.anchorX = drag.x
         drag.anchorY = drag.y
+        this.turn(drag, direction)
+    }
+
+    // Steer `drag` the new way `direction`, keeping the way it held as the
+    // fallback unless that is a reversal (see the top of the file).
+    private turn(drag: Drag, direction: DirectionAction) {
         const player = this.player()
-        if (drag.direction) player?.release(drag.direction, DRAG)
+        const previous = drag.direction
+        const fallback =
+            previous && previous !== OPPOSITE[direction] ? previous : undefined
+        // Let go of the rest, the new direction included, so pressing it
+        // is a fresh press edge (it may have been the old fallback).
+        for (const held of [drag.fallback, previous]) {
+            if (held && held !== fallback) player?.release(held, DRAG)
+        }
         drag.direction = direction
+        drag.fallback = fallback
         player?.press(direction, DRAG)
     }
 

@@ -149,16 +149,16 @@ describe("TouchSource", () => {
         move(200, -SWIPE_DISTANCE + 1)
         expect(held()).toEqual(["right"])
         // SWIPE_DISTANCE up from (200, 0), however long the drag right
-        // was: up alone is held, freshly pressed.
+        // was: up is held, freshly pressed, with right behind it.
         move(200, -SWIPE_DISTANCE)
         expect(p1().wasPressed("up")).toBe(true)
-        expect(p1().heldSteps()).toEqual([vec2(0, -1)])
+        expect(p1().heldSteps()).toEqual([vec2(0, -1), vec2(1, 0)])
         // Back the way it came: SWIPE_DISTANCE down from where it last
         // went up.
         move(200, -60)
         input.endTick()
         move(200, -60 + SWIPE_DISTANCE - 1)
-        expect(held()).toEqual(["up"])
+        expect(held()).toEqual(["up", "right"])
         move(200, -60 + SWIPE_DISTANCE)
         expect(p1().wasPressed("down")).toBe(true)
         expect(p1().heldSteps()).toEqual([vec2(0, 1)])
@@ -174,7 +174,46 @@ describe("TouchSource", () => {
         move(70, 30)
         expect(held()).toEqual(["right"])
         move(70, 15 + SWIPE_DISTANCE)
-        expect(held()).toEqual(["down"])
+        expect(p1().heldSteps()[0]).toEqual(vec2(0, 1))
+    })
+
+    describe("the fallback", () => {
+        it("keeps the direction held before the latest turn behind it, and only that one", () => {
+            down(0, 0)
+            move(40, 0)
+            move(40, -40)
+            expect(p1().heldSteps()).toEqual([vec2(0, -1), vec2(1, 0)])
+            // Another turn: up stays behind left, right goes.
+            move(0, -40)
+            expect(p1().heldSteps()).toEqual([vec2(-1, 0), vec2(0, -1)])
+        })
+
+        it("presses the fallback afresh when the finger turns back to it", () => {
+            down(0, 0)
+            move(40, 0)
+            move(40, -40)
+            input.endTick()
+            move(80, -40)
+            expect(p1().wasPressed("right")).toBe(true)
+            expect(p1().heldSteps()).toEqual([vec2(1, 0), vec2(0, -1)])
+        })
+
+        it("is dropped by a reversal", () => {
+            down(0, 0)
+            move(40, 0)
+            move(40, -40)
+            // Down, back the way it was going: up and right both go.
+            move(40, 0)
+            expect(p1().heldSteps()).toEqual([vec2(0, 1)])
+        })
+
+        it("is let go of on the lift, with the direction", () => {
+            down(0, 0)
+            move(40, 0)
+            move(40, -40)
+            up(40, -40)
+            expect(held()).toEqual([])
+        })
     })
 
     it("counts a flick whose movement only shows on the lift as a tap of that way", () => {
@@ -269,9 +308,11 @@ describe("TouchSource", () => {
         const key = (type: string, code: string) =>
             keys.dispatchEvent(Object.assign(new Event(type), { code }))
 
-        it("lets a newer key press win over the drag, and stop on release", () => {
+        it("lets a newer key press win over the drag and its fallback, and stop on release", () => {
             down(0, 0)
-            move(0, -40)
+            move(40, 0)
+            move(40, -40)
+            expect(held()).toEqual(["up", "right"])
             input.endTick()
             key("keydown", "ArrowLeft")
             expect(p1().pressedStep()).toEqual(vec2(-1, 0))
@@ -281,10 +322,11 @@ describe("TouchSource", () => {
             // player stops.
             expect(held()).toEqual([])
             // Dragging on the same way a little doesn't take back over...
-            move(0, -50)
+            move(40, -50)
             expect(held()).toEqual([])
-            // ...a whole SWIPE_DISTANCE does: the newest input wins again.
-            move(0, -40 - SWIPE_DISTANCE)
+            // ...a whole SWIPE_DISTANCE does: the newest input wins again,
+            // with no fallback left over.
+            move(40, -40 - SWIPE_DISTANCE)
             expect(held()).toEqual(["up"])
         })
 
@@ -380,6 +422,34 @@ describe("TouchSource", () => {
             expect(at(state)).toEqual(vec2(2, 1))
             run(state, 1)
             expect(at(state)).toEqual(vec2(2, 0))
+        })
+
+        it("keeps going on an early turn until its junction, then takes it", () => {
+            const state = makeState(junction, { x: 0, y: 1 })
+            down(0, 0)
+            move(40, 0)
+            run(state, ticksPerCell)
+            expect(at(state)).toEqual(vec2(1, 1))
+            // Up, a cell before the junction: north of (1, 1) is a wall, so
+            // the player carries on right on the fallback...
+            move(40, -40)
+            run(state, ticksPerCell)
+            expect(at(state)).toEqual(vec2(2, 1))
+            // ...and turns up at (2, 1).
+            run(state, ticksPerCell)
+            expect(at(state)).toEqual(vec2(2, 0))
+        })
+
+        it("stops on the lift even with a fallback held", () => {
+            const state = makeState(junction, { x: 0, y: 1 })
+            down(0, 0)
+            move(40, 0)
+            run(state, ticksPerCell)
+            move(40, -40)
+            up(40, -40)
+            // The glide into (1, 1) finishes; neither up nor right moves it.
+            run(state, ticksPerCell * 3)
+            expect(at(state)).toEqual(vec2(1, 1))
         })
     })
 })
