@@ -21,10 +21,12 @@ export function deadEnds(cells: Cells): string[] {
     return found
 }
 
-// Steps between open cells that are the only way between two parts of the
-// maze (bridges), as "(x, y)-(x, y)": with none, every passage has another
-// way round, so whatever blocks one can be gone round. Wrap tunnels count.
-export function bridges(cells: Cells): string[] {
+// Open cells that are the only link between two parts of the maze, as
+// "(x, y)": with this one cell blocked (an enemy standing on it), the rest
+// of the open cells no longer all reach each other. With none, whatever
+// stands in the way can always be gone round. Wrap tunnels count. A dead
+// end's cell isn't one (nothing lies past it); see deadEnds for those.
+export function chokepoints(cells: Cells): string[] {
     const open: Vec2[] = []
     cells.forEach((row, y) =>
         row.forEach((cell, x) => {
@@ -32,31 +34,26 @@ export function bridges(cells: Cells): string[] {
         })
     )
     const key = (p: Vec2) => `${p.x},${p.y}`
-    // How many cells `a` reaches without taking the step `a`-`b`.
-    const reached = (a: Vec2, b: Vec2): number => {
-        const seen = new Set([key(a)])
-        const queue = [a]
+    // How many open cells `start` reaches without going through `blocked`.
+    const reached = (start: Vec2, blocked: Vec2): number => {
+        const seen = new Set([key(blocked), key(start)])
+        const queue = [start]
         for (let head = 0; head < queue.length; head++) {
-            const cur = queue[head]
-            for (const next of openNeighbours(cells, cur)) {
+            for (const next of openNeighbours(cells, queue[head])) {
                 const k = key(next)
-                const skipped =
-                    (key(cur) === key(a) && k === key(b)) ||
-                    (key(cur) === key(b) && k === key(a))
-                if (skipped || seen.has(k)) continue
+                if (seen.has(k)) continue
                 seen.add(k)
                 queue.push(next)
             }
         }
-        return seen.size
+        return seen.size - 1
     }
     const found: string[] = []
-    for (const a of open) {
-        for (const b of openNeighbours(cells, a)) {
-            if (key(b) <= key(a)) continue
-            if (reached(a, b) < open.length) {
-                found.push(`(${a.x}, ${a.y})-(${b.x}, ${b.y})`)
-            }
+    for (const cell of open) {
+        const [start] = openNeighbours(cells, cell)
+        if (start === undefined) continue
+        if (reached(start, cell) < open.length - 1) {
+            found.push(`(${cell.x}, ${cell.y})`)
         }
     }
     return found

@@ -70,7 +70,7 @@ describe("main with the D-pad on", () => {
         const map = levels[0]
         const cols = map.cells[0].length
         const rows = map.cells.length
-        const room = controlsSpace(800, 700, true)
+        const room = controlsSpace(800, 700, "dpad")
         expect(room.width).toBeGreaterThan(0)
         const fitted = computeLayout(800 - room.width, 700, cols, rows)
         const whole = computeLayout(800, 700, cols, rows)

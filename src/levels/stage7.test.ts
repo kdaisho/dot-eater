@@ -9,7 +9,7 @@ import {
 import { parseLevel, type Cells } from "../level"
 import { distanceMap } from "../path"
 import { EACH_MAP } from "../test/helpers"
-import { bridges, deadEnds } from "../test/maze"
+import { chokepoints, deadEnds } from "../test/maze"
 import { vec2, type Vec2 } from "../vec2"
 import { stages } from "./index"
 import { stage7 } from "./stage7"
@@ -119,9 +119,9 @@ describe.each(EACH_MAP)("stage 7 (%s)", (difficulty) => {
         expect(thin / inner).toBeGreaterThanOrEqual(0.75)
     })
 
-    it("has no dead ends and a way round every passage", () => {
+    it("has no dead ends and a way round every cell", () => {
         expect(deadEnds(cells)).toEqual([])
-        expect(bridges(cells)).toEqual([])
+        expect(chokepoints(cells)).toEqual([])
     })
 
     // One guard walks the whole corridor; the others have long beats
