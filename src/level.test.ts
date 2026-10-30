@@ -828,11 +828,53 @@ describe("parseLevel rules", () => {
 
     it("rejects unknown rules and fog settings", () => {
         expect(problemsOf(withRules({ fogg: { radius: 3 } }))).toEqual([
-            'unknown rule "fogg" (known rules: fog)',
+            'unknown rule "fogg" (known rules: fog, regrowDots)',
         ])
         expect(problemsOf(withRules({ fog: { radius: 3, soft: 1 } }))).toEqual([
             'unknown rules.fog setting "soft"',
         ])
+    })
+
+    describe("regrowDots", () => {
+        it("keeps a valid rule, as a copy", () => {
+            const data = withRules({ regrowDots: { seconds: 10 } })
+            const level = parseFlat(data)
+            expect(level.rules).toEqual({ regrowDots: { seconds: 10 } })
+            expect(level.rules.regrowDots).not.toBe(
+                (data.rules as { regrowDots: unknown }).regrowDots
+            )
+            expect(
+                parseFlat(withRules({ regrowDots: { seconds: 0.5 } })).rules
+            ).toEqual({ regrowDots: { seconds: 0.5 } })
+        })
+
+        it("keeps it alongside fog", () => {
+            const rules = { fog: { radius: 3 }, regrowDots: { seconds: 2.5 } }
+            expect(parseFlat(withRules(rules)).rules).toEqual(rules)
+        })
+
+        it("rejects seconds that aren't positive whole tenths", () => {
+            for (const seconds of [0, -1, 0.05, 10.25, NaN, Infinity, "10"]) {
+                expect(
+                    problemsOf(withRules({ regrowDots: { seconds } })),
+                    String(seconds)
+                ).toEqual([
+                    `rules.regrowDots.seconds must be a positive number of seconds in whole tenths, got ${String(seconds)}`,
+                ])
+            }
+            expect(problemsOf(withRules({ regrowDots: {} }))).toEqual([
+                "rules.regrowDots.seconds must be a positive number of seconds in whole tenths, got undefined",
+            ])
+        })
+
+        it("rejects unknown settings, and a rule that isn't an object", () => {
+            expect(
+                problemsOf(withRules({ regrowDots: { seconds: 10, delay: 1 } }))
+            ).toEqual(['unknown rules.regrowDots setting "delay"'])
+            expect(problemsOf(withRules({ regrowDots: 10 }))).toEqual([
+                "rules.regrowDots must be an object, got 10",
+            ])
+        })
     })
 
     it("rejects rules or fog that aren't objects", () => {
@@ -855,11 +897,26 @@ describe("parseLevel with a boss", () => {
         parTime: 60,
         map: ["#######", "#P....#", "#..B .#", "#.....#", "#E....#", "#######"],
         enemies: [{ ai: "chase" }],
+        rules: { regrowDots: { seconds: 10 } },
     }
     // `lair` with its map rows replaced by `map`.
     const withMap = (map: readonly string[]): FlatLevelData => ({
         ...lair,
         map,
+    })
+
+    // Regression: with the energy refill gone (KDA-267), a boss level
+    // without dots coming back could run out of them with the boss alive.
+    it("needs rules.regrowDots, so it can always be won", () => {
+        const needs =
+            "a boss level needs rules.regrowDots, so the dots (its ammunition) come back"
+        const { rules: _, ...bare } = lair
+        expect(problemsOf(bare)).toEqual([needs])
+        expect(problemsOf({ ...lair, rules: { fog: { radius: 3 } } })).toEqual([
+            needs,
+        ])
+        // A level without a boss doesn't need it.
+        expect(problemsOf(valid)).toEqual([])
     })
     // Boss settings come from JSON-like data, so tests pass shapes the type
     // forbids.
@@ -1380,6 +1437,7 @@ describe("parseStage", () => {
                 ],
                 enemies: [],
             }),
+            rules: { regrowDots: { seconds: 10 } },
         }
         expect(problemsWith(lair, parseStage)).toEqual([
             `the boss at (2, 2) is too near the "P" at (3, 4): 1.00 cells, less than ${SPAWN_GAP}`,

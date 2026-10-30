@@ -226,6 +226,7 @@ describe("createBossBreath", () => {
             map: ["#######", "#P.B..#", "#.....#", "#######"],
             enemies: [],
             boss: { breath: { every: 3, damage: 60 } },
+            rules: { regrowDots: { seconds: 10 } },
         })
         expect(createGameState(level).boss!.breath).toMatchObject({
             every: 3 * TICK_RATE,

@@ -130,6 +130,7 @@ describe("createGameState", () => {
         map: ["#######", "#P.B..#", "#.....#", "#######"],
         enemies: [],
         boss: { speed: 2 },
+        rules: { regrowDots: { seconds: 10 } },
     })
 
     it("builds the level's boss, waiting out the grace period", () => {
