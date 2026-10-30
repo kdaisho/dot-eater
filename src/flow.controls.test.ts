@@ -14,10 +14,9 @@ import {
 } from "./flow"
 import type { MoveInput } from "./game"
 import type { Action } from "./input"
-import { parseLevel } from "./level"
 import { emptyProgress } from "./progress"
 import { bindingsOf, defaultSettings, type Settings } from "./settings"
-import { fixedRandom } from "./test/helpers"
+import { fixedRandom, parseFlat, sameAtEvery } from "./test/helpers"
 import { vec2 } from "./vec2"
 
 // The controls screen (KDA-215): opened from the settings' Controls row,
@@ -25,13 +24,13 @@ import { vec2 } from "./vec2"
 // reset and back.
 
 const levels = [
-    parseLevel({
+    parseFlat({
         name: "corridor",
         parTime: 60,
         map: ["######", "#PQ..#", "######"],
         enemies: [],
     }),
-]
+].map(sameAtEvery)
 
 // One tick's input: player 1's presses, and what main captured.
 function input(pressed: readonly Action[] = [], captured?: Capture): TickInput {
@@ -114,6 +113,7 @@ describe("opening the controls screen", () => {
                 kind: "paused",
                 mode: "solo",
                 level: 0,
+                difficulty: "medium",
                 animals: ["dragon"],
                 game: {} as never,
             },

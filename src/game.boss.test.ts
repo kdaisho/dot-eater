@@ -24,7 +24,7 @@ import {
     type GameState,
     type MoveInput,
 } from "./game"
-import { parseLevel } from "./level"
+import { parseFlat } from "./test/helpers"
 import { ANIMAL_IDS } from "./roster"
 import {
     drawn,
@@ -123,12 +123,13 @@ function gap(state: GameState): number {
 }
 
 describe("createGameState", () => {
-    const lair = parseLevel({
+    const lair = parseFlat({
         name: "lair",
         parTime: 60,
         map: ["#######", "#P.B..#", "#.....#", "#######"],
         enemies: [],
         boss: { speed: 2 },
+        rules: { regrowDots: { seconds: 10 } },
     })
 
     it("builds the level's boss, waiting out the grace period", () => {

@@ -1,4 +1,4 @@
-import type { LevelData } from "../level"
+import { sameForBoth, type LevelData } from "../level"
 
 // Boss lair: a big 2x2 boss (🐙, see boss.ts) roams a walled arena in the
 // middle, between two rows of pillars, along lanes at least 2 cells wide.
@@ -16,25 +16,28 @@ import type { LevelData } from "../level"
 // walls.
 export const stage5: LevelData = {
     name: "Boss lair",
-    parTime: 90,
-    map: [
-        "#################",
-        "#E.............E#",
-        "#.######.######.#",
-        "#.#...........#.#",
-        "#.#...........#.#",
-        "#.#..##...##..#.#",
-        "#.#...........#.#",
-        "#......B........#",
-        "#.#...........#.#",
-        "#.#..##...##..#.#",
-        "#.#...........#.#",
-        "#.#...........#.#",
-        "#.#############.#",
-        "#.......PQ......#",
-        "#################",
-    ],
-    enemies: [{ ai: "splitter" }, { ai: "chase" }],
+    // One map for both sizes until the stage is remade.
+    ...sameForBoth({
+        parTime: 90,
+        map: [
+            "#################",
+            "#E.............E#",
+            "#.######.######.#",
+            "#.#...........#.#",
+            "#.#...........#.#",
+            "#.#..##...##..#.#",
+            "#.#...........#.#",
+            "#......B........#",
+            "#.#...........#.#",
+            "#.#..##...##..#.#",
+            "#.#...........#.#",
+            "#.#...........#.#",
+            "#.#############.#",
+            "#.......PQ......#",
+            "#################",
+        ],
+        enemies: [{ ai: "splitter" }, { ai: "chase" }],
+    }),
     boss: {},
     // Dots are the breaths' ammunition here, and keep coming back: eaten
     // ones grow back (KDA-269) and the Splitter drops more (KDA-270).

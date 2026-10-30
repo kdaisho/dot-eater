@@ -9,7 +9,6 @@ import {
     TICK_RATE,
 } from "./constants"
 import { createGameState, step, type GameState, type MoveInput } from "./game"
-import { parseLevel } from "./level"
 import { createRegrow } from "./regrow"
 import {
     createSplitter,
@@ -17,7 +16,13 @@ import {
     halfDefeated,
     splitSplitter,
 } from "./splitter"
-import { fixedRandom, makeBoss, makeState, textMap } from "./test/helpers"
+import {
+    fixedRandom,
+    makeBoss,
+    makeState,
+    parseFlat,
+    textMap,
+} from "./test/helpers"
 import { vec2, type Vec2 } from "./vec2"
 
 // Splitters dropping dots (KDA-270, rules.splitterDrops).
@@ -285,11 +290,15 @@ describe("createGameState with rules.splitterDrops", () => {
         parTime: 60,
         map: ["#######", "#P....#", "#..B .#", "#.....#", "#E....#", "#######"],
         enemies: [{ ai: "splitter" as const }],
+        rules: { regrowDots: { seconds: 10 } },
     }
 
     it("turns drops on", () => {
-        const level = parseLevel({ ...lair, rules: { splitterDrops: true } })
+        const level = parseFlat({
+            ...lair,
+            rules: { ...lair.rules, splitterDrops: true },
+        })
         expect(createGameState(level).splitterDrops).toBe(true)
-        expect(createGameState(parseLevel(lair)).splitterDrops).toBe(false)
+        expect(createGameState(parseFlat(lair)).splitterDrops).toBe(false)
     })
 })

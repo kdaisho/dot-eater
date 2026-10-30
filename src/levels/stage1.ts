@@ -1,4 +1,4 @@
-import type { LevelData } from "../level"
+import { sameForBoth, type LevelData } from "../level"
 
 // The tutorial stage: a larger maze in the spirit of the original 9x9 one.
 // Left-right symmetric, with a wrap tunnel through the middle row and no dead
@@ -6,23 +6,26 @@ import type { LevelData } from "../level"
 // bottom, and move at the default (half the player's) speed.
 export const stage1: LevelData = {
     name: "Classic",
-    parTime: 60,
-    map: [
-        "#################",
-        "#.......#.......#",
-        "#.##.##.#.##.##.#",
-        "#...............#",
-        "#.##.#.###.#.##.#",
-        "#....#.E.E.#....#",
-        "####.###.###.####",
-        ".....#.....#.....",
-        "####.#.###.#.####",
-        "#...............#",
-        "#.##.###.###.##.#",
-        "#....#.....#....#",
-        "#.##.#.###.#.##.#",
-        "#.......PQ......#",
-        "#################",
-    ],
-    enemies: [{ ai: "random" }, { ai: "chase" }],
+    // One map for both sizes until the stage is remade.
+    ...sameForBoth({
+        parTime: 60,
+        map: [
+            "#################",
+            "#.......#.......#",
+            "#.##.##.#.##.##.#",
+            "#...............#",
+            "#.##.#.###.#.##.#",
+            "#....#.E.E.#....#",
+            "####.###.###.####",
+            ".....#.....#.....",
+            "####.#.###.#.####",
+            "#...............#",
+            "#.##.###.###.##.#",
+            "#....#.....#....#",
+            "#.##.#.###.#.##.#",
+            "#.......PQ......#",
+            "#################",
+        ],
+        enemies: [{ ai: "random" }, { ai: "chase" }],
+    }),
 }

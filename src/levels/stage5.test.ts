@@ -7,11 +7,12 @@ import { parseLevel, type Cells } from "../level"
 import { distanceMap, openNeighbours } from "../path"
 import { ANIMAL_IDS } from "../roster"
 import { vec2, type Vec2 } from "../vec2"
-import { levels } from "./index"
+import { EACH_MAP } from "../test/helpers"
+import { stages } from "./index"
 import { stage5 } from "./stage5"
 
-describe("stage 5", () => {
-    const level = parseLevel(stage5)
+describe.each(EACH_MAP)("stage 5 (%s)", (difficulty) => {
+    const level = parseLevel(stage5, difficulty)
     const cells: Cells = level.cells.map((row) => [...row])
     const spawn = level.playerSpawns[0]
     const open: Vec2[] = []
@@ -32,7 +33,7 @@ describe("stage 5", () => {
     )
 
     it("is the fifth level, the Boss lair", () => {
-        expect(levels[4]).toEqual(level)
+        expect(stages[4][difficulty]).toEqual(level)
         expect(level.name).toBe("Boss lair")
         expect(level.parTime).toBe(90)
     })
@@ -41,7 +42,7 @@ describe("stage 5", () => {
         const game = createGameState(level)
         expect(game.boss?.pos).toEqual(level.boss!.pos)
         expect(game.boss?.speed).toBe(BOSS_SPEED)
-        for (const other of levels.slice(0, 4)) {
+        for (const other of stages.slice(0, 4).map((s) => s[difficulty])) {
             expect(other.boss).toBeNull()
         }
     })
@@ -63,7 +64,7 @@ describe("stage 5", () => {
         expect(level.rules.regrowDots).toEqual({ seconds: 10 })
         const game = createGameState(level)
         expect(game.regrow?.seconds).toBe(10)
-        for (const other of levels.slice(0, 4)) {
+        for (const other of stages.slice(0, 4).map((s) => s[difficulty])) {
             expect(other.rules.regrowDots).toBeUndefined()
         }
     })
@@ -71,7 +72,7 @@ describe("stage 5", () => {
     it("has its Splitter drop dots, and only it does", () => {
         expect(level.rules.splitterDrops).toBe(true)
         expect(createGameState(level).splitterDrops).toBe(true)
-        for (const other of levels.slice(0, 4)) {
+        for (const other of stages.slice(0, 4).map((s) => s[difficulty])) {
             expect(other.rules.splitterDrops).toBeUndefined()
         }
     })
