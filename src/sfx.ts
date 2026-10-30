@@ -240,7 +240,7 @@ export const SFX: Readonly<Record<SfxId, readonly Tone[]>> = {
         {
             wave: "sawtooth",
             at: 0,
-            duration: 0.75,
+            duration: 0.9,
             freq: 50,
             freqEnd: 75,
             volume: 0.3,
@@ -249,7 +249,7 @@ export const SFX: Readonly<Record<SfxId, readonly Tone[]>> = {
         {
             wave: "noise",
             at: 0,
-            duration: 0.75,
+            duration: 0.9,
             freq: 180,
             freqEnd: 260,
             volume: 0.35,

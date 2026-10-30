@@ -162,8 +162,10 @@ export const PUNCH_ACROSS = 0.5
 // its last one, and first this long into a stage (a grace period).
 export const BOSS_BREATH_EVERY = 4
 // Seconds it winds up (holding still, glowing, the cells it will hit
-// tinted) before it breathes.
-export const BOSS_BREATH_WIND_UP = 0.75
+// tinted) before it breathes. 0.9 s, up from 0.75 (PM call): on stage 5
+// getting out of its way from a door takes two moves, and 0.75 s left too
+// little time to react.
+export const BOSS_BREATH_WIND_UP = 0.9
 // How far the breath reaches, in cells from the edge of its footprint.
 export const BOSS_BREATH_RANGE = 6
 // Health the breath costs a player it hits.

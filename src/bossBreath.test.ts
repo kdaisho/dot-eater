@@ -195,6 +195,11 @@ describe("createBossBreath", () => {
         })
     })
 
+    it("winds up for 0.9 s by default, long enough to step out of a door", () => {
+        // PM call: two moves out of a stage 5 door, and time to react.
+        expect(createBossBreath().windUp).toBe(0.9 * TICK_RATE)
+    })
+
     it("takes the level's tuning, seconds counted in ticks", () => {
         expect(
             createBossBreath({ every: 2, windUp: 0.5, range: 3, damage: 50 })
