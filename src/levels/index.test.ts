@@ -1,7 +1,15 @@
 import { describe, expect, it } from "vite-plus/test"
 import { AiType, Cell, PLAYER_RESPAWN_DELAY, TICK_RATE } from "../constants"
 import { footprint } from "../boss"
-import { DEFAULT_DIFFICULTY, DIFFICULTIES, ENEMY_COUNT } from "../difficulty"
+import {
+    DEFAULT_DIFFICULTY,
+    DIFFICULTIES,
+    ENEMY_COUNT,
+    MAP_SIZE,
+    MAP_SIZES,
+    type Difficulty,
+    type MapSize,
+} from "../difficulty"
 import { wrapDelta } from "../glide"
 import { DEFAULT_ANIMAL } from "../roster"
 import { createGameState, IDLE, step, takeOut } from "../game"
@@ -45,16 +53,41 @@ describe("levels", () => {
         })
     })
 
-    // Until the stages are remade with a medium and a large map each, a
-    // stage's one map stands in for both, so every difficulty plays today's
-    // game: no stage lists more enemies than the fewest any difficulty
-    // brings out.
-    it.each(STAGE_DATA.map((data, i) => [i + 1, data] as const))(
+    // Until a stage is remade with a medium and a large map, its one map
+    // stands in for both, so every difficulty plays today's game: it lists
+    // no more enemies than the fewest any difficulty brings out.
+    const shared = STAGE_DATA.flatMap((data, i) =>
+        data.large === data.medium ? [[i + 1, data] as const] : []
+    )
+    it.each(shared)(
         "stage %i uses one map for both sizes, with every enemy at every difficulty",
         (_n, data) => {
-            expect(data.large).toBe(data.medium)
             const fewest = Math.min(...DIFFICULTIES.map((d) => ENEMY_COUNT[d]))
             expect(data.medium.enemies.length).toBeLessThanOrEqual(fewest)
+        }
+    )
+
+    // A remade stage has a map of each size, around 21x17 and 29x21, each
+    // listing an enemy for every one its difficulties bring out.
+    const remade = STAGE_DATA.flatMap((data, i) =>
+        data.large === data.medium ? [] : [[i + 1, data] as const]
+    )
+    it.each(remade)(
+        "stage %i has a medium and a large map, with enemies for each difficulty",
+        (_n, data) => {
+            expect(data.large.map).not.toEqual(data.medium.map)
+            for (const size of MAP_SIZES) {
+                const { map, enemies } = data[size]
+                const [width, height] = size === "medium" ? [21, 17] : [29, 21]
+                expect(Math.abs(map[0].length - width)).toBeLessThanOrEqual(2)
+                expect(Math.abs(map.length - height)).toBeLessThanOrEqual(2)
+                const most = Math.max(
+                    ...DIFFICULTIES.filter((d) => MAP_SIZE[d] === size).map(
+                        (d) => ENEMY_COUNT[d]
+                    )
+                )
+                expect(enemies).toHaveLength(most)
+            }
         }
     )
 
@@ -145,18 +178,29 @@ describe("levels", () => {
     // Player 2's spawn holds a dot in 1-player games, so they have the
     // same dots as before 2-player games existed (these counts); with a
     // player 2 it starts empty, as player 1's does.
-    const SOLO_DOTS = [129, 141, 133, 125, 145]
+    // Per stage: one count for a stage with one map, else one per map size.
+    const SOLO_DOTS: readonly (number | Readonly<Record<MapSize, number>>)[] = [
+        129,
+        141,
+        133,
+        125,
+        { medium: 151, large: 313 },
+    ]
+    const soloDots = (n: number, difficulty: Difficulty) => {
+        const count = SOLO_DOTS[n - 1]
+        return typeof count === "number" ? count : count[MAP_SIZE[difficulty]]
+    }
     const dots = (cells: readonly (readonly Cell[])[]) =>
         cells.flat().filter((c) => c === Cell.dot).length
     it.each(everyLevel)(
         "stage %i (%s) keeps every dot in 1-player, the spawn's too",
-        (n, _difficulty, level) => {
+        (n, difficulty, level) => {
             const [p1, p2] = level.playerSpawns
             const solo = createGameState(level, DEFAULT_ANIMAL)
-            expect(dots(solo.cells)).toBe(SOLO_DOTS[n - 1])
+            expect(dots(solo.cells)).toBe(soloDots(n, difficulty))
             expect(solo.cells[p2.y][p2.x]).toBe(Cell.dot)
             const duo = createGameState(level, [DEFAULT_ANIMAL, DEFAULT_ANIMAL])
-            expect(dots(duo.cells)).toBe(SOLO_DOTS[n - 1] - 1)
+            expect(dots(duo.cells)).toBe(soloDots(n, difficulty) - 1)
             expect(duo.cells[p2.y][p2.x]).toBe(Cell.none)
             expect(duo.cells[p1.y][p1.x]).toBe(Cell.none)
         }
