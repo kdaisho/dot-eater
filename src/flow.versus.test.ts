@@ -12,10 +12,9 @@ import {
 } from "./flow"
 import type { Outcome } from "./game"
 import type { Action } from "./input"
-import { parseLevel } from "./level"
 import { emptyProgress } from "./progress"
 import { AnimalId } from "./roster"
-import { fixedRandom } from "./test/helpers"
+import { fixedRandom, parseFlat, sameAtEvery } from "./test/helpers"
 import { vec2 } from "./vec2"
 import type { RoundResult } from "./versus"
 
@@ -23,13 +22,13 @@ import type { RoundResult } from "./versus"
 // stage, a round result between them, and the match result at the end.
 
 const levels = [
-    parseLevel({
+    parseFlat({
         name: "corridor",
         parTime: 60,
         map: ["######", "#PQ..#", "######"],
         enemies: [],
     }),
-]
+].map(sameAtEvery)
 
 const DT = 1 / 60
 
@@ -119,6 +118,32 @@ describe("versus on the title", () => {
         expect(startLevel(levels, 0, [...picks], "coop")).not.toHaveProperty(
             "match"
         )
+    })
+})
+
+describe("a versus match's difficulty", () => {
+    it("is kept for the next round and a rematch", () => {
+        const first = startLevel(levels, 0, [...picks], "versus", [], "hard")
+        if (first.kind !== "playing") throw new Error(first.kind)
+        const result = finishRound(first, 0)
+        expect(result).toMatchObject({
+            kind: "roundResult",
+            difficulty: "hard",
+        })
+        const next = update(waitOut(result), confirm, deps())
+        expect(next).toMatchObject({ kind: "playing", difficulty: "hard" })
+        if (next.kind !== "playing") throw new Error(next.kind)
+        const decided = finishRound(next, 0)
+        expect(decided).toMatchObject({
+            kind: "matchResult",
+            difficulty: "hard",
+        })
+        const rematch = update(waitOut(decided), confirm, deps())
+        expect(rematch).toMatchObject({
+            kind: "playing",
+            difficulty: "hard",
+            match: [],
+        })
     })
 })
 

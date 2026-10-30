@@ -1,4 +1,4 @@
-import type { LevelData } from "../level"
+import { sameForBoth, type LevelData } from "../level"
 
 // Ice rink: anything that steps onto ice ("~", or ":" with a dot) keeps
 // sliding until a wall stops it or it reaches normal floor, enemies too
@@ -13,23 +13,26 @@ import type { LevelData } from "../level"
 // bottom, at the default (half the player's) speed.
 export const stage3: LevelData = {
     name: "Ice rink",
-    parTime: 80,
-    map: [
-        "#################",
-        "#E......#......E#",
-        "#.##.##.#.##.##.#",
-        "#.......E.......#",
-        "#.##~~~:::~~~##.#",
-        "#...~#~:::~#~...#",
-        "###.:::#:#:::.###",
-        "::::::::.::::::::",
-        "###.:::#:#:::.###",
-        "#...~#~:::~#~...#",
-        "#.##~~~:::~~~##.#",
-        "#...............#",
-        "#.##.##.#.##.##.#",
-        "#.......PQ......#",
-        "#################",
-    ],
-    enemies: [{ ai: "chase" }, { ai: "random" }, { ai: "random" }],
+    // One map for both sizes until the stage is remade.
+    ...sameForBoth({
+        parTime: 80,
+        map: [
+            "#################",
+            "#E......#......E#",
+            "#.##.##.#.##.##.#",
+            "#.......E.......#",
+            "#.##~~~:::~~~##.#",
+            "#...~#~:::~#~...#",
+            "###.:::#:#:::.###",
+            "::::::::.::::::::",
+            "###.:::#:#:::.###",
+            "#...~#~:::~#~...#",
+            "#.##~~~:::~~~##.#",
+            "#...............#",
+            "#.##.##.#.##.##.#",
+            "#.......PQ......#",
+            "#################",
+        ],
+        enemies: [{ ai: "chase" }, { ai: "random" }, { ai: "random" }],
+    }),
 }

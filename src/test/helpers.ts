@@ -14,10 +14,58 @@ import {
     type MoveInput,
 } from "../game"
 import type { IceMap } from "../ice"
-import { parseLevel, type Cells, type Level, type LevelData } from "../level"
+import {
+    DIFFICULTIES,
+    ENEMY_COUNT,
+    MAP_SIZE,
+    MAP_SIZES,
+    type Difficulty,
+    type MapSize,
+} from "../difficulty"
+import {
+    parseMaps,
+    sameForBoth,
+    type Cells,
+    type Level,
+    type LevelData,
+    type LevelVariant,
+    type Stage,
+} from "../level"
 import { vec2, type Vec2 } from "../vec2"
 
 export type MapLiteral = readonly (readonly Cell[])[]
+
+// Level data with one map, written at the top level as before levels had
+// two (see LevelData): what most test levels are.
+export type FlatLevelData = Omit<LevelData, MapSize> & LevelVariant
+
+// Flat level data as level data, its one map standing in for both sizes.
+export function bothMaps(data: FlatLevelData): LevelData {
+    const { map, parTime, enemies, ...shared } = data
+    return { ...shared, ...sameForBoth({ map, parTime, enemies }) }
+}
+
+// Parse flat level data (see parseMaps): its map, with every enemy it lists
+// whatever the difficulty. Throws a LevelError like parseLevel.
+export function parseFlat(data: FlatLevelData): Level {
+    return parseMaps(bothMaps(data)).medium
+}
+
+// One difficulty per map size, the one with the most enemies: a stage
+// tested at each is tested on both its maps, with every enemy that comes
+// out on them.
+export const EACH_MAP: readonly Difficulty[] = MAP_SIZES.map((size) =>
+    DIFFICULTIES.filter((d) => MAP_SIZE[d] === size).reduce((a, b) =>
+        ENEMY_COUNT[b] > ENEMY_COUNT[a] ? b : a
+    )
+)
+
+// A stage that is `level` at every difficulty, for flow tests.
+export function sameAtEvery(level: Level): Stage {
+    return Object.fromEntries(
+        DIFFICULTIES.map((difficulty) => [difficulty, level])
+    ) as Stage
+}
 
 // The map that was hard-coded before levels became data (KDA-195). Level 1
 // kept its walls until Stage 1 replaced it.
@@ -35,7 +83,7 @@ export const OLD_MAP = [
 
 // The old map as level data: level 1 until Stage 1 replaced it (KDA-203).
 // Kept as a small, well-known fixture for tests that rely on its layout.
-export const OLD_LEVEL_DATA: LevelData = {
+export const OLD_LEVEL_DATA: FlatLevelData = {
     name: "Level 1",
     parTime: 60,
     map: [
@@ -52,13 +100,13 @@ export const OLD_LEVEL_DATA: LevelData = {
     enemies: [{ ai: "random" }, { ai: "chase" }],
 }
 
-export const OLD_LEVEL: Level = parseLevel(OLD_LEVEL_DATA)
+export const OLD_LEVEL: Level = parseFlat(OLD_LEVEL_DATA)
 
 // A 29x21 maze, the size of the large mazes to come (KDA-266): too big to
 // fit whole on a phone, so the view follows the player. Pillars on a grid,
 // a tunnel through the middle row, player 1 bottom left, player 2 bottom
 // right and enemies top right and in the middle. Not a stage.
-export const BIG_LEVEL_DATA: LevelData = {
+export const BIG_LEVEL_DATA: FlatLevelData = {
     name: "Big",
     parTime: 120,
     map: [
@@ -87,7 +135,7 @@ export const BIG_LEVEL_DATA: LevelData = {
     enemies: [{ ai: "random" }, { ai: "chase" }],
 }
 
-export const BIG_LEVEL: Level = parseLevel(BIG_LEVEL_DATA)
+export const BIG_LEVEL: Level = parseFlat(BIG_LEVEL_DATA)
 
 // Copy a literal map into a fresh, mutable Cells grid.
 export function cellsFrom(map: MapLiteral): Cells {
@@ -186,6 +234,8 @@ export function makeState(
             enemies: enemies.map((e) => vec2(e.pos.x, e.pos.y)),
         },
         events: [],
+        regrow: null,
+        splitterDrops: false,
     }
 }
 
@@ -195,6 +245,13 @@ export function makeState(
 export function makeBoss(x: number, y: number, speed?: number): Boss {
     const boss = createBoss(vec2(x, y), speed)
     boss.moveProgress = 1
+    return boss
+}
+
+// Keep `boss` from ever breathing (see bossBreath.ts), for tests of what
+// else it does that run past its first breath: its cooldown never ends.
+export function withoutBreath(boss: Boss): Boss {
+    boss.breath.cooldown = Infinity
     return boss
 }
 

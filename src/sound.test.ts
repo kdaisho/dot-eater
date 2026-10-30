@@ -30,6 +30,7 @@ const characterSelect: Screen = {
     kind: "characterSelect",
     mode: "coop",
     level: 0,
+    difficulty: "medium",
     picks: ["dragon", "owl"],
     ready: [false, false],
 }
@@ -37,6 +38,7 @@ const playing = (level = 0): Screen => ({
     kind: "playing",
     mode: "solo",
     level,
+    difficulty: "medium",
     animals: ["dragon"],
     game,
 })
@@ -44,6 +46,7 @@ const paused = (level = 0): ScreenOf<"paused"> => ({
     kind: "paused",
     mode: "solo",
     level,
+    difficulty: "medium",
     animals: ["dragon"],
     game,
 })
@@ -51,6 +54,7 @@ const ending: Screen = {
     kind: "ending",
     mode: "solo",
     level: 0,
+    difficulty: "medium",
     animals: ["dragon"],
     game,
     outcome: "won",
@@ -59,6 +63,7 @@ const gameOver: Screen = {
     kind: "gameOver",
     mode: "solo",
     level: 0,
+    difficulty: "medium",
     animals: ["dragon"],
     game,
     choice: "retry",
@@ -89,6 +94,11 @@ describe("soundForEvent", () => {
             ],
             [{ type: "bossHit", player: 0, at, health: 3 }, "bossHit"],
             [{ type: "bossDefeated", player: 1, at }, "bossDefeated"],
+            [{ type: "bossWindUp", at, facing: at }, "boss.windUp"],
+            [
+                { type: "bossBreathed", at, facing: at, cells: [at] },
+                "boss.breath",
+            ],
             [{ type: "hurt", player: 0, at, damage: 25 }, "hurt"],
             [
                 { type: "playerCaught", player: 0, at, outForGood: false },
@@ -108,6 +118,8 @@ describe("soundForEvent", () => {
             [{ type: "gameWon" }, "stageClear"],
             [{ type: "gameLost" }, "gameOver"],
             [{ type: "playerRespawned", player: 0, at }, undefined],
+            [{ type: "dotRegrown", at }, undefined],
+            [{ type: "dotDropped", enemy: 0, at }, "dotDropped"],
         ]
         for (const [event, sound] of cases)
             expect(soundForEvent(event), event.type).toBe(sound)

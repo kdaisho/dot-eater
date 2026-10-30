@@ -1,4 +1,4 @@
-import type { LevelData } from "../level"
+import { sameForBoth, type LevelData } from "../level"
 
 // Wrap-around tunnels on every edge: three rows wrap left to right and four
 // columns wrap top to bottom, so running off one side is the main way to
@@ -10,23 +10,26 @@ import type { LevelData } from "../level"
 // (half the player's) speed.
 export const stage2: LevelData = {
     name: "Wrap maze",
-    parTime: 70,
-    map: [
-        "##.#.#######.#.##",
-        "#...............#",
-        "#.###.#.#.#.###.#",
-        "..#.....#.....#..",
-        "#.#.###.#.###.#.#",
-        "#.....#.E.#.....#",
-        "#.###.#.#.#.###.#",
-        "......#E.E#......",
-        "#.###.#####.###.#",
-        "#...............#",
-        "#.###.#.#.#.###.#",
-        "..#...#...#...#..",
-        "#.#.###.#.###.#.#",
-        "#.......PQ......#",
-        "##.#.#######.#.##",
-    ],
-    enemies: [{ ai: "ambusher" }, { ai: "chase" }, { ai: "random" }],
+    // One map for both sizes until the stage is remade.
+    ...sameForBoth({
+        parTime: 70,
+        map: [
+            "##.#.#######.#.##",
+            "#...............#",
+            "#.###.#.#.#.###.#",
+            "..#.....#.....#..",
+            "#.#.###.#.###.#.#",
+            "#.....#.E.#.....#",
+            "#.###.#.#.#.###.#",
+            "......#E.E#......",
+            "#.###.#####.###.#",
+            "#...............#",
+            "#.###.#.#.#.###.#",
+            "..#...#...#...#..",
+            "#.#.###.#.###.#.#",
+            "#.......PQ......#",
+            "##.#.#######.#.##",
+        ],
+        enemies: [{ ai: "ambusher" }, { ai: "chase" }, { ai: "random" }],
+    }),
 }

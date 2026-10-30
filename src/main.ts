@@ -39,7 +39,7 @@ import {
     type TickInput,
     type TitleChoice,
 } from "./flow"
-import { healthHud, totalScore, type GameState } from "./game"
+import { bossHud, healthHud, totalScore, type GameState } from "./game"
 import {
     CONTROLS_ROWS,
     controlsRowLabel,
@@ -55,7 +55,7 @@ import {
 import { InputState, KeyboardSource, keyMapsFor, type Action } from "./input"
 import { loadLastPick, saveLastPick } from "./lastPick"
 import { controlsSpace } from "./layout"
-import { levels } from "./levels"
+import { levels, stages } from "./levels"
 import { createLoop } from "./loop"
 import {
     loadProgress,
@@ -234,6 +234,9 @@ const effects = {
             // while playing.
             guide: settings.facingGuide,
             ...(s.kind === "playing" ? { aim: true } : {}),
+            // The boss's wind-up (its glow and warning tint), on the board
+            // in play, paused and ending, as the rings are.
+            bossBreath: true,
         }
     },
 }
@@ -387,7 +390,7 @@ function tick(dt: number) {
 
 function flowDeps(dt: number): FlowDeps {
     return {
-        levels,
+        levels: stages,
         progress,
         lastAnimal,
         dt,
@@ -506,6 +509,8 @@ function render(alpha: number) {
     // Every screen with a game also says which level it is.
     const rules = "level" in shown ? levels[shown.level]?.rules : undefined
     const hud = game.mode === "versus" ? versusHud(game, shown) : hudOf(game)
+    const boss = bossHud(game)
+    if (boss) hud.boss = boss
     renderer.draw(game, lastAlpha, hud, rules, effects.of(shown))
 }
 
