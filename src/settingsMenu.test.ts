@@ -14,7 +14,6 @@ import {
 const context = (over: Partial<SettingsContext> = {}): SettingsContext => ({
     from: "title",
     touch: false,
-    prefersReducedMotion: false,
     ...over,
 })
 
@@ -30,7 +29,7 @@ describe("SETTINGS_ROWS", () => {
             ["Music volume", "slider"],
             ["Effects volume", "slider"],
             ["Mute", "toggle"],
-            ["Screen shake", "toggle"],
+            ["Screen shake", "choice"],
             ["Facing guide", "choice"],
             ["Players", "choice"],
             ["Show D-pad", "toggle"],
@@ -80,12 +79,11 @@ describe("settingsRows", () => {
     it("flips Show D-pad, which is off by default", () => {
         const dpad = row("showDpad")
         const s = defaultSettings()
-        const touch = context({ touch: true })
-        expect(rowValue(dpad, s, touch)).toBe("Off")
-        const on = changeRow(dpad, s, touch, 1)
+        expect(rowValue(dpad, s)).toBe("Off")
+        const on = changeRow(dpad, s, 1)
         expect(on.showDpad).toBe(true)
-        expect(rowValue(dpad, on, touch)).toBe("On")
-        expect(changeRow(dpad, on, touch, -1).showDpad).toBe(false)
+        expect(rowValue(dpad, on)).toBe("On")
+        expect(changeRow(dpad, on, -1).showDpad).toBe(false)
     })
 })
 
@@ -93,37 +91,41 @@ describe("changeRow", () => {
     it("steps a slider, stopping at 0 and VOLUME_MAX", () => {
         const music = row("musicVolume")
         const s = defaultSettings()
-        expect(changeRow(music, s, context(), 1).musicVolume).toBe(8)
-        expect(changeRow(music, s, context(), -1).musicVolume).toBe(6)
+        expect(changeRow(music, s, 1).musicVolume).toBe(8)
+        expect(changeRow(music, s, -1).musicVolume).toBe(6)
         const top = { ...s, musicVolume: VOLUME_MAX }
-        expect(changeRow(music, top, context(), 1)).toBe(top)
+        expect(changeRow(music, top, 1)).toBe(top)
         const bottom = { ...s, musicVolume: 0 }
-        expect(changeRow(music, bottom, context(), -1)).toBe(bottom)
+        expect(changeRow(music, bottom, -1)).toBe(bottom)
     })
 
     it("flips a toggle either way", () => {
         const s = defaultSettings()
-        expect(changeRow(row("muted"), s, context(), 1).muted).toBe(true)
-        expect(changeRow(row("muted"), s, context(), -1).muted).toBe(true)
+        expect(changeRow(row("muted"), s, 1).muted).toBe(true)
+        expect(changeRow(row("muted"), s, -1).muted).toBe(true)
     })
 
-    it("sets screen shake opposite to what is in effect", () => {
+    it("steps screen shake through Auto, On and Off, wrapping round", () => {
         const shake = row("screenShake")
-        const s = defaultSettings()
-        expect(changeRow(shake, s, context(), 1).screenShake).toBe(false)
-        const reduced = context({ prefersReducedMotion: true })
-        expect(changeRow(shake, s, reduced, 1).screenShake).toBe(true)
+        const auto = defaultSettings()
+        expect(auto.screenShake).toBeNull()
+        const on = changeRow(shake, auto, 1)
+        expect(on.screenShake).toBe(true)
+        const off = changeRow(shake, on, 1)
+        expect(off.screenShake).toBe(false)
+        expect(changeRow(shake, off, 1).screenShake).toBeNull()
+        expect(changeRow(shake, auto, -1).screenShake).toBe(false)
     })
 
     it("cycles a choice either way, wrapping round", () => {
         const guide = row("facingGuide")
         const s = defaultSettings()
         expect(s.facingGuide).toBe("arrow")
-        const aim = changeRow(guide, s, context(), 1)
+        const aim = changeRow(guide, s, 1)
         expect(aim.facingGuide).toBe("aim")
-        expect(changeRow(guide, aim, context(), 1).facingGuide).toBe("arrow")
-        expect(changeRow(guide, s, context(), -1).facingGuide).toBe("aim")
-        expect(changeRow(guide, aim, context(), -1).facingGuide).toBe("arrow")
+        expect(changeRow(guide, aim, 1).facingGuide).toBe("arrow")
+        expect(changeRow(guide, s, -1).facingGuide).toBe("aim")
+        expect(changeRow(guide, aim, -1).facingGuide).toBe("arrow")
     })
 
     it("shows the Facing guide from the title and from pause", () => {
@@ -137,13 +139,13 @@ describe("changeRow", () => {
     it("switches Players between pass through (default) and bump", () => {
         const players = row("playersBump")
         const s = defaultSettings()
-        expect(rowValue(players, s, context())).toBe("◀ Pass through ▶")
-        const bump = changeRow(players, s, context(), 1)
+        expect(rowValue(players, s)).toBe("◀ Pass through ▶")
+        const bump = changeRow(players, s, 1)
         expect(bump.playersBump).toBe(true)
-        expect(rowValue(players, bump, context())).toBe("◀ Bump ▶")
-        expect(changeRow(players, s, context(), -1).playersBump).toBe(true)
-        expect(changeRow(players, bump, context(), 1).playersBump).toBe(false)
-        expect(changeRow(players, bump, context(), -1).playersBump).toBe(false)
+        expect(rowValue(players, bump)).toBe("◀ Bump ▶")
+        expect(changeRow(players, s, -1).playersBump).toBe(true)
+        expect(changeRow(players, bump, 1).playersBump).toBe(false)
+        expect(changeRow(players, bump, -1).playersBump).toBe(false)
     })
 
     it("shows Players from the title and from pause", () => {
@@ -159,12 +161,12 @@ describe("changeRow", () => {
 
     it("leaves the settings alone for an action", () => {
         const s = defaultSettings()
-        expect(changeRow(row("back"), s, context(), 1)).toBe(s)
+        expect(changeRow(row("back"), s, 1)).toBe(s)
     })
 
     it("keeps fields it doesn't know", () => {
         const s = { ...defaultSettings(), later: { up: "KeyI" } }
-        expect(changeRow(row("muted"), s, context(), 1)).toMatchObject({
+        expect(changeRow(row("muted"), s, 1)).toMatchObject({
             later: { up: "KeyI" },
         })
     })
@@ -173,24 +175,19 @@ describe("changeRow", () => {
 describe("rowValue", () => {
     it("shows a slider's value, a toggle's state and nothing for an action", () => {
         const s = { ...defaultSettings(), muted: true }
-        expect(rowValue(row("musicVolume"), s, context())).toBe("◀ 7 ▶")
-        expect(rowValue(row("muted"), s, context())).toBe("On")
-        expect(rowValue(row("screenShake"), s, context())).toBe("On")
-        expect(
-            rowValue(
-                row("screenShake"),
-                s,
-                context({ prefersReducedMotion: true })
-            )
-        ).toBe("Off")
-        expect(rowValue(row("back"), s, context())).toBeUndefined()
-        expect(rowValue(row("facingGuide"), s, context())).toBe("◀ Arrow ▶")
-        expect(
-            rowValue(
-                row("facingGuide"),
-                { ...s, facingGuide: "aim" },
-                context()
-            )
-        ).toBe("◀ Aim ▶")
+        expect(rowValue(row("musicVolume"), s)).toBe("◀ 7 ▶")
+        expect(rowValue(row("muted"), s)).toBe("On")
+        expect(rowValue(row("screenShake"), s)).toBe("◀ Auto ▶")
+        expect(rowValue(row("screenShake"), { ...s, screenShake: true })).toBe(
+            "◀ On ▶"
+        )
+        expect(rowValue(row("screenShake"), { ...s, screenShake: false })).toBe(
+            "◀ Off ▶"
+        )
+        expect(rowValue(row("back"), s)).toBeUndefined()
+        expect(rowValue(row("facingGuide"), s)).toBe("◀ Arrow ▶")
+        expect(rowValue(row("facingGuide"), { ...s, facingGuide: "aim" })).toBe(
+            "◀ Aim ▶"
+        )
     })
 })

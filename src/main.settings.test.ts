@@ -40,7 +40,7 @@ describe("main's settings", () => {
             "Music volume ◀ 7 ▶",
             "Effects volume ◀ 8 ▶",
             "Mute Off",
-            "Screen shake On",
+            "Screen shake ◀ Auto ▶",
             "Facing guide ◀ Arrow ▶",
             "Players ◀ Pass through ▶",
             "Controls",

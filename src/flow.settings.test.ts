@@ -258,17 +258,13 @@ describe("the settings rows", () => {
         expect(settingsOf(press(muted, ["right"])).muted).toBe(false)
     })
 
-    it("sets screen shake from its effective value", () => {
-        const shake = ["down", "down", "down"] as Action[]
-        // Unset with no reduced motion: on, so a flip turns it off.
-        const normal = press(open(), shake)
-        expect(settingsOf(press(normal, ["confirm"])).screenShake).toBe(false)
-        // Unset with reduced motion: off, so a flip turns it on.
-        const reduced = deps({ prefersReducedMotion: true })
-        const calm = press(open(defaultSettings(), reduced), shake, reduced)
-        expect(settingsOf(press(calm, ["confirm"], reduced)).screenShake).toBe(
-            true
-        )
+    it("steps screen shake from Auto to On to Off", () => {
+        const shake = press(open(), ["down", "down", "down"])
+        expect(settingsOf(shake).screenShake).toBeNull()
+        const on = press(shake, ["confirm"])
+        expect(settingsOf(on).screenShake).toBe(true)
+        expect(settingsOf(press(on, ["right"])).screenShake).toBe(false)
+        expect(settingsOf(press(shake, ["left"])).screenShake).toBe(false)
     })
 
     it("keeps each change for the next tick, as a new settings object", () => {

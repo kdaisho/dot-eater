@@ -1,7 +1,6 @@
 import {
     FACING_GUIDES,
     isFacingGuide,
-    shakeEnabled,
     VOLUME_MAX,
     type Settings,
 } from "./settings"
@@ -29,8 +28,6 @@ export type SettingsContext = {
     from: SettingsFrom
     // Whether the device has a touch screen (main decides).
     touch: boolean
-    // Whether the system asks for reduced motion (see shakeEnabled).
-    prefersReducedMotion: boolean
 }
 
 // What an action row does on confirm; flow.ts carries it out. "back"
@@ -55,7 +52,7 @@ export type SliderRow = RowBase & {
 
 export type ToggleRow = RowBase & {
     kind: "toggle"
-    get(settings: Settings, context: SettingsContext): boolean
+    get(settings: Settings): boolean
     set(settings: Settings, value: boolean): Settings
 }
 
@@ -71,6 +68,13 @@ export type ChoiceRow = RowBase & {
 export type ActionRow = RowBase & { kind: "action"; action: SettingsAction }
 
 export type SettingsRow = SliderRow | ToggleRow | ChoiceRow | ActionRow
+
+// The Screen shake row's options and the setting each one stores.
+const SHAKE_OPTIONS = [
+    { value: "auto", label: "Auto", setting: null },
+    { value: "on", label: "On", setting: true },
+    { value: "off", label: "Off", setting: false },
+] as const
 
 // How each facing guide reads on its row.
 const FACING_GUIDE_LABELS = { arrow: "Arrow", aim: "Aim" } as const
@@ -112,13 +116,18 @@ export const SETTINGS_ROWS: readonly SettingsRow[] = [
         set: (s, muted) => ({ ...s, muted }),
     },
     {
-        // Shows the shake in effect, so while it is unset it reads as the
-        // system's reduced motion setting implies; changing it sets it.
+        // Auto (unset) follows the system's reduced motion setting (see
+        // shakeEnabled); On and Off override it (KDA-251).
         id: "screenShake",
         label: "Screen shake",
-        kind: "toggle",
-        get: (s, context) => shakeEnabled(s, context.prefersReducedMotion),
-        set: (s, screenShake) => ({ ...s, screenShake }),
+        kind: "choice",
+        options: SHAKE_OPTIONS.map(({ value, label }) => ({ value, label })),
+        get: (s) =>
+            SHAKE_OPTIONS.find((o) => o.setting === s.screenShake)!.value,
+        set: (s, value) => {
+            const option = SHAKE_OPTIONS.find((o) => o.value === value)
+            return option ? { ...s, screenShake: option.setting } : s
+        },
     },
     {
         // How the board shows which way each player faces (KDA-247).
@@ -177,7 +186,6 @@ export function settingsRows(
 export function changeRow(
     row: SettingsRow,
     settings: Settings,
-    context: SettingsContext,
     delta: -1 | 1
 ): Settings {
     switch (row.kind) {
@@ -187,7 +195,7 @@ export function changeRow(
             return next === now ? settings : row.set(settings, next)
         }
         case "toggle":
-            return row.set(settings, !row.get(settings, context))
+            return row.set(settings, !row.get(settings))
         case "choice": {
             const n = row.options.length
             if (n < 2) return settings
@@ -207,14 +215,13 @@ export function changeRow(
 // "Off"; nothing for an action.
 export function rowValue(
     row: SettingsRow,
-    settings: Settings,
-    context: SettingsContext
+    settings: Settings
 ): string | undefined {
     switch (row.kind) {
         case "slider":
             return `◀ ${row.get(settings)} ▶`
         case "toggle":
-            return row.get(settings, context) ? "On" : "Off"
+            return row.get(settings) ? "On" : "Off"
         case "choice": {
             const value = row.get(settings)
             const option = row.options.find((o) => o.value === value)
