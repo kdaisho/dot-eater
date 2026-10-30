@@ -125,7 +125,9 @@ describe("slideReach", () => {
     })
 })
 
-describe("slideDistances", () => {
+// Its checks sweep every stage's maps, which outgrows vitest's 5 s default
+// on slow CI machines as stages are added.
+describe("slideDistances", { timeout: 30_000 }, () => {
     // Without ice it must be distanceMap exactly, blocked cell included.
     it("without ice equals distanceMap, with or without a blocked cell", () => {
         for (const level of [OLD_LEVEL, ...levels.filter((l) => !hasIce(l))]) {

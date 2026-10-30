@@ -23,9 +23,21 @@ import { stage4 } from "./stage4"
 import { stage5 } from "./stage5"
 import { stage6 } from "./stage6"
 import { stage7 } from "./stage7"
+import { stage8 } from "./stage8"
+import { stage9 } from "./stage9"
 
 // Each stage's level data, in stage order.
-const STAGE_DATA = [stage1, stage2, stage3, stage4, stage5, stage6, stage7]
+const STAGE_DATA = [
+    stage1,
+    stage2,
+    stage3,
+    stage4,
+    stage5,
+    stage6,
+    stage7,
+    stage8,
+    stage9,
+]
 
 // Every stage (numbered from 1) at every difficulty: both of its maps, each
 // with every enemy count a difficulty brings out.
