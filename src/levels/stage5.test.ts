@@ -11,6 +11,8 @@ import {
     bossArena,
     breathEscapes,
     cellKey,
+    DODGE_RUNS,
+    dodgeHits,
     safeAround,
 } from "../test/bossArena"
 import { allDirections } from "../vec2"
@@ -22,7 +24,7 @@ import { stage5 } from "./stage5"
 const MAPS = {
     medium: {
         width: 21,
-        height: 17,
+        height: 19,
         parTime: 60,
         doors: 6,
         enemies: [
@@ -186,15 +188,14 @@ describe.each(EACH_MAP)("stage 5 (%s)", (difficulty) => {
         }
     })
 
-    // The breath winds up for 0.9 s (54 ticks); a player moves 4 cells a
-    // second, so 3 moves take 45 ticks. Never through the boss's body.
-    it("lets a player get out of any breath in time", () => {
-        const worst = Math.max(...escapes.worst.values())
-        expect(worst).toBeLessThanOrEqual(3)
-        // Two moves from a door: out and to the side.
-        for (const door of doors) {
-            expect(escapes.worst.get(cellKey(door))).toBeLessThanOrEqual(2)
-        }
+    // The breath winds up for 0.9 s (54 ticks). A player moves 4 cells a
+    // second, a move every 15 ticks, and is clear of a struck cell 0.6 of a
+    // move out of it (CATCH_DISTANCE). One gliding into a struck cell as the
+    // wind-up starts has its glide to finish first (a glide can't turn
+    // back): 2 moves from the cell have it clear in 40 ticks, but 3 would
+    // take 55 (KDA-286). Never through the boss's body.
+    it("lets a player get out of any breath in two moves", () => {
+        expect(Math.max(...escapes.worst.values())).toBeLessThanOrEqual(2)
     })
 
     it("starts the players out of every line the boss breathes along", () => {
@@ -212,3 +213,24 @@ describe.each(EACH_MAP)("stage 5 (%s)", (difficulty) => {
         expect(Math.min(...boss)).toBeGreaterThanOrEqual(15)
     })
 })
+
+// The escape counts above, played through the real step (KDA-286): a
+// player standing on a struck cell or just setting off into one as the
+// wind-up starts, with no time to react, takes a shortest way out. The
+// map's old 2-tall lanes had cells 3 moves out, which a player gliding in
+// left a tick too late.
+describe(
+    "stage 5's breath, dodged as its wind-up starts",
+    { timeout: 30_000 },
+    () => {
+        it.each(DODGE_RUNS)(
+            "on the $size map as the $animal",
+            ({ difficulty, animal }) => {
+                const level = parseLevel(stage5, difficulty)
+                const { played, hits } = dodgeHits(level, animal)
+                expect(played).toBeGreaterThan(1000)
+                expect(hits).toEqual([])
+            }
+        )
+    }
+)
