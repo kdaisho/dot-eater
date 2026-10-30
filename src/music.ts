@@ -222,6 +222,7 @@ export const MusicTrackId = {
     stage6: "stage6",
     stage7: "stage7",
     stage8: "stage8",
+    stage9: "stage9",
 } as const
 export type MusicTrackId = (typeof MusicTrackId)[keyof typeof MusicTrackId]
 
@@ -238,6 +239,7 @@ export const STAGE_TRACKS: readonly MusicTrackId[] = [
     MusicTrackId.stage6,
     MusicTrackId.stage7,
     MusicTrackId.stage8,
+    MusicTrackId.stage9,
 ]
 
 // The tune for a stage index; stages past the list reuse it from the start.
@@ -625,6 +627,46 @@ export const TRACKS: Readonly<Record<MusicTrackId, Track>> = {
                     "k . k . . . h .",
                     "k . k . . . h .",
                     "k . k . . h . h",
+                ],
+            },
+        ],
+    },
+    // Stage 9, Gauntlet: the fastest dot-stage tune, a pounding E minor run
+    // with a rising climb in the last bar.
+    stage9: {
+        bpm: 160,
+        voices: [
+            {
+                kind: "notes",
+                wave: "square",
+                volume: 0.1,
+                bars: [
+                    "E5 . E5 G5 . B5 A5 G5",
+                    "F#5 . F#5 A5 . D6 C6 B5",
+                    "E5 . E5 G5 . B5 A5 G5",
+                    "C6 B5 A5 G5 A5 B5 C6 D#6",
+                ],
+            },
+            {
+                kind: "notes",
+                wave: "sawtooth",
+                volume: 0.12,
+                gate: 0.6,
+                bars: [
+                    "E2 E2 E3 E2 E2 E2 E3 E2",
+                    "D2 D2 D3 D2 D2 D2 D3 D2",
+                    "C2 C2 C3 C2 C2 C2 C3 C2",
+                    "B1 B1 B2 B1 B1 B2 B1 B2",
+                ],
+            },
+            {
+                kind: "drums",
+                volume: 0.5,
+                bars: [
+                    "k h s h k k s h",
+                    "k h s h k h s k",
+                    "k h s h k k s h",
+                    "k s k s k s s s",
                 ],
             },
         ],
