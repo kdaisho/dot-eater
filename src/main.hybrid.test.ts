@@ -60,6 +60,8 @@ describe("main on a laptop with a touch screen", () => {
         expect(document.body.dataset.buttons).toBe("off")
         tap("#overlay li[data-index='0']")
         tap("#overlay li[data-index='0']")
+        // Medium.
+        tap("#overlay li[data-index='1']")
         tap("#overlay li.card[data-index='0']")
         expect(document.body.dataset.playing).toBe("on")
         const map = levels[0]

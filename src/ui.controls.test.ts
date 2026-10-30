@@ -6,6 +6,7 @@ import {
     setHintBindings,
     showCharacterSelect,
     showControls,
+    showDifficultySelect,
     showPause,
     showSettings,
     showStageSelect,
@@ -61,6 +62,10 @@ describe("hints follow the bindings", () => {
         showTitle()
         expect(lines()).toEqual(["Press Enter to start"])
         showStageSelect([], 0)
+        expect(lines()).toEqual([
+            "I K to choose, Enter to pick a difficulty, Esc to go back",
+        ])
+        showDifficultySelect([])
         expect(lines()).toEqual([
             "I K to choose, Enter to pick a character, Esc to go back",
         ])
