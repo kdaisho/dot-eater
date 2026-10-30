@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vite-plus/test"
 import { BREATHS } from "./breaths"
+import { BOSS_BREATH_WIND_UP } from "./constants"
 import { ANIMAL_IDS } from "./roster"
 import { BREATH_SFX, breathSfx, SFX, SFX_IDS, SfxId } from "./sfx"
 import { soundLength, type Tone } from "./tone"
@@ -46,6 +47,20 @@ describe("the hurt sound", () => {
         expect(soundLength(SFX[SfxId.hurt])).toBeLessThan(
             soundLength(SFX[SfxId.caught])
         )
+    })
+})
+
+describe("the boss's breath sounds", () => {
+    it("rumble low through about the wind-up, then roar", () => {
+        expect(soundLength(SFX[SfxId.bossWindUp])).toBeCloseTo(
+            BOSS_BREATH_WIND_UP,
+            1
+        )
+        for (const id of [SfxId.bossWindUp, SfxId.bossBreath]) {
+            const lowest = Math.min(...SFX[id].map((t) => t.freq))
+            expect(lowest, id).toBeLessThan(200)
+        }
+        expect(SfxId.bossWindUp).not.toBe(SfxId.bossBreath)
     })
 })
 
