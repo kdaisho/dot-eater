@@ -13,7 +13,9 @@ import { samePos, vec2, type Vec2 } from "./vec2"
 //
 // - Only the map's dots regrow: the cells that held a dot when the game
 //   started (player 2's spawn, cleared for a 2-player game, isn't one). A
-//   dot put on any other cell later doesn't.
+//   dot a Splitter drops on any other cell (KDA-270) doesn't. One dropped
+//   on a map dot's cell while that dot waits to grow back is that dot back
+//   early (see dotBack): it no longer waits, and once eaten it regrows.
 // - It counts from the tick the dot is eaten. Once due, it waits until its
 //   cell is clear of characters (see occupied) and grows back on the first
 //   tick it is, so a dot never appears under a player (who would never eat
@@ -54,6 +56,14 @@ export function dotGone(state: GameState, cell: Vec2) {
     regrow.pending.push({ at: vec2(cell.x, cell.y), left: regrow.seconds })
 }
 
+// A dot is back on `cell` some other way (a Splitter's drop): one waiting to
+// grow back there is no longer waiting.
+export function dotBack(state: GameState, cell: Vec2) {
+    const { regrow } = state
+    if (!regrow) return
+    regrow.pending = regrow.pending.filter((p) => !samePos(p.at, cell))
+}
+
 // Tolerance for a countdown reaching 0, so floating-point sums of dt still
 // land on the intended tick.
 const EPSILON = 1e-9
@@ -74,13 +84,17 @@ export function tickRegrow(state: GameState, dt: number) {
 }
 
 // Whether a character is on `cell`, or drawn over it: a player in play, an
-// enemy in play or a boss not defeated, on it (its footprint, for the boss)
-// or gliding out of it.
-export function occupied(state: GameState, cell: Vec2): boolean {
+// enemy in play (unless `enemies` is false) or a boss not defeated, on it
+// (its footprint, for the boss) or gliding out of it.
+export function occupied(
+    state: GameState,
+    cell: Vec2,
+    enemies = true
+): boolean {
     const on = (c: { pos: Vec2; lastPos: Vec2; moveProgress: number }) =>
         samePos(c.pos, cell) || (c.moveProgress < 1 && samePos(c.lastPos, cell))
     if (state.players.some((p) => !p.out && on(p.character))) return true
-    if (state.enemies.some((e) => inPlay(e) && on(e))) return true
+    if (enemies && state.enemies.some((e) => inPlay(e) && on(e))) return true
     const { boss } = state
     return (
         boss !== null &&

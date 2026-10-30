@@ -6,6 +6,7 @@ import {
     BOSS_DEFEAT_POINTS,
     BOSS_HEALTH,
     Cell,
+    DOT_POINTS,
     PLAYER_RESPAWN_DELAY,
     ENEMY_DAMAGE,
     MAX_HEALTH,
@@ -410,6 +411,26 @@ describe("a versus knockout", () => {
         // With full health, and not invulnerable.
         expect(state.players[0].health).toBe(MAX_HEALTH)
         expect(state.players[0].invulnerableFor).toBe(0)
+    })
+
+    // Regression (KDA-270): a player eats only by moving onto a cell, so a
+    // dot on the cell it came back on was stuck under it for good.
+    it("eats a dot on the cell it comes back on", () => {
+        const { state, enemy } = caughtP1(0)
+        enemy.pos = vec2(6, 1)
+        enemy.lastPos = vec2(6, 1)
+        state.cells[1][1] = Cell.dot
+        const p1 = state.players[0]
+        const { score, dots } = p1
+        run(state, [IDLE, IDLE], RESPAWN_TICKS)
+        expect(p1.out).toBe(false)
+        expect(state.cells[1][1]).toBe(Cell.none)
+        expect(p1.score).toBe(score + DOT_POINTS)
+        expect(p1.dots).toBe(dots + 1)
+        expect(state.events.map((e) => e.type)).toEqual([
+            "playerRespawned",
+            "dotEaten",
+        ])
     })
 
     it("never loses the game, even with both caught over and over", () => {

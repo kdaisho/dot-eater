@@ -11,10 +11,11 @@ import { sameForBoth, type LevelData } from "../level"
 // arena holds most of the dots, so the player has to go in to fill its
 // meter, and breathes at the boss from the doors and lanes: the stage is
 // cleared once the boss is defeated (KDA-267), whatever dots are left; eaten
-// dots grow back after 10 s (KDA-269), so the meters never run dry. The
-// player starts at the bottom, far from everything, behind the arena's one
-// wall without a door. No tunnels and no ice (the boss uses neither), no
-// dead ends, left-right symmetric walls.
+// dots grow back after 10 s (KDA-269) and the Splitter drops dots behind
+// it (KDA-270), so the meters never run dry. The player starts at the
+// bottom, far from everything, behind the arena's one wall without a door.
+// No tunnels and no ice (the boss uses neither), no dead ends, left-right
+// symmetric walls.
 export const stage5: LevelData = {
     name: "Boss lair",
     // One map for both sizes until the stage is remade.
@@ -40,6 +41,7 @@ export const stage5: LevelData = {
         enemies: [{ ai: "splitter" }, { ai: "chase" }],
     }),
     boss: {},
-    // Dots are the breaths' ammunition here, and keep coming back (KDA-269).
-    rules: { regrowDots: { seconds: 10 } },
+    // Dots are the breaths' ammunition here, and keep coming back: eaten
+    // ones grow back (KDA-269) and the Splitter drops more (KDA-270).
+    rules: { regrowDots: { seconds: 10 }, splitterDrops: true },
 }

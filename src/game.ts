@@ -59,7 +59,7 @@ import { distanceMap, openNeighbours } from "./path"
 import { DEFAULT_ANIMAL, type AnimalId } from "./roster"
 import { punch } from "./punch"
 import { createRegrow, dotGone, tickRegrow, type Regrow } from "./regrow"
-import { createSplitter } from "./splitter"
+import { createSplitter, dropDot, tickDrops } from "./splitter"
 import { loseDots, stunned, tickStuns } from "./versus"
 import { samePos, vec2, type Vec2 } from "./vec2"
 
@@ -108,6 +108,9 @@ export type GameState = {
     // The eaten dots growing back, on a level with rules.regrowDots (see
     // regrow.ts); null on one without.
     regrow: Regrow | null
+    // Whether Splitters drop dots (rules.splitterDrops, see dropDot in
+    // splitter.ts).
+    splitterDrops: boolean
 }
 
 // One player: its character on the board, plus everything else that is its
@@ -270,6 +273,7 @@ export function createGameState(
         },
         events: [],
         regrow: createRegrow(level.rules.regrowDots, cells),
+        splitterDrops: level.rules.splitterDrops ?? false,
     }
 }
 
@@ -319,7 +323,8 @@ export function totalScore(state: GameState): number {
 // Put `player` back in play on its own spawn (or `at`, see
 // tickPlayersOut), as at the start of a game: ready to move, facing right,
 // nothing buffered, full health. Its score, energy and cooldown are kept.
-// Nobody else is touched.
+// A dot on the cell it comes back on is eaten (KDA-270). Nobody else is
+// touched.
 export function bringBack(state: GameState, player: Player, at?: Vec2) {
     const index = state.players.indexOf(player)
     const spawn = at ?? state.spawns.players[index]
@@ -343,6 +348,12 @@ export function bringBack(state: GameState, player: Player, at?: Vec2) {
         player: index,
         at: vec2(spawn.x, spawn.y),
     })
+    // A safety net (KDA-270): a player eats only by moving onto a cell, so a
+    // dot on the cell it comes back on would be stuck under it. Eat it
+    // there and then. Nothing should put one there (a Splitter doesn't drop
+    // on an awaited spawn, and spawns hold no map dots to regrow), but
+    // the nearest free cell of a held-up spawn can hold one.
+    eatDot(state, player, spawn)
 }
 
 // Take `player` out of play on its own (see Player.out), where it stands:
@@ -821,7 +832,9 @@ function wait(character: Glider) {
 //
 // On a level with rules.regrowDots, eaten dots due back grow back with the
 // timers, on cells no character is on (see regrow.ts), so a player moving
-// onto one this tick eats it.
+// onto one this tick eats it. On one with rules.splitterDrops, a Splitter
+// due to drop a dot drops it on the cell it leaves as it moves (see dropDot
+// in splitter.ts).
 //
 // What happened is reported in GameState.events (see events.ts), which is
 // emptied first, so it holds this tick's events only.
@@ -846,6 +859,7 @@ export function step(
         if (player.invulnerableFor > 0) player.invulnerableFor--
     }
     tickRegrow(state, dt)
+    tickDrops(state, dt)
     const from = positions(state)
     let start = tickStarts(state, dt)
     // Where each player came from on its latest move before this tick, for
@@ -964,8 +978,12 @@ export function step(
                 aims
             )
         }
-        if (samePos(enemy.pos, from.enemies[i])) wait(enemy)
-        else spend(enemy)
+        if (samePos(enemy.pos, from.enemies[i])) {
+            wait(enemy)
+        } else {
+            spend(enemy)
+            dropDot(state, i)
+        }
     })
     const { boss } = state
     // The boss's glide moves on first, then its breath (see bossBreath.ts),

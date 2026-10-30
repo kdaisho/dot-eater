@@ -235,6 +235,7 @@ export function makeState(
         },
         events: [],
         regrow: null,
+        splitterDrops: false,
     }
 }
 

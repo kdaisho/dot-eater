@@ -19,6 +19,8 @@ export function soundForEvent(event: GameEvent): SfxId | undefined {
     switch (event.type) {
         case "dotEaten":
             return SfxId.dot
+        case "dotDropped":
+            return SfxId.dotDropped
         case "breathed":
             return breathSfx(event.animal)
         case "enemyDefeated":

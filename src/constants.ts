@@ -63,6 +63,10 @@ export const ENEMY_SPEED = 2
 export const PHANTOM_SPEED = 1.5
 // A Splitter's halves are faster than the whole (see splitter.ts).
 export const SPLITTER_HALF_SPEED = 2.5
+// On a level with rules.splitterDrops (KDA-270), each Splitter in play,
+// whole or a half, drops a dot this often, in seconds (see dropDot in
+// splitter.ts).
+export const SPLITTER_DROP_SECONDS = 4
 
 // How many cells ahead of the player's heading an ambusher aims.
 export const AMBUSH_AHEAD = 4

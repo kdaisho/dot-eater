@@ -21,6 +21,10 @@ export type GameEvent =
     | { type: "dotEaten"; player: number; at: Vec2 }
     // An eaten dot grew back on `at` (KDA-269, see regrow.ts).
     | { type: "dotRegrown"; at: Vec2 }
+    // A Splitter slot, enemy `enemy` (its index in GameState.enemies),
+    // dropped a dot on `at`, the cell it just left (KDA-270, see dropDot
+    // in splitter.ts).
+    | { type: "dotDropped"; enemy: number; at: Vec2 }
     // A player breathed: the breath fired (or struck the boss or the other
     // player) and its cost was paid. A refused breath reports nothing.
     // `at` is the player's cell and `facing` the unit step it breathed

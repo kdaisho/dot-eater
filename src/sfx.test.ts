@@ -42,6 +42,15 @@ describe("SFX", () => {
     })
 })
 
+describe("the dot dropped sound", () => {
+    it("is short and quieter than the dot blip", () => {
+        const loudest = (id: SfxId) =>
+            Math.max(...SFX[id].map((tone) => tone.volume))
+        expect(soundLength(SFX[SfxId.dotDropped])).toBeLessThanOrEqual(0.1)
+        expect(loudest(SfxId.dotDropped)).toBeLessThan(loudest(SfxId.dot))
+    })
+})
+
 describe("the hurt sound", () => {
     it("is shorter than the knockout's", () => {
         expect(soundLength(SFX[SfxId.hurt])).toBeLessThan(

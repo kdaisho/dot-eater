@@ -828,7 +828,7 @@ describe("parseLevel rules", () => {
 
     it("rejects unknown rules and fog settings", () => {
         expect(problemsOf(withRules({ fogg: { radius: 3 } }))).toEqual([
-            'unknown rule "fogg" (known rules: fog, regrowDots)',
+            'unknown rule "fogg" (known rules: fog, regrowDots, splitterDrops)',
         ])
         expect(problemsOf(withRules({ fog: { radius: 3, soft: 1 } }))).toEqual([
             'unknown rules.fog setting "soft"',
@@ -899,6 +899,48 @@ describe("parseLevel with a boss", () => {
         enemies: [{ ai: "chase" }],
         rules: { regrowDots: { seconds: 10 } },
     }
+
+    describe("rules.splitterDrops", () => {
+        const withDrops = (data: FlatLevelData, splitterDrops: unknown) =>
+            ({
+                ...data,
+                rules: { ...data.rules, splitterDrops },
+            }) as FlatLevelData
+        const regrowDots = { seconds: 10 }
+
+        it("keeps true or false on a level with a boss", () => {
+            expect(parseFlat(withDrops(lair, true)).rules).toEqual({
+                regrowDots,
+                splitterDrops: true,
+            })
+            expect(parseFlat(withDrops(lair, false)).rules).toEqual({
+                regrowDots,
+                splitterDrops: false,
+            })
+        })
+
+        it("rejects drops on a level without a boss, where dots decide the clear", () => {
+            const plain = {
+                ...lair,
+                map: lair.map.map((r) => r.replace("B", ".")),
+            }
+            expect(problemsOf(withDrops(plain, true))).toEqual([
+                'rules.splitterDrops needs a boss ("B"): elsewhere dots decide the clear',
+            ])
+            expect(parseFlat(withDrops(plain, false)).rules).toEqual({
+                regrowDots,
+                splitterDrops: false,
+            })
+        })
+
+        it("rejects anything but true or false", () => {
+            for (const value of [1, "yes", null, {}]) {
+                expect(problemsOf(withDrops(lair, value))).toEqual([
+                    `rules.splitterDrops must be true or false, got ${JSON.stringify(value)}`,
+                ])
+            }
+        })
+    })
     // `lair` with its map rows replaced by `map`.
     const withMap = (map: readonly string[]): FlatLevelData => ({
         ...lair,

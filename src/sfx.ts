@@ -27,6 +27,8 @@ export const SfxId = {
     caught: "caught",
     // Versus: a player stunned by the other's breath.
     stunned: "stunned",
+    // A Splitter dropped a dot (KDA-270): a soft, low plop.
+    dotDropped: "dotDropped",
     // The punch (KDA-258): a whiff for a jab, a thwack when it lands on an
     // enemy or the other player, a dull thud on the boss.
     punch: "punch",
@@ -315,6 +317,18 @@ export const SFX: Readonly<Record<SfxId, readonly Tone[]>> = {
         freqEnd: 900,
         volume: 0.3,
     }),
+    // A soft, low plop, falling: quieter than the dot blip, since every
+    // Splitter makes one every few seconds, wherever it is.
+    dotDropped: [
+        {
+            wave: "triangle",
+            at: 0,
+            duration: 0.08,
+            freq: 520,
+            freqEnd: 260,
+            volume: 0.12,
+        },
+    ],
     // A quick, quiet whiff: a tiny falling breath of air. It can play several
     // times a second, so it stays short and soft.
     punch: [

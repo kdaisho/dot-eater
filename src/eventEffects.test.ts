@@ -70,6 +70,12 @@ describe("effectsForEvent", () => {
         expect(BURSTS.regrow.count).toBeLessThanOrEqual(BURSTS.dot.count)
     })
 
+    it("a small splat where a Splitter dropped a dot, without a shake", () => {
+        const r = run({ type: "dotDropped", enemy: 0, at: vec2(3, 2) })
+        expect(r.bursts).toEqual([{ kind: "drop", at: vec2(3, 2) }])
+        expect(r.shakes).toEqual([])
+    })
+
     it("a defeat burst and a hit shake where an enemy was defeated", () => {
         for (const split of [false, true]) {
             const r = run({

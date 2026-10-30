@@ -97,6 +97,9 @@ export type LevelRules = {
     fog?: FogRule
     // Eaten dots grow back (see regrow.ts).
     regrowDots?: RegrowRule
+    // Splitters drop dots as they go (KDA-270, see dropDot in splitter.ts).
+    // Only on a level with a boss, where dots don't decide the clear.
+    splitterDrops?: boolean
 }
 
 // rules.regrowDots (KDA-269): an eaten dot grows back on its own cell after
@@ -403,6 +406,7 @@ export function parseMaps(data: LevelData): Readonly<Record<MapSize, Level>> {
         problems.push(`both maps must have a boss ("${BOSS}") or neither`)
     } else {
         problems.push(...bossEnergyProblems(data.rules, bosses.has(true)))
+        problems.push(...splitterDropsProblems(data.rules, bosses.has(true)))
     }
     if (problems.length > 0) throw fail()
 
@@ -772,7 +776,11 @@ function bossProblems(
     return problems
 }
 
-const RULE_KEYS: ReadonlySet<string> = new Set(["fog", "regrowDots"])
+const RULE_KEYS: ReadonlySet<string> = new Set([
+    "fog",
+    "regrowDots",
+    "splitterDrops",
+])
 const FOG_KEYS: ReadonlySet<string> = new Set(["radius"])
 // The smallest fog radius: the renderer's soft edge is 1.5 cells, and a
 // smaller radius would darken the player's own cell.
@@ -847,6 +855,27 @@ function regrowDotsProblems(rule: unknown): string[] {
     return problems
 }
 
+// rules.splitterDrops, if given: true or false, and true only on a level
+// with a boss (`hasBoss`). Elsewhere the dots decide the clear, and a
+// Splitter dropping them would keep adding dots to clear.
+function splitterDropsProblems(
+    rules: LevelRules | undefined,
+    hasBoss: boolean
+): string[] {
+    const drops: unknown = rules?.splitterDrops
+    if (drops === undefined) return []
+    if (typeof drops !== "boolean") {
+        return [
+            `rules.splitterDrops must be true or false, got ${JSON.stringify(drops)}`,
+        ]
+    }
+    return drops && !hasBoss
+        ? [
+              `rules.splitterDrops needs a boss ("${BOSS}"): elsewhere dots decide the clear`,
+          ]
+        : []
+}
+
 // A boss level (`hasBoss`) must have rules.regrowDots. A boss takes many
 // breaths to defeat and the breaths' energy comes only from dots, so
 // without dots coming back the stage could run out of them with the boss
@@ -870,6 +899,9 @@ function copyRules(rules: LevelRules | undefined): LevelRules {
         : {}
     if (rules?.regrowDots) {
         copy.regrowDots = { seconds: rules.regrowDots.seconds }
+    }
+    if (rules?.splitterDrops !== undefined) {
+        copy.splitterDrops = rules.splitterDrops
     }
     return copy
 }
