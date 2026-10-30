@@ -120,20 +120,27 @@ describe("main's particles and shake", () => {
         expect(selectedItem()).toBe("Settings")
         pressAndTick("Space")
         for (let i = 0; i < 3; i++) pressAndTick("ArrowDown")
-        expect(selectedItem()).toBe("Screen shake Off")
+        expect(selectedItem()).toBe("Screen shake ◀ Auto ▶")
         pressAndTick("Space")
-        expect(selectedItem()).toBe("Screen shake On")
+        expect(selectedItem()).toBe("Screen shake ◀ On ▶")
         expect(seen.shake!.enabled).toBe(true)
         // Particles still follow reduced motion.
         expect(seen.particles!.reduced).toBe(true)
         pressAndTick("Space")
-        expect(selectedItem()).toBe("Screen shake Off")
+        expect(selectedItem()).toBe("Screen shake ◀ Off ▶")
+        expect(seen.shake!.enabled).toBe(false)
+        // Back to Auto: reduced motion turns it off again.
+        pressAndTick("Space")
+        expect(selectedItem()).toBe("Screen shake ◀ Auto ▶")
         expect(seen.shake!.enabled).toBe(false)
         pressAndTick("Space")
         expect(seen.shake!.enabled).toBe(true)
         // Back to the title, then into a game.
         pressAndTick("Escape")
         for (let i = 0; i < 3; i++) pressAndTick("ArrowUp")
+        pressAndTick("Space")
+        pressAndTick("ArrowDown")
+        pressAndTick("Space")
         pressAndTick("Space")
         pressAndTick("Space")
         pressAndTick("Space")
@@ -150,6 +157,7 @@ describe("main's particles and shake", () => {
         expect(seen.effects?.aim).toBe(true)
         // The Facing guide setting's default.
         expect(seen.effects?.guide).toBe("arrow")
+        expect(seen.effects?.bossBreath).toBe(true)
     })
 
     // Regression (the resume tick): effects moved on once more than the
@@ -182,6 +190,7 @@ describe("main's particles and shake", () => {
         expect(seen.effects?.aim).toBeUndefined()
         // The arrow still shows on the paused board.
         expect(seen.effects?.guide).toBe("arrow")
+        expect(seen.effects?.bossBreath).toBe(true)
         pressAndTick("KeyP")
         expect(screen()).toBe("playing")
         expect(seen.updates - updates).toBe(steps - stepped)

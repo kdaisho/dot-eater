@@ -3,18 +3,17 @@ import { addStatus } from "./breath"
 import {
     AiType,
     Cell,
+    ENEMY_DAMAGE,
+    MAX_HEALTH,
     PLAYER_RESPAWN_DELAY,
     PLAYER_SPEED,
-    START_LIVES,
     TICK_RATE,
 } from "./constants"
 import {
-    bringBack,
     checkEnd,
     createGameState,
     IDLE,
     outForGood,
-    resolveCatch,
     step,
     takeOut,
     type GameState,
@@ -37,11 +36,11 @@ import {
 } from "./test/helpers"
 import { vec2, type Vec2 } from "./vec2"
 
-// Co-op catches (KDA-221): a caught player is out on its own and back at
-// its spawn PLAYER_RESPAWN_DELAY seconds later, spending a life from the
-// shared pool; with the pool empty it is out for good, and the game is lost
-// once nobody is in play or coming back. Versus has its own rules (see
-// game.versus.test.ts).
+// Co-op (KDA-221, KDA-257): each player has its own health; one knocked
+// out (no health left) is out on its own, for good, and the game is lost
+// once nobody is in play. Taking a player out and bringing it back
+// PLAYER_RESPAWN_DELAY seconds later (versus's knockouts, see
+// game.versus.test.ts) are tested here too, by mode-free takeOut.
 
 const TICK = 1 / TICK_RATE
 const none = vec2(0, 0)
@@ -70,12 +69,16 @@ const hall = textMap([
 const P1 = vec2(1, 1)
 const P2 = vec2(11, 1)
 
-// A 2-player game in the hall, played by `mode`'s rules with `lives` left.
+// A 2-player game in the hall, played by `mode`'s rules with `health`
+// each.
 function coop(
     enemies = [makeEnemy(6, 1)],
-    { lives = START_LIVES, mode = "coop" }: { lives?: number; mode?: Mode } = {}
+    {
+        health = MAX_HEALTH,
+        mode = "coop",
+    }: { health?: number; mode?: Mode } = {}
 ): GameState {
-    return makeState(hall, [P1, P2], enemies, { lives, mode })
+    return makeState(hall, [P1, P2], enemies, { health, mode })
 }
 
 // An enemy that never moves, standing at (x, y).
@@ -113,33 +116,43 @@ describe("the game's mode", () => {
     })
 })
 
-describe("a co-op catch", () => {
-    // An enemy on player 1's cell catches it on the first tick. Its spawn
-    // is elsewhere, so a reset would show.
-    function caughtOnFirstTick(lives = START_LIVES) {
+describe("a co-op knockout", () => {
+    // An enemy on player 1's cell hits it on the first tick, taking its
+    // last health. Its spawn is elsewhere, so a reset would show.
+    function knockedOutOnFirstTick(health = 1) {
         const enemy = post(1, 1)
-        const state = coop([enemy], { lives })
+        const state = coop([enemy], { health })
         state.spawns = { ...state.spawns, enemies: [vec2(6, 1)] }
         const outcome = step(state, TICK, [IDLE, hold(west)], fixedRandom(0))
         return { state, enemy, outcome }
     }
 
-    it("takes only the caught player out, spending one shared life", () => {
-        const { state, enemy, outcome } = caughtOnFirstTick()
+    it("takes only that player out, for good", () => {
+        const { state, enemy, outcome } = knockedOutOnFirstTick()
         expect(outcome).toBeNull()
         const [p1, p2] = state.players
         expect(p1.out).toBe(true)
-        expect(p1.respawnIn).toBe(PLAYER_RESPAWN_DELAY)
+        expect(outForGood(p1)).toBe(true)
+        expect(p1.health).toBe(0)
         expect(p2.out).toBe(false)
-        expect(state.lives).toBe(START_LIVES - 1)
-        // Nobody is reset: the enemy stays where it caught.
+        expect(p2.health).toBe(1)
+        // Nobody is reset: the enemy stays where it hit.
         expect(enemy.pos).toEqual(vec2(1, 1))
+    })
+
+    it("with health left only hurts that player", () => {
+        const { state, outcome } = knockedOutOnFirstTick(MAX_HEALTH)
+        expect(outcome).toBeNull()
+        const [p1, p2] = state.players
+        expect(p1.out).toBe(false)
+        expect(p1.health).toBe(MAX_HEALTH - ENEMY_DAMAGE)
+        expect(p2.health).toBe(MAX_HEALTH)
     })
 
     it("lets the other player and the enemies carry on", () => {
         const roamer = makeEnemy(6, 1, AiType.random)
         roamer.moveProgress = 1
-        const state = coop([post(1, 1), roamer])
+        const state = coop([post(1, 1), roamer], { health: 1 })
         state.spawns = { ...state.spawns, enemies: [vec2(1, 1), vec2(6, 1)] }
         step(state, TICK, [IDLE, hold(west)], fixedRandom(0))
         expect(state.players[0].out).toBe(true)
@@ -155,7 +168,6 @@ describe("a co-op catch", () => {
         boss.health = 3
         boss.speed = 0
         const state = makeState(hall, [P1, P2], [post(1, 1)], {
-            lives: START_LIVES,
             mode: "coop",
             boss,
         })
@@ -175,12 +187,31 @@ describe("a co-op catch", () => {
             "#         . #",
             "#############",
         ]).map
-        const state = makeState(map, [P1, P2], [post(1, 1)], {
-            lives: START_LIVES,
-            mode: "coop",
-        })
+        const state = makeState(map, [P1, P2], [post(1, 1)], { mode: "coop" })
         expect(run(state, [IDLE, hold(west)], MOVE * 2)).toBe("won")
         expect(state.players[0].out).toBe(true)
+    })
+
+    it("ends the game once nobody is in play", () => {
+        const state = coop([post(1, 1), post(11, 1)], { health: 1 })
+        expect(step(state, TICK, [IDLE, IDLE], fixedRandom(0))).toBe("dead")
+        expect(state.players.every(outForGood)).toBe(true)
+    })
+
+    it("ends the game when the last player in play is knocked out", () => {
+        const state = coop([post(1, 1)], { health: 1 })
+        takeOut(state.players[1], null)
+        expect(step(state, TICK, [IDLE, IDLE], fixedRandom(0))).toBe("dead")
+    })
+
+    it("hurts one and knocks the other out on the same tick", () => {
+        const state = coop([post(1, 1), post(11, 1)])
+        state.players[1].health = 1
+        expect(step(state, TICK, [IDLE, IDLE], fixedRandom(0))).toBeNull()
+        const [p1, p2] = state.players
+        expect(p1.health).toBe(MAX_HEALTH - ENEMY_DAMAGE)
+        expect(p1.out).toBe(false)
+        expect(outForGood(p2)).toBe(true)
     })
 })
 
@@ -252,7 +283,7 @@ describe("a player out of play", () => {
             textMap(["#####", "#...#", "#####", "#.###"]).map,
             [vec2(1, 1), vec2(3, 1)],
             [],
-            { lives: START_LIVES, mode: "coop", breath: testBreath() }
+            { mode: "coop", breath: testBreath() }
         )
         const p1 = state.players[0]
         takeOut(p1, PLAYER_RESPAWN_DELAY)
@@ -261,7 +292,7 @@ describe("a player out of play", () => {
         expect(p1.score).toBe(0)
     })
 
-    it("can't be caught", () => {
+    it("can't be hurt", () => {
         const roamer = makeEnemy(2, 1, AiType.random)
         roamer.moveProgress = 1
         const state = coop([roamer])
@@ -269,7 +300,7 @@ describe("a player out of play", () => {
         roamer.pos = vec2(1, 1)
         roamer.lastPos = vec2(1, 1)
         expect(checkEnd(state)).toBeNull()
-        expect(state.lives).toBe(START_LIVES)
+        expect(state.players[0].health).toBe(MAX_HEALTH)
         expect(state.players[0].respawnIn).toBe(PLAYER_RESPAWN_DELAY)
     })
 
@@ -300,7 +331,6 @@ describe("a player out of play", () => {
         // Player 1 is nearer; with it out the boss heads for player 2.
         const boss = makeBoss(4, 1)
         const state = makeState(arena, [vec2(1, 1), vec2(10, 1)], [], {
-            lives: START_LIVES,
             mode: "coop",
             boss,
         })
@@ -332,7 +362,6 @@ describe("while nobody is in play", () => {
         const chaser = makeEnemy(5, 1, AiType.chase)
         chaser.moveProgress = 1
         const state = makeState(room, [vec2(1, 1), vec2(6, 2)], [chaser], {
-            lives: START_LIVES,
             mode: "coop",
         })
         state.spawns = { ...state.spawns, enemies: [vec2(3, 1)] }
@@ -345,7 +374,6 @@ describe("while nobody is in play", () => {
         const boss = makeBoss(1, 1)
         boss.spawn = vec2(5, 1)
         const state = makeState(room, [vec2(1, 1), vec2(6, 2)], [], {
-            lives: START_LIVES,
             mode: "coop",
             boss,
         })
@@ -360,7 +388,6 @@ describe("while nobody is in play", () => {
         const chaser = makeEnemy(4, 1, AiType.chase)
         chaser.moveProgress = 1
         const state = makeState(room, [vec2(1, 1), vec2(6, 2)], [chaser], {
-            lives: START_LIVES,
             mode: "coop",
         })
         state.spawns = { ...state.spawns, enemies: [vec2(6, 1)] }
@@ -372,7 +399,8 @@ describe("while nobody is in play", () => {
     // Regression: the boss or a phantom on the waiting player's spawn
     // parked there, aiming at where the players went out, so the player
     // waited at respawnIn 0 for ever and the game hung.
-    describe("with the last player caught on its own spawn", () => {
+    // Only versus brings a knocked-out player back now.
+    describe("with the last player knocked out on its own spawn", () => {
         function caughtOnSpawn(
             spawn: Vec2,
             enemies: Character[],
@@ -380,8 +408,7 @@ describe("while nobody is in play", () => {
             enemySpawns: Vec2[] = []
         ) {
             const state = makeState(room, [spawn, vec2(6, 2)], enemies, {
-                lives: 1,
-                mode: "coop",
+                mode: "versus",
                 boss,
             })
             state.spawns = { ...state.spawns, enemies: enemySpawns }
@@ -402,6 +429,16 @@ describe("while nobody is in play", () => {
             throw new Error(`Not back within ${max} ticks`)
         }
 
+        // Steps until player 1 is out again, as ticksUntilBack.
+        function ticksUntilOut(state: GameState, max: number) {
+            for (let i = 1; i <= max; i++) {
+                const outcome = step(state, TICK, [IDLE, IDLE], fixedRandom(0))
+                expect(outcome).toBeNull()
+                if (state.players[0].out) return i
+            }
+            throw new Error(`Not out within ${max} ticks`)
+        }
+
         it("comes back once the boss there has gone home", () => {
             const boss = makeBoss(1, 1)
             boss.spawn = vec2(5, 1)
@@ -409,9 +446,9 @@ describe("while nobody is in play", () => {
             const back = ticksUntilBack(state, RESPAWN_TICKS + TICK_RATE * 2)
             expect(back).toBeGreaterThanOrEqual(RESPAWN_TICKS - 1)
             expect(state.players[0].character.pos).toEqual(vec2(1, 1))
-            // The game goes on: the boss comes for it again, and with the
-            // pool empty that catch ends it.
-            expect(run(state, [IDLE, IDLE], TICK_RATE * 10)).toBe("dead")
+            // The game goes on: the boss comes for it again and knocks it
+            // out once more.
+            expect(ticksUntilOut(state, TICK_RATE * 10)).toBeGreaterThan(0)
         })
 
         it("comes back once the phantom there has gone home", () => {
@@ -423,83 +460,7 @@ describe("while nobody is in play", () => {
             const back = ticksUntilBack(state, RESPAWN_TICKS + TICK_RATE * 2)
             expect(back).toBeGreaterThanOrEqual(RESPAWN_TICKS - 1)
             expect(state.players[0].character.pos).toEqual(vec2(2, 2))
-            expect(run(state, [IDLE, IDLE], TICK_RATE * 10)).toBe("dead")
-        })
-    })
-})
-
-describe("the co-op lives pool", () => {
-    it("spends a life per catch, then puts a caught player out for good", () => {
-        const state = coop([], { lives: 1 })
-        const [p1, p2] = state.players
-        expect(resolveCatch(state, [p1])).toBeNull()
-        expect(state.lives).toBe(0)
-        expect(p1.respawnIn).toBe(PLAYER_RESPAWN_DELAY)
-        // Player 1 is still coming back, so the game goes on.
-        expect(resolveCatch(state, [p2])).toBeNull()
-        expect(outForGood(p2)).toBe(true)
-        expect(state.lives).toBe(0)
-    })
-
-    it("ends the game once nobody is in play or coming back", () => {
-        const state = coop([], { lives: 1 })
-        const [p1, p2] = state.players
-        resolveCatch(state, [p1])
-        resolveCatch(state, [p2])
-        bringBack(state, p1)
-        expect(resolveCatch(state, [p1])).toBe("dead")
-        expect(state.players.every(outForGood)).toBe(true)
-    })
-
-    it("goes on with one player out for good and the other in play", () => {
-        const state = coop([], { lives: 0 })
-        expect(resolveCatch(state, [state.players[0]])).toBeNull()
-        expect(outForGood(state.players[0])).toBe(true)
-        expect(state.players[1].out).toBe(false)
-    })
-
-    it("keeps a player coming back in the game, through step", () => {
-        // Posts on both spawns catch both players on the first tick. With
-        // one life, player 1 is coming back and player 2 is out for good;
-        // player 1 then waits for its spawn to be clear (see below).
-        const state = coop([post(1, 1), post(11, 1)], { lives: 1 })
-        expect(step(state, TICK, [IDLE, IDLE], fixedRandom(0))).toBeNull()
-        const [p1, p2] = state.players
-        expect(p1.respawnIn).toBe(PLAYER_RESPAWN_DELAY)
-        expect(outForGood(p2)).toBe(true)
-        // Player 1 waits on for as long as the post is on its spawn.
-        expect(run(state, [IDLE, IDLE], RESPAWN_TICKS * 3)).toBeNull()
-        expect(p1.out).toBe(true)
-        expect(p1.respawnIn).toBe(0)
-    })
-
-    describe("with both caught on the same tick", () => {
-        function bothCaught(lives: number) {
-            const state = coop([post(1, 1), post(11, 1)], { lives })
-            const outcome = step(state, TICK, [IDLE, IDLE], fixedRandom(0))
-            return { state, outcome }
-        }
-
-        it("spends a life for each while there are enough", () => {
-            const { state, outcome } = bothCaught(2)
-            expect(outcome).toBeNull()
-            expect(state.lives).toBe(0)
-            for (const p of state.players) {
-                expect(p.respawnIn).toBe(PLAYER_RESPAWN_DELAY)
-            }
-        })
-
-        it("gives the last life to player 1", () => {
-            const { state, outcome } = bothCaught(1)
-            expect(outcome).toBeNull()
-            expect(state.players[0].respawnIn).toBe(PLAYER_RESPAWN_DELAY)
-            expect(outForGood(state.players[1])).toBe(true)
-        })
-
-        it("ends the game with no lives left", () => {
-            const { state, outcome } = bothCaught(0)
-            expect(outcome).toBe("dead")
-            expect(state.players.every(outForGood)).toBe(true)
+            expect(ticksUntilOut(state, TICK_RATE * 10)).toBeGreaterThan(0)
         })
     })
 })
@@ -513,14 +474,14 @@ describe("coming back onto an occupied spawn", () => {
         run(state, [IDLE, IDLE], RESPAWN_TICKS + 30)
         expect(p1.out).toBe(true)
         expect(p1.respawnIn).toBe(0)
-        expect(state.lives).toBe(START_LIVES)
+        expect(p1.health).toBe(MAX_HEALTH)
         // Once the enemy is off the spawn, it is back on the next tick.
         guard.pos = vec2(3, 1)
         guard.lastPos = vec2(3, 1)
         step(state, TICK, [IDLE, IDLE], fixedRandom(0))
         expect(p1.out).toBe(false)
         expect(p1.character.pos).toEqual(P1)
-        expect(state.lives).toBe(START_LIVES)
+        expect(p1.health).toBe(MAX_HEALTH)
     })
 
     it("waits for an enemy gliding off it to be RESPAWN_CLEAR_DISTANCE away", () => {
@@ -566,7 +527,6 @@ describe("coming back onto an occupied spawn", () => {
         const chaser = makeEnemy(4, 2, AiType.chase, { x: 5, y: 2 })
         chaser.moveProgress = 0.35
         const state = makeState(map, [vec2(4, 2), vec2(7, 3)], [chaser], {
-            lives: START_LIVES,
             mode: "coop",
         })
         state.spawns = { ...state.spawns, enemies: [vec2(7, 1)] }
@@ -582,7 +542,7 @@ describe("coming back onto an occupied spawn", () => {
         expect(back).toBeGreaterThan(0)
         run(state, [hold(north), IDLE], 2)
         expect(p1.out).toBe(false)
-        expect(state.lives).toBe(START_LIVES)
+        expect(p1.health).toBe(MAX_HEALTH)
     })
 
     it("isn't held up by a harmless enemy", () => {
@@ -604,7 +564,6 @@ describe("coming back onto an occupied spawn", () => {
         ]).map
         const boss = makeBoss(1, 1, 0)
         const state = makeState(arena, [vec2(1, 1), vec2(4, 2)], [], {
-            lives: START_LIVES,
             mode: "coop",
             boss,
         })
@@ -618,44 +577,38 @@ describe("coming back onto an occupied spawn", () => {
 })
 
 describe("ticksUntilCaught in co-op", () => {
-    // Regression: it only noticed a lost game or a lost life, so a catch
-    // with the pool empty (out for good, lives unchanged, game going on)
-    // went unseen.
-    it("notices a player going out for good with the pool empty", () => {
+    it("notices a player going out for good", () => {
         const chaser = makeEnemy(3, 1, AiType.chase)
         chaser.moveProgress = 1
-        const state = coop([chaser], { lives: 0 })
+        const state = coop([chaser], { health: 1 })
         expect(ticksUntilCaught(state)).toBeGreaterThan(0)
         expect(outForGood(state.players[0])).toBe(true)
         expect(state.players[1].out).toBe(false)
-        expect(state.lives).toBe(0)
     })
 
-    it("notices a player going out with a life to come back on", () => {
+    it("notices a player hurt with health left", () => {
         const chaser = makeEnemy(3, 1, AiType.chase)
         chaser.moveProgress = 1
         const state = coop([chaser])
         expect(ticksUntilCaught(state)).toBeGreaterThan(0)
-        expect(state.players[0].respawnIn).toBe(PLAYER_RESPAWN_DELAY)
+        expect(state.players[0].health).toBe(MAX_HEALTH - ENEMY_DAMAGE)
     })
 })
 
 describe("solo rules", () => {
-    it("never take a player out: a catch respawns everyone", () => {
+    it("never take a player out or reset anyone on a hit", () => {
         const state = coop([post(1, 1)], { mode: "solo" })
         state.players[1].character.pos = vec2(8, 1)
         expect(step(state, TICK, [IDLE, IDLE], fixedRandom(0))).toBeNull()
-        expect(state.lives).toBe(START_LIVES - 1)
+        expect(state.players[0].health).toBe(MAX_HEALTH - ENEMY_DAMAGE)
         for (const p of state.players) expect(p.out).toBe(false)
-        expect(state.players[1].character.pos).toEqual(P2)
+        expect(state.players[1].character.pos).toEqual(vec2(8, 1))
     })
 
-    it("bring an out player back with everyone else", () => {
-        const state = coop([post(1, 1)], { mode: "solo" })
-        takeOut(state.players[1], null)
-        resolveCatch(state, [state.players[0]])
-        expect(state.players[1].out).toBe(false)
-        expect(state.players[1].character.pos).toEqual(P2)
+    it("lose the game on a knockout, taking nobody out", () => {
+        const state = coop([post(1, 1)], { mode: "solo", health: 1 })
+        expect(step(state, TICK, [IDLE, IDLE], fixedRandom(0))).toBe("dead")
+        for (const p of state.players) expect(p.out).toBe(false)
     })
 })
 
@@ -663,7 +616,6 @@ describe("dots eaten", () => {
     it("are counted for the player who ate them", () => {
         const map = textMap(["#######", "#.....#", "#######", "#.#####"]).map
         const state = makeState(map, [vec2(1, 1), vec2(5, 1)], [], {
-            lives: START_LIVES,
             mode: "coop",
         })
         run(state, [hold(east), hold(west)], MOVE * 2)
@@ -686,7 +638,7 @@ describe("breaths in co-op", () => {
         const enemy = makeEnemy(5, 1)
         enemy.speed = 0
         const state = makeState(map, [vec2(1, 1), vec2(2, 1)], [enemy], {
-            lives: START_LIVES,
+            health: MAX_HEALTH,
             mode: "coop",
             breath: BREATHS[animal],
         })
@@ -710,7 +662,7 @@ describe("breaths in co-op", () => {
         expect(p2.breather.cooldown).toBe(0)
         expect(p2.breather.facing).toEqual(west)
         expect(state.ice[1][2]).toBe(false)
-        expect(state.lives).toBe(START_LIVES)
+        expect(p2.health).toBe(MAX_HEALTH)
         // Player 2 walks on through the breath's cells.
         run(state, [IDLE, hold(east)], MOVE)
         expect(p2.character.pos).toEqual(vec2(3, 1))

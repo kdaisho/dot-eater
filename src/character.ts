@@ -21,7 +21,9 @@ export type Character = {
     // move). It grows by speed * dt each tick and stays at 1 while the
     // character can't or doesn't want to move. Just after a move it can be a
     // little above 0: the progress left over past 1, so slow ticks don't
-    // round speeds down.
+    // round speeds down. An enemy a punch knocked back from short of its
+    // cell starts below 0 (down to -0.5; see knockEnemy in punch.ts): it is
+    // drawn that far before lastPos, and its glide in is that much longer.
     moveProgress: number
     // Patrollers only: the waypoints walked in a loop, and the index of the
     // one it is heading for. Other characters have no route.
@@ -36,6 +38,11 @@ export type Character = {
     // Infinity (GONE in splitter.ts) is out of play with no timer: a
     // Splitter's half that is gone, or its spare slot before a split.
     respawnIn: number
+    // Seconds in a row a chaser, ambusher or Splitter has held its move so
+    // as not to stack on one of its kind (see spreadChoice in ai.ts); 0
+    // on any tick it doesn't hold (it moves, stays put for another reason,
+    // glides, is frozen or is out of play).
+    heldFor: number
     // Splitters only: which of the Splitter's two enemy slots this is, and
     // whether it is whole or a half (see splitter.ts).
     part?: SplitterPart
@@ -64,6 +71,7 @@ export function createCharacter(
         routeIndex: 0,
         statuses: [],
         respawnIn: 0,
+        heldFor: 0,
     }
 }
 

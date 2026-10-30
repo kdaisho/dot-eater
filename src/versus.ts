@@ -11,11 +11,12 @@ import { samePos, vec2, type Vec2 } from "./vec2"
 //   the timer never resets, and once it wears off the player is immune for
 //   STUN_IMMUNITY_SECONDS, so it always gets time to get away. Lasting tile effects (fire, stink, ice) never
 //   stun; only the cells a breath covers as it fires.
-// - There are no lives: a catch costs CATCH_DOTS dots (never below 0) and
-//   takes the player out for PLAYER_RESPAWN_DELAY seconds (see versusCatch
+// - A player knocked out (its health gone, see hurtPlayer in game.ts)
+//   loses CATCH_DOTS dots (never below 0) and is out for
+//   PLAYER_RESPAWN_DELAY seconds, then back with full health (see knockOut
 //   in game.ts). A versus game is never lost.
-// - A round ends when the stage is cleared (no dots left and, on a boss
-//   stage, the boss defeated). The player with the most dots (Player.dots)
+// - A round ends when the stage is cleared (no dots left, or on a boss
+//   stage the boss defeated). The player with the most dots (Player.dots)
 //   wins it; a tie goes to the higher score, and an exact tie is replayed.
 //   The first to ROUNDS_TO_WIN round wins takes the match.
 
@@ -23,9 +24,9 @@ import { samePos, vec2, type Vec2 } from "./vec2"
 export const STUN_SECONDS = 2
 // Seconds after a stun wears off in which that player can't be stunned
 // again, so a breath fired every time it is free can't keep it stunned.
-// Being taken out (caught) ends the immunity, as it ends a stun.
+// Being taken out (knocked out) ends the immunity, as it ends a stun.
 export const STUN_IMMUNITY_SECONDS = 1.5
-// Dots a player caught by an enemy or the boss loses.
+// Dots a player knocked out by an enemy or the boss loses.
 export const CATCH_DOTS = 5
 // Round wins that take a match (best of 3).
 export const ROUNDS_TO_WIN = 2
@@ -92,7 +93,7 @@ export function opponentsStruck(
     )
 }
 
-// A catch in versus costs CATCH_DOTS of the player's dot count
+// A knockout in versus costs CATCH_DOTS of the player's dot count
 // (Player.dots, which decides rounds), down to 0.
 export function loseDots(player: Player) {
     player.dots = Math.max(0, player.dots - CATCH_DOTS)

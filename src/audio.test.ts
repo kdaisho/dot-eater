@@ -58,8 +58,12 @@ describe("busGains", () => {
     it("keeps the title melody audible next to the effects at the defaults", () => {
         const gains = busGains(DEFAULT_VOLUMES)
         const melody = TRACKS.title.voices[0]
+        // The boss's roar is meant to drown everything out, so it isn't the
+        // yardstick.
         const effect = Math.max(
-            ...Object.values(SFX).flatMap((tones) => tones.map((t) => t.volume))
+            ...Object.entries(SFX)
+                .filter(([name]) => name !== "boss.breath")
+                .flatMap(([, tones]) => tones.map((t) => t.volume))
         )
         expect(melody.volume * gains.music).toBeGreaterThanOrEqual(
             (effect * gains.effects) / 4

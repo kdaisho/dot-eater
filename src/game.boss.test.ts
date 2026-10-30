@@ -4,23 +4,27 @@ import type { BreathDef, BreathHit, TileEffect } from "./breath"
 import { BREATHS } from "./breaths"
 import { BURNING } from "./breaths/dragon"
 import {
+    BOSS_DAMAGE,
     BOSS_DEFEAT_POINTS,
     BOSS_HEALTH,
     BOSS_SPEED,
-    BOSS_TRICKLE,
     CATCH_DISTANCE,
     Cell,
+    DOT_ENERGY,
+    DOT_POINTS,
+    MAX_HEALTH,
     PLAYER_SPEED,
     TICK_RATE,
 } from "./constants"
 import {
+    bossHud,
     createGameState,
     drawnPos,
     step,
     type GameState,
     type MoveInput,
 } from "./game"
-import { parseLevel } from "./level"
+import { parseFlat } from "./test/helpers"
 import { ANIMAL_IDS } from "./roster"
 import {
     drawn,
@@ -32,12 +36,13 @@ import {
     testBreath,
     textMap,
     ticksUntilCaught,
+    withoutBreath,
     type MapLiteral,
 } from "./test/helpers"
 import { vec2, type Vec2 } from "./vec2"
 
-// The boss (boss.ts) end to end through step(): breaths, moving, catching,
-// lost lives and winning.
+// The boss (boss.ts) end to end through step(): breaths, moving, touching
+// (and hurting) the player, and winning.
 
 const TICK = 1 / TICK_RATE
 const none = vec2(0, 0)
@@ -85,20 +90,20 @@ function bossGame(
     {
         breath = BREATHS.dragon,
         map = arena,
-        lives = 1,
+        health = 1,
         ready = false,
         speed,
     }: {
         breath?: BreathDef
         map?: MapLiteral
-        lives?: number
+        health?: number
         ready?: boolean
         speed?: number
     } = {}
 ): GameState {
     const state = makeState(map, player, [], {
         breath,
-        lives,
+        health,
         boss: makeBoss(boss.x, boss.y, speed),
     })
     state.players[0].breather.energy = breath.maxEnergy
@@ -119,12 +124,13 @@ function gap(state: GameState): number {
 }
 
 describe("createGameState", () => {
-    const lair = parseLevel({
+    const lair = parseFlat({
         name: "lair",
         parTime: 60,
         map: ["#######", "#P.B..#", "#.....#", "#######"],
         enemies: [],
         boss: { speed: 2 },
+        rules: { regrowDots: { seconds: 10 } },
     })
 
     it("builds the level's boss, waiting out the grace period", () => {
@@ -138,6 +144,20 @@ describe("createGameState", () => {
             defeated: false,
         })
         expect(game.enemies).toEqual([])
+    })
+
+    it("gives the boss the level's health, and the HUD shows it", () => {
+        const tough = parseFlat({
+            name: "lair",
+            parTime: 60,
+            map: ["#######", "#P.B..#", "#.....#", "#######"],
+            enemies: [],
+            boss: { health: 18 },
+            rules: { regrowDots: { seconds: 10 } },
+        })
+        const game = createGameState(tough)
+        expect(game.boss).toMatchObject({ health: 18, maxHealth: 18 })
+        expect(bossHud(game)).toEqual({ health: 18, max: 18 })
     })
 
     it("has no boss on a level without one", () => {
@@ -194,7 +214,7 @@ describe("breathing at the boss", () => {
         // has nowhere to go, but the boss is on the origin.
         const state = bossGame(vec2(8, 2), vec2(7, 1), {
             breath: BREATHS.owl,
-            lives: 3,
+            health: MAX_HEALTH,
         })
         tick(state, { breath: true })
         expect(state.boss!.health).toBe(BOSS_HEALTH - 1)
@@ -237,7 +257,8 @@ describe("breathing at the boss", () => {
     it("defeats it at 0 health: +500, gone for good, harmless", () => {
         const state = bossGame(vec2(1, 2), vec2(2, 1), { ready: true })
         state.boss!.health = 2
-        expect(tick(state, { breath: true })).toBeNull()
+        // Defeating it clears the stage (see "winning a boss level").
+        expect(tick(state, { breath: true })).toBe("won")
         const boss = state.boss!
         expect(boss.defeated).toBe(true)
         expect(boss.health).toBe(0)
@@ -245,11 +266,9 @@ describe("breathing at the boss", () => {
         // It doesn't move, and touching where it was doesn't catch.
         state.players[0].character.pos = vec2(2, 2)
         state.players[0].character.lastPos = vec2(1, 2)
-        for (let i = 0; i < TICK_RATE * 2; i++) {
-            expect(tick(state)).toBeNull()
-        }
+        for (let i = 0; i < TICK_RATE * 2; i++) tick(state)
         expect(boss.pos).toEqual(vec2(2, 1))
-        expect(state.lives).toBe(1)
+        expect(state.players[0].health).toBe(1)
         // A breath no longer hits it.
         state.players[0].breather.cooldown = 0
         state.players[0].breather.energy = 100
@@ -291,6 +310,8 @@ describe("the boss moving", () => {
             map: lair,
             ready: true,
         })
+        // Waiting at the mouth, it would breathe down the corridor.
+        withoutBreath(state.boss!)
         for (let i = 0; i < TICK_RATE * 5; i++) {
             expect(tick(state)).toBeNull()
         }
@@ -303,7 +324,7 @@ describe("the boss moving", () => {
         // The Dragon's fire stops at its body and burns (2, 2), under it.
         const state = bossGame(vec2(1, 2), vec2(2, 1), {
             ready: true,
-            lives: 3,
+            health: MAX_HEALTH,
         })
         tick(state, { breath: true })
         expect(state.tiles.map((t) => t.effect)).toEqual([BURNING])
@@ -314,7 +335,7 @@ describe("the boss moving", () => {
             expect(tick(state)).toBeNull()
             expect(inFootprint(state.boss!.pos, burning)).toBe(false)
         }
-        expect(state.lives).toBe(3)
+        expect(state.players[0].health).toBe(MAX_HEALTH)
     })
 
     it("isn't where a regrowing wall pushes the player", () => {
@@ -329,9 +350,11 @@ describe("the boss moving", () => {
             "########",
             "#.######",
         ])
+        // Without its breath, which would hold it still to breathe at the
+        // player pushed out next to it.
         const state = makeState(map, { x: 5, y: 1 }, [], {
-            boss: makeBoss(1, 1),
-            lives: 2,
+            boss: withoutBreath(makeBoss(1, 1)),
+            health: MAX_HEALTH,
         })
         state.cells[1][5] = Cell.none
         state.players[0].character.lastPos = vec2(4, 1)
@@ -349,7 +372,7 @@ describe("the boss moving", () => {
         expect(state.cells[1][5]).toBe(Cell.wall)
         expect(state.players[0].character.pos).toEqual(vec2(2, 1))
         expect(state.boss!.lastPos).toEqual(vec2(3, 1))
-        expect(state.lives).toBe(2)
+        expect(state.players[0].health).toBe(MAX_HEALTH)
     })
 })
 
@@ -357,7 +380,7 @@ describe("the boss catching", () => {
     it("catches the player as its footprint touches it", () => {
         const state = bossGame(vec2(1, 1), vec2(5, 1), { ready: true })
         ticksUntilCaught(state, none, TICK_RATE * 5)
-        expect(state.lives).toBe(0)
+        expect(state.players[0].health).toBe(0)
         // Within CATCH_DISTANCE of the square of its cell centres, but by
         // less than a tick's glide (1.5 / 60 cells).
         expect(gap(state)).toBeLessThanOrEqual(CATCH_DISTANCE + 1e-9)
@@ -405,8 +428,8 @@ describe("the boss catching", () => {
         expect(state.players[0].character.pos).toEqual(vec2(8, 3))
     })
 
-    it("goes back to its spawn after a lost life, keeping its damage", () => {
-        const state = bossGame(vec2(1, 2), vec2(2, 1), { lives: 3 })
+    it("costs BOSS_DAMAGE and stays where it is, keeping its damage", () => {
+        const state = bossGame(vec2(1, 2), vec2(2, 1), { health: MAX_HEALTH })
         tick(state, { breath: true })
         expect(state.boss!.health).toBe(BOSS_HEALTH - 2)
         state.boss!.pos = vec2(5, 2)
@@ -414,10 +437,34 @@ describe("the boss catching", () => {
         state.players[0].character.pos = vec2(6, 3)
         state.players[0].character.lastPos = vec2(6, 3)
         expect(tick(state)).toBeNull()
-        expect(state.lives).toBe(2)
-        expect(state.boss!.pos).toEqual(vec2(2, 1))
-        expect(state.boss!.moveProgress).toBe(0)
+        expect(state.players[0].health).toBe(MAX_HEALTH - BOSS_DAMAGE)
+        expect(state.boss!.pos).toEqual(vec2(5, 2))
         expect(state.boss!.health).toBe(BOSS_HEALTH - 2)
+        // Knocked away from its footprint's centre, (5.5, 2.5): level on
+        // both axes, so along x.
+        expect(state.players[0].character.pos).toEqual(vec2(7, 3))
+        expect(state.players[0].invulnerableFor).toBeGreaterThan(0)
+    })
+
+    it("passes through a player invulnerable after a hit", () => {
+        const state = bossGame(vec2(6, 3), vec2(5, 2), { health: MAX_HEALTH })
+        state.boss!.speed = 0
+        expect(tick(state)).toBeNull()
+        expect(state.players[0].health).toBe(MAX_HEALTH - BOSS_DAMAGE)
+        // Back onto it: no second hit while invulnerable.
+        state.players[0].character.pos = vec2(6, 3)
+        state.players[0].character.lastPos = vec2(6, 3)
+        state.players[0].character.moveProgress = 1
+        for (let i = 0; i < TICK_RATE; i++) expect(tick(state)).toBeNull()
+        expect(state.players[0].health).toBe(MAX_HEALTH - BOSS_DAMAGE)
+    })
+
+    it("hurts harder than an enemy touching on the same tick", () => {
+        const state = bossGame(vec2(6, 3), vec2(5, 2), { health: MAX_HEALTH })
+        state.enemies.push(makeEnemy(6, 3))
+        state.spawns = { ...state.spawns, enemies: [vec2(6, 3)] }
+        expect(tick(state)).toBeNull()
+        expect(state.players[0].health).toBe(MAX_HEALTH - BOSS_DAMAGE)
     })
 })
 
@@ -432,38 +479,30 @@ describe("winning a boss level", () => {
         "##########",
     ]).map
 
-    it("needs the boss defeated after the last dot", () => {
-        const state = bossGame(vec2(7, 4), vec2(2, 1), {
-            map: oneDot,
-            breath: BREATHS.owl,
-        })
+    it("isn't won by eating the last dot while the boss is about", () => {
+        const state = bossGame(vec2(7, 4), vec2(2, 1), { map: oneDot })
         state.players[0].character.moveProgress = 1
-        // The last dot: no win yet, with the boss still about.
         expect(tick(state, { held: east })).toBeNull()
         expect(state.cells[4][8]).toBe(Cell.none)
         expect(tick(state)).toBeNull()
-        // Its last hit wins, even if it catches the player on that tick.
-        state.boss!.health = 1
-        state.players[0].character.pos = vec2(3, 2)
-        state.players[0].character.lastPos = vec2(3, 2)
-        state.players[0].breather.cooldown = 0
-        expect(tick(state, { breath: true })).toBe("won")
-        expect(state.lives).toBe(1)
-        expect(state.boss!.defeated).toBe(true)
     })
 
-    it("needs the last dot eaten after the boss is defeated", () => {
-        const state = bossGame(vec2(1, 2), vec2(2, 1), {
-            map: oneDot,
+    it("is won the moment the boss is defeated, with dots left", () => {
+        const state = bossGame(vec2(1, 2), vec2(2, 1), { breath: BREATHS.owl })
+        state.boss!.health = 1
+        expect(tick(state, { breath: true })).toBe("won")
+        expect(state.boss!.defeated).toBe(true)
+        // The pocket's dot is still there: dots don't matter.
+        expect(state.cells[6][1]).toBe(Cell.dot)
+    })
+
+    it("is won by the last hit even if the boss catches the player on that tick", () => {
+        const state = bossGame(vec2(3, 2), vec2(2, 1), {
             breath: BREATHS.owl,
         })
         state.boss!.health = 1
-        expect(tick(state, { breath: true })).toBeNull()
-        expect(state.boss!.defeated).toBe(true)
-        state.players[0].character.pos = vec2(7, 4)
-        state.players[0].character.lastPos = vec2(7, 4)
-        state.players[0].character.moveProgress = 1
-        expect(tick(state, { held: east })).toBe("won")
+        expect(tick(state, { breath: true })).toBe("won")
+        expect(state.players[0].health).toBe(1)
     })
 
     it("would be caught on that tick without the last hit", () => {
@@ -472,27 +511,43 @@ describe("winning a boss level", () => {
     })
 })
 
+describe("bossHud", () => {
+    it("is the boss's health, or null without a boss", () => {
+        const state = bossGame(vec2(1, 2), vec2(2, 1))
+        state.boss!.health = 7
+        expect(bossHud(state)).toEqual({ health: 7, max: BOSS_HEALTH })
+        expect(bossHud(makeState(arena, vec2(1, 1)))).toBeNull()
+    })
+})
+
 describe("energy on a boss level", () => {
-    it("refills by itself once the dots are gone, up to the meter", () => {
+    // KDA-267: the old refill once the dots were gone is dropped (regrowing
+    // dots, KDA-269, keep the meters fed instead).
+    it("doesn't refill by itself once the dots are gone", () => {
         const state = bossGame(vec2(1, 4), vec2(7, 1), {
             map: bare,
             speed: 0.01,
         })
         state.players[0].breather.energy = 0
         for (let i = 0; i < TICK_RATE; i++) tick(state)
-        expect(state.players[0].breather.energy).toBeCloseTo(BOSS_TRICKLE)
-        state.players[0].breather.energy =
-            state.players[0].breather.breath.maxEnergy - 1
-        for (let i = 0; i < TICK_RATE; i++) tick(state)
-        expect(state.players[0].breather.energy).toBe(
-            state.players[0].breather.breath.maxEnergy
-        )
+        expect(state.players[0].breather.energy).toBe(0)
     })
 
-    it("doesn't refill while dots are left", () => {
-        const state = bossGame(vec2(1, 4), vec2(7, 1), { speed: 0.01 })
+    it("fills from dots as usual", () => {
+        const state = bossGame(vec2(7, 4), vec2(2, 1), {
+            map: textMap([
+                "##########",
+                "#        #",
+                "#        #",
+                "#        #",
+                "#       .#",
+                "##########",
+            ]).map,
+        })
         state.players[0].breather.energy = 0
-        for (let i = 0; i < TICK_RATE; i++) tick(state)
-        expect(state.players[0].breather.energy).toBe(0)
+        state.players[0].character.moveProgress = 1
+        tick(state, { held: east })
+        expect(state.players[0].breather.energy).toBe(DOT_ENERGY)
+        expect(state.players[0].score).toBe(DOT_POINTS)
     })
 })

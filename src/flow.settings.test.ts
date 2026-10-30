@@ -14,11 +14,10 @@ import {
 } from "./flow"
 import { step, type MoveInput } from "./game"
 import type { Action } from "./input"
-import { parseLevel } from "./level"
 import { emptyProgress } from "./progress"
 import { AnimalId } from "./roster"
 import { defaultSettings, VOLUME_MAX, type Settings } from "./settings"
-import { cloneState, fixedRandom } from "./test/helpers"
+import { cloneState, fixedRandom, parseFlat, sameAtEvery } from "./test/helpers"
 import { vec2 } from "./vec2"
 
 // The settings screen in the screen machine: opened from the title and
@@ -26,13 +25,13 @@ import { vec2 } from "./vec2"
 // settings it carries.
 
 const levels = [
-    parseLevel({
+    parseFlat({
         name: "corridor",
         parTime: 60,
         map: ["######", "#PQ..#", "######"],
         enemies: [],
     }),
-]
+].map(sameAtEvery)
 
 // Input for one tick: the actions each player pressed (player 1 first).
 function input(...pressed: (readonly Action[])[]): TickInput {
@@ -103,7 +102,7 @@ describe("opening the settings", () => {
     })
 
     it("still starts a game from a mode on the title", () => {
-        expect(press(initialScreen(), ["confirm"]).kind).toBe("stageSelect")
+        expect(press(initialScreen(), ["confirm"]).kind).toBe("playSelect")
     })
 
     it("opens from the pause menu's Settings entry", () => {
@@ -159,17 +158,10 @@ describe("Back from the settings", () => {
 
     it("also by confirming the Back row", () => {
         const title = titleOnSettings()
-        const settings = press(title, [
-            "confirm",
-            "down",
-            "down",
-            "down",
-            "down",
-            "down",
-            "down",
-        ])
+        const down = Array<Action>(7).fill("down")
+        const settings = press(title, ["confirm", ...down])
         // Past Controls (title only), on Back.
-        expect(settings).toMatchObject({ row: 6 })
+        expect(settings).toMatchObject({ row: 7 })
         expect(press(settings, ["confirm"])).toBe(title)
     })
 
@@ -231,15 +223,8 @@ describe("the settings rows", () => {
     it("moves the cursor over the rows, stopping at either end", () => {
         const settings = open()
         expect(press(settings, ["up"])).toBe(settings)
-        const last = press(settings, [
-            "down",
-            "down",
-            "down",
-            "down",
-            "down",
-            "down",
-        ])
-        expect(last).toMatchObject({ row: 6 })
+        const last = press(settings, Array<Action>(7).fill("down"))
+        expect(last).toMatchObject({ row: 7 })
         expect(press(last, ["down"])).toBe(last)
     })
 
@@ -273,17 +258,13 @@ describe("the settings rows", () => {
         expect(settingsOf(press(muted, ["right"])).muted).toBe(false)
     })
 
-    it("sets screen shake from its effective value", () => {
-        const shake = ["down", "down", "down"] as Action[]
-        // Unset with no reduced motion: on, so a flip turns it off.
-        const normal = press(open(), shake)
-        expect(settingsOf(press(normal, ["confirm"])).screenShake).toBe(false)
-        // Unset with reduced motion: off, so a flip turns it on.
-        const reduced = deps({ prefersReducedMotion: true })
-        const calm = press(open(defaultSettings(), reduced), shake, reduced)
-        expect(settingsOf(press(calm, ["confirm"], reduced)).screenShake).toBe(
-            true
-        )
+    it("steps screen shake from Auto to On to Off", () => {
+        const shake = press(open(), ["down", "down", "down"])
+        expect(settingsOf(shake).screenShake).toBeNull()
+        const on = press(shake, ["confirm"])
+        expect(settingsOf(on).screenShake).toBe(true)
+        expect(settingsOf(press(on, ["right"])).screenShake).toBe(false)
+        expect(settingsOf(press(shake, ["left"])).screenShake).toBe(false)
     })
 
     it("keeps each change for the next tick, as a new settings object", () => {
@@ -360,21 +341,61 @@ describe("selectItem on the title, pause and settings", () => {
     it("counts the rows that show: Show D-pad only on touch devices", () => {
         const touch = deps({ touch: true })
         const settings = update(titleOnSettings(), input(["confirm"]), touch)
-        // Without touch: five rows, Controls, then Back (index 6) last.
-        expect(selectItem(settings, 7)).toBe(settings)
-        const dpad = selectItem(settings, 5, touch)
-        expect(dpad).toMatchObject({ row: 5 })
+        // Without touch: six rows, Controls, then Back (index 7) last.
+        expect(selectItem(settings, 8)).toBe(settings)
+        const dpad = selectItem(settings, 6, touch)
+        expect(dpad).toMatchObject({ row: 6 })
         expect(
             settingsOf(update(dpad, input(["confirm"]), touch)).showDpad
         ).toBe(true)
-        // With touch: Show D-pad, then Controls, then Back (index 7).
-        const controls = selectItem(settings, 6, touch)
+        // With touch: Show D-pad, then Controls, then Back (index 8).
+        const controls = selectItem(settings, 7, touch)
         expect(update(controls, input(["confirm"]), touch)).toMatchObject({
             kind: "controls",
         })
-        const back = selectItem(settings, 7, touch)
+        const back = selectItem(settings, 8, touch)
         expect(update(back, input(["confirm"]), touch)).toMatchObject({
             kind: "title",
         })
+    })
+})
+
+describe("the Players setting in a game (KDA-262)", () => {
+    const bump = { ...defaultSettings(), playersBump: true }
+    // Player 1 holding east, into player 2 (P and Q are side by side).
+    const east: TickInput = {
+        wasPressed: () => false,
+        move: (player = 0): MoveInput => ({
+            held: player === 0 ? [vec2(1, 0)] : [],
+            pressed: vec2(0, 0),
+        }),
+    }
+    const coop = () =>
+        startLevel(levels, 0, [AnimalId.dragon, AnimalId.owl], "coop")
+
+    it.each([
+        ["Bump", bump, true],
+        ["Pass through", defaultSettings(), false],
+        ["nothing saved", undefined, false],
+    ] as const)("plays by %s", (_, settings, on) => {
+        const playing = coop()
+        const game = gameOf(playing)!
+        update(playing, east, deps(settings ? { settings } : {}))
+        expect(game.playersBump).toBe(on)
+        const p1 = game.players[0].character.pos
+        expect(p1).toEqual(on ? vec2(1, 1) : vec2(2, 1))
+    })
+
+    it("applies a change made from pause once play resumes", () => {
+        let screen = coop()
+        const game = gameOf(screen)!
+        screen = update(screen, input(), deps())
+        expect(game.playersBump).toBe(false)
+        // Paused, the setting changes (main saves it into deps.settings).
+        screen = press(screen, ["pause"])
+        screen = press(screen, ["confirm"], deps({ settings: bump }))
+        expect(screen.kind).toBe("playing")
+        update(screen, input(), deps({ settings: bump }))
+        expect(game.playersBump).toBe(true)
     })
 })

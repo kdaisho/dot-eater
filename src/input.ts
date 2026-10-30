@@ -9,6 +9,7 @@ export type Action =
     | "left"
     | "right"
     | "breath"
+    | "punch"
     | "pause"
     | "confirm"
 
@@ -18,6 +19,7 @@ export const ACTIONS: readonly Action[] = [
     "left",
     "right",
     "breath",
+    "punch",
     "pause",
     "confirm",
 ]
@@ -61,7 +63,7 @@ export class PlayerInput {
     // Directions held through ignoreHeld: they don't move the player until
     // they're released and pressed again.
     private readonly stale = new Set<Action>()
-    // Latching controls (a touch swipe), each with what to tell its owner
+    // Latching controls (a touch drag), each with what to tell its owner
     // when it is dropped (see latch).
     private readonly latches = new Map<string, () => void>()
 
@@ -69,10 +71,10 @@ export class PlayerInput {
         private readonly onPress: (action: Action) => void = () => {}
     ) {}
 
-    // Make `control` a latch: a hold that lasts until newer input. When any
+    // Make `control` a latch: a hold that newer input drops. When any
     // other control presses a direction, every direction the latch holds is
     // released first and `onDrop` is told, so the newest input wins (a key
-    // or D-pad pressed after a swipe takes over, and stops the player once
+    // or D-pad pressed during a drag takes over, and stops the player once
     // let go) and the press is a fresh edge.
     latch(control: string, onDrop: () => void): void {
         this.latches.set(control, onDrop)
@@ -256,8 +258,8 @@ export function keyMapsFor(bindings: Bindings): KeyMap[] {
     })
 }
 
-// The default maps: P1 arrows, ShiftRight breath, P/Escape pause, Space
-// confirm; P2 WASD, ShiftLeft breath, Q pause, E confirm.
+// The default maps: P1 arrows, ShiftRight breath, / punch, P/Escape pause,
+// Space confirm; P2 WASD, ShiftLeft breath, Z punch, Q pause, E confirm.
 export const [PLAYER_1_KEYS, PLAYER_2_KEYS] = keyMapsFor(DEFAULT_BINDINGS) as [
     KeyMap,
     KeyMap,

@@ -1,7 +1,7 @@
 import { createBoss, type Boss } from "../boss"
 import type { BreathDef } from "../breath"
 import { BREATHS } from "../breaths"
-import { AiType, Cell, CharacterId, TICK_RATE } from "../constants"
+import { AiType, Cell, CharacterId, ENEMY_IDS, TICK_RATE } from "../constants"
 import { DEFAULT_ANIMAL } from "../roster"
 import { createCharacter, type Character } from "../character"
 import {
@@ -13,11 +13,60 @@ import {
     type Mode,
     type MoveInput,
 } from "../game"
+import type { Screen } from "../flow"
 import type { IceMap } from "../ice"
-import { parseLevel, type Cells, type Level, type LevelData } from "../level"
+import {
+    DIFFICULTIES,
+    ENEMY_COUNT,
+    MAP_SIZE,
+    MAP_SIZES,
+    type Difficulty,
+    type MapSize,
+} from "../difficulty"
+import {
+    parseMaps,
+    sameForBoth,
+    type Cells,
+    type Level,
+    type LevelData,
+    type LevelVariant,
+    type Stage,
+} from "../level"
 import { vec2, type Vec2 } from "../vec2"
 
 export type MapLiteral = readonly (readonly Cell[])[]
+
+// Level data with one map, written at the top level as before levels had
+// two (see LevelData): what most test levels are.
+export type FlatLevelData = Omit<LevelData, MapSize> & LevelVariant
+
+// Flat level data as level data, its one map standing in for both sizes.
+export function bothMaps(data: FlatLevelData): LevelData {
+    const { map, parTime, enemies, ...shared } = data
+    return { ...shared, ...sameForBoth({ map, parTime, enemies }) }
+}
+
+// Parse flat level data (see parseMaps): its map, with every enemy it lists
+// whatever the difficulty. Throws a LevelError like parseLevel.
+export function parseFlat(data: FlatLevelData): Level {
+    return parseMaps(bothMaps(data)).medium
+}
+
+// One difficulty per map size, the one with the most enemies: a stage
+// tested at each is tested on both its maps, with every enemy that comes
+// out on them.
+export const EACH_MAP: readonly Difficulty[] = MAP_SIZES.map((size) =>
+    DIFFICULTIES.filter((d) => MAP_SIZE[d] === size).reduce((a, b) =>
+        ENEMY_COUNT[b] > ENEMY_COUNT[a] ? b : a
+    )
+)
+
+// A stage that is `level` at every difficulty, for flow tests.
+export function sameAtEvery(level: Level): Stage {
+    return Object.fromEntries(
+        DIFFICULTIES.map((difficulty) => [difficulty, level])
+    ) as Stage
+}
 
 // The map that was hard-coded before levels became data (KDA-195). Level 1
 // kept its walls until Stage 1 replaced it.
@@ -35,7 +84,7 @@ export const OLD_MAP = [
 
 // The old map as level data: level 1 until Stage 1 replaced it (KDA-203).
 // Kept as a small, well-known fixture for tests that rely on its layout.
-export const OLD_LEVEL_DATA: LevelData = {
+export const OLD_LEVEL_DATA: FlatLevelData = {
     name: "Level 1",
     parTime: 60,
     map: [
@@ -52,7 +101,42 @@ export const OLD_LEVEL_DATA: LevelData = {
     enemies: [{ ai: "random" }, { ai: "chase" }],
 }
 
-export const OLD_LEVEL: Level = parseLevel(OLD_LEVEL_DATA)
+export const OLD_LEVEL: Level = parseFlat(OLD_LEVEL_DATA)
+
+// A 29x21 maze, the size of the large mazes to come (KDA-266): too big to
+// fit whole on a phone, so the view follows the player. Pillars on a grid,
+// a tunnel through the middle row, player 1 bottom left, player 2 bottom
+// right and enemies top right and in the middle. Not a stage.
+export const BIG_LEVEL_DATA: FlatLevelData = {
+    name: "Big",
+    parTime: 120,
+    map: [
+        "#############################",
+        "#..........................E#",
+        "#.#.#.#.#.#.#.#.#.#.#.#.#.#.#",
+        "#...........................#",
+        "#.#.#.#.#.#.#.#.#.#.#.#.#.#.#",
+        "#...........................#",
+        "#.#.#.#.#.#.#.#.#.#.#.#.#.#.#",
+        "#...........................#",
+        "#.#.#.#.#.#.#.#.#.#.#.#.#.#.#",
+        "#.............E.............#",
+        ".............................",
+        "#...........................#",
+        "#.#.#.#.#.#.#.#.#.#.#.#.#.#.#",
+        "#...........................#",
+        "#.#.#.#.#.#.#.#.#.#.#.#.#.#.#",
+        "#...........................#",
+        "#.#.#.#.#.#.#.#.#.#.#.#.#.#.#",
+        "#...........................#",
+        "#.#.#.#.#.#.#.#.#.#.#.#.#.#.#",
+        "#P.........................Q#",
+        "#############################",
+    ],
+    enemies: [{ ai: "random" }, { ai: "chase" }],
+}
+
+export const BIG_LEVEL: Level = parseFlat(BIG_LEVEL_DATA)
 
 // Copy a literal map into a fresh, mutable Cells grid.
 export function cellsFrom(map: MapLiteral): Cells {
@@ -64,7 +148,7 @@ export function makeEnemy(
     y: number,
     ai: AiType = AiType.random,
     last: { x: number; y: number } = { x, y },
-    id: CharacterId = CharacterId.enemy1
+    id: CharacterId = ENEMY_IDS[0]
 ): Character {
     const enemy = createCharacter(id, vec2(x, y), ai)
     enemy.lastPos = vec2(last.x, last.y)
@@ -79,7 +163,7 @@ export function makePatroller(
     last: { x: number; y: number } = { x, y }
 ): Character {
     const enemy = createCharacter(
-        CharacterId.enemy1,
+        ENEMY_IDS[0],
         vec2(x, y),
         AiType.patroller,
         undefined,
@@ -93,29 +177,32 @@ type Cell2 = { x: number; y: number }
 
 // Like createGameState, the players' start cells never hold a dot, and the
 // spawns are where the characters start. `player` is player 1's start, or
-// every player's (player 1 first) for a 2-player game. The players are on
-// their last life unless `lives` says otherwise, so any collision ends the
-// game. There is no ice unless `ice` says where (see textMap). Every player
+// every player's (player 1 first) for a 2-player game. The players have
+// 1 health unless `health` says otherwise, so any hit knocks one out (in
+// solo, ending the game). There is no ice unless `ice` says where (see textMap). Every player
 // has the default character's breath unless `breath` says otherwise (one
 // breath for all, or one per player), with an empty meter. There is no boss
 // unless `boss` gives one (see makeBoss). The game plays by `mode`'s rules
-// (solo unless given; see resolveCatch).
+// (solo unless given; see knockOut), with the players passing through
+// each other unless `playersBump` says otherwise.
 export function makeState(
     map: MapLiteral,
     player: Cell2 | readonly Cell2[],
     enemies: Character[] = [],
     {
-        lives = 1,
+        health = 1,
         ice,
         breath = BREATHS[DEFAULT_ANIMAL],
         boss = null,
         mode = "solo",
+        playersBump = false,
     }: {
-        lives?: number
+        health?: number
         ice?: IceMap
         breath?: BreathDef | readonly BreathDef[]
         boss?: Boss | null
         mode?: Mode
+        playersBump?: boolean
     } = {}
 ): GameState {
     const starts = "x" in player ? [player] : player
@@ -132,21 +219,24 @@ export function makeState(
         ice: floorIce,
         floorIce,
         tiles: [],
-        players: starts.map(({ x, y }, i) =>
-            newPlayer(
+        players: starts.map(({ x, y }, i) => ({
+            ...newPlayer(
                 createCharacter(CharacterId.player, vec2(x, y)),
                 breathOf(i)
-            )
-        ),
+            ),
+            health,
+        })),
+        playersBump,
         enemies,
         boss,
         ticks: 0,
-        lives,
         spawns: {
             players: starts.map(({ x, y }) => vec2(x, y)),
             enemies: enemies.map((e) => vec2(e.pos.x, e.pos.y)),
         },
         events: [],
+        regrow: null,
+        splitterDrops: false,
     }
 }
 
@@ -156,6 +246,13 @@ export function makeState(
 export function makeBoss(x: number, y: number, speed?: number): Boss {
     const boss = createBoss(vec2(x, y), speed)
     boss.moveProgress = 1
+    return boss
+}
+
+// Keep `boss` from ever breathing (see bossBreath.ts), for tests of what
+// else it does that run past its first breath: its cooldown never ends.
+export function withoutBreath(boss: Boss): Boss {
+    boss.breath.cooldown = Infinity
     return boss
 }
 
@@ -225,26 +322,39 @@ export function p2Move(move: MoveInput): MoveInput[] {
 // A random source that always returns the same value.
 export const fixedRandom = (value: number) => () => value
 
+// A random source that gives the same run of values for the same `seed`
+// (mulberry32), for seeded simulations.
+export function seededRandom(seed: number): () => number {
+    let a = seed >>> 0
+    return () => {
+        a = (a + 0x6d2b79f5) >>> 0
+        let t = a
+        t = Math.imul(t ^ (t >>> 15), t | 1)
+        t ^= t + Math.imul(t ^ (t >>> 7), t | 61)
+        return ((t ^ (t >>> 14)) >>> 0) / 4294967296
+    }
+}
+
 // Step one tick at a time with player 1 holding `held` (nothing by
-// default; enemies use fixedRandom(0)) until a player is caught, i.e. the
-// game is lost, a life is lost or (in a 2-player mode) a player in play is
-// taken out, out for good included, and return how many ticks that took.
-// Fails after `max` ticks, or if the game ends another way.
+// default; enemies use fixedRandom(0)) until a player is hurt or knocked
+// out (so the game may be lost, or in a 2-player mode a player taken out),
+// and return how many ticks that took. Fails after `max` ticks, or if the
+// game ends another way.
 export function ticksUntilCaught(
     state: GameState,
     held: Vec2 = vec2(0, 0),
     max = TICK_RATE * 2
 ): number {
-    const lives = state.lives
     const move = {
         held: held.x === 0 && held.y === 0 ? [] : [held],
         pressed: vec2(0, 0),
     }
     for (let i = 1; i <= max; i++) {
-        const wasIn = state.players.map((p) => !p.out)
         const outcome = step(state, 1 / TICK_RATE, move, fixedRandom(0))
-        const takenOut = state.players.some((p, j) => wasIn[j] && p.out)
-        if (outcome === "dead" || state.lives < lives || takenOut) return i
+        const hit = state.events.some(
+            (e) => e.type === "hurt" || e.type === "playerCaught"
+        )
+        if (outcome === "dead" || hit) return i
         if (outcome) throw new Error(`Ended without a catch: ${outcome}`)
     }
     throw new Error(`Not caught within ${max} ticks`)
@@ -258,3 +368,20 @@ export function drawn(state: GameState, who: Character): Vec2 {
 // The character under the cursor on character select, for DOM tests of main.
 export const pick = () =>
     document.querySelector<HTMLElement>("#overlay li.selected")?.dataset.animal
+
+// Difficulty select for stage `level` in `mode`, its cursor on `difficulty`,
+// as stage select opens it: confirm goes to character select, Back to stage
+// select on the stage.
+export function difficultySelect(
+    level = 0,
+    difficulty: Difficulty = "medium",
+    mode: Mode = "solo"
+): Extract<Screen, { kind: "difficultySelect" }> {
+    return {
+        kind: "difficultySelect",
+        mode,
+        difficulty,
+        next: { kind: "characterSelect", level },
+        back: { kind: "stageSelect", mode, selected: level },
+    }
+}

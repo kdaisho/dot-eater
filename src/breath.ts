@@ -89,9 +89,10 @@ export type EnemyStatus = {
     holds?: boolean
     // The enemy doesn't catch the player.
     harmless?: boolean
-    // The player can't walk into the enemy's cell; it blocks like a wall,
-    // and a slide into it ends next to it.
-    solid?: boolean
+    // The enemy blinks for the status's last RESPAWN_BLINK seconds, as a
+    // respawning one does, warning that it is about to end (see
+    // enemyVisible). Drawing only: nothing else changes.
+    blinksBeforeEnd?: boolean
     look?: Look
 }
 
@@ -166,16 +167,17 @@ export type BreathDef = {
     // the level's (1 for normal).
     maxEnergy: number
     speedScale: number
-    // A further factor on the player's speed on its slide steps on ice
-    // (level or breath ice; see Player.rate). Leave it out for 1.
-    slideSpeedScale?: number
+    // Whether the player walks on ice (level or breath ice) as on normal
+    // floor, moving and stopping by its input, instead of sliding (see
+    // slideTick in game.ts). Leave it out to slide like everyone else.
+    walksOnIce?: boolean
     // How the breath looks in particles (see particles.ts): a burst on each
     // cell it strikes, flying along the facing. Leave it out for none.
     particles?: ParticleLook
     // Whether the breath acts on `wall`, the wall its shape stopped at
     // (BreathHit.wall), e.g. to break it. The aim preview (see aimCells)
-    // marks that wall when this says yes. Leave it out for a breath that
-    // does nothing to walls.
+    // marks only that wall, when this says yes, and nothing else for such a
+    // breath. Leave it out for a breath that does nothing to walls.
     targetsWall?: (cells: Cells, wall: Vec2) => boolean
     // What the breath does once its cost is paid. Return false (before
     // changing anything) to refuse, e.g. when there is nothing to hit; then
@@ -190,8 +192,8 @@ export type Breather = {
     // tried to move into a wall (see movePlayerTick in game.ts). Starts
     // facing right; kept while standing still.
     facing: Vec2
-    // From 0 to breath.maxEnergy. Starts empty each stage, kept when a life
-    // is lost.
+    // From 0 to breath.maxEnergy. Starts empty each stage, kept when the
+    // player is hurt or knocked out.
     energy: number
     // Seconds until it can breathe again (0 when ready).
     cooldown: number
@@ -348,19 +350,22 @@ function aimOf(
 
 // The cells player `index`'s breath (player 1's unless given) would hit if
 // it breathed now, nearest first, whether or not it can: the cells its shape
-// reaches (see aimOf), plus the wall it stopped at if the breath acts on
-// that wall (BreathDef.targetsWall: the Boar's target). Not the player's
-// own cell for a line or a cone, though enemies there are hit too: the
-// preview shows where the breath goes, and the sprite covers that cell.
+// reaches (see aimOf). Not the player's own cell for a line or a cone,
+// though enemies there are hit too: the preview shows where the breath
+// goes, and the sprite covers that cell. A breath that acts on walls
+// (BreathDef.targetsWall: the Boar) shows only the wall it would act on,
+// or nothing, since that wall is all it does (with the user, KDA-252).
 export function aimCells(state: GameState, index = 0): Vec2[] {
     const who = state.players[index]
     const { reach } = aimOf(state, who)
-    const cells = reach.cells.map((c) => vec2(c.x, c.y))
-    const { wall } = reach
-    if (wall && who.breather.breath.targetsWall?.(state.cells, wall)) {
-        cells.push(vec2(wall.x, wall.y))
+    const { targetsWall } = who.breather.breath
+    if (targetsWall) {
+        const { wall } = reach
+        return wall && targetsWall(state.cells, wall)
+            ? [vec2(wall.x, wall.y)]
+            : []
     }
-    return cells
+    return reach.cells.map((c) => vec2(c.x, c.y))
 }
 
 // One player's aim preview: its index and the cells its breath would hit.
@@ -529,7 +534,7 @@ export function inPlay(enemy: Character): boolean {
 // Whether any of the enemy's statuses has `flag` set.
 export function hasStatus(
     enemy: Character,
-    flag: "holds" | "harmless" | "solid"
+    flag: "holds" | "harmless"
 ): boolean {
     return enemy.statuses.some((s) => s.status[flag] === true)
 }
@@ -588,15 +593,29 @@ export function defeatEnemy(
     if (isSplitterHalf(enemy)) halfDefeated(state, i)
 }
 
-// Whether to draw an enemy: always while in play; while defeated, only in
-// the last RESPAWN_BLINK seconds, on and off BLINK_RATE times a second
-// (starting on).
+// Whether to draw an enemy. While defeated, only in the last RESPAWN_BLINK
+// seconds, blinking. In play, always, except that it blinks in the last
+// RESPAWN_BLINK seconds of a status that blinksBeforeEnd (e.g. a freeze).
 export function enemyVisible(enemy: Character): boolean {
-    if (inPlay(enemy)) return true
-    if (enemy.respawnIn > RESPAWN_BLINK + EPSILON) return false
-    const phase = Math.floor(
-        (RESPAWN_BLINK - enemy.respawnIn) * BLINK_RATE * 2 + EPSILON
+    if (!inPlay(enemy)) {
+        return (
+            enemy.respawnIn <= RESPAWN_BLINK + EPSILON &&
+            blinkOn(enemy.respawnIn)
+        )
+    }
+    return enemy.statuses.every(
+        (s) =>
+            !s.status.blinksBeforeEnd ||
+            s.left > RESPAWN_BLINK + EPSILON ||
+            blinkOn(s.left)
     )
+}
+
+// Within the last RESPAWN_BLINK seconds of a wait with `left` seconds to go,
+// whether the blink is on: on and off BLINK_RATE times a second, starting
+// on.
+function blinkOn(left: number): boolean {
+    const phase = Math.floor((RESPAWN_BLINK - left) * BLINK_RATE * 2 + EPSILON)
     return phase % 2 === 0
 }
 
@@ -768,22 +787,33 @@ export function tickEffects(state: GameState, dt: number) {
 // (direction order on ties). They arrive there at rest, not gliding. Cells
 // under a boss in play don't count as open: it treats an opened wall as a
 // wall, so it often waits right where they came from, and landing there
-// would be a catch they did nothing to earn.
+// would be a catch they did nothing to earn. When players bump
+// (GameState.playersBump), a player isn't put on another player in play's
+// cell either, so the two never stack.
 function regrowWall(state: GameState, pos: Vec2) {
     state.cells[pos.y][pos.x] = Cell.wall
     const boss = state.boss && !state.boss.defeated ? state.boss : null
     const open = (p: Vec2) =>
         state.cells[p.y][p.x] !== Cell.wall &&
         !(boss && inFootprint(boss.pos, p))
+    // Another player in play on `p`, which `c` mustn't be put on.
+    const bumped = (c: Character, p: Vec2) =>
+        state.playersBump &&
+        state.players.some(
+            (o) => o.character !== c && !o.out && samePos(o.character.pos, p)
+        )
     // Players out of play too, so none is left inside the wall (enemies
     // may go after where an out player stands).
     const players = state.players.map((p) => p.character)
     for (const c of [...players, ...state.enemies]) {
         if (!samePos(c.pos, pos)) continue
+        const free = players.includes(c)
+            ? (p: Vec2) => open(p) && !bumped(c, p)
+            : open
         const back =
-            !samePos(c.lastPos, pos) && open(c.lastPos)
+            !samePos(c.lastPos, pos) && free(c.lastPos)
                 ? c.lastPos
-                : nearestOpen(state.cells, pos, open)
+                : nearestOpen(state.cells, pos, free)
         if (!back) continue
         c.pos = vec2(back.x, back.y)
         c.lastPos = vec2(back.x, back.y)

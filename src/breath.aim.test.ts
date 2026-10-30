@@ -100,8 +100,8 @@ describe("aimCells", () => {
         expect(aimCells(aimer("boar", { x: 1, y: 3 }, west))).toEqual([])
     })
 
-    it("marks the open cell ahead of the Boar, which its headbutt strikes", () => {
-        expect(xy(aimCells(aimer("boar", { x: 1, y: 4 })))).toEqual([[2, 4]])
+    it("marks nothing for the Boar facing open floor, with no wall to break", () => {
+        expect(aimCells(aimer("boar", { x: 1, y: 4 }))).toEqual([])
     })
 
     it("goes through a wrap tunnel", () => {
