@@ -10,7 +10,7 @@ import {
 import { wrapDelta } from "../glide"
 import { DEFAULT_ANIMAL } from "../roster"
 import { createGameState, IDLE, step, takeOut } from "../game"
-import { parseLevel, SPAWN_GAP, type Cells } from "../level"
+import { parseLevel, SPAWN_GAP, type Cells, type Level } from "../level"
 import { slideReach } from "../ice"
 import { distanceMap, openNeighbours } from "../path"
 import { vec2, type Vec2 } from "../vec2"
@@ -287,22 +287,30 @@ describe.each(EACH_MAP)("stage 2 (%s)", (difficulty) => {
         expect(level.name).toBe("Wrap maze")
     })
 
+    // Easy's three are the ambusher with a chaser and a wanderer; the
+    // fourth is a second ambusher, and there is one at every difficulty
+    // above that.
     it("introduces the ambusher, with a chaser and a random enemy", () => {
-        expect(level.enemies.map((e) => e.ai)).toEqual([
+        const ais = level.enemies.map((e) => e.ai)
+        expect(ais.slice(0, 4)).toEqual([
             AiType.ambusher,
             AiType.chase,
             AiType.random,
+            AiType.ambusher,
         ])
+        for (const ai of ais) {
+            expect([AiType.random, AiType.chase, AiType.ambusher]).toContain(ai)
+        }
         for (const enemy of level.enemies) {
             expect(enemy.speed).toBeUndefined()
         }
         expect(level.playerSpeed).toBeUndefined()
     })
 
-    it("fits the same screen as stage 1", () => {
-        const first = parseLevel(stage1, difficulty)
-        expect(level.width).toBeLessThanOrEqual(first.width)
-        expect(level.height).toBeLessThanOrEqual(first.height)
+    it("has the size of its map", () => {
+        expect([level.width, level.height]).toEqual(
+            MAP_SIZE[difficulty] === "medium" ? [21, 17] : [29, 21]
+        )
     })
 
     it("has walls mirrored left to right", () => {
@@ -313,11 +321,22 @@ describe.each(EACH_MAP)("stage 2 (%s)", (difficulty) => {
     // The stage is built around tunnels, so both directions of wrapping
     // matter. parseLevel already checks that each tunnel's far end is open,
     // so an open cell on one edge is enough to count a tunnel.
+    const tunnels = (cells: Level["cells"]) => ({
+        rows: cells.filter((row) => row[0] !== Cell.wall).length,
+        columns: cells[0].filter((cell) => cell !== Cell.wall).length,
+    })
     it("has several left-right and top-bottom tunnels", () => {
-        const rows = level.cells.filter((row) => row[0] !== Cell.wall)
-        const columns = level.cells[0].filter((cell) => cell !== Cell.wall)
-        expect(rows.length).toBeGreaterThanOrEqual(3)
-        expect(columns.length).toBeGreaterThanOrEqual(3)
+        const { rows, columns } = tunnels(level.cells)
+        expect(rows).toBeGreaterThanOrEqual(3)
+        expect(columns).toBeGreaterThanOrEqual(3)
+    })
+
+    // The bigger map needs more ways off its edges to stay a wrap maze.
+    it("has more tunnels on the large map than on the medium one", () => {
+        const medium = tunnels(parseLevel(stage2, "medium").cells)
+        const large = tunnels(parseLevel(stage2, "hard").cells)
+        expect(large.rows).toBeGreaterThan(medium.rows)
+        expect(large.columns).toBeGreaterThan(medium.columns)
     })
 
     it("has no dead ends", () => {
@@ -335,7 +354,7 @@ describe.each(EACH_MAP)("stage 2 (%s)", (difficulty) => {
         expect(deadEnds).toEqual([])
     })
 
-    // Distances include the tunnels (which save about 7 steps here), so no
+    // Distances include the tunnels (which save several steps here), so no
     // map edit can open a short wrap to an enemy unnoticed.
     it("starts the enemies well away from the player", () => {
         const dist = distanceMap(cells, level.playerSpawns[0])
