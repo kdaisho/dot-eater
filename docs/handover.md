@@ -54,7 +54,7 @@ Last updated: 2026-10-27. Read `CLAUDE.md` first for project conventions.
 
 - **Playtests to watch:**
     - Boss lair: the arena doors are quite safe, and a player can be caught right after a Boar wall regrows next to the boss.
-    - Breath ranges and sizes have had no comment yet. A frozen Penguin enemy can block a 1-wide corridor for long.
+    - Breath ranges and sizes have had no comment yet.
     - Versus stun tuning: 2 s stun, then 1.5 s immunity.
 - **PM calls this milestone the user hasn't commented on:**
     - In co-op, enemies head home while nobody is in play.

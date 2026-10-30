@@ -89,9 +89,6 @@ export type EnemyStatus = {
     holds?: boolean
     // The enemy doesn't catch the player.
     harmless?: boolean
-    // The player can't walk into the enemy's cell; it blocks like a wall,
-    // and a slide into it ends next to it.
-    solid?: boolean
     look?: Look
 }
 
@@ -529,7 +526,7 @@ export function inPlay(enemy: Character): boolean {
 // Whether any of the enemy's statuses has `flag` set.
 export function hasStatus(
     enemy: Character,
-    flag: "holds" | "harmless" | "solid"
+    flag: "holds" | "harmless"
 ): boolean {
     return enemy.statuses.some((s) => s.status[flag] === true)
 }

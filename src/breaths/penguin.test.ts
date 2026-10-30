@@ -77,11 +77,7 @@ describe("penguin's ice breath", () => {
         expect(penguin.duration).toBe(3)
         expect(penguin.maxEnergy).toBe(100)
         expect(penguin.slideSpeedScale).toBe(1.5)
-        expect(FROZEN).toMatchObject({
-            holds: true,
-            harmless: true,
-            solid: true,
-        })
+        expect(FROZEN).toMatchObject({ holds: true, harmless: true })
     })
 
     it("freezes an enemy for 3 s: it doesn't move or catch, then does", () => {
@@ -91,19 +87,35 @@ describe("penguin's ice breath", () => {
         tick(state, { breath: true })
         expect(state.players[0].breather.energy).toBe(50)
         expect(enemy.statuses).toEqual([{ status: FROZEN, left: 3 }])
-        // Walking east into it: onto the new ice at x 2, and the slide
-        // stops against the frozen enemy, uncaught.
-        for (let i = 0; i < TICK_RATE * 3 - 1; i++) {
+        // One step east onto the new ice at x 2, and the slide carries the
+        // player on onto the frozen enemy's cell (floor, not iced under
+        // it), where it stops, uncaught.
+        tick(state, { held: east })
+        for (let i = 0; i < TICK_RATE * 3 - 2; i++) {
+            expect(tick(state)).toBeNull()
+            expect(enemy.pos).toEqual(vec2(3, 1))
+        }
+        expect(state.players[0].character.pos).toEqual(vec2(3, 1))
+        // Thawed, it catches the player on its cell at once, as any enemy
+        // that stops being harmless there would.
+        expect(ticksUntilCaught(state, none, 1)).toBe(1)
+        expect(enemy.statuses).toEqual([])
+    })
+
+    // Regression (KDA-260): a frozen enemy blocked the player like a wall,
+    // so it stopped at x 2.
+    it("lets the player walk on past a frozen enemy", () => {
+        const enemy = makeEnemy(3, 1, AiType.chase)
+        enemy.moveProgress = 1
+        const state = penguinState(corridor, [enemy])
+        tick(state, { breath: true })
+        // East held: onto the ice at x 2, over the enemy at x 3, onto the
+        // ice at x 4 and on to the wall. The enemy is held all the while.
+        for (let i = 0; i < TICK_RATE * 2; i++) {
             expect(tick(state, { held: east })).toBeNull()
             expect(enemy.pos).toEqual(vec2(3, 1))
         }
-        expect(state.players[0].character.pos).toEqual(vec2(2, 1))
-        // Thawed, it steps at once towards the player next to it, and
-        // catches it as soon as it has glided close enough.
-        tick(state, { held: east })
-        expect(enemy.statuses).toEqual([])
-        expect(enemy.pos).toEqual(vec2(2, 1))
-        expect(ticksUntilCaught(state, east, MOVE)).toBeGreaterThan(0)
+        expect(state.players[0].character.pos).toEqual(vec2(8, 1))
     })
 
     it("lets walls cast the cone's shadow", () => {
@@ -275,15 +287,19 @@ describe("penguin's stat: slides faster on ice", () => {
         ])
     })
 
-    it("slides faster up to a frozen enemy, not on the step onto the ice", () => {
-        // Ice from x 2 to 5, a frozen enemy at x 5: the slide stops at x 4.
+    // Regression (KDA-260): the slide used to end next to a frozen enemy.
+    it("slides faster over a frozen enemy too, not on the step onto the ice", () => {
+        // Ice from x 2 to 5, a frozen enemy at x 4: the slide passes over it
+        // to the floor at x 6.
         const short = textMap(["########", "# ~~~~ #", "########", "#.######"])
-        const enemy = makeEnemy(5, 1)
+        const enemy = makeEnemy(4, 1)
         addStatus(enemy, FROZEN, 100)
         expect(glideRates(slideState(penguin, short, [enemy]))).toEqual([
             [2, 1],
             [3, 1.5],
             [4, 1.5],
+            [5, 1.5],
+            [6, 1.5],
         ])
     })
 
