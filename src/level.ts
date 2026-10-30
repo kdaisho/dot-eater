@@ -153,7 +153,7 @@ export function sameForBoth(variant: LevelVariant): Pick<LevelData, MapSize> {
 // anything that moves onto it keeps sliding (see ice.ts). Spawns are always
 // on normal floor. A level with a boss has no tunnels and no ice: the boss
 // neither wraps nor slides. On a boss level, the stage is cleared once
-// every dot is eaten and the boss is defeated.
+// the boss is defeated, whatever dots are left (see cleared in game.ts).
 const WALL = "#"
 const DOT = "."
 const EMPTY = " "

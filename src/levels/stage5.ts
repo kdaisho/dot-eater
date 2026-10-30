@@ -8,12 +8,12 @@ import { sameForBoth, type LevelData } from "../level"
 // corners. Every few seconds it also breathes along its rows or columns at
 // a player in line with it (see bossBreath.ts; the gentle default tuning),
 // even down a door it lines up with; walls and pillars give cover. The
-// arena holds most of the dots, so the player has to go in, and breathes
-// at the boss from the doors and lanes: the stage is cleared once every dot
-// is eaten and the boss is defeated. The player starts at the bottom, far
-// from everything, behind the arena's one wall without a door. No tunnels
-// and no ice (the boss uses neither), no dead ends, left-right symmetric
-// walls.
+// arena holds most of the dots, so the player has to go in to fill its
+// meter, and breathes at the boss from the doors and lanes: the stage is
+// cleared once the boss is defeated (KDA-267), whatever dots are left. The
+// player starts at the bottom, far from everything, behind the arena's one
+// wall without a door. No tunnels and no ice (the boss uses neither), no
+// dead ends, left-right symmetric walls.
 export const stage5: LevelData = {
     name: "Boss lair",
     // One map for both sizes until the stage is remade.
