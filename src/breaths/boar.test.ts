@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test"
 import { addStatus, type EnemyStatus } from "../breath"
-import { AiType, Cell, TICK_RATE } from "../constants"
+import { AiType, Cell, MAX_HEALTH, TICK_RATE } from "../constants"
 import { createGameState, step, type GameState, type MoveInput } from "../game"
 import { parseFlat } from "../test/helpers"
 import type { Character } from "../character"
@@ -48,9 +48,9 @@ function boarState(
     map: MapLiteral,
     player: { x: number; y: number },
     enemies: Character[] = [],
-    lives = 1
+    health = 1
 ): GameState {
-    const state = makeState(map, player, enemies, { breath: boar, lives })
+    const state = makeState(map, player, enemies, { breath: boar, health })
     state.players[0].breather.energy = boar.maxEnergy
     state.players[0].character.moveProgress = 1
     return state
@@ -81,7 +81,7 @@ describe("the Boar's wall-break breath", () => {
 
     it("lets enemies through the opening", () => {
         const enemy = makeEnemy(5, 1, AiType.chase)
-        const state = boarState(rooms, { x: 2, y: 1 }, [enemy], 3)
+        const state = boarState(rooms, { x: 2, y: 1 }, [enemy], MAX_HEALTH)
         tick(state, { breath: true })
         let through = false
         for (let i = 0; i < TICK_RATE * 2 && !through; i++) {

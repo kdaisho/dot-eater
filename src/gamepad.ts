@@ -71,8 +71,9 @@ export type PadButtonMap = Readonly<Record<number, readonly Action[]>>
 // The fixed D-pad directions, in PAD_DPAD order.
 const DPAD_ACTIONS: readonly Action[] = ["up", "down", "left", "right"]
 
-// One player's pad buttons: the bound breath, confirm and pause buttons
-// (breath and confirm may share one), plus the fixed D-pad.
+// One player's pad buttons: the bound breath, punch, confirm and pause
+// buttons (confirm may share one with breath or punch), plus the fixed
+// D-pad.
 export function padButtonsFor(player: PlayerBindings): PadButtonMap {
     const map: Record<number, Action[]> = {}
     for (const action of PAD_ACTIONS) {
@@ -85,8 +86,8 @@ export function padButtonsFor(player: PlayerBindings): PadButtonMap {
     return map
 }
 
-// The default buttons: A (Cross) breath in play and confirm in menus, Start
-// (Options) pause, and the D-pad.
+// The default buttons: A (Cross) breath in play and confirm in menus, X
+// (Square) punch, Start (Options) pause, and the D-pad.
 export const PAD_BUTTONS: PadButtonMap = padButtonsFor(
     DEFAULT_BINDINGS.players[0]
 )

@@ -1,10 +1,10 @@
-import { START_LIVES, TICK_RATE } from "./constants"
+import { MAX_HEALTH, TICK_RATE } from "./constants"
 
 // Star rating for a stage clear, and how clear times are shown.
 //
 // A clear earns 1 to 3 stars:
 // - one for clearing the stage at all,
-// - one for losing no lives on the way,
+// - one for clearing it with at least half health left (MAX_HEALTH / 2),
 // - one for a clear time at or under the stage's par time (Level.parTime).
 // No DOM access: the stage clear screen and stage select show the result.
 
@@ -16,23 +16,25 @@ export type ClearRating = {
     ticks: number
     // The level's par time, in seconds.
     parTime: number
-    noLivesLost: boolean
+    // Every player had at least half its health at the clear.
+    healthy: boolean
     underPar: boolean
     stars: Stars
 }
 
-// Rate a won game. `game` is the finished game's clear time and lives left,
-// `parTime` the level's, in seconds. Reaching the par time exactly still
+// Rate a won game. `game` is the finished game's clear time and players
+// (only their health counts), `parTime` the level's, in seconds. Only solo
+// clears are recorded, so it is the one player's health that counts. Reaching the par time exactly still
 // counts as under par. Par is rounded to whole ticks, since e.g. 16.4 * 60
 // is 983.9999999999999 in floating point, which would miss a 984-tick clear.
 export function rateClear(
-    game: { ticks: number; lives: number },
+    game: { ticks: number; players: readonly { health: number }[] },
     parTime: number
 ): ClearRating {
-    const noLivesLost = game.lives >= START_LIVES
+    const healthy = game.players.every((p) => p.health >= MAX_HEALTH / 2)
     const underPar = game.ticks <= Math.round(parTime * TICK_RATE)
-    const stars = (1 + Number(noLivesLost) + Number(underPar)) as Stars
-    return { ticks: game.ticks, parTime, noLivesLost, underPar, stars }
+    const stars = (1 + Number(healthy) + Number(underPar)) as Stars
+    return { ticks: game.ticks, parTime, healthy, underPar, stars }
 }
 
 // The three stars of a rating in order, each with its label and whether it
@@ -42,7 +44,7 @@ export function starList(
 ): { label: string; earned: boolean }[] {
     return [
         { label: "Cleared", earned: true },
-        { label: "No lives lost", earned: rating.noLivesLost },
+        { label: "At least half health", earned: rating.healthy },
         {
             label: `Under par (${formatSeconds(rating.parTime)})`,
             earned: rating.underPar,

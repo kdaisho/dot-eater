@@ -91,7 +91,7 @@ describe("owl wind breath", () => {
         state.players[0].breather.energy = 100
         expect(tick(state, true)).toBeNull()
         expect(enemy.pos).toEqual(vec2(3, 1))
-        expect(state.lives).toBe(1)
+        expect(state.players[0].health).toBe(1)
     })
 
     it("leaves enemies out of the line alone", () => {

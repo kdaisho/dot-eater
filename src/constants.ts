@@ -80,11 +80,23 @@ export const CATCH_DISTANCE = 0.6
 
 // Points for eating one dot.
 export const DOT_POINTS = 10
-// Lives at the start of a game.
-export const START_LIVES = 3
-// Seconds a player caught in a 2-player game stays out of play before it is
+// Seconds a player knocked out in versus stays out of play before it is
 // back at its own spawn (see takeOut in game.ts).
 export const PLAYER_RESPAWN_DELAY = 3
+// ---- Health (KDA-257; the numbers are placeholders to tune at preview) ----
+
+// A player's health at the start of every stage, and when it is back in
+// play in versus. A hit takes some off (see hurtPlayer in game.ts); at 0
+// the player is knocked out.
+export const MAX_HEALTH = 100
+// Health an enemy's touch costs.
+export const ENEMY_DAMAGE = 25
+// Health the boss's touch costs.
+export const BOSS_DAMAGE = 40
+// Seconds after a hit in which the player can't be hurt again (counted in
+// ticks), blinking: enemies and the boss pass through it meanwhile.
+export const HURT_INVULNERABLE_SECONDS = 1.5
+
 // How far (in cells, centre to centre) every enemy and the boss must be
 // drawn from a player's spawn for it to come back there (see
 // clearOfEnemies in game.ts): far enough that nothing gliding in can catch it a tick later.
@@ -129,3 +141,16 @@ export const BOSS_DEFEAT_POINTS = 500
 export const BOSS_TRICKLE = 10
 // Seconds the boss flashes white after each hit.
 export const BOSS_FLASH = 0.15
+
+// ---- The punch (see punch.ts; placeholders to tune at preview) ----
+
+// How far ahead of the player's drawn position (in cells, centre to centre,
+// along its facing) a punch reaches an enemy's drawn position: the fist
+// reaches a third of a sprite past the player's front, and touches an
+// enemy whose own front (half a sprite from its centre) is within that.
+// About 1.07, so an enemy resting on the next cell is in reach.
+export const PUNCH_REACH =
+    SPRITE_SCALE / 2 + SPRITE_SCALE / 3 + SPRITE_SCALE / 2
+// How far to either side of the facing line (in cells) a punch still
+// reaches: half a cell, so it hits in its own lane only.
+export const PUNCH_ACROSS = 0.5

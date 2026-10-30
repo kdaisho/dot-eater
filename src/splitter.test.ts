@@ -11,23 +11,23 @@ import {
 import {
     AiType,
     DEFEAT_POINTS,
+    ENEMY_DAMAGE,
     ENEMY_IDS,
     ENEMY_SPEED,
     MAX_ENEMIES,
     MAX_ENEMY_SLOTS,
+    MAX_HEALTH,
     RESPAWN_BLINK,
     RESPAWN_DELAY,
     SPLITTER_HALF_SPEED,
     TICK_RATE,
 } from "./constants"
-import type { Character } from "./character"
 import { createGameState, step, type GameState } from "./game"
 import { parseFlat } from "./test/helpers"
 import { createSplitter, isSplitterHalf, isWholeSplitter } from "./splitter"
 import {
     drawn,
     fixedRandom,
-    makeEnemy,
     makeState,
     testBreath,
     textMap,
@@ -74,11 +74,11 @@ const corridor = textMap([
 
 // The player at the corridor's west end, a whole Splitter at (4, 2) whose
 // spawn is (8, 2), and a meter full enough to breathe.
-function setup({ lives = 1, at = vec2(4, 2) } = {}) {
+function setup({ health = 1, at = vec2(4, 2) } = {}) {
     const [main, spare] = createSplitter([ENEMY_IDS[0], ENEMY_IDS[1]], at)
     const state = makeState(corridor, { x: 1, y: 2 }, [main, spare], {
         breath: defeating,
-        lives,
+        health,
     })
     state.spawns.enemies = [vec2(8, 2), vec2(8, 2)]
     state.players[0].breather.energy = 100
@@ -266,46 +266,18 @@ describe("a Splitter's halves", () => {
         expect(enemyVisible(spare)).toBe(false)
     })
 
-    it("catch the player like any enemy, and a lost life makes the Splitter whole", () => {
-        const { state, main, spare } = setup({ lives: 2 })
+    it("hurt the player like any enemy, and stay split", () => {
+        const { state, main, spare } = setup({ health: MAX_HEALTH })
         tick(state, true)
         // Both halves are drawn near (4, 2), gliding out.
         state.players[0].character.pos = vec2(4, 2)
         state.players[0].character.lastPos = vec2(4, 2)
         tick(state)
-        expect(state.lives).toBe(1)
-        expect(isWholeSplitter(main)).toBe(true)
-        expect(main.speed).toBe(ENEMY_SPEED)
-        expect(inPlay(main)).toBe(true)
-        expect(main.pos).toEqual(vec2(8, 2))
-        expect(inPlay(spare)).toBe(false)
-    })
-
-    it("are reset by a lost life even with one gone, or both and waiting", () => {
-        for (const gone of [1, 2]) {
-            const catcher = makeEnemy(9, 2, AiType.random)
-            const [main, spare] = createSplitter(
-                [ENEMY_IDS[0], ENEMY_IDS[1]],
-                vec2(4, 2)
-            )
-            const state = makeState(
-                corridor,
-                { x: 1, y: 2 },
-                [main, spare, catcher],
-                { lives: 2 }
-            )
-            defeatEnemy(state, main)
-            const halves: Character[] = [spare, main].slice(0, gone)
-            for (const half of halves) defeatEnemy(state, half)
-            state.players[0].character.pos = vec2(9, 2)
-            state.players[0].character.lastPos = vec2(9, 2)
-            tick(state)
-            expect(state.lives).toBe(1)
-            expect(inPlay(main)).toBe(true)
-            expect(isWholeSplitter(main)).toBe(true)
-            expect(main.pos).toEqual(vec2(4, 2))
-            expect(inPlay(spare)).toBe(false)
-            expect(spare.respawnIn).toBe(Infinity)
+        expect(state.players[0].health).toBe(MAX_HEALTH - ENEMY_DAMAGE)
+        for (const half of [main, spare]) {
+            expect(isSplitterHalf(half)).toBe(true)
+            expect(inPlay(half)).toBe(true)
+            expect(half.speed).toBe(SPLITTER_HALF_SPEED)
         }
     })
 
@@ -335,7 +307,7 @@ describe("a split next to the player", () => {
     }
 
     // A whole Splitter at `at`, its sprite still gliding in from `from`, and
-    // the player at `player`, ready to move, with three lives.
+    // the player at `player`, ready to move, with full health.
     function near(
         at: Vec2,
         from: Vec2,
@@ -347,7 +319,7 @@ describe("a split next to the player", () => {
         main.moveProgress = 0.2
         const state = makeState(corridor, player, [main, spare], {
             breath,
-            lives: 3,
+            health: MAX_HEALTH,
         })
         state.spawns.enemies = [vec2(8, 2), vec2(8, 2)]
         state.players[0].breather.energy = 100
@@ -360,7 +332,7 @@ describe("a split next to the player", () => {
         // splits it there.
         const { state, main } = near(vec2(2, 2), vec2(3, 2), vec2(1, 2))
         expect(breatheTo(state, vec2(1, 0))).toBeNull()
-        expect(state.lives).toBe(3)
+        expect(state.players[0].health).toBe(MAX_HEALTH)
         expect(state.players[0].score).toBe(DEFEAT_POINTS)
         expect(isSplitterHalf(main)).toBe(true)
         expect(main.pos).toEqual(vec2(3, 2))
@@ -380,7 +352,7 @@ describe("a split next to the player", () => {
             area(() => {})
         )
         expect(breatheTo(control.state, vec2(-1, 0))).toBeNull()
-        expect(control.state.lives).toBe(3)
+        expect(control.state.players[0].health).toBe(MAX_HEALTH)
 
         const { state, main } = near(
             vec2(3, 2),
@@ -389,7 +361,7 @@ describe("a split next to the player", () => {
             area(defeatFirst)
         )
         expect(breatheTo(state, vec2(-1, 0))).toBeNull()
-        expect(state.lives).toBe(3)
+        expect(state.players[0].health).toBe(MAX_HEALTH)
         expect(state.players[0].score).toBe(DEFEAT_POINTS)
         expect(main.pos).toEqual(vec2(4, 2))
         expect(drawn(state, main)).toEqual(vec2(4, 2))
@@ -397,13 +369,13 @@ describe("a split next to the player", () => {
     it("gives the player room in a dead end after the split", () => {
         // As above, the Splitter on the player's cell at the corridor's
         // west end, gliding in from (2, 2); the player stands still.
-        const { state, main } = setup({ at: vec2(1, 2), lives: 3 })
+        const { state, main } = setup({ at: vec2(1, 2), health: MAX_HEALTH })
         main.lastPos = vec2(2, 2)
         main.moveProgress = 0.3
         tick(state, true)
         expect(state.players[0].score).toBe(DEFEAT_POINTS)
         run(state, 10)
-        expect(state.lives).toBe(3)
+        expect(state.players[0].health).toBe(MAX_HEALTH)
     })
 
     it("sends the halves further out when the player has the only way out", () => {
@@ -413,13 +385,13 @@ describe("a split next to the player", () => {
         const { state, main, spare } = near(vec2(6, 1), vec2(6, 2), vec2(6, 2))
         main.moveProgress = 0.7
         expect(breatheTo(state, vec2(0, -1))).toBeNull()
-        expect(state.lives).toBe(3)
+        expect(state.players[0].health).toBe(MAX_HEALTH)
         expect(isSplitterHalf(main)).toBe(true)
         expect([main.pos, spare.pos]).toEqual([vec2(5, 2), vec2(7, 2)])
         for (const half of [main, spare]) {
             expect(drawn(state, half)).toEqual(half.pos)
         }
         run(state, 10)
-        expect(state.lives).toBe(3)
+        expect(state.players[0].health).toBe(MAX_HEALTH)
     })
 })

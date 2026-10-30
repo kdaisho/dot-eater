@@ -34,7 +34,7 @@ import {
     type TickInput,
     type TitleChoice,
 } from "./flow"
-import { totalScore, type GameState } from "./game"
+import { healthHud, totalScore, type GameState } from "./game"
 import {
     CONTROLS_ROWS,
     controlsRowLabel,
@@ -58,6 +58,7 @@ import {
     stageSlots,
     type Progress,
 } from "./progress"
+import { createJabs } from "./jab"
 import { createParticles } from "./particles"
 import { createRenderer, type Effects, type Hud } from "./render"
 import { ANIMAL_IDS, ANIMALS, type AnimalId } from "./roster"
@@ -173,24 +174,28 @@ applyDpad()
 // shorter; the Screen shake setting, when set, overrides the shake part.
 const particles = createParticles({ random: Math.random })
 const shake = createShake()
+// The players' jab looks after a punch (KDA-258; see jab.ts).
+const jabs = createJabs()
 const effects = {
     // Follow reduced motion and the Screen shake setting: on load, when the
     // settings change and when the system setting does.
     motion() {
         const reduced = reducedMotion?.matches ?? false
-        applyMotion({ particles, shake }, settings, reduced)
+        applyMotion({ particles, shake, jabs }, settings, reduced)
     },
     // The bursts and shakes for a tick's game events (see eventEffects.ts).
     events(events: readonly GameEvent[], game: GameState) {
-        effectsForEvents(events, game, { particles, shake })
+        effectsForEvents(events, game, { particles, shake, jabs })
     },
     tick(dt: number) {
         particles.update(dt)
         shake.update(dt)
+        jabs.update(dt)
     },
     reset() {
         particles.clear()
         shake.clear()
+        jabs.clear()
     },
     of(s: Screen): Effects {
         if (
@@ -203,6 +208,7 @@ const effects = {
         const moving = s.kind !== "paused"
         return {
             particles: particles.list,
+            jabs: jabs.list,
             ...(moving ? { shake: shake.offset(Math.random) } : {}),
             // The facing guide the settings pick (KDA-247). The arrow shows
             // with the rings, paused and ending too; the aim preview only
@@ -228,6 +234,7 @@ const tickInput: TickInput = {
             held: p.heldSteps(),
             pressed: p.pressedStep(),
             breath: p.wasPressed("breath"),
+            punch: p.wasPressed("punch"),
         }
     },
     captured: () => pendingCapture,
@@ -481,8 +488,8 @@ function render(alpha: number) {
     renderer.draw(game, lastAlpha, hud, rules, effects.of(shown))
 }
 
-// The versus HUD: each player's dots, meter, stun or respawn countdown, and
-// the round tally (no lives). The result screens keep showing the round
+// The versus HUD: each player's dots, meter, stun or respawn countdown,
+// health, and the round tally. The result screens keep showing the round
 // just played as it was during play.
 function versusHud(game: GameState, s: Screen): Hud {
     const match =
@@ -497,26 +504,28 @@ function versusHud(game: GameState, s: Screen): Hud {
             score: p.score,
             dots: p.dots,
             energy: energyHud(game, i),
+            health: healthHud(p),
             ...(p.out ? { out: { respawnIn: p.respawnIn } } : {}),
             ...(stunned(p) ? { stunned: p.stunnedFor } : {}),
         })),
     }
 }
 
-// The HUD: with one player its score and meter; with two, each one's.
+// The HUD: with one player its score, meter and health; with two, each
+// one's.
 function hudOf(game: GameState): Hud {
     if (game.players.length === 1) {
         return {
             score: totalScore(game),
-            lives: game.lives,
+            health: healthHud(game.players[0]),
             energy: energyHud(game),
         }
     }
     return {
-        lives: game.lives,
         players: game.players.map((p, i) => ({
             score: p.score,
             energy: energyHud(game, i),
+            health: healthHud(p),
             ...(p.out ? { out: { respawnIn: p.respawnIn } } : {}),
         })),
     }

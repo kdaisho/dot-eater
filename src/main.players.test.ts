@@ -8,6 +8,7 @@ import {
     type GameState,
     type Outcome,
 } from "./game"
+import { MAX_HEALTH } from "./constants"
 import { LAST_PICK_KEY } from "./lastPick"
 import { levels } from "./levels"
 import { emptyProgress, PROGRESS_KEY, serializeProgress } from "./progress"
@@ -124,18 +125,32 @@ describe("main with two players", () => {
         vi.advanceTimersByTime(100)
         const moves = vi.mocked(step).mock.lastCall?.[2]
         expect(moves).toEqual([
-            { held: [vec2(-1, 0)], pressed: vec2(0, 0), breath: false },
-            { held: [vec2(0, 1)], pressed: vec2(0, 0), breath: false },
+            {
+                held: [vec2(-1, 0)],
+                pressed: vec2(0, 0),
+                breath: false,
+                punch: false,
+            },
+            {
+                held: [vec2(0, 1)],
+                pressed: vec2(0, 0),
+                breath: false,
+                punch: false,
+            },
         ])
         keyup("ArrowLeft")
         keyup("KeyS")
 
-        // The HUD shows each player's score and meter.
+        // The HUD shows each player's score, meter and health.
         const game = drawn.last?.[0] as GameState
         expect(game.players).toHaveLength(2)
+        game.players[1].health = 40
+        vi.advanceTimersByTime(100)
         expect(drawn.last?.[2]).toMatchObject({
-            lives: game.lives,
-            players: [{ score: 0 }, { score: 0 }],
+            players: [
+                { score: 0, health: { health: MAX_HEALTH, max: MAX_HEALTH } },
+                { score: 0, health: { health: 40, max: MAX_HEALTH } },
+            ],
         })
         expect(drawn.last?.[2]).not.toHaveProperty("players.0.out")
 

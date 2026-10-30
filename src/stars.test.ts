@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vite-plus/test"
-import { START_LIVES, TICK_RATE } from "./constants"
+import { MAX_HEALTH, TICK_RATE } from "./constants"
 import {
     formatSeconds,
     formatTicks,
@@ -11,38 +11,43 @@ import {
 const PAR = 60
 const parTicks = PAR * TICK_RATE
 
+// A finished solo game of `ticks` with `health` left (just a sliver by
+// default).
+const game = (ticks: number, health = 1) => ({ ticks, players: [{ health }] })
+
 describe("rateClear", () => {
-    it("gives 3 stars for no lives lost and under par", () => {
-        expect(rateClear({ ticks: 100, lives: START_LIVES }, PAR)).toEqual({
+    it("gives 3 stars for at least half health and under par", () => {
+        expect(rateClear(game(100, MAX_HEALTH), PAR)).toEqual({
             ticks: 100,
             parTime: PAR,
-            noLivesLost: true,
+            healthy: true,
             underPar: true,
             stars: 3,
         })
     })
 
     it("gives 1 star just for clearing", () => {
-        const rating = rateClear({ ticks: parTicks + 1, lives: 1 }, PAR)
+        const rating = rateClear(game(parTicks + 1), PAR)
         expect(rating).toMatchObject({
-            noLivesLost: false,
+            healthy: false,
             underPar: false,
             stars: 1,
         })
     })
 
-    it("gives the no-lives-lost star only with every life left", () => {
-        const at = (lives: number) =>
-            rateClear({ ticks: parTicks + 1, lives }, PAR)
-        expect(at(START_LIVES)).toMatchObject({ noLivesLost: true, stars: 2 })
-        expect(at(START_LIVES - 1)).toMatchObject({
-            noLivesLost: false,
+    it("gives the health star for clearing with at least half health", () => {
+        const at = (health: number) =>
+            rateClear(game(parTicks + 1, health), PAR)
+        expect(at(MAX_HEALTH)).toMatchObject({ healthy: true, stars: 2 })
+        expect(at(MAX_HEALTH / 2)).toMatchObject({ healthy: true, stars: 2 })
+        expect(at(MAX_HEALTH / 2 - 1)).toMatchObject({
+            healthy: false,
             stars: 1,
         })
     })
 
     it("counts a time exactly at par as under par, one tick more as not", () => {
-        const at = (ticks: number) => rateClear({ ticks, lives: 1 }, PAR)
+        const at = (ticks: number) => rateClear(game(ticks), PAR)
         expect(at(parTicks)).toMatchObject({ underPar: true, stars: 2 })
         expect(at(parTicks + 1)).toMatchObject({ underPar: false, stars: 1 })
         expect(at(1)).toMatchObject({ underPar: true, stars: 2 })
@@ -51,27 +56,24 @@ describe("rateClear", () => {
     // Regression: 16.4 * 60 is 983.9999999999999, so a clear exactly at par
     // (984 ticks, shown as 0:16.4) missed the star.
     it("counts a clear exactly at a tenths par as under par", () => {
-        expect(rateClear({ ticks: 984, lives: 1 }, 16.4).underPar).toBe(true)
-        expect(rateClear({ ticks: 985, lives: 1 }, 16.4).underPar).toBe(false)
-        expect(rateClear({ ticks: 246, lives: 1 }, 4.1).underPar).toBe(true)
+        expect(rateClear(game(984), 16.4).underPar).toBe(true)
+        expect(rateClear(game(985), 16.4).underPar).toBe(false)
+        expect(rateClear(game(246), 4.1).underPar).toBe(true)
     })
 
     it("works with a par time that isn't whole seconds", () => {
         // 0.5 s is 30 ticks.
-        expect(rateClear({ ticks: 30, lives: 1 }, 0.5).underPar).toBe(true)
-        expect(rateClear({ ticks: 31, lives: 1 }, 0.5).underPar).toBe(false)
+        expect(rateClear(game(30), 0.5).underPar).toBe(true)
+        expect(rateClear(game(31), 0.5).underPar).toBe(false)
     })
 })
 
 describe("starList", () => {
     it("lists the three stars in order, with the par time in the label", () => {
-        const rating = rateClear(
-            { ticks: parTicks + 1, lives: START_LIVES },
-            PAR
-        )
+        const rating = rateClear(game(parTicks + 1, MAX_HEALTH), PAR)
         expect(starList(rating)).toEqual([
             { label: "Cleared", earned: true },
-            { label: "No lives lost", earned: true },
+            { label: "At least half health", earned: true },
             { label: "Under par (1:00)", earned: false },
         ])
     })

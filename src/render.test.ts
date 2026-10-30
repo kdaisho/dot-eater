@@ -4,6 +4,7 @@ import { addStatus, addTileEffect, defeatEnemy, type BreathDef } from "./breath"
 import { BREATHS } from "./breaths"
 import {
     AiType,
+    BLINK_RATE,
     Cell,
     CharacterId,
     ENEMY_IDS,
@@ -11,10 +12,12 @@ import {
     RESPAWN_BLINK,
     RESPAWN_DELAY,
     SPRITE_SCALE,
+    TICK_RATE,
 } from "./constants"
 import { createCharacter } from "./character"
 import {
     createGameState,
+    HURT_INVULNERABLE_TICKS,
     movePlayer,
     takeOut,
     type GameState,
@@ -35,6 +38,7 @@ import {
     stunLabel,
     type Effects,
 } from "./render"
+import { JAB_LUNGE, JAB_SECONDS } from "./jab"
 import type { Particle } from "./particles"
 import { createSplitter } from "./splitter"
 import { DEFAULT_ANIMAL } from "./roster"
@@ -53,24 +57,35 @@ import { stun } from "./versus"
 // imported here pulls it in.
 vi.mock("canvas-confetti", () => ({ default: vi.fn() }))
 
+// The solo health gauge's colour.
+const HEALTH_COLOR = "#16a34a"
+
 // happy-dom has no 2D canvas, so record the calls on a stub context: every
-// method call is logged, with the fillStyle and font set at the time, and
-// property writes are accepted.
+// method call is logged, with the fillStyle, strokeStyle and font set at
+// the time, and property writes are accepted.
 function stubContext() {
     const calls: {
         name: string
         args: unknown[]
         fillStyle?: unknown
+        strokeStyle?: unknown
         font?: unknown
     }[] = []
     let fillStyle: unknown
+    let strokeStyle: unknown
     let font: unknown
     const ctx = new Proxy(
         {},
         {
             get(_target, name) {
                 return (...args: unknown[]) => {
-                    calls.push({ name: String(name), args, fillStyle, font })
+                    calls.push({
+                        name: String(name),
+                        args,
+                        fillStyle,
+                        strokeStyle,
+                        font,
+                    })
                     if (name === "createRadialGradient") {
                         return { addColorStop() {} }
                     }
@@ -78,6 +93,7 @@ function stubContext() {
             },
             set(_target, name, value) {
                 if (name === "fillStyle") fillStyle = value
+                if (name === "strokeStyle") strokeStyle = value
                 if (name === "font") font = value
                 return true
             },
@@ -281,8 +297,44 @@ describe("createRenderer", () => {
         expect(empty.texts()).toEqual(["🐉"])
 
         const full = setup()
-        full.renderer.draw(state, 0, { score: 120, lives: 2 })
-        expect(full.texts()).toEqual(["Score 120", "🐉🐉", "🐉"])
+        full.renderer.draw(state, 0, {
+            score: 120,
+            health: { health: 50, max: 100 },
+        })
+        expect(full.texts()).toEqual(["Score 120", "🐉"])
+        expect(full.calls.some((c) => c.name === "strokeRect")).toBe(true)
+    })
+
+    it("draws the health gauge on the right, filled up to the health", () => {
+        const state = createGameState(OLD_LEVEL)
+        state.enemies = []
+        const { calls, canvas, renderer } = setup()
+        renderer.draw(state, 0, { health: { health: 75, max: 100 } })
+        const width = parseFloat(canvas.style.width)
+        const frame = calls.find((c) => c.name === "strokeRect")!
+        expect(frame.strokeStyle).toBe(HEALTH_COLOR)
+        const [left, , w] = frame.args as number[]
+        expect(left + w).toBeGreaterThan(width * 0.9)
+        const fill = calls.find(
+            (c) => c.name === "fillRect" && c.fillStyle === HEALTH_COLOR
+        )!
+        expect(fill.args[0]).toBe(left)
+        expect(fill.args[2]).toBeCloseTo(w * 0.75)
+    })
+
+    it("blinks a player invulnerable after a hit", () => {
+        const state = createGameState(OLD_LEVEL)
+        state.enemies = []
+        const player = state.players[0]
+        player.invulnerableFor = HURT_INVULNERABLE_TICKS
+        const on = setup()
+        on.renderer.draw(state, 0)
+        expect(on.texts()).toEqual(["🐉"])
+        // A blink later it is hidden.
+        player.invulnerableFor -= TICK_RATE / (BLINK_RATE * 2)
+        const off = setup()
+        off.renderer.draw(state, 0)
+        expect(off.texts()).toEqual([])
     })
 
     // Regression: the dot the player eats is gone from the cells at once, but
@@ -461,13 +513,8 @@ describe("createRenderer", () => {
         it("keeps the HUD visible", () => {
             const { renderer, texts } = setup()
             const state = makeState(corridor(), { x: 2, y: 1 }, enemies())
-            renderer.draw(
-                state,
-                0,
-                { score: 10, lives: 1 },
-                { fog: { radius: 1 } }
-            )
-            expect(texts()).toEqual(["Score 10", "🐉", "🐉"])
+            renderer.draw(state, 0, { score: 10 }, { fog: { radius: 1 } })
+            expect(texts()).toEqual(["Score 10", "🐉"])
         })
 
         it("keeps the fog when redrawing on resize", () => {
@@ -567,12 +614,12 @@ describe("createRenderer", () => {
                 { x: 1, y: 1 }
             )
 
-        it("draws the player and its lives as the playing character", () => {
+        it("draws the player as the playing character", () => {
             const { renderer, texts } = setup()
             const state = createGameState(OLD_LEVEL, "penguin")
             state.enemies = []
-            renderer.draw(state, 0, { lives: 2 })
-            expect(texts()).toEqual(["🐧🐧", "🐧"])
+            renderer.draw(state, 0, {})
+            expect(texts()).toEqual(["🐧"])
         })
 
         it("draws the energy meter only when the HUD has it", () => {
@@ -931,18 +978,39 @@ describe("createRenderer with two players", () => {
         expect(calls.some((c) => c.name === "stroke")).toBe(false)
     })
 
-    it("draws each player's score and meter, and the shared lives", () => {
+    it("draws each player's score, meter and health", () => {
         const { calls, renderer, texts } = setup()
         const meter = { energy: 50, max: 100, cost: 50, ready: true }
         renderer.draw(pair(), 0, {
-            lives: 2,
             players: [
-                { score: 30, energy: meter },
-                { score: 10, energy: { ...meter, ready: false } },
+                { score: 30, energy: meter, health: { health: 100, max: 100 } },
+                {
+                    score: 10,
+                    energy: { ...meter, ready: false },
+                    health: { health: 40, max: 100 },
+                },
             ],
         })
-        expect(texts().slice(0, 3)).toEqual(["1P 30", "2P 10", "❤️❤️"])
-        expect(calls.filter((c) => c.name === "strokeRect")).toHaveLength(2)
+        expect(texts().slice(0, 2)).toEqual(["1P 30", "2P 10"])
+        // A meter and a health gauge each.
+        expect(calls.filter((c) => c.name === "strokeRect")).toHaveLength(4)
+        // Each gauge in its player's colour, filled up to its health.
+        PLAYER_COLORS.forEach((color, i) => {
+            // The gauge is drawn after the meter, framed in the same colour.
+            const frame = calls
+                .filter(
+                    (c) => c.name === "strokeRect" && c.strokeStyle === color
+                )
+                .at(-1)!
+            const fill = calls.find(
+                (c) =>
+                    c.name === "fillRect" &&
+                    c.fillStyle === color &&
+                    c.args[1] === frame.args[1]
+            )!
+            const w = frame.args[2] as number
+            expect(fill.args[2]).toBeCloseTo(w * [1, 0.4][i])
+        })
         const scores = calls.filter(
             (c) => c.name === "fillText" && String(c.args[0]).includes("P ")
         )
@@ -1117,19 +1185,18 @@ describe("createRenderer with a player out of play", () => {
     it("shows its countdown, or that it is out for good, in place of its meter", () => {
         const { calls, renderer, texts } = setup()
         const meter = { energy: 50, max: 100, cost: 50, ready: true }
+        const health = { health: 0, max: 100 }
         renderer.draw(pair(), 0, {
-            lives: 1,
             players: [
-                { score: 30, energy: meter, out: { respawnIn: 2.5 } },
-                { score: 10, energy: meter, out: { respawnIn: null } },
+                { score: 30, energy: meter, health, out: { respawnIn: 2.5 } },
+                { score: 10, energy: meter, health, out: { respawnIn: null } },
             ],
         })
-        expect(texts().slice(0, 5)).toEqual([
+        expect(texts().slice(0, 4)).toEqual([
             "1P 30",
             "back in 3",
             "2P 10",
             "OUT",
-            "❤️",
         ])
         expect(calls.filter((c) => c.name === "strokeRect")).toHaveLength(0)
         // Each label fits its meter's slot.
@@ -1216,8 +1283,6 @@ describe("createRenderer in versus", () => {
             "2P ●6",
             "Round 2 · 1–0",
         ])
-        // No hearts: versus has no lives.
-        expect(texts()).not.toContain("❤️")
         // Only player 2's meter.
         expect(calls.filter((c) => c.name === "strokeRect")).toHaveLength(1)
     })
@@ -1419,6 +1484,67 @@ describe("createRenderer with effects", () => {
         renderer.resize()
         expect(calls.filter((c) => c.name === "arc")).toHaveLength(1)
     })
+
+    describe("a jab", () => {
+        const sprite = (
+            calls: ReturnType<typeof setup>["calls"],
+            text: string
+        ) => calls.find((c) => c.name === "fillText" && c.args[0] === text)
+
+        it("lunges the player along it, with a fist just ahead", () => {
+            const { calls, canvas, renderer } = setup()
+            const jab = {
+                player: 0,
+                facing: vec2(1, 0),
+                age: JAB_SECONDS / 2,
+                lunge: JAB_LUNGE,
+            }
+            renderer.draw(corridor(), 0, {}, {}, { jabs: [jab] })
+            const cell = cellOf(canvas)
+            const player = sprite(calls, "🐉")
+            expect(player?.args[1]).toBeCloseTo((1.5 + JAB_LUNGE) * cell)
+            expect(player?.args[2]).toBeCloseTo(1.5 * cell)
+            const fist = sprite(calls, "👊")
+            expect(fist?.args[1]).toBeGreaterThan(player?.args[1] as number)
+            expect(fist?.args[2]).toBeCloseTo(1.5 * cell)
+        })
+
+        it("shows nothing without one, or for another player", () => {
+            const { calls, canvas, renderer } = setup()
+            const other = {
+                player: 1,
+                facing: vec2(1, 0),
+                age: 0.05,
+                lunge: JAB_LUNGE,
+            }
+            renderer.draw(corridor(), 0, {}, {}, { jabs: [other] })
+            expect(sprite(calls, "🐉")?.args[1]).toBeCloseTo(
+                1.5 * cellOf(canvas)
+            )
+            expect(sprite(calls, "👊")).toBeUndefined()
+        })
+
+        // Regression: the fist was drawn with the player, before the
+        // enemies, so the enemy it hit covered it.
+        it("draws the fist over the enemy it hits", () => {
+            const { calls, renderer } = setup()
+            const state = corridor()
+            state.enemies.push(makeEnemy(2, 1))
+            const jab = {
+                player: 0,
+                facing: vec2(1, 0),
+                age: 0.05,
+                lunge: JAB_LUNGE,
+            }
+            renderer.draw(state, 0, {}, {}, { jabs: [jab] })
+            const at = (text: string) =>
+                calls.findIndex(
+                    (c) => c.name === "fillText" && c.args[0] === text
+                )
+            expect(at("👺")).toBeGreaterThan(-1)
+            expect(at("👊")).toBeGreaterThan(at("👺"))
+        })
+    })
 })
 
 describe("createRenderer with the facing guide", () => {
@@ -1615,6 +1741,22 @@ describe("createRenderer with the facing guide", () => {
             ])
         })
 
+        // Regression: the arrow was drawn on the lunging sprite, so it
+        // bobbed with every punch.
+        it("stays with the glide while the player jabs", () => {
+            const { calls, canvas, renderer } = setup()
+            const jab = {
+                player: 0,
+                facing: vec2(1, 0),
+                age: JAB_SECONDS / 2,
+                lunge: JAB_LUNGE,
+            }
+            renderer.draw(charged(), 0, {}, {}, { ...ARROW, jabs: [jab] })
+            expect(arrows(calls, canvas)).toEqual([
+                { color: 0, tip: [2.2, 1.5] },
+            ])
+        })
+
         it.each([
             ["up", vec2(0, -1), [1.5, 0.8]],
             ["down", vec2(0, 1), [1.5, 2.2]],
@@ -1780,6 +1922,29 @@ describe("createRenderer on a maze too big for the screen", () => {
         // The view moves the maze inside the clip.
         const translates = calls.filter((c) => c.name === "translate")
         expect(calls.indexOf(translates[1])).toBeGreaterThan(clip)
+    })
+
+    it("draws a jab's fist in the view, with the characters", () => {
+        const { calls, frame } = bigSetup()
+        const jab = {
+            player: 0,
+            facing: vec2(1, 0),
+            age: 0.05,
+            lunge: JAB_LUNGE,
+        }
+        frame(createGameState(BIG_LEVEL), 0, {}, { jabs: [jab] })
+        const clip = calls.findIndex((c) => c.name === "clip")
+        const view = calls.indexOf(
+            calls.filter((c) => c.name === "translate")[1]!
+        )
+        const fist = calls.findIndex(
+            (c) => c.name === "fillText" && c.args[0] === "👊"
+        )
+        expect(fist).toBeGreaterThan(Math.max(clip, view))
+        // In maze space: just right of player 1 at (1, 19).
+        const [x, y] = calls[fist]!.args.slice(1) as number[]
+        expect(x).toBeGreaterThan(1.5 * CELL)
+        expect(y).toBeCloseTo(19.5 * CELL)
     })
 
     it("draws only the cells in view", () => {

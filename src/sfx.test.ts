@@ -41,6 +41,14 @@ describe("SFX", () => {
     })
 })
 
+describe("the hurt sound", () => {
+    it("is shorter than the knockout's", () => {
+        expect(soundLength(SFX[SfxId.hurt])).toBeLessThan(
+            soundLength(SFX[SfxId.caught])
+        )
+    })
+})
+
 describe("breath sounds", () => {
     it("gives every animal with a breath its own sound", () => {
         expect(Object.keys(BREATH_SFX).sort()).toEqual(

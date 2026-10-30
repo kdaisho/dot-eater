@@ -1,5 +1,11 @@
 import { describe, expect, it, vi } from "vite-plus/test"
-import { Cell, DOT_POINTS, START_LIVES, TICK_RATE } from "./constants"
+import {
+    Cell,
+    DOT_POINTS,
+    ENEMY_DAMAGE,
+    MAX_HEALTH,
+    TICK_RATE,
+} from "./constants"
 import {
     END_CHOICES,
     END_CONFIRM_DELAY,
@@ -43,8 +49,8 @@ const second = parseFlat({
 })
 const levels = [corridor, second].map(sameAtEvery)
 
-// The player walks east straight into the enemy, losing a life every tick
-// (with dt 1), while dots remain.
+// The player walks east straight into the enemy, getting hurt whenever it
+// isn't invulnerable (with dt 1), while dots remain.
 const trap = parseFlat({
     name: "trap",
     parTime: 60,
@@ -432,21 +438,26 @@ describe("playing", () => {
         expect(kinds).toEqual(["playing", "ending", "stageClear"])
     })
 
-    it("keeps playing the same game after losing a life, until the last", () => {
+    it("keeps playing the same game after a hit, until the knockout", () => {
         const d = deps({ levels: [sameAtEvery(trap)], dt: 1 })
         const start = startLevel([sameAtEvery(trap)], 0)
-        let screen: Screen = start
-        for (let lives = START_LIVES - 1; lives > 0; lives--) {
-            screen = update(screen, tickInput([], east), d)
-            expect(screen).toBe(start)
-            expect(gameOf(screen)?.lives).toBe(lives)
-        }
-        screen = update(screen, tickInput([], east), d)
+        gameOf(start)!.players[0].health = ENEMY_DAMAGE + 1
+        let screen: Screen = update(start, tickInput([], east), d)
+        expect(screen).toBe(start)
+        expect(gameOf(screen)?.players[0].health).toBe(1)
+        // Once it can be hurt again, the enemy back on it knocks it out.
+        const game = gameOf(screen)!
+        const [player] = game.players
+        const at = player.character.pos
+        player.invulnerableFor = 0
+        game.enemies[0].pos = vec2(at.x, at.y)
+        game.enemies[0].lastPos = vec2(at.x, at.y)
+        screen = update(screen, tickInput(), d)
         expect(screen.kind).toBe("ending")
         screen = update(screen, tickInput([], east), d)
         expect(screen.kind).toBe("gameOver")
         expect(gameOf(screen)).toBe(gameOf(start))
-        expect(gameOf(screen)?.lives).toBe(0)
+        expect(gameOf(screen)?.players[0].health).toBe(0)
     })
 })
 
@@ -570,7 +581,7 @@ describe("clear time", () => {
         expect(slow.rating).toMatchObject({
             ticks: 16,
             stars: 2,
-            noLivesLost: true,
+            healthy: true,
             underPar: false,
         })
     })
@@ -664,14 +675,14 @@ describe.each(["stageClear", "gameOver"] as const)("%s", (kind) => {
         expect(screen).toMatchObject({ kind, animals: ["boar"] })
     })
 
-    it("retries with the score reset and full lives", () => {
+    it("retries with the score reset and full health", () => {
         const screen = end(kind, "retry")
         const finished = gameOf(screen)!
         finished.players[0].score = 5 * DOT_POINTS
-        finished.lives = kind === "gameOver" ? 0 : 1
+        finished.players[0].health = kind === "gameOver" ? 0 : 1
         const next = update(screen, tickInput(["confirm"]), deps())
         expect(gameOf(next)?.players[0].score).toBe(0)
-        expect(gameOf(next)?.lives).toBe(START_LIVES)
+        expect(gameOf(next)?.players[0].health).toBe(MAX_HEALTH)
     })
 
     it("goes to stage select on confirm with stage select selected", () => {
@@ -768,13 +779,13 @@ describe("after the game ends", () => {
     )
 
     it("changes nothing in the finished game but the glides settling", () => {
-        // In the trap level every tick costs a life, so the game ends after
-        // START_LIVES ticks, with dots left and the enemy free to wander off.
+        // In the trap level the first tick hurts, and with the last
+        // health the game ends there, with dots left and the enemy free to
+        // wander off.
         const d = deps({ levels: [sameAtEvery(trap)], dt: 1 / 60 })
         let screen: Screen = startLevel([sameAtEvery(trap)], 0)
-        for (let i = 0; i < START_LIVES; i++) {
-            screen = update(screen, tickInput([], east), deps({ ...d, dt: 1 }))
-        }
+        gameOf(screen)!.players[0].health = 1
+        screen = update(screen, tickInput([], east), deps({ ...d, dt: 1 }))
         expect(screen.kind).toBe("ending")
         const game = gameOf(screen)!
         const before = cloneState(game)

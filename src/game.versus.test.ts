@@ -6,7 +6,8 @@ import {
     BOSS_DEFEAT_POINTS,
     BOSS_HEALTH,
     PLAYER_RESPAWN_DELAY,
-    START_LIVES,
+    ENEMY_DAMAGE,
+    MAX_HEALTH,
     TICK_RATE,
 } from "./constants"
 import {
@@ -37,7 +38,8 @@ import {
 } from "./versus"
 
 // Versus (KDA-222) in the game itself: breaths stun the other player, a
-// catch costs dots instead of a life, and the game is never lost.
+// knockout (health gone) costs dots and a wait, and the game is never
+// lost.
 
 const TICK = 1 / TICK_RATE
 const none = vec2(0, 0)
@@ -71,7 +73,7 @@ function duel(
     { mode = "versus" }: { mode?: Mode } = {}
 ): GameState {
     const state = makeState(hall, [vec2(1, 1), p2At], [], {
-        lives: START_LIVES,
+        health: MAX_HEALTH,
         mode,
         breath: [p1, BREATHS[AnimalId.dragon]],
     })
@@ -345,13 +347,14 @@ describe("a stunned player", () => {
     })
 })
 
-describe("a versus catch", () => {
-    // An enemy that never moves, on player 1's spawn.
-    function caughtP1(dots: number) {
+describe("a versus knockout", () => {
+    // An enemy that never moves, on player 1's spawn, taking its last
+    // health (unless it has more).
+    function caughtP1(dots: number, health = 1) {
         const enemy = makeEnemy(1, 1)
         enemy.speed = 0
         const state = makeState(hall, [vec2(1, 1), vec2(11, 1)], [enemy], {
-            lives: 1,
+            health,
             mode: "versus",
         })
         state.players[0].dots = dots
@@ -359,15 +362,23 @@ describe("a versus catch", () => {
         return { state, enemy, outcome }
     }
 
-    it(`costs ${CATCH_DOTS} dots and takes the player out, not a life`, () => {
+    it(`costs ${CATCH_DOTS} dots and takes the player out for a while`, () => {
         const { state, outcome } = caughtP1(12)
         expect(outcome).toBeNull()
         const [p1, p2] = state.players
+        expect(p1.health).toBe(0)
         expect(p1.dots).toBe(12 - CATCH_DOTS)
         expect(p1.out).toBe(true)
         expect(p1.respawnIn).toBe(PLAYER_RESPAWN_DELAY)
         expect(p2.out).toBe(false)
-        expect(state.lives).toBe(1)
+    })
+
+    it("with health left only hurts, costing no dots", () => {
+        const { state } = caughtP1(12, MAX_HEALTH)
+        const p1 = state.players[0]
+        expect(p1.health).toBe(MAX_HEALTH - ENEMY_DAMAGE)
+        expect(p1.dots).toBe(12)
+        expect(p1.out).toBe(false)
     })
 
     it("doesn't take the dots below 0", () => {
@@ -394,6 +405,9 @@ describe("a versus catch", () => {
         run(state, [IDLE, IDLE], 1)
         expect(state.players[0].out).toBe(false)
         expect(state.players[0].character.pos).toEqual(vec2(1, 1))
+        // With full health, and not invulnerable.
+        expect(state.players[0].health).toBe(MAX_HEALTH)
+        expect(state.players[0].invulnerableFor).toBe(0)
     })
 
     it("never loses the game, even with both caught over and over", () => {
@@ -402,7 +416,6 @@ describe("a versus catch", () => {
         a.speed = 0
         b.speed = 0
         const state = makeState(hall, [vec2(1, 1), vec2(11, 1)], [a, b], {
-            lives: 0,
             mode: "versus",
         })
         // Both spawns stay occupied: they wait to come back, the game goes
@@ -429,7 +442,7 @@ describe("a versus round's end", () => {
 
     // Regression: the last dot was checked first, so a catch on that tick
     // cost nothing and the round was scored without it.
-    it(`still costs a player caught on the last dot's tick ${CATCH_DOTS} dots`, () => {
+    it(`still costs a player knocked out on the last dot's tick ${CATCH_DOTS} dots`, () => {
         const map = textMap(["#######", "#.    #", "#######"]).map
         const enemy = makeEnemy(5, 1)
         enemy.speed = 0
@@ -449,12 +462,11 @@ describe("a versus round's end", () => {
             const enemy = makeEnemy(5, 1)
             enemy.speed = 0
             const state = makeState(map, [vec2(2, 1), vec2(5, 1)], [enemy], {
-                lives: START_LIVES,
                 mode,
             })
             movePlayer(state, west, state.players[0])
             expect(checkEnd(state)).toBe("won")
-            expect(state.lives).toBe(START_LIVES)
+            expect(state.players[1].health).toBe(1)
             expect(state.players[1].out).toBe(false)
         }
     })

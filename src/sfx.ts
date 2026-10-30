@@ -18,10 +18,17 @@ export const SfxId = {
     enemyDefeated: "enemyDefeated",
     bossHit: "bossHit",
     bossDefeated: "bossDefeated",
-    // A player caught: a life lost, or taken out in co-op or versus.
+    // A player hurt with health left (KDA-257): a short knock.
+    hurt: "hurt",
+    // A player knocked out: its health gone.
     caught: "caught",
     // Versus: a player stunned by the other's breath.
     stunned: "stunned",
+    // The punch (KDA-258): a whiff for a jab, a thwack when it lands on an
+    // enemy or the other player, a dull thud on the boss.
+    punch: "punch",
+    punchHit: "punchHit",
+    punchHitBoss: "punchHit.boss",
     // Results: also fit a won or lost versus round.
     stageClear: "stageClear",
     gameOver: "gameOver",
@@ -224,7 +231,27 @@ export const SFX: Readonly<Record<SfxId, readonly Tone[]>> = {
             volume: 0.5,
         },
     ],
-    // The classic falling "caught" wail.
+    // A short, dull thump with a crunch: less dramatic than the knockout's
+    // long fall.
+    hurt: [
+        {
+            wave: "square",
+            at: 0,
+            duration: 0.12,
+            freq: 330,
+            freqEnd: 140,
+            volume: 0.25,
+            attack: 0.005,
+        },
+        {
+            wave: "noise",
+            at: 0,
+            duration: 0.08,
+            freq: 1200,
+            volume: 0.2,
+        },
+    ],
+    // The classic falling "caught" wail, for a knockout.
     caught: [
         {
             wave: "square",
@@ -242,6 +269,56 @@ export const SFX: Readonly<Record<SfxId, readonly Tone[]>> = {
         freqEnd: 900,
         volume: 0.3,
     }),
+    // A quick, quiet whiff: a tiny falling breath of air. It can play several
+    // times a second, so it stays short and soft.
+    punch: [
+        {
+            wave: "noise",
+            at: 0,
+            duration: 0.07,
+            freq: 2500,
+            freqEnd: 900,
+            volume: 0.25,
+            attack: 0.01,
+        },
+    ],
+    // A punchy thwack: a sharp crack over a short low knock.
+    punchHit: [
+        {
+            wave: "noise",
+            at: 0,
+            duration: 0.06,
+            freq: 3000,
+            freqEnd: 1200,
+            volume: 0.45,
+        },
+        {
+            wave: "square",
+            at: 0,
+            duration: 0.09,
+            freq: 330,
+            freqEnd: 120,
+            volume: 0.3,
+        },
+    ],
+    // A dull thud: the boss takes it without a flinch.
+    "punchHit.boss": [
+        {
+            wave: "sine",
+            at: 0,
+            duration: 0.15,
+            freq: 140,
+            freqEnd: 50,
+            volume: 0.5,
+        },
+        {
+            wave: "noise",
+            at: 0,
+            duration: 0.06,
+            freq: 500,
+            volume: 0.25,
+        },
+    ],
     // A short rising jingle on a major chord.
     stageClear: [
         ...arpeggio(["C5", "E5", "G5"], 0.1, 0.1, {

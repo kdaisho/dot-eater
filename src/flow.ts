@@ -91,7 +91,7 @@ import { matchWinner, roundResult, type RoundResult } from "./versus"
 //
 // The game is only ever stepped in `playing`. Once a game ends the machine
 // leaves `playing` on that same tick, so the game itself (cells, score,
-// lives, positions) never changes any more (this replaces the old
+// health, positions) never changes any more (this replaces the old
 // GameState.locked flag). What follows is `ending`, a short outro: the
 // characters' glides finish (see settle in game.ts, which only raises
 // moveProgress) so the players are seen arriving on their last cells, then
@@ -150,7 +150,7 @@ export type RoundChoice = (typeof ROUND_CHOICES)[number]
 export type { Mode }
 
 // The modes the title's mode select offers, in menu order. Each game plays
-// by its mode's rules (see resolveCatch in game.ts; versus.ts). Main labels
+// by its mode's rules (see knockOut in game.ts; versus.ts). Main labels
 // each mode.
 export const MODE_CHOICES: readonly Mode[] = ["solo", "coop", "versus"]
 
@@ -336,7 +336,8 @@ type ControlsScreen = Extract<Screen, { kind: "controls" }>
 export type TickInput = {
     // Pressed since the previous tick (a press edge; holding doesn't repeat).
     wasPressed(action: Action, player?: number): boolean
-    // Movement and the breath press for the game; only read while playing.
+    // Movement and the breath and punch presses for the game; only read
+    // while playing.
     move(player?: number): MoveInput
     // The controls screen's capture since the previous tick (see Capture).
     // Only read while capturing.

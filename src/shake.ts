@@ -1,6 +1,6 @@
 import { vec2, type Vec2 } from "./vec2"
 
-// Screen shake (KDA-213): a short jolt of the maze on hits and lost lives.
+// Screen shake (KDA-213): a short jolt of the maze on hits and knockouts.
 // Purely visual. Pure, no DOM: time comes in as `dt` and randomness is
 // injected; render.ts moves the maze (not the HUD) by `offset`.
 //
@@ -21,7 +21,11 @@ export const SHAKES = {
     hit: 0.35,
     // Versus: a player stunned by the other's breath.
     stun: 0.2,
-    // A player caught: a life lost, or taken out.
+    // A punch landing: a very small jolt (KDA-258).
+    punch: 0.15,
+    // A player hurt with health left (KDA-257).
+    hurt: 0.3,
+    // A player knocked out: its health gone.
     caught: 0.7,
     // The boss going down.
     bossDefeat: 0.8,

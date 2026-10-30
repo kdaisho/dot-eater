@@ -1,5 +1,6 @@
 import type { GameEvent } from "./events"
 import type { GameState } from "./game"
+import type { Jabs } from "./jab"
 import type { Particles } from "./particles"
 import { shakeEnabled, type Settings } from "./settings"
 import { SHAKES, type Shake } from "./shake"
@@ -10,27 +11,44 @@ import { vec2, type Vec2 } from "./vec2"
 // from the particle system and shake it is handed; main.ts calls it with
 // each tick's events. Visual only: the game never reads any of it.
 
-// What the effects go to: the particle system and the shake (or test
-// doubles of them).
+// What the effects go to: the particle system, the shake and the players'
+// jab looks (or test doubles of them). Without `jabs`, punches show none.
 export type EffectTargets = {
     particles: Pick<Particles, "burst" | "emit">
     shake: Pick<Shake, "add">
+    jabs?: Pick<Jabs, "add">
 }
 
 // The effects of every event of a tick, in order. `state` is the game
-// after the tick (a breath's cells are worked out on it).
+// after the tick (a breath's cells are worked out on it). A punch shakes
+// once however many things it hits (a player punches once a tick at most),
+// with a burst on each.
 export function effectsForEvents(
     events: readonly GameEvent[],
     state: GameState,
     targets: EffectTargets
 ) {
-    for (const event of events) effectsForEvent(event, state, targets)
+    const landed = new Set<number>()
+    for (const event of events) {
+        if (event.type === "punchHit") {
+            const first = !landed.has(event.player)
+            landed.add(event.player)
+            if (!first) {
+                effectsForEvent(event, state, { ...targets, shake: NO_SHAKE })
+                continue
+            }
+        }
+        effectsForEvent(event, state, targets)
+    }
 }
+
+// A shake that does nothing, for the hits after a punch's first.
+const NO_SHAKE: EffectTargets["shake"] = { add() {} }
 
 export function effectsForEvent(
     event: GameEvent,
     state: GameState,
-    { particles, shake }: EffectTargets
+    { particles, shake, jabs }: EffectTargets
 ) {
     switch (event.type) {
         case "dotEaten":
@@ -51,12 +69,23 @@ export function effectsForEvent(
             particles.burst("bossDefeat", bossCentre(event.at))
             shake.add(SHAKES.bossDefeat)
             return
+        case "hurt":
+            particles.burst("hurt", event.at)
+            shake.add(SHAKES.hurt)
+            return
         case "playerCaught":
             particles.burst("caught", event.at)
             shake.add(SHAKES.caught)
             return
         case "playerStunned":
             shake.add(SHAKES.stun)
+            return
+        case "punched":
+            jabs?.add(event.player, event.facing)
+            return
+        case "punchHit":
+            particles.burst("punch", event.at)
+            shake.add(SHAKES.punch)
             return
         case "playerRespawned":
         case "gameWon":
@@ -67,17 +96,20 @@ export function effectsForEvent(
 
 // How much the effects move, from the system's reduced motion setting and
 // the player's Screen shake setting: reduced motion makes particles fewer
-// and shorter, and turns the shake off unless the setting turns it on; the
+// and shorter, stops jabs lunging (the fist still shows), and turns the
+// shake off unless the setting turns it on; the
 // setting, when set, decides the shake either way (see shakeEnabled).
 export function applyMotion(
     targets: {
         particles: Pick<Particles, "reduced">
         shake: Pick<Shake, "enabled">
+        jabs?: Pick<Jabs, "reduced">
     },
     settings: Settings,
     prefersReducedMotion: boolean
 ) {
     targets.particles.reduced = prefersReducedMotion
+    if (targets.jabs) targets.jabs.reduced = prefersReducedMotion
     targets.shake.enabled = shakeEnabled(settings, prefersReducedMotion)
 }
 

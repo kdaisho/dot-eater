@@ -69,7 +69,7 @@ describe("step performance", () => {
                 { x: 3, y: 1 },
             ],
             enemies,
-            { lives: 1_000_000, ice }
+            { health: 1_000_000, ice }
         )
         const ticks = TICK_RATE * 10
         const start = performance.now()
@@ -78,7 +78,7 @@ describe("step performance", () => {
         }
         const average = (performance.now() - start) / ticks
         // The enemies did chase the players down.
-        expect(state.lives).toBeLessThan(1_000_000)
+        expect(state.players.some((p) => p.health < 1_000_000)).toBe(true)
         // Measured on a laptop (KDA-263): about 0.07 ms a tick on average,
         // and about 1 ms on a tick where all eight choose a way (1.9 ms
         // before chasers shared their distances). Generous, for slow CI.

@@ -5,17 +5,19 @@ import {
     Cell,
     CharacterId,
     DOT_POINTS,
+    ENEMY_DAMAGE,
     ENEMY_IDS,
     ENEMY_SPEED,
+    MAX_HEALTH,
     PHANTOM_SPEED,
     PLAYER_SPEED,
-    START_LIVES,
     TICK_RATE,
 } from "./constants"
 import type { Random } from "./ai"
 import {
     checkEnd,
     createGameState,
+    HURT_INVULNERABLE_TICKS,
     movePlayer,
     settle,
     step,
@@ -529,7 +531,7 @@ describe("step: collisions on drawn positions", () => {
         expect(run(state, 4)).toBeNull()
         expect(state.enemies[0].pos).toEqual(vec2(3, 1))
         expect(run(state, TICK_RATE / 2, west)).toBeNull()
-        expect(state.lives).toBe(1)
+        expect(state.players[0].health).toBe(1)
     })
 
     it("is a near miss when an enemy turns back before it gets close", () => {
@@ -722,23 +724,6 @@ describe("step: new enemy types", () => {
         expect(state.enemies[0].pos).toEqual(vec2(5, 3))
     })
 
-    it("a patroller starts its route again after a respawn", () => {
-        // Heading for its second waypoint, (1, 1), it walks into the player.
-        const patroller = makePatroller(2, 1, [
-            [5, 1],
-            [1, 1],
-        ])
-        patroller.routeIndex = 1
-        const state = makeState(corridor, { x: 1, y: 1 }, [patroller], {
-            lives: 2,
-        })
-        ready(state)
-        expect(ticksUntilCaught(state)).toBe(STEP_IN_TICKS)
-        expect(state.lives).toBe(1)
-        expect(patroller.pos).toEqual(vec2(2, 1))
-        expect(patroller.routeIndex).toBe(0)
-    })
-
     it("a phantom catches the player as it comes out of a wall", () => {
         const state = makeState(
             [
@@ -827,10 +812,11 @@ describe("createGameState", () => {
         expect(state.enemies[0].ai).toBe(AiType.chase)
     })
 
-    it("starts with no score and full lives", () => {
+    it("starts with no score, full health and no invulnerability", () => {
         const state = createGameState(OLD_LEVEL)
         expect(state.players[0].score).toBe(0)
-        expect(state.lives).toBe(START_LIVES)
+        expect(state.players[0].health).toBe(MAX_HEALTH)
+        expect(state.players[0].invulnerableFor).toBe(0)
     })
 
     it("has the player ready to move at once and the enemies wait", () => {
@@ -956,162 +942,143 @@ describe("score", () => {
     })
 })
 
-describe("step: lives", () => {
+describe("step: health", () => {
     // The player at (1, 1) walks east while the enemy at (2, 1) walks west:
     // they swap cells, and the player eats the dot at (2, 1).
-    function swap(lives: number) {
+    function swap(health: number = MAX_HEALTH) {
         const state = makeState(
             corridor,
             { x: 1, y: 1 },
             [makeEnemy(2, 1, AiType.random, { x: 3, y: 1 })],
-            { lives }
+            { health }
         )
         ready(state)
         return state
     }
 
-    it("costs a life on a swap and respawns everyone, keeping dots and score", () => {
-        const state = swap(3)
+    it("costs ENEMY_DAMAGE on a swap, keeping dots and score", () => {
+        const state = swap()
         expect(run(state, SWAP_TICKS - 1, east)).toBeNull()
-        expect(state.lives).toBe(3)
+        expect(state.players[0].health).toBe(MAX_HEALTH)
         expect(run(state, 1, east)).toBeNull()
-        expect(state.lives).toBe(2)
+        expect(state.players[0].health).toBe(MAX_HEALTH - ENEMY_DAMAGE)
         expect(state.cells[1][2]).toBe(Cell.none)
-        expect(state.players[0].score).toBe(DOT_POINTS)
-        // Back at the spawns, as at the start of a game.
-        expect(state.players[0].character.pos).toEqual(vec2(1, 1))
-        expect(state.players[0].character.lastPos).toEqual(vec2(1, 1))
-        expect(state.players[0].character.moveProgress).toBe(1)
-        expect(state.enemies[0].pos).toEqual(vec2(2, 1))
-        expect(state.enemies[0].lastPos).toEqual(vec2(2, 1))
-        expect(state.enemies[0].moveProgress).toBe(0)
+        expect(state.players[0].score).toBeGreaterThanOrEqual(DOT_POINTS)
     })
 
-    it("costs a life when an enemy walks into a player who stays put", () => {
-        const state = swap(2)
-        expect(ticksUntilCaught(state)).toBe(STEP_IN_TICKS)
-        expect(state.lives).toBe(1)
-        expect(state.players[0].character.pos).toEqual(vec2(1, 1))
-        expect(state.enemies[0].pos).toEqual(vec2(2, 1))
-    })
-
-    it("clears a tap buffered on the tick a life is lost", () => {
-        const state = swap(2)
-        // Mid-move: the tap is buffered, but the player can't move yet
-        // (13/15 of the way to its next move on the catch tick).
-        state.players[0].character.moveProgress = 0
-        run(state, STEP_IN_TICKS - 1)
-        expect(state.lives).toBe(2)
-        expect(tap(state, west)).toBeNull()
-        expect(state.lives).toBe(1)
-        expect(state.players[0].bufferedStep).toEqual(none)
-        // The respawned player is ready but doesn't take the old tap.
-        run(state, 1)
-        expect(state.players[0].character.pos).toEqual(vec2(1, 1))
-    })
-
-    it("respawns at the level's spawns", () => {
-        const level = parseFlat({
-            name: "spawns",
-            parTime: 60,
-            map: ["#######", "#P...E#", "#######"],
-            enemies: [{ ai: "random", speed: PLAYER_SPEED }],
-        })
-        const state = createGameState(level)
-        state.enemies[0].moveProgress = 1
-        // The two close in on each other and meet.
-        let outcome: Outcome | null = null
-        for (let i = 0; i < TICK_RATE && state.lives === START_LIVES; i++) {
-            outcome = run(state, 1, east)
-        }
-        expect(outcome).toBeNull()
-        expect(state.lives).toBe(START_LIVES - 1)
-        expect(state.players[0].character.pos).toEqual(vec2(1, 1))
-        expect(state.enemies[0].pos).toEqual(vec2(5, 1))
-        // The player ate (2, 1) and (3, 1) on the way; they stay eaten.
-        expect(state.players[0].score).toBe(2 * DOT_POINTS)
-        expect(state.cells[1]).toEqual([1, 0, 0, 0, 2, 2, 1])
-    })
-
-    it("plays on after a respawn", () => {
-        const state = swap(2)
+    it("knocks the player back a cell, away from the enemy", () => {
+        const state = swap()
         run(state, SWAP_TICKS, east)
-        expect(state.lives).toBe(1)
-        // The player is ready at once; the enemy waits out its grace period.
-        expect(run(state, 1, west)).toBeNull()
-        expect(state.players[0].character.pos).toEqual(vec2(0, 1))
-        expect(state.enemies[0].pos).toEqual(vec2(2, 1))
+        // A third of the way into (2, 1), so pushed west from (1, 1).
+        const { character } = state.players[0]
+        expect(character.lastPos).toEqual(vec2(1, 1))
+        expect(character.pos).toEqual(vec2(0, 1))
+        expect(character.moveProgress).toBe(0)
     })
 
-    it("ends the game on a collision on the last life", () => {
-        const state = swap(1)
+    it("resets nobody: the enemy carries on where it is", () => {
+        const state = swap()
+        run(state, SWAP_TICKS - 1, east)
+        const enemy = cloneState(state).enemies[0]
+        run(state, 1, east)
+        // It went on with its move, not back to its spawn.
+        expect(state.enemies[0].pos).toEqual(enemy.pos)
+        expect(state.enemies[0].moveProgress).toBeGreaterThan(
+            enemy.moveProgress
+        )
+    })
+
+    it("hurts when an enemy walks into a player who stays put", () => {
+        const state = swap()
+        expect(ticksUntilCaught(state)).toBe(STEP_IN_TICKS)
+        expect(state.players[0].health).toBe(MAX_HEALTH - ENEMY_DAMAGE)
+        // Pushed west, away from the enemy coming in from the east.
+        expect(state.players[0].character.pos).toEqual(vec2(0, 1))
+        expect(state.enemies[0].pos).toEqual(vec2(1, 1))
+    })
+
+    it("lets enemies pass through an invulnerable player", () => {
+        const state = swap()
+        state.players[0].invulnerableFor = TICK_RATE
+        run(state, TICK_RATE - 1)
+        expect(state.players[0].health).toBe(MAX_HEALTH)
+        expect(state.events).toEqual([])
+    })
+
+    it("is lost when a hit takes the last health", () => {
+        const state = swap(ENEMY_DAMAGE)
         expect(run(state, SWAP_TICKS - 1, east)).toBeNull()
         expect(run(state, 1, east)).toBe("dead")
-        expect(state.lives).toBe(0)
-        // No respawn: the final positions stay as they were.
+        expect(state.players[0].health).toBe(0)
+        // No knockback and no respawn: the final positions stay as they
+        // were.
         expect(state.players[0].character.pos).toEqual(vec2(2, 1))
         expect(state.enemies[0].pos).toEqual(vec2(1, 1))
     })
 
-    it("ends the game after START_LIVES collisions", () => {
-        const state = swap(START_LIVES)
-        for (let i = 1; i < START_LIVES; i++) {
-            expect(run(state, SWAP_TICKS, east)).toBeNull()
-            expect(state.lives).toBe(START_LIVES - i)
-            ready(state)
+    it("is lost after MAX_HEALTH / ENEMY_DAMAGE hits, one per invulnerability", () => {
+        // Boxed in with an enemy on its cell: nowhere to be knocked to, so
+        // it is hit again as soon as each invulnerability wears off.
+        const { map } = textMap(["#####", "# #.#", "#####"])
+        const state = makeState(map, { x: 1, y: 1 }, [makeEnemy(1, 1)], {
+            health: MAX_HEALTH,
+        })
+        const hits = MAX_HEALTH / ENEMY_DAMAGE
+        expect(run(state, 1)).toBeNull()
+        for (let i = 1; i < hits; i++) {
+            expect(state.players[0].health).toBe(MAX_HEALTH - i * ENEMY_DAMAGE)
+            expect(run(state, HURT_INVULNERABLE_TICKS - 1)).toBeNull()
+            expect(state.players[0].health).toBe(MAX_HEALTH - i * ENEMY_DAMAGE)
+            if (i < hits - 1) expect(run(state, 1)).toBeNull()
         }
-        expect(run(state, SWAP_TICKS, east)).toBe("dead")
-        expect(state.lives).toBe(0)
+        expect(run(state, 1)).toBe("dead")
+        expect(state.ticks).toBe(1 + (hits - 1) * HURT_INVULNERABLE_TICKS)
     })
 })
 
 // The rule when the player eats the last dot on the same tick they are
-// caught: see checkEnd.
-describe("step: caught on the tick the last dot is eaten", () => {
+// touched: see checkEnd.
+describe("step: touched on the tick the last dot is eaten", () => {
     // Only one dot, at (2, 1). The player at (1, 1) eats it walking east
     // while the enemy, half way from (2, 1) into the player's cell, is
-    // already touching them: a catch on that tick.
+    // already touching them: a hit on that tick.
     const lastDot = [
         [1, 1, 1, 1, 1, 1, 1],
         [0, 0, 2, 0, 0, 0, 0],
         [1, 1, 1, 1, 1, 1, 1],
     ] as const
 
-    function caughtOnLastDot(lives: number) {
+    function touchedOnLastDot(health: number) {
         const state = makeState(
             lastDot,
             { x: 1, y: 1 },
             [makeEnemy(1, 1, AiType.random, { x: 2, y: 1 })],
-            { lives }
+            { health }
         )
         state.players[0].character.moveProgress = 1
         state.enemies[0].moveProgress = 0.5
-        // It respawns away from the player.
-        state.spawns.enemies = [vec2(5, 1)]
         return state
     }
 
-    it("is a win that costs no life, with lives left", () => {
-        const state = caughtOnLastDot(2)
+    it("is a win that costs no health", () => {
+        const state = touchedOnLastDot(MAX_HEALTH)
         expect(run(state, 1, east)).toBe("won")
-        expect(state.lives).toBe(2)
+        expect(state.players[0].health).toBe(MAX_HEALTH)
         expect(state.players[0].score).toBe(DOT_POINTS)
         expect(state.players[0].character.pos).toEqual(vec2(2, 1))
     })
 
-    it("is a win that costs no life, on the last life too", () => {
-        const state = caughtOnLastDot(1)
+    it("is a win with the last health too", () => {
+        const state = touchedOnLastDot(1)
         expect(run(state, 1, east)).toBe("won")
-        expect(state.lives).toBe(1)
+        expect(state.players[0].health).toBe(1)
     })
 
-    it("is a lost life when other dots remain", () => {
-        const state = caughtOnLastDot(2)
+    it("hurts when other dots remain", () => {
+        const state = touchedOnLastDot(MAX_HEALTH)
         state.cells[1][5] = Cell.dot
         expect(run(state, 1, east)).toBeNull()
-        expect(state.lives).toBe(1)
-        expect(state.players[0].character.pos).toEqual(vec2(1, 1))
-        expect(state.enemies[0].pos).toEqual(vec2(5, 1))
+        expect(state.players[0].health).toBe(MAX_HEALTH - ENEMY_DAMAGE)
     })
 })
 
@@ -1151,33 +1118,31 @@ describe("eatenAt", () => {
         expect(state.players[0].eatenAt).toEqual(vec2(2, 1))
     })
 
-    it("is cleared when a life is lost and everyone respawns", () => {
-        // The player eats (2, 1) while swapping cells with the enemy.
+    it("is the dot a knockback lands on", () => {
+        // The player eats (2, 1) while swapping cells with the enemy, and
+        // is knocked back onto the dot at (0, 1).
         const state = makeState(
             corridor,
             { x: 1, y: 1 },
             [makeEnemy(2, 1, AiType.random, { x: 3, y: 1 })],
-            { lives: 2 }
+            { health: MAX_HEALTH }
         )
         ready(state)
         expect(run(state, 1, east)).toBeNull()
         expect(state.players[0].eatenAt).toEqual(vec2(2, 1))
         expect(run(state, SWAP_TICKS - 1, east)).toBeNull()
-        expect(state.lives).toBe(1)
-        expect(state.players[0].score).toBe(DOT_POINTS)
-        expect(state.players[0].eatenAt).toBeNull()
+        expect(state.players[0].health).toBe(MAX_HEALTH - ENEMY_DAMAGE)
+        expect(state.players[0].score).toBe(2 * DOT_POINTS)
+        expect(state.players[0].eatenAt).toEqual(vec2(0, 1))
     })
 })
 
 describe("settle", () => {
     // The player has just eaten (2, 1); the enemy is mid-glide too.
     function ended() {
-        const state = makeState(
-            corridor,
-            { x: 1, y: 1 },
-            [makeEnemy(6, 1, AiType.random, { x: 7, y: 1 })],
-            { lives: 2 }
-        )
+        const state = makeState(corridor, { x: 1, y: 1 }, [
+            makeEnemy(6, 1, AiType.random, { x: 7, y: 1 }),
+        ])
         movePlayer(state, east)
         state.players[0].character.moveProgress = 0
         state.enemies[0].moveProgress = 0.5
@@ -1246,16 +1211,15 @@ describe("ticks (the clear time)", () => {
         expect(state.ticks).toBe(5)
     })
 
-    it("keeps counting through a lost life", () => {
-        // The enemy spawns on the player, so every tick costs a life.
+    it("keeps counting through a hit", () => {
+        // The enemy spawns on the player, so the first tick hurts it.
         const state = makeState(corridor, { x: 1, y: 1 }, [makeEnemy(1, 1)], {
-            lives: 3,
+            health: MAX_HEALTH,
         })
         run(state, 1)
-        expect(state.lives).toBe(2)
+        expect(state.players[0].health).toBe(MAX_HEALTH - ENEMY_DAMAGE)
         expect(state.ticks).toBe(1)
         run(state, 1)
-        expect(state.lives).toBe(1)
         expect(state.ticks).toBe(2)
     })
 

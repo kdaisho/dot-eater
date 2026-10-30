@@ -9,6 +9,7 @@ export type Action =
     | "left"
     | "right"
     | "breath"
+    | "punch"
     | "pause"
     | "confirm"
 
@@ -18,6 +19,7 @@ export const ACTIONS: readonly Action[] = [
     "left",
     "right",
     "breath",
+    "punch",
     "pause",
     "confirm",
 ]
@@ -256,8 +258,8 @@ export function keyMapsFor(bindings: Bindings): KeyMap[] {
     })
 }
 
-// The default maps: P1 arrows, ShiftRight breath, P/Escape pause, Space
-// confirm; P2 WASD, ShiftLeft breath, Q pause, E confirm.
+// The default maps: P1 arrows, ShiftRight breath, / punch, P/Escape pause,
+// Space confirm; P2 WASD, ShiftLeft breath, Z punch, Q pause, E confirm.
 export const [PLAYER_1_KEYS, PLAYER_2_KEYS] = keyMapsFor(DEFAULT_BINDINGS) as [
     KeyMap,
     KeyMap,
