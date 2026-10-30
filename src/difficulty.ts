@@ -37,3 +37,23 @@ export const MAP_SIZE: Readonly<Record<Difficulty, MapSize>> = {
     hard: "large",
     superHard: "large",
 }
+
+export function isDifficulty(value: unknown): value is Difficulty {
+    return DIFFICULTIES.includes(value as Difficulty)
+}
+
+// Each difficulty's name, as difficulty select, the HUD and the end screens
+// show it.
+export const DIFFICULTY_LABELS: Readonly<Record<Difficulty, string>> = {
+    easy: "Easy",
+    medium: "Medium",
+    hard: "Hard",
+    superHard: "Super Hard",
+}
+
+// What a difficulty plays like, from the tables above, so it never
+// disagrees with them: e.g. "3 enemies, medium maze". At most this many
+// come out; a map that lists fewer brings out all of its own.
+export function difficultyDescription(difficulty: Difficulty): string {
+    return `${ENEMY_COUNT[difficulty]} enemies, ${MAP_SIZE[difficulty]} maze`
+}

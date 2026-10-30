@@ -14,9 +14,13 @@ import {
     serializeProgress,
     STAGE_COUNT,
     stageSlots,
+    type Bests,
+    type ClearRecord,
     type Progress,
     type ProgressStorage,
+    type StageProgress,
 } from "./progress"
+import type { Difficulty } from "./difficulty"
 
 // An in-memory Storage stand-in.
 function memoryStorage(initial: Record<string, string> = {}) {
@@ -45,8 +49,20 @@ const cleared = (...indices: number[]): Progress =>
 
 const clearedFlags = (p: Progress) => p.stages.map((s) => s.cleared)
 
-// A clear to record: 2 stars in 30 s, unless told otherwise.
-const run = (stars = 2, ticks = 1800) => ({ stars, ticks })
+// A clear to record: 2 stars in 30 s on Medium, unless told otherwise.
+const run = (
+    stars = 2,
+    ticks = 1800,
+    difficulty: Difficulty = "medium"
+): ClearRecord => ({ difficulty, stars, ticks })
+
+// A cleared stage with these bests on Medium, as recordBests writes them:
+// in byDifficulty and at the top (see StageProgress).
+const medium = (bests: Bests): StageProgress => ({
+    cleared: true,
+    ...bests,
+    byDifficulty: { medium: bests },
+})
 
 // Progress whose stage 0 is cleared with these bests.
 const withStage0 = (bests: { stars?: number; bestTime?: number }): Progress => {
@@ -147,6 +163,50 @@ describe("parseProgress", () => {
         expect(saved.stages[0]).toEqual({ cleared: true, best: 340, stars: 2 })
         expect(saved.stages[1]).toEqual({ cleared: true })
     })
+
+    // The game had 5 stage slots before it grew to 10: a save from then
+    // keeps everything it had, with the new slots uncleared.
+    it("keeps a 5-stage save's clears, bests and stars", () => {
+        const old = [
+            { cleared: true, stars: 3, bestTime: 2400 },
+            { cleared: true, stars: 2, bestTime: 3100 },
+            { cleared: true, stars: 1 },
+            { cleared: false, best: 7 },
+            { cleared: false },
+        ]
+        const p = parseProgress(JSON.stringify({ version: 1, stages: old }))
+        expect(STAGE_COUNT).toBe(10)
+        expect(p.stages).toEqual([
+            ...old,
+            ...Array.from({ length: 5 }, () => ({ cleared: false })),
+        ])
+        expect(isUnlocked(p, 3)).toBe(true)
+        expect(isUnlocked(p, 4)).toBe(false)
+    })
+
+    it("reads back a 10-stage save as it was", () => {
+        const stages = Array.from({ length: 10 }, (_, i) =>
+            i < 7
+                ? { cleared: true, stars: (i % 3) + 1, bestTime: 1000 + i }
+                : { cleared: false }
+        )
+        const raw = JSON.stringify({ version: 1, stages })
+        const p = parseProgress(raw)
+        expect(p.stages).toEqual(stages)
+        expect(serializeProgress(p)).toBe(raw)
+    })
+
+    // Lenient both ways: a save from a build with more stages keeps the
+    // ones this build knows.
+    it("cuts an 11-stage save to its first 10", () => {
+        const stages = Array.from({ length: 11 }, (_, i) => ({
+            cleared: true,
+            stars: 2,
+            bestTime: 100 + i,
+        }))
+        const p = parseProgress(JSON.stringify({ version: 1, stages }))
+        expect(p.stages).toEqual(stages.slice(0, 10))
+    })
 })
 
 describe("parseProgress: bests", () => {
@@ -212,8 +272,7 @@ describe("mergeProgress", () => {
             true,
             false,
             true,
-            false,
-            false,
+            ...Array<boolean>(STAGE_COUNT - 3).fill(false),
         ])
     })
 })
@@ -245,27 +304,21 @@ describe("mergeProgress: bests", () => {
 
 describe("recordBests", () => {
     it("records the first clear's stars and time", () => {
-        expect(recordBests(cleared(0), 0, run(2, 1800)).stages[0]).toEqual({
-            cleared: true,
-            stars: 2,
-            bestTime: 1800,
-        })
+        expect(recordBests(cleared(0), 0, run(2, 1800)).stages[0]).toEqual(
+            medium({ stars: 2, bestTime: 1800 })
+        )
     })
 
     it("improves each best on its own", () => {
         const start = withStage0({ stars: 2, bestTime: 1800 })
         // More stars, but slower: only the stars change.
-        expect(recordBests(start, 0, run(3, 2400)).stages[0]).toEqual({
-            cleared: true,
-            stars: 3,
-            bestTime: 1800,
-        })
+        expect(recordBests(start, 0, run(3, 2400)).stages[0]).toEqual(
+            medium({ stars: 3, bestTime: 1800 })
+        )
         // Faster, but fewer stars: only the time changes.
-        expect(recordBests(start, 0, run(1, 1200)).stages[0]).toEqual({
-            cleared: true,
-            stars: 2,
-            bestTime: 1200,
-        })
+        expect(recordBests(start, 0, run(1, 1200)).stages[0]).toEqual(
+            medium({ stars: 2, bestTime: 1200 })
+        )
     })
 
     it("never makes a best worse, returning the same object", () => {
@@ -278,15 +331,12 @@ describe("recordBests", () => {
     it("ignores stars or a time a save couldn't hold", () => {
         const p = withStage0({ stars: 1, bestTime: 900 })
         expect(recordBests(p, 0, run(4, 0))).toBe(p)
-        expect(recordBests(p, 0, run(2, 0.5)).stages[0]).toEqual({
-            cleared: true,
-            stars: 2,
-            bestTime: 900,
-        })
-        expect(recordBests(cleared(0), 0, run(3, 0)).stages[0]).toEqual({
-            cleared: true,
-            stars: 3,
-        })
+        expect(recordBests(p, 0, run(2, 0.5)).stages[0]).toEqual(
+            medium({ stars: 2, bestTime: 900 })
+        )
+        expect(recordBests(cleared(0), 0, run(3, 0)).stages[0]).toEqual(
+            medium({ stars: 3 })
+        )
     })
 
     it("ignores slots outside the stage list", () => {
@@ -302,10 +352,8 @@ describe("recordBests", () => {
             stages: [{ ...p.stages[0], note: "x" }, ...p.stages.slice(1)],
         }
         expect(recordBests(withNote, 0, run(2, 60)).stages[0]).toEqual({
-            cleared: true,
+            ...medium({ stars: 2, bestTime: 60 }),
             note: "x",
-            stars: 2,
-            bestTime: 60,
         })
     })
 })
@@ -334,11 +382,9 @@ describe("recordClear", () => {
     it("saves the clear's stars and time as the stage's bests", () => {
         const storage = memoryStorage()
         recordClear(emptyProgress(), storage, 0, run(2, 1800))
-        expect(loadProgress(storage).stages[0]).toEqual({
-            cleared: true,
-            stars: 2,
-            bestTime: 1800,
-        })
+        expect(loadProgress(storage).stages[0]).toEqual(
+            medium({ stars: 2, bestTime: 1800 })
+        )
     })
 
     it("only improves the saved bests", () => {
@@ -346,7 +392,7 @@ describe("recordClear", () => {
         let p = recordClear(emptyProgress(), storage, 0, run(3, 1800))
         p = recordClear(p, storage, 0, run(1, 1200))
         p = recordClear(p, storage, 0, run(2, 3000))
-        expect(p.stages[0]).toEqual({ cleared: true, stars: 3, bestTime: 1200 })
+        expect(p.stages[0]).toEqual(medium({ stars: 3, bestTime: 1200 }))
         expect(loadProgress(storage)).toEqual(p)
     })
 
@@ -473,12 +519,13 @@ describe("markCleared", () => {
 
 describe("stageSlots", () => {
     it("shows STAGE_COUNT slots: open, locked, then coming soon", () => {
-        expect(stageSlots(cleared(0), ["A", "B", "C"])).toEqual([
+        expect(stageSlots(cleared(0), ["A", "B", "C"], "medium")).toEqual([
             { kind: "open", name: "A" },
             { kind: "open", name: "B" },
             { kind: "locked", name: "C" },
-            { kind: "comingSoon" },
-            { kind: "comingSoon" },
+            ...Array.from({ length: STAGE_COUNT - 3 }, () => ({
+                kind: "comingSoon",
+            })),
         ])
     })
 
@@ -489,7 +536,7 @@ describe("stageSlots", () => {
             run(2, 999)
         )
         // Stage 1 has bests but isn't cleared (e.g. an odd save): none shown.
-        expect(stageSlots(p, ["A", "B", "C"]).slice(0, 3)).toEqual([
+        expect(stageSlots(p, ["A", "B", "C"], "medium").slice(0, 3)).toEqual([
             { kind: "open", name: "A", stars: 3, bestTime: 1234 },
             { kind: "open", name: "B" },
             { kind: "locked", name: "C" },
@@ -498,7 +545,9 @@ describe("stageSlots", () => {
 
     it("shows only STAGE_COUNT slots when there are more levels", () => {
         const names = Array.from({ length: STAGE_COUNT + 2 }, (_, i) => `${i}`)
-        expect(stageSlots(emptyProgress(), names)).toHaveLength(STAGE_COUNT)
+        expect(stageSlots(emptyProgress(), names, "medium")).toHaveLength(
+            STAGE_COUNT
+        )
     })
 })
 

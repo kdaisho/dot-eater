@@ -13,6 +13,7 @@ import {
     type Mode,
     type MoveInput,
 } from "../game"
+import type { Screen } from "../flow"
 import type { IceMap } from "../ice"
 import {
     DIFFICULTIES,
@@ -234,6 +235,8 @@ export function makeState(
             enemies: enemies.map((e) => vec2(e.pos.x, e.pos.y)),
         },
         events: [],
+        regrow: null,
+        splitterDrops: false,
     }
 }
 
@@ -243,6 +246,13 @@ export function makeState(
 export function makeBoss(x: number, y: number, speed?: number): Boss {
     const boss = createBoss(vec2(x, y), speed)
     boss.moveProgress = 1
+    return boss
+}
+
+// Keep `boss` from ever breathing (see bossBreath.ts), for tests of what
+// else it does that run past its first breath: its cooldown never ends.
+export function withoutBreath(boss: Boss): Boss {
+    boss.breath.cooldown = Infinity
     return boss
 }
 
@@ -345,3 +355,20 @@ export function drawn(state: GameState, who: Character): Vec2 {
 // The character under the cursor on character select, for DOM tests of main.
 export const pick = () =>
     document.querySelector<HTMLElement>("#overlay li.selected")?.dataset.animal
+
+// Difficulty select for stage `level` in `mode`, its cursor on `difficulty`,
+// as stage select opens it: confirm goes to character select, Back to stage
+// select on the stage.
+export function difficultySelect(
+    level = 0,
+    difficulty: Difficulty = "medium",
+    mode: Mode = "solo"
+): Extract<Screen, { kind: "difficultySelect" }> {
+    return {
+        kind: "difficultySelect",
+        mode,
+        difficulty,
+        next: { kind: "characterSelect", level },
+        back: { kind: "stageSelect", mode, selected: level },
+    }
+}

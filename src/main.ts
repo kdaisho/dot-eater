@@ -8,7 +8,18 @@ import { browserAudioContext, createAudio } from "./audio"
 import { playEventSounds, screenSound } from "./sound"
 import { energyHud } from "./breath"
 import { MAX_FRAME_MS, TICK_MS } from "./constants"
-import { createTouchControls, DpadSource, setControls } from "./dpad"
+import {
+    DIFFICULTIES,
+    DIFFICULTY_LABELS,
+    difficultyDescription,
+    type Difficulty,
+} from "./difficulty"
+import {
+    createTouchControls,
+    DpadSource,
+    setBreathReady,
+    setControls,
+} from "./dpad"
 import { applyMotion, effectsForEvents } from "./eventEffects"
 import { takeEvents, type GameEvent } from "./events"
 import {
@@ -34,7 +45,7 @@ import {
     type TickInput,
     type TitleChoice,
 } from "./flow"
-import { healthHud, totalScore, type GameState } from "./game"
+import { bossHud, healthHud, totalScore, type GameState } from "./game"
 import {
     CONTROLS_ROWS,
     controlsRowLabel,
@@ -48,7 +59,12 @@ import {
     type PadChange,
 } from "./gamepad"
 import { InputState, KeyboardSource, keyMapsFor, type Action } from "./input"
-import { loadLastPick, saveLastPick } from "./lastPick"
+import {
+    loadLastDifficulty,
+    loadLastPick,
+    saveLastDifficulty,
+    saveLastPick,
+} from "./lastPick"
 import { controlsSpace } from "./layout"
 import { levels, stages } from "./levels"
 import { createLoop } from "./loop"
@@ -78,6 +94,7 @@ import {
     overlayTap,
     showCharacterSelect,
     showControls,
+    showDifficultySelect,
     showGameOver,
     showMatchResult,
     showPause,
@@ -90,7 +107,7 @@ import {
     showToast,
     type EndScreenView,
 } from "./ui"
-import { isTouchDevice, TouchSource } from "./touch"
+import { isTouchDevice, isTouchFirst, TouchSource } from "./touch"
 import { roundWins, stunned, tallyText } from "./versus"
 
 let screen: Screen = initialScreen()
@@ -108,6 +125,9 @@ const storage = browserStorage()
 let progress: Progress = loadProgress(storage)
 // Kept here too, so the last pick holds for the session if saving fails.
 let lastAnimal: AnimalId = loadLastPick(storage)
+// The difficulty picked last, kept the same way: where difficulty select
+// opens, and whose bests stage select shows.
+let lastDifficulty: Difficulty = loadLastDifficulty(storage)
 // Likewise the settings: saved on every change on the settings screen.
 let settings: Settings = loadSettings(storage)
 
@@ -123,20 +143,32 @@ function mediaQuery(query: string): MediaQueryList | undefined {
 }
 const reducedMotion = mediaQuery("(prefers-reduced-motion: reduce)")
 const touch = isTouchDevice(window)
+// Touch is the main input (a phone or tablet, not a laptop's touch screen):
+// the punch and breath buttons show, with room kept for them.
+const touchFirst = isTouchFirst(window)
 
 const canvas = document.getElementById("game")
 if (!(canvas instanceof HTMLCanvasElement)) throw new Error("No #game canvas")
-// Touch: swipes and taps on the play area steer player 1 (TouchSource);
-// the optional on-screen D-pad, breath and pause buttons (dpad.ts) do too.
-// The D-pad shows on touch devices when the Show D-pad setting is on
-// (applyDpad, live as the setting changes).
+// Touch: dragging on the play area steers player 1 while the finger is
+// down (TouchSource). The on-screen pause button (dpad.ts) shows during
+// play on touch devices, and the punch and breath buttons where touch is
+// the main input or the D-pad shows. The optional D-pad steers too,
+// alongside the drag: it shows on touch devices when the Show D-pad
+// setting is on (applyDpad, live as the setting changes).
 const playArea = document.getElementById("play") ?? canvas
 const touchControls = createTouchControls()
-const touchSource = new TouchSource(playArea)
+// Losing focus or hiding the page lets go of the drag, since the finger's
+// lift may never come.
+const touchSource = new TouchSource(playArea, { view: window, doc: document })
 let dpadShown = false
-setControls(document, { touch, dpad: false, playing: false })
+setControls(document, {
+    touch,
+    buttons: touchFirst,
+    dpad: false,
+    playing: false,
+})
 
-// The renderer fits the maze into the window less the D-pad's band.
+// The renderer fits the maze into the window less the touch controls' band.
 const renderer = createRenderer(canvas, {
     view: {
         get innerWidth() {
@@ -153,16 +185,18 @@ const renderer = createRenderer(canvas, {
 addEventListener("resize", () => renderer.resize())
 
 function controlsRoom() {
-    return controlsSpace(innerWidth, innerHeight, dpadShown)
+    const shown = dpadShown ? "dpad" : touchFirst ? "buttons" : "none"
+    return controlsSpace(innerWidth, innerHeight, shown)
 }
 
-// Show or hide the on-screen D-pad and breath button as the settings say,
-// refitting the maze when that changes.
+// Show or hide the on-screen D-pad as the settings say, refitting the maze
+// when that changes. Punch and breath show beside it, on a laptop's touch
+// screen too.
 function applyDpad() {
     const on = touch && settings.showDpad
     if (on === dpadShown) return
     dpadShown = on
-    setControls(document, { dpad: on })
+    setControls(document, { dpad: on, buttons: touchFirst || on })
     renderer.resize()
 }
 applyDpad()
@@ -215,6 +249,9 @@ const effects = {
             // while playing.
             guide: settings.facingGuide,
             ...(s.kind === "playing" ? { aim: true } : {}),
+            // The boss's wind-up (its glow and warning tint), on the board
+            // in play, paused and ending, as the rings are.
+            bossBreath: true,
         }
     },
 }
@@ -371,6 +408,7 @@ function flowDeps(dt: number): FlowDeps {
         levels: stages,
         progress,
         lastAnimal,
+        lastDifficulty,
         dt,
         random: Math.random,
         settings,
@@ -403,9 +441,10 @@ function enter(prev: Screen, next: Screen) {
     screen = next
     pads.setAssignment(padAssignment(next))
     setControls(document, { playing: next.kind === "playing" })
-    // A swipe holds its direction until newer input; a game starting or
-    // ending (not a pause or resume) lets go of it, so it neither steers
-    // the next game nor sets that direction aside for the keys there.
+    // A drag holds its direction while the finger is down; a game starting
+    // or ending (not a pause or resume) lets go of it, so it neither steers
+    // the next game nor sets that direction aside for the keys there. A
+    // finger still down steers again once it drags anew.
     const wasPlaying = prev.kind === "playing"
     const isPlaying = next.kind === "playing"
     if (
@@ -422,8 +461,16 @@ function enter(prev: Screen, next: Screen) {
         input.ignoreHeld()
         effects.reset()
     }
-    // Only 1-player games remember the pick: 2-player games leave saved
+    // Only 1-player games remember the picks: 2-player games leave saved
     // data alone.
+    if (
+        next.kind === "characterSelect" &&
+        prev.kind === "difficultySelect" &&
+        playerCount(next.mode) === 1
+    ) {
+        lastDifficulty = next.difficulty
+        saveLastDifficulty(storage, lastDifficulty)
+    }
     if (
         next.kind === "playing" &&
         prev.kind === "characterSelect" &&
@@ -437,6 +484,7 @@ function enter(prev: Screen, next: Screen) {
         if (recordsProgress(next.mode)) {
             const { stars, ticks } = next.rating
             progress = recordClear(progress, storage, next.level, {
+                difficulty: next.difficulty,
                 stars,
                 ticks,
             })
@@ -479,13 +527,28 @@ function render(alpha: number) {
     const shown = baseScreen(screen)
     const game = gameOf(shown)
     if (!game) return renderer.clear()
+    showBreathReady(energyHud(game).ready)
     if (shown.kind === "playing" || shown.kind === "ending") {
         lastAlpha = alpha
     }
     // Every screen with a game also says which level it is.
     const rules = "level" in shown ? levels[shown.level]?.rules : undefined
     const hud = game.mode === "versus" ? versusHud(game, shown) : hudOf(game)
+    const boss = bossHud(game)
+    if (boss) hud.boss = boss
+    if ("difficulty" in shown) {
+        hud.difficulty = DIFFICULTY_LABELS[shown.difficulty]
+    }
     renderer.draw(game, lastAlpha, hud, rules, effects.of(shown))
+}
+
+// The breath button looks ready while player 1's meter shows ready
+// (amber). Set on the DOM only when that changes.
+let breathReady: boolean | undefined
+function showBreathReady(ready: boolean) {
+    if (ready === breathReady) return
+    breathReady = ready
+    setBreathReady(touchControls, ready)
 }
 
 // The versus HUD: each player's dots, meter, stun or respawn countdown,
@@ -586,9 +649,19 @@ function showOverlay(s: Screen) {
             return showStageSelect(
                 stageSlots(
                     progress,
-                    levels.map((level) => level.name)
+                    levels.map((level) => level.name),
+                    lastDifficulty
                 ),
-                s.selected
+                s.selected,
+                DIFFICULTY_LABELS[lastDifficulty]
+            )
+        case "difficultySelect":
+            return showDifficultySelect(
+                DIFFICULTIES.map((d) => ({
+                    label: DIFFICULTY_LABELS[d],
+                    detail: difficultyDescription(d),
+                    selected: d === s.difficulty,
+                }))
             )
         case "characterSelect":
             return showCharacterSelect(
@@ -609,14 +682,15 @@ function showOverlay(s: Screen) {
             )
         case "stageClear":
             return showStageClear({
-                ...endView(s.game, s.choice),
+                ...endView(s.game, s.choice, s.difficulty),
                 rating: s.rating,
             })
         case "gameOver":
-            return showGameOver(endView(s.game, s.choice))
+            return showGameOver(endView(s.game, s.choice, s.difficulty))
         case "roundResult": {
             const last = s.match[s.match.length - 1]
             return showRoundResult({
+                difficulty: DIFFICULTY_LABELS[s.difficulty],
                 round: s.match.length,
                 winner: last.winner,
                 dots: last.dots,
@@ -630,6 +704,7 @@ function showOverlay(s: Screen) {
         }
         case "matchResult":
             return showMatchResult({
+                difficulty: DIFFICULTY_LABELS[s.difficulty],
                 winner: s.winner,
                 rounds: s.match,
                 wins: roundWins(s.match),
@@ -664,8 +739,13 @@ const TITLE_LABELS: Record<TitleChoice, string> = {
 
 const PAUSE_LABELS = { resume: "Resume", settings: "Settings" } as const
 
-function endView(game: GameState, choice: EndChoice): EndScreenView {
+function endView(
+    game: GameState,
+    choice: EndChoice,
+    difficulty: Difficulty
+): EndScreenView {
     return {
+        difficulty: DIFFICULTY_LABELS[difficulty],
         score: totalScore(game),
         ...(game.players.length > 1
             ? {

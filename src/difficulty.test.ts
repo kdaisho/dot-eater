@@ -3,7 +3,10 @@ import { MAX_ENEMIES } from "./constants"
 import {
     DEFAULT_DIFFICULTY,
     DIFFICULTIES,
+    DIFFICULTY_LABELS,
+    difficultyDescription,
     ENEMY_COUNT,
+    isDifficulty,
     MAP_SIZE,
     MAP_SIZES,
 } from "./difficulty"
@@ -33,6 +36,38 @@ describe("difficulties", () => {
             "large",
             "large",
         ])
+    })
+})
+
+describe("difficulty names and descriptions", () => {
+    it("names each difficulty", () => {
+        expect(DIFFICULTIES.map((d) => DIFFICULTY_LABELS[d])).toEqual([
+            "Easy",
+            "Medium",
+            "Hard",
+            "Super Hard",
+        ])
+    })
+
+    it("describes each by its enemies and maze, from the tables", () => {
+        expect(DIFFICULTIES.map(difficultyDescription)).toEqual([
+            "3 enemies, medium maze",
+            "4 enemies, medium maze",
+            "6 enemies, large maze",
+            "8 enemies, large maze",
+        ])
+        for (const d of DIFFICULTIES) {
+            expect(difficultyDescription(d)).toBe(
+                `${ENEMY_COUNT[d]} enemies, ${MAP_SIZE[d]} maze`
+            )
+        }
+    })
+
+    it("knows a difficulty from anything else", () => {
+        for (const d of DIFFICULTIES) expect(isDifficulty(d)).toBe(true)
+        for (const value of ["", "Hard", "nightmare", null, 1, "toString"]) {
+            expect(isDifficulty(value)).toBe(false)
+        }
     })
 })
 
