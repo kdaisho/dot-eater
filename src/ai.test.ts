@@ -927,6 +927,35 @@ describe("enemyMove keeps same-kind enemies from stacking", () => {
         expect(second.lastPos).toEqual(vec2(1, 0))
     })
 
+    it("tells the caller it held, and holds no longer than a move's time", () => {
+        const cells = cellsFrom(corridor)
+        const first = makeEnemy(3, 1, AiType.chase, { x: 2, y: 1 })
+        const second = makeEnemy(2, 1, AiType.chase, { x: 1, y: 1 })
+        const crowd = [first, second]
+        const moveSecond = () =>
+            enemyMove(
+                cells,
+                second,
+                vec2(5, 1),
+                fixedRandom(0),
+                vec2(5, 1),
+                undefined,
+                null,
+                cells,
+                new Map(),
+                crowd
+            )
+        // Just short of a move's time: it may still hold.
+        second.heldFor = 1 / second.speed - 1 / 60
+        expect(moveSecond()).toBe(true)
+        expect(second.pos).toEqual(vec2(2, 1))
+        // A whole move's time: it takes the best way and stacks.
+        second.heldFor = 1 / second.speed
+        expect(moveSecond()).toBe(false)
+        expect(second.pos).toEqual(first.pos)
+        expect(second.lastPos).toEqual(first.lastPos)
+    })
+
     it("follows a cell behind down a corridor", () => {
         const cells = cellsFrom(corridor)
         const first = makeEnemy(2, 1, AiType.chase, { x: 1, y: 1 })
@@ -1064,13 +1093,15 @@ describe("chasing on shared distances", { timeout: 30_000 }, () => {
     // out on `dist`, a search of its own with the enemy's cell blocked, as
     // above: the best candidate unless it stacks on a twin, then the
     // next-best by distance and direction order that doesn't, within
-    // SPREAD_SLACK, else null (it holds).
+    // SPREAD_SLACK, else null (it holds), or the best once it has held for
+    // a move's time (`hold` false).
     function blockedSpread(
         cells: Cells,
         ice: IceMap,
         enemy: Character,
         dist: SlideDistance,
-        crowd: readonly Character[]
+        crowd: readonly Character[],
+        hold = true
     ): Vec2 | null {
         const scored = candidateMoves(cells, enemy).map((v) => {
             const state = allDirections
@@ -1094,7 +1125,7 @@ describe("chasing on shared distances", { timeout: 30_000 }, () => {
         const other = rest.find(
             (c) => c.d <= best.d + SPREAD_SLACK && !stacks(c.v)
         )
-        return other?.v ?? null
+        return other?.v ?? (hold ? null : best.v)
     }
 
     it("spreads as a search with the enemy's own cell blocked would", () => {
@@ -1122,17 +1153,29 @@ describe("chasing on shared distances", { timeout: 30_000 }, () => {
                             moves.map((v) => twin(v)),
                             moves.map((v) => twin(v, AiType.ambusher)),
                         ]
-                        for (const others of crowds) {
+                        // Each crowd with the enemy free to hold, and having
+                        // held for a move's time already.
+                        const runs = crowds.flatMap((others) =>
+                            [true, false].map((hold) => ({ others, hold }))
+                        )
+                        for (const { others, hold } of runs) {
                             const enemy = makeEnemy(
                                 at.x,
                                 at.y,
                                 AiType.chase,
                                 last
                             )
+                            if (!hold) enemy.heldFor = 1 / enemy.speed
                             const crowd = [...others, enemy]
                             const expected =
-                                blockedSpread(cells, ice, enemy, dist, crowd) ??
-                                at
+                                blockedSpread(
+                                    cells,
+                                    ice,
+                                    enemy,
+                                    dist,
+                                    crowd,
+                                    hold
+                                ) ?? at
                             const best = blockedSpread(
                                 cells,
                                 ice,

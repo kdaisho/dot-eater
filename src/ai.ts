@@ -123,7 +123,8 @@ function nearestBy<T>(targets: readonly T[], away: (t: T) => number) {
 // chaseStep); a caller moving several enemies in one tick can share it
 // between them. `crowd` is the other enemies in play (the enemy itself may
 // be among them), where they are now, so a chaser, ambusher or Splitter
-// keeps from stacking on one of its kind (see spreadChoice).
+// keeps from stacking on one of its kind (see spreadChoice). Returns whether
+// it held its move for that; the caller counts how long (heldFor).
 export function enemyMove(
     cells: Cells,
     enemy: Character,
@@ -135,7 +136,7 @@ export function enemyMove(
     view: Cells = blocked === null ? cells : blockedView(cells, blocked),
     shared: ChaseDistances = new Map(),
     crowd: readonly Character[] = []
-) {
+): boolean {
     const next =
         blocked === null
             ? nextPos(
@@ -164,16 +165,22 @@ export function enemyMove(
                       (goal) => goalView(cells, view, blocked, goal)
                   )
 
-    // Nowhere to go (boxed in on every side, or holding a move so as not
-    // to stack, see spreadChoice): stay put, still remembering where it
+    // Nowhere to go (boxed in on every side), or holding a move so as not
+    // to stack (see spreadChoice): stay put, still remembering where it
     // came from.
-    if (next === null) return
+    if (next === null || next === HOLD) return next === HOLD
 
     enemy.lastPos = vec2(enemy.pos.x, enemy.pos.y)
     enemy.pos = next
+    return false
 }
 
-// The cell the enemy moves to this time, or null to stay put. `cells` are
+// What a chaser, ambusher or Splitter chooses in place of a cell when it
+// holds its move so as not to stack (see spreadChoice).
+const HOLD = "hold"
+
+// The cell the enemy moves to this time, or null to stay put (HOLD when
+// that is to keep from stacking). `cells` are
 // the cells it may move through; `paths(goal)` the ones distances to `goal`
 // are measured over (see goalView), the same unless cells are blocked.
 function nextPos(
@@ -186,7 +193,7 @@ function nextPos(
     shared: ChaseDistances,
     crowd: readonly Character[],
     paths: (goal: Vec2) => Cells = () => cells
-): Vec2 | null {
+): Vec2 | typeof HOLD | null {
     switch (enemy.ai) {
         case AiType.random: {
             const pos = candidateMoves(cells, enemy)
@@ -272,7 +279,7 @@ function chaseStep(
     paths: (goal: Vec2) => Cells,
     shared: ChaseDistances,
     crowd: readonly Character[]
-): Vec2 | null {
+): Vec2 | typeof HOLD | null {
     const pos = candidateMoves(cells, enemy)
     if (pos.length === 0) return null
     const icy = hasIce(ice)
@@ -292,7 +299,7 @@ function chaseStep(
     const own = icy
         ? slideDistances(paths(target), ice, target, enemy.pos)
         : cellDistance(distanceMap(paths(target), target, enemy.pos))
-    return spreadChoice(pos, states, own, stacks)
+    return spreadChoice(pos, states, own, stacks, mayHold(enemy))
 }
 
 // Two enemies of one kind (AI type) that stand on the same cell, having
@@ -304,17 +311,24 @@ function chaseStep(
 // moving there `stacks`. Then it takes the next-best that doesn't, by the
 // same order, if that is at most SPREAD_SLACK moves longer. If none is (a
 // corridor has no other way, and a much longer one would let the player
-// go), it holds this move (null) and chooses again on the next tick, which
+// go), it holds this move (HOLD) and chooses again on the next tick, which
 // it moves on as soon as the one ahead has moved on: it follows a cell
 // behind instead of stacking. Enemies move in slot order, so of two that
 // arrive together the first goes the best way and the second the next-best
 // or a cell behind.
+//
+// A hold lasts one move's time at most (`hold` false once it has, see
+// mayHold): then it takes the best way and may stack for a moment. A twin
+// ahead that stays put (frozen, say) would otherwise keep it waiting, and
+// twins filling a loop of cells, each waiting on the next, would never
+// move again.
 function spreadChoice(
     pos: readonly Vec2[],
     states: readonly (MoveState | null)[],
     dist: SlideDistance,
-    stacks: (v: Vec2) => boolean
-): Vec2 | null {
+    stacks: (v: Vec2) => boolean,
+    hold: boolean
+): Vec2 | typeof HOLD {
     const ranked = pos
         .map((v, i) => {
             const state = states[i]
@@ -327,7 +341,7 @@ function spreadChoice(
     const other = ranked.find(
         (c) => c !== best && c.d <= best.d + SPREAD_SLACK && !stacks(c.v)
     )
-    return other?.v ?? null
+    return other?.v ?? (hold ? HOLD : best.v)
 }
 
 // Whether `enemy` moving to `to` stacks on another enemy of its kind in
@@ -358,6 +372,13 @@ const SPREADS: ReadonlySet<AiType> = new Set([
     AiType.ambusher,
     AiType.splitter,
 ])
+
+// Whether `enemy` may hold its move to keep from stacking (see
+// spreadChoice): not once it has held for a whole move's time in a row
+// (heldFor, which the caller counts).
+export function mayHold(enemy: Character): boolean {
+    return enemy.heldFor * enemy.speed < 1 - 1e-9
+}
 
 // Distances to targets with nothing blocked, by target cell, for chaseStep.
 // One set serves one tick of enemy moves (see enemyMove): the cells, ice

@@ -19,6 +19,7 @@ import {
 import {
     blockedView,
     enemyMove,
+    mayHold,
     nearestTarget,
     stacksOn,
     targetPaths,
@@ -931,7 +932,10 @@ export function step(
     // where each is as the loop goes (see spreadChoice in ai.ts).
     const crowd = enemies.filter(inPlay)
     enemies.forEach((enemy, i) => {
-        if (!inPlay(enemy) || hasStatus(enemy, "holds")) return
+        if (!inPlay(enemy) || hasStatus(enemy, "holds")) {
+            enemy.heldFor = 0
+            return
+        }
         if (!advance(enemy, dt)) return
         const slide =
             enemy.ai === AiType.phantom
@@ -940,11 +944,14 @@ export function step(
         const slideTo =
             slide &&
             loopPos(cells, vec2(enemy.pos.x + slide.x, enemy.pos.y + slide.y))
+        // Whether it holds its move so as not to stack (see spreadChoice).
+        let held = false
         if (slideTo) {
             // A slide is no choice, but it may still carry a chaser,
             // ambusher or Splitter onto one of its kind: then it holds, as
             // a choice would, and slides on a cell behind.
-            if (!stacksOn(crowd, enemy, slideTo)) {
+            held = mayHold(enemy) && stacksOn(crowd, enemy, slideTo)
+            if (!held) {
                 // A patroller has reached its waypoint when it stands on
                 // it as the slide carries it off (patrolStep, which would
                 // notice, is skipped) or slides onto it; otherwise it could
@@ -956,7 +963,7 @@ export function step(
             }
         } else if (goingHome) {
             const home = state.spawns.enemies[i]
-            enemyMove(
+            held = enemyMove(
                 cells,
                 enemy,
                 home,
@@ -976,7 +983,7 @@ export function step(
                 enemyCells,
                 paths
             )
-            enemyMove(
+            held = enemyMove(
                 cells,
                 enemy,
                 targets[target],
@@ -989,6 +996,7 @@ export function step(
                 crowd
             )
         }
+        enemy.heldFor = held ? enemy.heldFor + dt : 0
         if (samePos(enemy.pos, from.enemies[i])) {
             wait(enemy)
         } else {

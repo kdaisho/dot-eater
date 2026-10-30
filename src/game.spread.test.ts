@@ -281,6 +281,74 @@ describe("same-kind enemies holding a move", () => {
         })
     }
 
+    // How many moves `enemies` make over `ticks` ticks with the player idle.
+    function movesOver(
+        state: GameState,
+        enemies: readonly Character[],
+        ticks: number
+    ): number {
+        let moves = 0
+        for (let t = 0; t < ticks; t++) {
+            const before = enemies.map((e) => vec2(e.pos.x, e.pos.y))
+            step(state, 1 / TICK_RATE, IDLE, seededRandom(1))
+            moves += enemies.filter((e, i) => !samePos(e.pos, before[i])).length
+        }
+        return moves
+    }
+
+    // Four of a kind going round a 2x2 room: each one's way on is where the
+    // next one is, having come from its cell, so each would hold for the
+    // next, which holds for the next, round the loop. A hold lasts a move's
+    // time at most, so they go on round, if more slowly.
+    it.each([
+        ["chasers", AiType.chase],
+        ["ambushers", AiType.ambusher],
+    ] as const)("keeps four %s going round a loop of cells", (_, ai) => {
+        const { map } = textMap([
+            "#######",
+            "#.#...#",
+            "#.#.#.#",
+            "#...#.#",
+            "####..#",
+            "#...#.#",
+            "#..#..#",
+            "#.....#",
+            "#######",
+        ])
+        const enemies = ready(ai, [
+            [4, 7, 4, 6],
+            [5, 7, 4, 7],
+            [5, 6, 5, 7],
+            [4, 6, 5, 6],
+        ])
+        const state = makeState(map, { x: 4, y: 6 }, enemies, {
+            health: Infinity,
+        })
+        expect(movesOver(state, enemies, TICK_RATE * 10)).toBeGreaterThan(20)
+    })
+
+    // Ambushers going round the 2x2 room they aim into, the player standing
+    // in the corridor off it, its latest move leftwards.
+    it("keeps four ambushers going round the cells they aim at", () => {
+        const { map } = textMap([
+            "#########",
+            "#.......#",
+            "#..######",
+            "#########",
+        ])
+        const enemies = ready(AiType.ambusher, [
+            [1, 1, 1, 2],
+            [2, 1, 1, 1],
+            [2, 2, 2, 1],
+            [1, 2, 2, 2],
+        ])
+        const state = makeState(map, { x: 5, y: 1 }, enemies, {
+            health: Infinity,
+        })
+        state.players[0].character.lastPos = vec2(6, 1)
+        expect(movesOver(state, enemies, TICK_RATE * 10)).toBeGreaterThan(20)
+    })
+
     // An ice slide carries a chaser towards a twin that came up the same
     // ice and is holding behind a frozen one: it holds too, a cell behind.
     it("doesn't slide onto a twin", () => {
