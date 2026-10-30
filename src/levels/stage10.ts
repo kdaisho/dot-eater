@@ -11,7 +11,8 @@ import type { LevelData } from "../level"
 // boss is 2 wide, so beside it in a lane there is always a cell its breath
 // misses: anywhere a player can stand, it can get out of any breath in 2
 // moves without touching the boss (30 ticks, inside the shorter wind-up's
-// 48). The doors are single cells
+// 48; 40 for one with a glide into a struck cell to finish first, 45 as
+// the Boar: KDA-286). The doors are single cells
 // through the arena's 1-thick wall with the corridor running straight past
 // (2 moves out, as on stage 5). There are fewer safe places: the corridor
 // only runs down the sides and along the bottom (the arena's top is the

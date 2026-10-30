@@ -23,6 +23,8 @@ import {
     bossArena,
     breathEscapes,
     cellKey,
+    DODGE_RUNS,
+    dodgeHits,
     safeAround,
 } from "../test/bossArena"
 import { EACH_MAP } from "../test/helpers"
@@ -225,3 +227,22 @@ describe.each(EACH_MAP)("stage 10 (%s)", (difficulty) => {
         expect(Math.min(...boss)).toBeGreaterThanOrEqual(15)
     })
 })
+
+// Played through the real step, as on stage 5 (KDA-286): a player standing
+// on a struck cell or just setting off into one as the wind-up starts,
+// with no time to react, finishes its glide and takes a shortest way out
+// inside the shorter wind-up.
+describe(
+    "stage 10's breath, dodged as its wind-up starts",
+    { timeout: 30_000 },
+    () => {
+        it.each(DODGE_RUNS)(
+            "on the $size map as the $animal",
+            ({ difficulty, animal }) => {
+                const { played, hits } = dodgeHits(stage[difficulty], animal)
+                expect(played).toBeGreaterThan(1000)
+                expect(hits).toEqual([])
+            }
+        )
+    }
+)
