@@ -13,6 +13,11 @@ export default defineConfig(({ command, isPreview }) => ({
         trailingComma: "es5",
         printWidth: 80,
     },
+    test: {
+        // Vitest leaves stylesheets empty by default; the touch controls'
+        // tests read css/style.css (as `?raw`) to check what it shows.
+        css: { include: [/css\/style\.css/] },
+    },
     lint: {
         ignorePatterns: ["dist/**"],
         options: {
