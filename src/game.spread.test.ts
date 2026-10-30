@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vite-plus/test"
-import { addStatus } from "./breath"
+import { addStatus, pushEnemy } from "./breath"
 import type { Character } from "./character"
 import { AiType, ENEMY_IDS, TICK_RATE } from "./constants"
 import {
@@ -380,5 +380,48 @@ describe("same-kind enemies holding a move", () => {
             if (stacked(twin, slider)) together++
         }
         expect(together).toBeLessThan(TICK_RATE / 4)
+    })
+
+    // A chaser holds behind a frozen twin for part of a move's time, then a
+    // push carries it behind another frozen twin: that hold is a whole
+    // move's time, not what was left of the first.
+    it("gives a pushed enemy a whole hold behind the next twin", () => {
+        const { map } = textMap([
+            "##########",
+            "#........#",
+            "####.#####",
+            "#........#",
+            "##########",
+        ])
+        const enemies = ready(AiType.chase, [
+            [5, 3, 4, 3],
+            [5, 1, 4, 1],
+            [4, 3, 3, 3],
+        ])
+        const [lower, upper, chaser] = enemies
+        addStatus(lower, { name: "test.hold", holds: true }, 100)
+        addStatus(upper, { name: "test.hold", holds: true }, 100)
+        const state = makeState(map, { x: 8, y: 3 }, enemies, {
+            health: Infinity,
+        })
+        for (let t = 0; t < 20; t++) {
+            step(state, 1 / TICK_RATE, IDLE, seededRandom(1))
+        }
+        expect(chaser.pos).toEqual(vec2(4, 3))
+        const player = state.players[0].character
+        pushEnemy(state.cells, chaser, vec2(0, -1), 2, [player])
+        expect(chaser.pos).toEqual(vec2(4, 1))
+        player.pos = vec2(8, 1)
+        player.lastPos = vec2(8, 1)
+        // Ticks it ends ready to move but holding, until it moves on: a
+        // whole move's time of them.
+        let held = 0
+        for (let t = 0; t < TICK_RATE * 2; t++) {
+            const before = vec2(chaser.pos.x, chaser.pos.y)
+            step(state, 1 / TICK_RATE, IDLE, seededRandom(1))
+            if (!samePos(chaser.pos, before)) break
+            if (chaser.moveProgress === 1) held++
+        }
+        expect(held).toBe(TICK_RATE / chaser.speed)
     })
 })

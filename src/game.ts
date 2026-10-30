@@ -936,7 +936,13 @@ export function step(
             enemy.heldFor = 0
             return
         }
-        if (!advance(enemy, dt)) return
+        // Still gliding: not holding (a hold is always ready to move), so a
+        // push, knock-back or split that cut a hold short leaves none to
+        // count against the next.
+        if (!advance(enemy, dt)) {
+            enemy.heldFor = 0
+            return
+        }
         const slide =
             enemy.ai === AiType.phantom
                 ? null
