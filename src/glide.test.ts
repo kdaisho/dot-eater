@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vite-plus/test"
-import { CharacterId, TICK_MS } from "./constants"
+import { CharacterId, ENEMY_IDS, TICK_MS } from "./constants"
 import { createCharacter, type Character } from "./character"
 import {
     EAT_AT,
@@ -91,7 +91,7 @@ describe("glidePos", () => {
     })
 
     it("draws a character that hasn't moved yet on its spawn cell", () => {
-        const c = createCharacter(CharacterId.enemy1, vec2(4, 4))
+        const c = createCharacter(ENEMY_IDS[0], vec2(4, 4))
         expect(glidePos(c, 0.5, 9, 9)).toEqual(vec2(4, 4))
     })
 

@@ -17,6 +17,7 @@ import {
     enemyMove,
     nearestTarget,
     targetPaths,
+    type ChaseDistances,
     type Random,
 } from "./ai"
 import {
@@ -692,6 +693,8 @@ export function step(
     // Each target's distances, searched once a tick at most, for every
     // enemy that aims at the nearest player.
     const paths = targetPaths(cells, targets, enemyCells)
+    // The distances chasers and ambushers aim by, shared the same way.
+    const aims: ChaseDistances = new Map()
     enemies.forEach((enemy, i) => {
         if (!inPlay(enemy) || hasStatus(enemy, "holds")) return
         if (!advance(enemy, dt)) return
@@ -721,7 +724,8 @@ export function step(
                 home,
                 state.ice,
                 blocked,
-                enemyCells
+                enemyCells,
+                aims
             )
         } else {
             const target = nearestTarget(
@@ -739,7 +743,8 @@ export function step(
                 targetLasts[target],
                 state.ice,
                 blocked,
-                enemyCells
+                enemyCells,
+                aims
             )
         }
         if (samePos(enemy.pos, from.enemies[i])) wait(enemy)

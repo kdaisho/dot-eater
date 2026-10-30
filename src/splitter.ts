@@ -13,9 +13,11 @@ import { samePos, vec2, type Vec2 } from "./vec2"
 // two instead of defeating. Pure, no DOM.
 //
 // A Splitter owns two enemy slots, next to each other in GameState.enemies,
-// so a split never needs more enemies than there are ENEMY_IDS (parseLevel
-// counts a Splitter as two). The first slot ("main") is the Splitter itself;
-// the second ("spare") is out of play, with no timer (GONE), until a split.
+// so a split never adds an enemy and the slots' indexes never change. There
+// are always ids enough: parseLevel caps a level at MAX_ENEMIES, and
+// MAX_ENEMY_SLOTS has room for that many Splitters. The first slot ("main")
+// is the Splitter itself; the second ("spare") is out of play, with no timer
+// (GONE), until a split.
 //
 // - Whole: the main slot is in play at the Splitter's own speed and chases;
 //   the spare is GONE.

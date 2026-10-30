@@ -23,27 +23,31 @@ export const AiType = {
     // Slow, but passes through walls.
     phantom: 4,
     // Chases; a defeating breath splits it into two faster halves (see
-    // splitter.ts). Takes two enemy slots.
+    // splitter.ts). Takes two enemy slots but counts as one enemy toward
+    // MAX_ENEMIES.
     splitter: 5,
 } as const
 export type AiType = (typeof AiType)[keyof typeof AiType]
 
+// The most enemies a level can have (parseLevel checks it). A Splitter
+// counts as one, though it takes two enemy slots.
+export const MAX_ENEMIES = 8
+// The most enemy slots a game can need: one per enemy, two per Splitter
+// (see splitter.ts), so a level of MAX_ENEMIES Splitters still fits.
+export const MAX_ENEMY_SLOTS = 2 * MAX_ENEMIES
+
+// Every player is CharacterId.player; enemy slots are numbered from 1 in
+// spawn order (ENEMY_IDS).
 export const CharacterId = {
     player: 0,
-    enemy1: 1,
-    enemy2: 2,
-    enemy3: 3,
-    enemy4: 4,
 } as const
-export type CharacterId = (typeof CharacterId)[keyof typeof CharacterId]
+export type CharacterId = number
 
-// Enemy ids in spawn order; also the most enemies a level can have.
-export const ENEMY_IDS: readonly CharacterId[] = [
-    CharacterId.enemy1,
-    CharacterId.enemy2,
-    CharacterId.enemy3,
-    CharacterId.enemy4,
-]
+// Enemy ids in spawn order, one per enemy slot.
+export const ENEMY_IDS: readonly CharacterId[] = Array.from(
+    { length: MAX_ENEMY_SLOTS },
+    (_, i) => i + 1
+)
 
 // Game logic runs this many fixed ticks per second, whatever the frame rate.
 export const TICK_RATE = 60
