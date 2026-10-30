@@ -396,6 +396,74 @@ describe("a story run's stages", () => {
     })
 })
 
+// Regression: a blur during the outro or the card (auto-pause only pauses
+// `playing`) used to leave the card to start the next stage, unpaused, in
+// a window nobody was looking at.
+describe("an unfocused window", () => {
+    const unfocused = deps({ focused: false })
+    const ticks = Math.round(STORY_CARD_SECONDS * 60)
+
+    it("holds the clear card: the next stage doesn't start by itself", () => {
+        let screen = finish(storyGame(0), "won", 10)
+        for (let i = 0; i < ticks * 3; i++) {
+            screen = update(screen, none, unfocused)
+        }
+        expect(screen.kind).toBe("storyClear")
+    })
+
+    it("counts down only while focused, then starts the next stage", () => {
+        let screen = finish(storyGame(0), "won", 10)
+        for (let i = 0; i < ticks - 1; i++) {
+            screen = update(screen, none, i % 2 ? unfocused : deps())
+        }
+        expect(screen.kind).toBe("storyClear")
+        for (let i = 0; i < ticks; i++) {
+            screen = update(screen, none, deps())
+            if (screen.kind !== "storyClear") break
+        }
+        expect(screen).toMatchObject({ kind: "playing", level: 1 })
+    })
+
+    it("starts a stage paused, from the card's confirm", () => {
+        const card = finish(storyGame(0, 5), "won", 10)
+        let screen = card
+        for (let i = 0; i < TICKS_TO_CONFIRM; i++) {
+            screen = update(screen, none, unfocused)
+        }
+        expect(update(screen, p1("confirm"), unfocused)).toMatchObject({
+            kind: "paused",
+            level: 1,
+            run: { total: 15 },
+        })
+    })
+
+    it("starts a stage paused from character select and Retry", () => {
+        const characters = update(storyDifficulty(), p1("confirm"), unfocused)
+        expect(update(characters, p1("confirm"), unfocused).kind).toBe("paused")
+        const over = finish(storyGame(2, 120), "dead", 40)
+        expect(afterDelay(over, unfocused, "confirm")).toMatchObject({
+            kind: "paused",
+            level: 2,
+            run: { total: 120 },
+        })
+    })
+
+    it("still resumes a paused game when asked", () => {
+        const paused = update(storyGame(1), p1("pause"), unfocused)
+        expect(paused.kind).toBe("paused")
+        expect(update(paused, p1("pause"), unfocused).kind).toBe("playing")
+    })
+})
+
+// The story difficulty select for a new story.
+function storyDifficulty(): Screen {
+    return update(
+        { kind: "storyMenu", mode: "solo", choice: "newStory" },
+        p1("confirm"),
+        deps()
+    )
+}
+
 describe("a failed story stage", () => {
     const failed = () => finish(storyGame(2, 120), "dead", 40)
 

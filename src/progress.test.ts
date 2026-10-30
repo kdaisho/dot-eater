@@ -166,6 +166,50 @@ describe("parseProgress", () => {
         expect(saved.stages[0]).toEqual({ cleared: true, best: 340, stars: 2 })
         expect(saved.stages[1]).toEqual({ cleared: true })
     })
+
+    // The game had 5 stage slots before it grew to 10: a save from then
+    // keeps everything it had, with the new slots uncleared.
+    it("keeps a 5-stage save's clears, bests and stars", () => {
+        const old = [
+            { cleared: true, stars: 3, bestTime: 2400 },
+            { cleared: true, stars: 2, bestTime: 3100 },
+            { cleared: true, stars: 1 },
+            { cleared: false, best: 7 },
+            { cleared: false },
+        ]
+        const p = parseProgress(JSON.stringify({ version: 1, stages: old }))
+        expect(STAGE_COUNT).toBe(10)
+        expect(p.stages).toEqual([
+            ...old,
+            ...Array.from({ length: 5 }, () => ({ cleared: false })),
+        ])
+        expect(isUnlocked(p, 3)).toBe(true)
+        expect(isUnlocked(p, 4)).toBe(false)
+    })
+
+    it("reads back a 10-stage save as it was", () => {
+        const stages = Array.from({ length: 10 }, (_, i) =>
+            i < 7
+                ? { cleared: true, stars: (i % 3) + 1, bestTime: 1000 + i }
+                : { cleared: false }
+        )
+        const raw = JSON.stringify({ version: 1, stages })
+        const p = parseProgress(raw)
+        expect(p.stages).toEqual(stages)
+        expect(serializeProgress(p)).toBe(raw)
+    })
+
+    // Lenient both ways: a save from a build with more stages keeps the
+    // ones this build knows.
+    it("cuts an 11-stage save to its first 10", () => {
+        const stages = Array.from({ length: 11 }, (_, i) => ({
+            cleared: true,
+            stars: 2,
+            bestTime: 100 + i,
+        }))
+        const p = parseProgress(JSON.stringify({ version: 1, stages }))
+        expect(p.stages).toEqual(stages.slice(0, 10))
+    })
 })
 
 describe("parseProgress: bests", () => {
@@ -231,8 +275,7 @@ describe("mergeProgress", () => {
             true,
             false,
             true,
-            false,
-            false,
+            ...Array<boolean>(STAGE_COUNT - 3).fill(false),
         ])
     })
 })
@@ -501,8 +544,9 @@ describe("stageSlots", () => {
             { kind: "open", name: "A" },
             { kind: "open", name: "B" },
             { kind: "locked", name: "C" },
-            { kind: "comingSoon" },
-            { kind: "comingSoon" },
+            ...Array.from({ length: STAGE_COUNT - 3 }, () => ({
+                kind: "comingSoon",
+            })),
         ])
     })
 

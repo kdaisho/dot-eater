@@ -172,7 +172,9 @@ import { matchWinner, roundResult, type RoundResult } from "./versus"
 // stage mode, from a fresh game (full health), its score added to the run
 // total once it is cleared. A clear goes from `ending` to storyClear, a
 // short card that starts the next stage on confirm or by itself after
-// STORY_CARD_SECONDS. When the next stage isn't built yet the card says "To
+// STORY_CARD_SECONDS, counted only while the window is focused
+// (FlowDeps.focused; a game that starts unfocused starts paused, so none
+// ever starts unwatched). When the next stage isn't built yet the card says "To
 // be continued" instead, and confirm goes to the title. Clearing the last
 // stage slot (STAGE_COUNT) goes to storyEnd, whose confirm goes to the
 // title. A lost stage goes to gameOver, whose menu in a run is
@@ -472,8 +474,10 @@ export type Screen =
           // The stage that comes next; left out when it isn't built yet
           // ("To be continued").
           next?: number
-          // Also how long until the next stage starts by itself.
           shown?: ShownFor
+          // How long the card has shown with the window focused, towards
+          // STORY_CARD_SECONDS; left out, the next stage waits for confirm.
+          waited?: ShownFor
       }
     | {
           // A story run has cleared the last stage slot: the ending.
@@ -552,6 +556,12 @@ export type FlowDeps = {
     // SettingsContext). Both false when left out.
     touch?: boolean
     prefersReducedMotion?: boolean
+    // Whether the window has focus and the tab shows (main follows blur,
+    // focus and visibility); true when left out. While it hasn't, the story
+    // clear card doesn't start the next stage by itself, and a game that
+    // starts (by a pad's confirm, say) starts paused, as auto-pause would
+    // leave it.
+    focused?: boolean
 }
 
 export function initialScreen(): Screen {
@@ -592,6 +602,21 @@ export function startLevel(
 // first handles input on the next one. Main clears press edges after every
 // tick, so a press made in a menu (or while paused) never reaches the game.
 export function update(
+    screen: Screen,
+    input: TickInput,
+    deps: FlowDeps
+): Screen {
+    const next = updateScreen(screen, input, deps)
+    // A game that starts while the window is unfocused starts paused (see
+    // FlowDeps.focused); a resume from pause is left alone.
+    const starts =
+        next.kind === "playing" &&
+        screen.kind !== "playing" &&
+        screen.kind !== "paused"
+    return starts && deps.focused === false ? pauseIfPlaying(next) : next
+}
+
+function updateScreen(
     screen: Screen,
     input: TickInput,
     deps: FlowDeps
@@ -1213,7 +1238,10 @@ function endScreen(
         if (level + 1 >= STAGE_COUNT) {
             return { kind: "storyEnd", ...cleared, shown }
         }
-        const next = level + 1 < levels.length ? { next: level + 1 } : {}
+        const next =
+            level + 1 < levels.length
+                ? { next: level + 1, waited: { seconds: 0 } }
+                : {}
         return { kind: "storyClear", ...cleared, ...next, shown }
     }
     return {
@@ -1284,15 +1312,30 @@ function updateStoryClear(
             ? { kind: "title", mode }
             : screen
     }
-    const timeUp =
-        screen.shown !== undefined &&
-        screen.shown.seconds >= STORY_CARD_SECONDS - 1e-9
-    if ((ready && input.wasPressed("confirm")) || timeUp) {
+    // The countdown only runs while the window is focused, so the next
+    // stage never starts by itself unwatched.
+    if (screen.waited && deps.focused !== false) {
+        screen.waited.seconds += deps.dt
+    }
+    if ((ready && input.wasPressed("confirm")) || storyCardTimedOut(screen)) {
         const { animals, difficulty } = screen
         const run = { ...screen.run, total: runTotal(screen) }
         return startLevel(deps.levels, next, animals, mode, [], difficulty, run)
     }
     return screen
+}
+
+// Whether a story clear card has waited out STORY_CARD_SECONDS with the
+// window focused, so it starts the next stage by itself (with no confirm
+// press; main plays no menu sound for that).
+export function storyCardTimedOut(
+    screen: Extract<Screen, { kind: "storyClear" }>
+): boolean {
+    // The epsilon absorbs float drift from summing dt.
+    return (
+        screen.waited !== undefined &&
+        screen.waited.seconds >= STORY_CARD_SECONDS - 1e-9
+    )
 }
 
 // The ending: confirm goes to the title.
