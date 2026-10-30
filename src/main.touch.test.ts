@@ -2,6 +2,7 @@
 import { beforeAll, describe, expect, it, vi } from "vite-plus/test"
 import { END_CONFIRM_DELAY } from "./flow"
 import { createGameState, step, type MoveInput, type Outcome } from "./game"
+import { stages } from "./levels"
 import { ANIMAL_IDS } from "./roster"
 import { SETTINGS_KEY } from "./settings"
 
@@ -112,11 +113,20 @@ describe("main on a touch screen", () => {
             document.querySelector("#overlay li.selected")?.textContent
         ).toContain("🔒")
         tap("#overlay li[data-index='0']")
+        expect(screen()).toBe("difficulty-select")
+        // One tap picks a difficulty: Hard, then back and Medium instead.
+        tap("#overlay li[data-index='2']")
+        expect(screen()).toBe("character-select")
+        tap("#overlay [data-back]")
+        expect(screen()).toBe("difficulty-select")
+        expect(selectedItem()).toMatch(/^Hard/)
+        tap("#overlay li[data-index='1']")
         expect(screen()).toBe("character-select")
         tap("#overlay li.card[data-index='2']")
         expect(screen()).toBe("playing")
-        expect(vi.mocked(createGameState).mock.lastCall?.[1]).toEqual([
-            ANIMAL_IDS[2],
+        expect(vi.mocked(createGameState).mock.lastCall?.slice(0, 2)).toEqual([
+            stages[0].medium,
+            [ANIMAL_IDS[2]],
         ])
         expect(document.body.dataset.playing).toBe("on")
     })

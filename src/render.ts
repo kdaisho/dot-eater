@@ -57,6 +57,10 @@ export type Hud = {
     // Versus: the round and tally (e.g. "Round 2 · 1–0"), drawn in the
     // middle.
     round?: string
+    // The difficulty's name (e.g. "Hard"), small: with one player between
+    // the meter and the health gauge, with two in the middle (under the
+    // round in versus).
+    difficulty?: string
 }
 
 export type PlayerHud = {
@@ -1025,7 +1029,8 @@ function drawArrow(
 // Score on the left, the health gauge on the right, the energy meter in the
 // middle. With two players (hud.players): player 1's score, meter and
 // health on the left, player 2's on the right, each in its marker colour,
-// and in versus the round in the middle.
+// and in versus the round in the middle. The difficulty goes where there
+// is room (see Hud).
 function drawHud(
     ctx: CanvasRenderingContext2D,
     hud: Hud,
@@ -1055,6 +1060,36 @@ function drawHud(
         const w = width / 4
         drawMeter(ctx, hud.energy, (width - w) / 2, top, w, h)
     }
+    if (hud.difficulty !== undefined) {
+        // In the gap between the meter's right end and the gauge.
+        const left = width * 0.625 + pad
+        const right = width - pad - width * HEALTH_WIDTH - pad
+        drawLabel(ctx, hud.difficulty, (left + right) / 2, height / 2, {
+            width: right - left,
+            size: height * LABEL_SIZE,
+        })
+    }
+}
+
+// The difficulty label's text size, and the versus round's when it shares
+// the middle with it, as a fraction of the HUD strip's height.
+const LABEL_SIZE = 0.45
+
+// Centred text at (x, y) in the HUD's text colour, `size` high, squeezed
+// into `width` if it is wider.
+function drawLabel(
+    ctx: CanvasRenderingContext2D,
+    text: string,
+    x: number,
+    y: number,
+    { width, size }: { width: number; size: number }
+) {
+    ctx.save()
+    ctx.fillStyle = COLORS.text
+    ctx.textAlign = "center"
+    ctx.font = `${Math.round(size)}px monospace`
+    ctx.fillText(text, x, y, Math.max(width, 1))
+    ctx.restore()
 }
 
 // The bars' height, as a fraction of the HUD strip's.
@@ -1134,10 +1169,29 @@ function drawPlayersHud(
             )
         }
     })
-    if (hud.round !== undefined) {
+    // The middle, between the two meters: the round and the difficulty, one
+    // above the other when there are both. Player 1's meter ends at 35% of
+    // the width, and player 2's starts at 65%.
+    const middle = width * 0.3 - 2 * pad
+    if (hud.round !== undefined && hud.difficulty !== undefined) {
+        const size = height * LABEL_SIZE
+        drawLabel(ctx, hud.round, width / 2, height * 0.29, {
+            width: middle,
+            size,
+        })
+        drawLabel(ctx, hud.difficulty, width / 2, height * 0.74, {
+            width: middle,
+            size,
+        })
+    } else if (hud.round !== undefined) {
         ctx.fillStyle = COLORS.text
         ctx.textAlign = "center"
         ctx.fillText(hud.round, width / 2, height / 2)
+    } else if (hud.difficulty !== undefined) {
+        drawLabel(ctx, hud.difficulty, width / 2, height / 2, {
+            width: middle,
+            size: height * LABEL_SIZE,
+        })
     }
 }
 

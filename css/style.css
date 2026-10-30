@@ -162,6 +162,13 @@ body[data-dpad="on"] #play {
     font-variant-numeric: tabular-nums;
 }
 
+/* A short description, on a smaller line under the label. */
+.overlay-menu .menu-detail {
+    display: block;
+    font-size: 0.75em;
+    margin-top: 4px;
+}
+
 .overlay-menu li.locked {
     opacity: 0.3;
 }

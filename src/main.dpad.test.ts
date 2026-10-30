@@ -65,6 +65,8 @@ describe("main with the D-pad on", () => {
     it("fits the maze beside the D-pad's bands in landscape", () => {
         tap("#overlay li[data-index='0']")
         tap("#overlay li[data-index='0']")
+        // Medium.
+        tap("#overlay li[data-index='1']")
         tap("#overlay li.card[data-index='0']")
         expect(document.querySelector("#overlay")).toBeNull()
         const map = levels[0]

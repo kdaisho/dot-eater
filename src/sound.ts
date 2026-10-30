@@ -86,6 +86,7 @@ export function musicForScreen(screen: Screen): MusicCue | undefined {
     switch (screen.kind) {
         case "title":
         case "stageSelect":
+        case "difficultySelect":
         case "characterSelect":
             return { track: MusicTrackId.title, paused: false }
         case "settings":
@@ -109,7 +110,8 @@ export function musicForScreen(screen: Screen): MusicCue | undefined {
 function isBack(prev: Screen, next: Screen): boolean {
     return (
         (prev.kind === "stageSelect" && next.kind === "title") ||
-        (prev.kind === "characterSelect" && next.kind === "stageSelect") ||
+        (prev.kind === "difficultySelect" && next.kind === prev.back.kind) ||
+        (prev.kind === "characterSelect" && next.kind === "difficultySelect") ||
         (prev.kind === "settings" && next.kind !== "controls") ||
         prev.kind === "controls"
     )
@@ -142,6 +144,8 @@ function sameScreenSound(prev: Screen, next: Screen): SfxId | undefined {
     }
     if (prev.kind === "stageSelect" && next.kind === "stageSelect")
         return prev.selected !== next.selected ? SfxId.menuMove : undefined
+    if (prev.kind === "difficultySelect" && next.kind === "difficultySelect")
+        return prev.difficulty !== next.difficulty ? SfxId.menuMove : undefined
     if (prev.kind === "characterSelect" && next.kind === "characterSelect") {
         const was = readyCount(prev.ready)
         const now = readyCount(next.ready)

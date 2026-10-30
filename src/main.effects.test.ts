@@ -137,6 +137,7 @@ describe("main's particles and shake", () => {
         pressAndTick("Space")
         pressAndTick("Space")
         pressAndTick("Space")
+        pressAndTick("Space")
         expect(screen()).toBe("playing")
     })
 

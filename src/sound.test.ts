@@ -26,6 +26,13 @@ type ScreenOf<K extends Screen["kind"]> = Extract<Screen, { kind: K }>
 
 const title: ScreenOf<"title"> = { kind: "title", mode: "solo" }
 const stageSelect: Screen = { kind: "stageSelect", mode: "solo", selected: 0 }
+const difficultySelect: ScreenOf<"difficultySelect"> = {
+    kind: "difficultySelect",
+    mode: "coop",
+    difficulty: "medium",
+    next: { kind: "characterSelect", level: 0 },
+    back: { kind: "stageSelect", mode: "coop", selected: 0 },
+}
 const characterSelect: Screen = {
     kind: "characterSelect",
     mode: "coop",
@@ -244,6 +251,7 @@ describe("musicForScreen", () => {
         for (const screen of [
             initialScreen(),
             stageSelect,
+            difficultySelect,
             characterSelect,
             settingsOver({ kind: "title", mode: "solo" }),
         ])
@@ -286,6 +294,15 @@ describe("menuSound", () => {
             "menuMove"
         )
         expect(
+            menuSound(difficultySelect, {
+                ...difficultySelect,
+                difficulty: "hard",
+            })
+        ).toBe("menuMove")
+        expect(menuSound(difficultySelect, { ...difficultySelect })).toBe(
+            undefined
+        )
+        expect(
             menuSound(characterSelect, {
                 ...characterSelect,
                 picks: ["dragon", "boar"],
@@ -323,7 +340,8 @@ describe("menuSound", () => {
 
     it("confirms going forward, and a player's ready", () => {
         expect(menuSound(title, stageSelect)).toBe("confirm")
-        expect(menuSound(stageSelect, characterSelect)).toBe("confirm")
+        expect(menuSound(stageSelect, difficultySelect)).toBe("confirm")
+        expect(menuSound(difficultySelect, characterSelect)).toBe("confirm")
         expect(menuSound(characterSelect, playing())).toBe("confirm")
         expect(menuSound(gameOver, playing())).toBe("confirm")
         expect(
@@ -336,7 +354,8 @@ describe("menuSound", () => {
 
     it("goes back one menu up, out of settings, or taking a ready back", () => {
         expect(menuSound(stageSelect, title)).toBe("back")
-        expect(menuSound(characterSelect, stageSelect)).toBe("back")
+        expect(menuSound(difficultySelect, difficultySelect.back)).toBe("back")
+        expect(menuSound(characterSelect, difficultySelect)).toBe("back")
         expect(menuSound(settingsOver(paused()), paused())).toBe("back")
         expect(
             menuSound(
