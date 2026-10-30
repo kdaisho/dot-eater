@@ -7,7 +7,13 @@ import { createGameState } from "../game"
 import { parseLevel } from "../level"
 import { distanceMap, openNeighbours } from "../path"
 import { ANIMAL_IDS } from "../roster"
-import { bossArena, breathEscapes, cellKey } from "../test/bossArena"
+import {
+    bossArena,
+    breathEscapes,
+    cellKey,
+    safeAround,
+} from "../test/bossArena"
+import { allDirections } from "../vec2"
 import { EACH_MAP } from "../test/helpers"
 import { stages } from "./index"
 import { stage5 } from "./stage5"
@@ -47,10 +53,14 @@ const MAPS = {
 describe.each(EACH_MAP)("stage 5 (%s)", (difficulty) => {
     const level = parseLevel(stage5, difficulty)
     const map = MAPS[MAP_SIZE[difficulty]]
-    const { cells, open, dots, reach, bossCells, safe, doors } =
-        bossArena(level)
+    const arena = bossArena(level)
+    const { cells, open, dots, reach, bossCells, safe, doors } = arena
     const spawn = level.playerSpawns[0]
     const escapes = breathEscapes(level)
+    // Every other stage there is, at the same difficulty.
+    const others = stages
+        .filter((_, i) => i !== 4)
+        .map((stage) => stage[difficulty])
 
     it("is the fifth level, the Boss lair", () => {
         expect(stages[4][difficulty]).toEqual(level)
@@ -62,7 +72,7 @@ describe.each(EACH_MAP)("stage 5 (%s)", (difficulty) => {
         const game = createGameState(level)
         expect(game.boss?.pos).toEqual(level.boss!.pos)
         expect(game.boss?.speed).toBe(BOSS_SPEED)
-        for (const other of stages.slice(0, 4).map((s) => s[difficulty])) {
+        for (const other of others) {
             expect(other.boss).toBeNull()
         }
     })
@@ -88,7 +98,7 @@ describe.each(EACH_MAP)("stage 5 (%s)", (difficulty) => {
         expect(level.rules.regrowDots).toEqual({ seconds: 10 })
         const game = createGameState(level)
         expect(game.regrow?.seconds).toBe(10)
-        for (const other of stages.slice(0, 4).map((s) => s[difficulty])) {
+        for (const other of others) {
             expect(other.rules.regrowDots).toBeUndefined()
         }
     })
@@ -96,7 +106,7 @@ describe.each(EACH_MAP)("stage 5 (%s)", (difficulty) => {
     it("has its Splitters drop dots, and only it does", () => {
         expect(level.rules.splitterDrops).toBe(true)
         expect(createGameState(level).splitterDrops).toBe(true)
-        for (const other of stages.slice(0, 4).map((s) => s[difficulty])) {
+        for (const other of others) {
             expect(other.rules.splitterDrops).toBeUndefined()
         }
     })
@@ -151,6 +161,10 @@ describe.each(EACH_MAP)("stage 5 (%s)", (difficulty) => {
 
     it("keeps a corridor all round the arena that the boss can't enter", () => {
         expect(safe.length).toBeGreaterThanOrEqual(60)
+        expect(safeAround(arena)).toEqual({
+            sides: allDirections,
+            joined: true,
+        })
         // The players and the enemies start there.
         for (const p of [
             ...level.playerSpawns,
@@ -174,7 +188,8 @@ describe.each(EACH_MAP)("stage 5 (%s)", (difficulty) => {
         }
     })
 
-    // The breath winds up for 0.9 s; a player moves 4 cells a second.
+    // The breath winds up for 0.9 s (54 ticks); a player moves 4 cells a
+    // second, so 3 moves take 45 ticks. Never through the boss's body.
     it("lets a player get out of any breath in time", () => {
         const worst = Math.max(...escapes.worst.values())
         expect(worst).toBeLessThanOrEqual(3)

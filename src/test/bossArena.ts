@@ -1,9 +1,9 @@
 import { bossReach, footprint, mapFloor } from "../boss"
 import { bossBreathCells } from "../bossBreath"
-import { Cell } from "../constants"
+import { Cell, type Direction } from "../constants"
 import { createGameState } from "../game"
 import type { Cells, Level } from "../level"
-import { distanceMap, openNeighbours } from "../path"
+import { openNeighbours } from "../path"
 import { allDirections, directions, vec2, type Vec2 } from "../vec2"
 
 // Shape checks for boss stage tests: where the boss can go on a level's map
@@ -44,22 +44,84 @@ export function bossArena(level: Level): BossArena {
     return { cells, open, dots, reach, bossCells, safe, doors }
 }
 
+// How the safe cells lie round the boss's arena: the ways (`sides`, in
+// Direction order) in which they go all the way past it, that is, from
+// every cell it can cover, going straight that way meets a safe cell; and
+// whether they are all joined up. All four sides, joined: a corridor all
+// round it.
+export function safeAround(arena: BossArena): {
+    sides: Direction[]
+    joined: boolean
+} {
+    const { cells, safe, bossCells } = arena
+    const safeKeys = new Set(safe.map(cellKey))
+    const sides = allDirections.filter((dir) => {
+        const d = directions[dir]
+        return [...bossCells].every((key) => {
+            let [x, y] = key.split(",").map(Number)
+            for (;;) {
+                x += d.x
+                y += d.y
+                if (cells[y]?.[x] === undefined) return false
+                if (safeKeys.has(`${x},${y}`)) return true
+            }
+        })
+    })
+    const queue = safe.slice(0, 1)
+    const seen = new Set(queue.map(cellKey))
+    for (let head = 0; head < queue.length; head++) {
+        for (const q of openNeighbours(cells, queue[head])) {
+            const k = cellKey(q)
+            if (seen.has(k) || !safeKeys.has(k)) continue
+            seen.add(k)
+            queue.push(q)
+        }
+    }
+    return { sides, joined: seen.size === safe.length }
+}
+
+// The fewest moves from `from` to a cell `hit` doesn't hold, over open
+// cells and never through `body` (the boss's footprint, whose touch hurts
+// harder than its breath), or Infinity if there is none.
+export function escapeMoves(
+    cells: Cells,
+    body: ReadonlySet<string>,
+    hit: ReadonlySet<string>,
+    from: Vec2
+): number {
+    const seen = new Set([cellKey(from)])
+    let ring = [from]
+    for (let moves = 0; ring.length > 0; moves++) {
+        if (ring.some((p) => !hit.has(cellKey(p)))) return moves
+        const next: Vec2[] = []
+        for (const p of ring) {
+            for (const q of openNeighbours(cells, p)) {
+                const k = cellKey(q)
+                if (seen.has(k) || body.has(k)) continue
+                seen.add(k)
+                next.push(q)
+            }
+        }
+        ring = next
+    }
+    return Infinity
+}
+
 // Every breath the boss can breathe on `level`: from each position it can
-// reach, along each way, with the level's breath range. For each, the
-// fewest moves a player on each cell it strikes needs to stand out of it
-// (on open floor it doesn't strike, off the boss's footprint), by cellKey.
+// reach, along each way, with the level's breath range. For each cell it
+// strikes, the fewest moves a player there needs to stand out of it (see
+// escapeMoves), by cellKey.
 export function breathEscapes(level: Level): {
     // The most moves any struck cell needs, over every breath.
     worst: Map<string, number>
     // Every cell some breath strikes.
     struck: ReadonlySet<string>
 } {
-    const { cells, open, reach } = bossArena(level)
+    const { cells, reach } = bossArena(level)
     const game = createGameState(level)
     const { range } = game.boss!.breath
     const worst = new Map<string, number>()
     const struckEver = new Set<string>()
-    const distances = new Map<string, number[][]>()
     for (const pos of reach) {
         const body = new Set(footprint(pos).map(cellKey))
         for (const dir of allDirections) {
@@ -68,18 +130,8 @@ export function breathEscapes(level: Level): {
             for (const cell of struck) {
                 const key = cellKey(cell)
                 struckEver.add(key)
-                let dist = distances.get(key)
-                if (!dist) {
-                    dist = distanceMap(cells, cell)
-                    distances.set(key, dist)
-                }
-                let fewest = Infinity
-                for (const p of open) {
-                    const k = cellKey(p)
-                    if (hit.has(k) || body.has(k)) continue
-                    fewest = Math.min(fewest, dist[p.y][p.x])
-                }
-                worst.set(key, Math.max(worst.get(key) ?? 0, fewest))
+                const moves = escapeMoves(cells, body, hit, cell)
+                worst.set(key, Math.max(worst.get(key) ?? 0, moves))
             }
         }
     }

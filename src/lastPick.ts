@@ -9,7 +9,12 @@
 //
 // One pick for now: player 1's. 2-player (KDA-211) can save player 2's
 // under a key of its own.
+//
+// The difficulty picked last (KDA-265) is kept the same way, under a key of
+// its own, so difficulty select opens on it next time and stage select
+// shows its stars and bests.
 
+import { DEFAULT_DIFFICULTY, isDifficulty, type Difficulty } from "./difficulty"
 import { DEFAULT_ANIMAL, isAnimalId, type AnimalId } from "./roster"
 
 export const LAST_PICK_KEY = "dot-eater:character:v1"
@@ -41,6 +46,42 @@ export function saveLastPick(
     if (!storage) return false
     try {
         storage.setItem(LAST_PICK_KEY, animal)
+        return true
+    } catch {
+        return false
+    }
+}
+
+export const LAST_DIFFICULTY_KEY = "dot-eater:difficulty:v1"
+
+// A saved string as a difficulty; DEFAULT_DIFFICULTY when it isn't one.
+export function parseLastDifficulty(raw: string | null): Difficulty {
+    return isDifficulty(raw) ? raw : DEFAULT_DIFFICULTY
+}
+
+// Load the last difficulty picked; DEFAULT_DIFFICULTY when there is no
+// storage, it throws, or what it holds isn't a difficulty.
+export function loadLastDifficulty(
+    storage: PickStorage | undefined
+): Difficulty {
+    try {
+        return parseLastDifficulty(
+            storage?.getItem(LAST_DIFFICULTY_KEY) ?? null
+        )
+    } catch {
+        return DEFAULT_DIFFICULTY
+    }
+}
+
+// Save the difficulty picked; returns whether it was written. Failure is
+// silent, as for the character.
+export function saveLastDifficulty(
+    storage: PickStorage | undefined,
+    difficulty: Difficulty
+): boolean {
+    if (!storage) return false
+    try {
+        storage.setItem(LAST_DIFFICULTY_KEY, difficulty)
         return true
     } catch {
         return false

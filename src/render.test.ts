@@ -26,7 +26,6 @@ import {
 } from "./game"
 import { MIN_CELL_PX } from "./layout"
 import type { LevelRules } from "./level"
-import { levels } from "./levels"
 import {
     BOSS_SCALE,
     BOSS_SPRITE,
@@ -49,6 +48,7 @@ import {
     makeEnemy,
     makeState,
     OLD_LEVEL,
+    parseFlat,
     textMap,
 } from "./test/helpers"
 import { vec2 } from "./vec2"
@@ -2150,10 +2150,23 @@ describe("createRenderer on a maze too big for the screen", () => {
 
     it("draws a maze that fits whole under MIN_CELL_PX whole, without zooming in", () => {
         const { calls, frame, view } = bigSetup()
-        // Stage 1 (17x15) on an Android phone in portrait: 19 px cells.
+        // A 17x15 maze (the size the stages were before KDA-264) on an
+        // Android phone in portrait: 19 px cells.
         view.innerWidth = 360
         view.innerHeight = 740
-        frame(createGameState(levels[0]))
+        const open = "#" + ".".repeat(15) + "#"
+        const level = parseFlat({
+            name: "17x15",
+            parTime: 60,
+            map: [
+                "#".repeat(17),
+                "#P" + ".".repeat(14) + "#",
+                ...Array<string>(12).fill(open),
+                "#".repeat(17),
+            ],
+            enemies: [],
+        })
+        frame(createGameState(level))
         expect(calls.filter((c) => c.name === "translate")).toHaveLength(1)
         const rect = calls.find((c) => c.name === "rect")
         expect(rect?.args).toEqual([0, 0, 17 * 19, 15 * 19])
