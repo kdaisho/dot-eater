@@ -743,11 +743,13 @@ describe("main", () => {
     })
 
     // Order-independent: an earlier win may already have saved it.
-    it("saves stage 1 as cleared on a win, unlocking stage 2", () => {
+    // Stages unlock only by story progress (KDA-272).
+    it("saves a stage mode win's bests, but doesn't clear or unlock anything", () => {
         gameOver("won")
         const saved = parseProgress(localStorage.getItem(PROGRESS_KEY))
-        expect(saved.stages[0].cleared).toBe(true)
-        expect(isUnlocked(saved, 1)).toBe(true)
+        expect(saved.stages[0].stars).toBeGreaterThanOrEqual(1)
+        expect(saved.stages[0].cleared).toBe(false)
+        expect(isUnlocked(saved, 1)).toBe(false)
     })
 
     it("shows the clear time and stars, saves the bests and lists them on stage select", () => {

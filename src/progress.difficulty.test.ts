@@ -38,6 +38,9 @@ const run = (difficulty: Difficulty, stars: number, ticks: number) => ({
     ticks,
 })
 
+// How a story mode clear is recorded: it unlocks the next stage.
+const unlocking = { unlocks: true }
+
 // Progress with stage 0 as given.
 const withStage0 = (stage: StageProgress): Progress => {
     const p = emptyProgress()
@@ -247,7 +250,13 @@ describe("mergeProgress: byDifficulty", () => {
         const storage = memoryStorage()
         saveProgress(storage, stage({ hard: { stars: 3, bestTime: 800 } }))
         const mine = stage({ hard: { stars: 1, bestTime: 700 } })
-        const next = recordClear(mine, storage, 0, run("easy", 1, 5000))
+        const next = recordClear(
+            mine,
+            storage,
+            0,
+            run("easy", 1, 5000),
+            unlocking
+        )
         const expected = {
             hard: { stars: 3, bestTime: 700 },
             easy: { stars: 1, bestTime: 5000 },
@@ -266,7 +275,8 @@ describe("unlocks across difficulties", () => {
                 emptyProgress(),
                 storage,
                 0,
-                run(difficulty, 1, 60)
+                run(difficulty, 1, 60),
+                unlocking
             )
             expect(isUnlocked(p, 1)).toBe(true)
             expect(isUnlocked(loadProgress(storage), 1)).toBe(true)
@@ -275,9 +285,15 @@ describe("unlocks across difficulties", () => {
 
     it("doesn't save again when a clear improves nothing", () => {
         const storage = memoryStorage()
-        const p = recordClear(emptyProgress(), storage, 0, run("hard", 3, 600))
+        const p = recordClear(
+            emptyProgress(),
+            storage,
+            0,
+            run("hard", 3, 600),
+            unlocking
+        )
         storage.setItem.mockClear()
-        recordClear(p, storage, 0, run("hard", 2, 900))
+        recordClear(p, storage, 0, run("hard", 2, 900), unlocking)
         expect(storage.setItem).not.toHaveBeenCalled()
         expect(storage.data.get(PROGRESS_KEY)).toBeDefined()
     })

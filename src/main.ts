@@ -473,8 +473,9 @@ function enter(prev: Screen, next: Screen) {
         lastAnimal = next.animals[0]
         saveLastPick(storage, lastAnimal)
     }
-    // A clear in stage mode or in a story run (KDA-271) is recorded alike:
-    // the stage cleared, which unlocks the next, and its bests.
+    // A clear in stage mode or in a story run (KDA-271) records its stars
+    // and bests alike, but only a story run's unlocks the next stage
+    // (KDA-272): stages unlock only by story progress.
     const cleared =
         next.kind === "stageClear" ||
         next.kind === "storyClear" ||
@@ -483,10 +484,9 @@ function enter(prev: Screen, next: Screen) {
         // 2-player games leave saved progress alone.
         if (recordsProgress(next.mode)) {
             const { stars, ticks } = next.rating
-            progress = recordClear(progress, storage, next.level, {
-                difficulty: next.difficulty,
-                stars,
-                ticks,
+            const clear = { difficulty: next.difficulty, stars, ticks }
+            progress = recordClear(progress, storage, next.level, clear, {
+                unlocks: next.kind !== "stageClear",
             })
             // A run that reached the ending: its total may be the best.
             if (next.kind === "storyEnd") {
