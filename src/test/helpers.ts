@@ -1,7 +1,7 @@
 import { createBoss, type Boss } from "../boss"
 import type { BreathDef } from "../breath"
 import { BREATHS } from "../breaths"
-import { AiType, Cell, CharacterId, TICK_RATE } from "../constants"
+import { AiType, Cell, CharacterId, ENEMY_IDS, TICK_RATE } from "../constants"
 import { DEFAULT_ANIMAL } from "../roster"
 import { createCharacter, type Character } from "../character"
 import {
@@ -54,6 +54,41 @@ export const OLD_LEVEL_DATA: LevelData = {
 
 export const OLD_LEVEL: Level = parseLevel(OLD_LEVEL_DATA)
 
+// A 29x21 maze, the size of the large mazes to come (KDA-266): too big to
+// fit whole on a phone, so the view follows the player. Pillars on a grid,
+// a tunnel through the middle row, player 1 bottom left, player 2 bottom
+// right and enemies top right and in the middle. Not a stage.
+export const BIG_LEVEL_DATA: LevelData = {
+    name: "Big",
+    parTime: 120,
+    map: [
+        "#############################",
+        "#..........................E#",
+        "#.#.#.#.#.#.#.#.#.#.#.#.#.#.#",
+        "#...........................#",
+        "#.#.#.#.#.#.#.#.#.#.#.#.#.#.#",
+        "#...........................#",
+        "#.#.#.#.#.#.#.#.#.#.#.#.#.#.#",
+        "#...........................#",
+        "#.#.#.#.#.#.#.#.#.#.#.#.#.#.#",
+        "#.............E.............#",
+        ".............................",
+        "#...........................#",
+        "#.#.#.#.#.#.#.#.#.#.#.#.#.#.#",
+        "#...........................#",
+        "#.#.#.#.#.#.#.#.#.#.#.#.#.#.#",
+        "#...........................#",
+        "#.#.#.#.#.#.#.#.#.#.#.#.#.#.#",
+        "#...........................#",
+        "#.#.#.#.#.#.#.#.#.#.#.#.#.#.#",
+        "#P.........................Q#",
+        "#############################",
+    ],
+    enemies: [{ ai: "random" }, { ai: "chase" }],
+}
+
+export const BIG_LEVEL: Level = parseLevel(BIG_LEVEL_DATA)
+
 // Copy a literal map into a fresh, mutable Cells grid.
 export function cellsFrom(map: MapLiteral): Cells {
     return map.map((row) => [...row])
@@ -64,7 +99,7 @@ export function makeEnemy(
     y: number,
     ai: AiType = AiType.random,
     last: { x: number; y: number } = { x, y },
-    id: CharacterId = CharacterId.enemy1
+    id: CharacterId = ENEMY_IDS[0]
 ): Character {
     const enemy = createCharacter(id, vec2(x, y), ai)
     enemy.lastPos = vec2(last.x, last.y)
@@ -79,7 +114,7 @@ export function makePatroller(
     last: { x: number; y: number } = { x, y }
 ): Character {
     const enemy = createCharacter(
-        CharacterId.enemy1,
+        ENEMY_IDS[0],
         vec2(x, y),
         AiType.patroller,
         undefined,
@@ -99,7 +134,8 @@ type Cell2 = { x: number; y: number }
 // has the default character's breath unless `breath` says otherwise (one
 // breath for all, or one per player), with an empty meter. There is no boss
 // unless `boss` gives one (see makeBoss). The game plays by `mode`'s rules
-// (solo unless given; see knockOut).
+// (solo unless given; see knockOut), with the players passing through
+// each other unless `playersBump` says otherwise.
 export function makeState(
     map: MapLiteral,
     player: Cell2 | readonly Cell2[],
@@ -110,12 +146,14 @@ export function makeState(
         breath = BREATHS[DEFAULT_ANIMAL],
         boss = null,
         mode = "solo",
+        playersBump = false,
     }: {
         health?: number
         ice?: IceMap
         breath?: BreathDef | readonly BreathDef[]
         boss?: Boss | null
         mode?: Mode
+        playersBump?: boolean
     } = {}
 ): GameState {
     const starts = "x" in player ? [player] : player
@@ -139,6 +177,7 @@ export function makeState(
             ),
             health,
         })),
+        playersBump,
         enemies,
         boss,
         ticks: 0,

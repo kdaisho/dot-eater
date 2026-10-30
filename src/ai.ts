@@ -4,12 +4,14 @@ import type { Character } from "./character"
 import { moveStep } from "./glide"
 import type { Cells } from "./level"
 import {
+    FREE,
     hasIce,
     patrolMove,
     slideDistances,
     stepFrom,
     type IceMap,
     type MoveState,
+    type SlideDistance,
 } from "./ice"
 import { distanceMap, openNeighbours, type DistanceMap } from "./path"
 import { allDirections, directions, samePos, vec2, type Vec2 } from "./vec2"
@@ -117,6 +119,9 @@ function nearestBy<T>(targets: readonly T[], away: (t: T) => number) {
 // target inside a blocked patch still draws enemies to the patch's edge
 // nearest it (see goalView). `view` is `cells` as enemies see them
 // (blockedView); a caller moving several enemies can build it once.
+// `shared` keeps the distances chasers and ambushers aim by (see
+// chaseStep); a caller moving several enemies in one tick can share it
+// between them.
 export function enemyMove(
     cells: Cells,
     enemy: Character,
@@ -125,11 +130,12 @@ export function enemyMove(
     targetLast: Vec2 = target,
     ice: IceMap = noIce(cells),
     blocked: BlockMap | null = null,
-    view: Cells = blocked === null ? cells : blockedView(cells, blocked)
+    view: Cells = blocked === null ? cells : blockedView(cells, blocked),
+    shared: ChaseDistances = new Map()
 ) {
     const next =
         blocked === null
-            ? nextPos(cells, ice, enemy, target, targetLast, random)
+            ? nextPos(cells, ice, enemy, target, targetLast, random, shared)
             : blocked[enemy.pos.y][enemy.pos.x]
               ? escapeStep(cells, enemy, blocked)
               : enemy.ai === AiType.phantom
@@ -141,6 +147,7 @@ export function enemyMove(
                       target,
                       targetLast,
                       random,
+                      shared,
                       (goal) => goalView(cells, view, blocked, goal)
                   )
 
@@ -162,6 +169,7 @@ function nextPos(
     target: Vec2,
     targetLast: Vec2,
     random: Random,
+    shared: ChaseDistances,
     paths: (goal: Vec2) => Cells = () => cells
 ): Vec2 | null {
     switch (enemy.ai) {
@@ -182,7 +190,7 @@ function nextPos(
                 samePos(target, enemy.pos) && !samePos(targetLast, enemy.pos)
                     ? targetLast
                     : target
-            return chaseStep(cells, ice, enemy, aim, paths)
+            return chaseStep(cells, ice, enemy, aim, paths, shared)
         }
         case AiType.ambusher: {
             // Already standing where it aims: every way out scores the same,
@@ -193,7 +201,8 @@ function nextPos(
                 ice,
                 enemy,
                 samePos(aim, enemy.pos) ? target : aim,
-                paths
+                paths,
+                shared
             )
         }
         case AiType.patroller:
@@ -223,30 +232,88 @@ function nextPos(
 // that would slide through the player catches it on the way. On a map with
 // no ice, plain cell distances (distanceMap) give the same answer for less.
 // Distances are measured over `paths(target)` (see nextPos).
+//
+// Blocking its own cell takes a search per enemy, so it first scores the
+// candidates on the target's distances with nothing blocked, which every
+// enemy heading for the same cell shares (`shared`). They give the same
+// answer whenever the best candidate is no farther from the target than
+// the enemy is: any path back through the enemy's cell is longer than
+// that, so blocking it changes no candidate that could win, and moves none
+// that can't win ahead of it. Only when every candidate is farther (the
+// shortest way is back the way it came) does it search with its own cell
+// blocked.
 function chaseStep(
     cells: Cells,
     ice: IceMap,
     enemy: Character,
     target: Vec2,
-    paths: (goal: Vec2) => Cells
+    paths: (goal: Vec2) => Cells,
+    shared: ChaseDistances
 ): Vec2 | null {
     const pos = candidateMoves(cells, enemy)
     if (pos.length === 0) return null
-    if (!hasIce(ice)) {
-        return nearest(pos, distanceMap(paths(target), target, enemy.pos))
+    const icy = hasIce(ice)
+    // Where each candidate leaves it: on ice, in the slide it starts.
+    const states = pos.map((v) =>
+        icy ? arrival(cells, ice, enemy.pos, v) : { pos: v, heading: FREE }
+    )
+    const open = sharedDistance(shared, ice, target, paths)
+    const best = nearestState(states, open)
+    if (best.dist <= open({ pos: enemy.pos, heading: FREE })) {
+        return pos[best.index]
     }
-    const dist = slideDistances(paths(target), ice, target, enemy.pos)
-    let best = pos[0]
-    let bestDist = Infinity
-    for (const v of pos) {
-        const state = arrival(cells, ice, enemy.pos, v)
+    const own = icy
+        ? slideDistances(paths(target), ice, target, enemy.pos)
+        : cellDistance(distanceMap(paths(target), target, enemy.pos))
+    return pos[nearestState(states, own).index]
+}
+
+// Distances to targets with nothing blocked, by target cell, for chaseStep.
+// One set serves one tick of enemy moves (see enemyMove): the cells, ice
+// and blocked cells must stay as they are while it is in use.
+export type ChaseDistances = Map<string, SlideDistance>
+
+// The distances to `target` from `shared`, searched and kept there if they
+// aren't yet.
+function sharedDistance(
+    shared: ChaseDistances,
+    ice: IceMap,
+    target: Vec2,
+    paths: (goal: Vec2) => Cells
+): SlideDistance {
+    const key = `${target.x},${target.y}`
+    let dist = shared.get(key)
+    if (dist === undefined) {
+        dist = hasIce(ice)
+            ? slideDistances(paths(target), ice, target)
+            : cellDistance(distanceMap(paths(target), target))
+        shared.set(key, dist)
+    }
+    return dist
+}
+
+// A distance map read as a SlideDistance, for a map without ice (every
+// state is free).
+function cellDistance(map: DistanceMap): SlideDistance {
+    return (state) => map[state.pos.y][state.pos.x]
+}
+
+// The index of the first of `states` with the smallest distance in `dist`
+// (a missing state is Infinity), and that distance.
+function nearestState(
+    states: readonly (MoveState | null)[],
+    dist: SlideDistance
+): { index: number; dist: number } {
+    let index = 0
+    let best = Infinity
+    states.forEach((state, i) => {
         const d = state === null ? Infinity : dist(state)
-        if (d < bestDist) {
-            best = v
-            bestDist = d
+        if (d < best) {
+            index = i
+            best = d
         }
-    }
-    return best
+    })
+    return { index, dist: best }
 }
 
 // The first of `pos` with the smallest distance in `dist`.

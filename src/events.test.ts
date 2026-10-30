@@ -3,8 +3,8 @@ import type { BreathDef } from "./breath"
 import { BREATHS } from "./breaths"
 import {
     BOSS_HEALTH,
-    CharacterId,
     ENEMY_DAMAGE,
+    ENEMY_IDS,
     MAX_HEALTH,
     TICK_RATE,
 } from "./constants"
@@ -250,10 +250,7 @@ describe("enemyDefeated", () => {
 
     it("marks a whole Splitter's split", () => {
         const state = breather(defeating)
-        const slots = createSplitter(
-            [CharacterId.enemy1, CharacterId.enemy2],
-            vec2(3, 1)
-        )
+        const slots = createSplitter([ENEMY_IDS[0], ENEMY_IDS[1]], vec2(3, 1))
         state.enemies.push(...slots)
         state.spawns = {
             ...state.spawns,
@@ -275,7 +272,7 @@ describe("enemyDefeated", () => {
         const state = breather(defeating)
         state.enemies.push(
             makeEnemy(2, 1),
-            makeEnemy(3, 1, undefined, undefined, CharacterId.enemy2)
+            makeEnemy(3, 1, undefined, undefined, ENEMY_IDS[1])
         )
         state.spawns = {
             ...state.spawns,
@@ -379,7 +376,7 @@ describe("hurt, playerCaught and playerRespawned", () => {
             [vec2(1, 1), vec2(5, 1)],
             [
                 makeEnemy(1, 1),
-                makeEnemy(5, 1, undefined, undefined, CharacterId.enemy2),
+                makeEnemy(5, 1, undefined, undefined, ENEMY_IDS[1]),
             ],
             { mode: "coop", health: MAX_HEALTH }
         )

@@ -3,7 +3,8 @@ import { addStatus, inPlay } from "./breath"
 import {
     AiType,
     BOSS_HEALTH,
-    CharacterId,
+    ENEMY_IDS,
+    type CharacterId,
     PUNCH_REACH,
     SPRITE_SCALE,
     TICK_RATE,
@@ -69,7 +70,7 @@ function gliding(
     y: number,
     last: { x: number; y: number },
     progress: number,
-    id: CharacterId = CharacterId.enemy1
+    id: CharacterId = ENEMY_IDS[0]
 ) {
     const enemy = makeEnemy(x, y, AiType.random, last, id)
     enemy.moveProgress = progress
@@ -149,13 +150,7 @@ describe("punching an enemy", () => {
 
     it("punches along the way the player faces", () => {
         const above = makeEnemy(2, 1)
-        const ahead = makeEnemy(
-            3,
-            2,
-            AiType.random,
-            undefined,
-            CharacterId.enemy2
-        )
+        const ahead = makeEnemy(3, 2, AiType.random, undefined, ENEMY_IDS[1])
         const state = makeState(room, { x: 2, y: 2 }, [above, ahead])
         state.players[0].breather.facing = vec2(0, -1)
         tick(state)
@@ -212,7 +207,7 @@ describe("punching an enemy", () => {
 
     it("hits every enemy in reach, each one cell", () => {
         const a = makeEnemy(3, 1)
-        const b = makeEnemy(3, 1, AiType.chase, undefined, CharacterId.enemy2)
+        const b = makeEnemy(3, 1, AiType.chase, undefined, ENEMY_IDS[1])
         const state = makeState(room, { x: 2, y: 1 }, [a, b])
         tick(state)
         expect(a.pos).toEqual(vec2(4, 1))
@@ -222,13 +217,7 @@ describe("punching an enemy", () => {
 
     it("reports the nearest hit first", () => {
         const far = gliding(3, 1, { x: 2, y: 1 }, 0.05)
-        const near = makeEnemy(
-            2,
-            1,
-            AiType.random,
-            undefined,
-            CharacterId.enemy2
-        )
+        const near = makeEnemy(2, 1, AiType.random, undefined, ENEMY_IDS[1])
         const state = makeState(room, { x: 1, y: 1 }, [far, near])
         tick(state)
         expect(ofType(state, "punchHit").map((e) => e.enemy)).toEqual([1, 0])
@@ -236,7 +225,7 @@ describe("punching an enemy", () => {
 
     it("never splits a Splitter, whole or half", () => {
         const [whole, spare] = createSplitter(
-            [CharacterId.enemy1, CharacterId.enemy2],
+            [ENEMY_IDS[0], ENEMY_IDS[1]],
             vec2(3, 1)
         )
         const state = makeState(room, { x: 2, y: 1 }, [whole, spare])
@@ -247,7 +236,7 @@ describe("punching an enemy", () => {
         expect(ofType(state, "enemyDefeated")).toEqual([])
 
         const [, half] = createSplitter(
-            [CharacterId.enemy1, CharacterId.enemy2],
+            [ENEMY_IDS[0], ENEMY_IDS[1]],
             vec2(3, 1)
         )
         half.respawnIn = 0

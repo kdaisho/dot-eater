@@ -23,27 +23,31 @@ export const AiType = {
     // Slow, but passes through walls.
     phantom: 4,
     // Chases; a defeating breath splits it into two faster halves (see
-    // splitter.ts). Takes two enemy slots.
+    // splitter.ts). Takes two enemy slots but counts as one enemy toward
+    // MAX_ENEMIES.
     splitter: 5,
 } as const
 export type AiType = (typeof AiType)[keyof typeof AiType]
 
+// The most enemies a level can have (parseLevel checks it). A Splitter
+// counts as one, though it takes two enemy slots.
+export const MAX_ENEMIES = 8
+// The most enemy slots a game can need: one per enemy, two per Splitter
+// (see splitter.ts), so a level of MAX_ENEMIES Splitters still fits.
+export const MAX_ENEMY_SLOTS = 2 * MAX_ENEMIES
+
+// Every player is CharacterId.player; enemy slots are numbered from 1 in
+// spawn order (ENEMY_IDS).
 export const CharacterId = {
     player: 0,
-    enemy1: 1,
-    enemy2: 2,
-    enemy3: 3,
-    enemy4: 4,
 } as const
-export type CharacterId = (typeof CharacterId)[keyof typeof CharacterId]
+export type CharacterId = number
 
-// Enemy ids in spawn order; also the most enemies a level can have.
-export const ENEMY_IDS: readonly CharacterId[] = [
-    CharacterId.enemy1,
-    CharacterId.enemy2,
-    CharacterId.enemy3,
-    CharacterId.enemy4,
-]
+// Enemy ids in spawn order, one per enemy slot.
+export const ENEMY_IDS: readonly CharacterId[] = Array.from(
+    { length: MAX_ENEMY_SLOTS },
+    (_, i) => i + 1
+)
 
 // Game logic runs this many fixed ticks per second, whatever the frame rate.
 export const TICK_RATE = 60
@@ -94,9 +98,14 @@ export const BOSS_DAMAGE = 40
 export const HURT_INVULNERABLE_SECONDS = 1.5
 
 // How far (in cells, centre to centre) every enemy and the boss must be
-// drawn from a player's spawn for it to come back there (see spawnClear in
-// game.ts): far enough that nothing gliding in can catch it a tick later.
+// drawn from a player's spawn for it to come back there (see
+// clearOfEnemies in game.ts): far enough that nothing gliding in can catch it a tick later.
 export const RESPAWN_CLEAR_DISTANCE = 1.5
+// Seconds a player due back waits while the other player is on its spawn
+// or moving onto it (when players bump, KDA-262) before it comes back on
+// the nearest free cell instead (see tickPlayersOut in game.ts), so a
+// player can't camp on the other's spawn.
+export const RESPAWN_BLOCK_GRACE = 2
 
 // ---- Breaths (see breath.ts) ----
 

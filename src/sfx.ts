@@ -231,7 +231,6 @@ export const SFX: Readonly<Record<SfxId, readonly Tone[]>> = {
             volume: 0.5,
         },
     ],
-    // The classic falling "caught" wail.
     // A short, dull thump with a crunch: less dramatic than the knockout's
     // long fall.
     hurt: [
@@ -252,6 +251,7 @@ export const SFX: Readonly<Record<SfxId, readonly Tone[]>> = {
             volume: 0.2,
         },
     ],
+    // The classic falling "caught" wail, for a knockout.
     caught: [
         {
             wave: "square",
