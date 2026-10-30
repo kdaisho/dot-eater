@@ -208,9 +208,10 @@ const SEEDS = [1, 2, 3, 4, 5]
 
 describe("same-kind enemies in a whole game", () => {
     // Before the spread rule each of these went as one for most of the
-    // run (about 97 s of 100) on most seeds.
-    // Stages 3 and 8 have ice; at Hard and Super Hard their chasers went as
-    // one for most of the run too.
+    // run (about 97 s of 100) on most seeds. Stages 3 and 8 have ice; at
+    // Hard and Super Hard their chasers went as one for 30 s or more on
+    // most seeds too. Stage 5's two Splitters (and their halves) did at
+    // every difficulty, Easy included.
     it.each([
         ["stage 1's large map's chasers and ambushers", classicLarge],
         ["stage 2's medium map's ambushers", wrapMazeMedium],
@@ -218,6 +219,7 @@ describe("same-kind enemies in a whole game", () => {
         ["stage 3 at Super Hard", stages[2].superHard],
         ["stage 8 at Hard", stages[7].hard],
         ["stage 8 at Super Hard", stages[7].superHard],
+        ["stage 5 at Easy", stages[4].easy],
     ] satisfies [string, Level][])(
         "keeps %s from going as one",
         (_, level) => {
@@ -231,12 +233,11 @@ describe("same-kind enemies in a whole game", () => {
     )
 
     // Where no two of a kind ever stack, every enemy goes exactly the way
-    // it did before the rule.
+    // it did before the rule: every stage at Easy but stage 5 (see above).
     const calm: [string, Level][] = [
-        ...stages.map((stage, i): [string, Level] => [
-            `stage ${i + 1} at Easy`,
-            stage.easy,
-        ]),
+        ...stages.flatMap((stage, i): [string, Level][] =>
+            i === 4 ? [] : [[`stage ${i + 1} at Easy`, stage.easy]]
+        ),
         ["stage 1 at Medium", stages[0].medium],
         ["stage 1 at Hard", stages[0].hard],
     ]
