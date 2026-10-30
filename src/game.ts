@@ -56,6 +56,7 @@ import { hasDots, loopPos, type Cells, type Level } from "./level"
 import { levels } from "./levels"
 import { distanceMap, openNeighbours } from "./path"
 import { DEFAULT_ANIMAL, type AnimalId } from "./roster"
+import { punch } from "./punch"
 import { createSplitter } from "./splitter"
 import { loseDots, stunned, tickStuns } from "./versus"
 import { samePos, vec2, type Vec2 } from "./vec2"
@@ -184,6 +185,9 @@ export type MoveInput = {
     // Whether the breath key was newly pressed this tick. A press that can't
     // breathe (too little energy, cooling down) is dropped, not kept.
     breath?: boolean
+    // Whether the punch key was newly pressed this tick (see punch.ts).
+    // Every press punches, unless the player is out or stunned.
+    punch?: boolean
 }
 
 // No input: nothing held or pressed.
@@ -800,6 +804,10 @@ function wait(character: Glider) {
 // A boss (see boss.ts) moves with the enemies, after the breaths, and keeps
 // out of blocked cells too; a defeated one doesn't move or catch.
 //
+// Punches (see punch.ts) come right after the breaths, from where each
+// player is drawn after its move, and knock enemies back like a breath's
+// push. They cost nothing and never stop or slow the player.
+//
 // What happened is reported in GameState.events (see events.ts), which is
 // emptied first, so it holds this tick's events only.
 //
@@ -847,12 +855,30 @@ export function step(
         if (player.out || stunned(player)) return
         if (inputs[i]?.breath && breathe(state, player)) breathed = true
     })
-    if (breathed) {
-        // The breath comes before the enemies move, but it may have moved
-        // some (pushed or defeated) or held them: trace each enemy from
-        // where it is after the breath, not along a sweep across the jump.
+    // Punches come after the breaths, player 1's first (see punch.ts).
+    let punched = false
+    const shoved = new Set<number>()
+    players.forEach((player, i) => {
+        if (!inputs[i]?.punch) return
+        const moved = punch(state, player)
+        if (moved.enemies) punched = true
+        for (const j of moved.players) shoved.add(j)
+    })
+    if (breathed || punched || shoved.size > 0) {
+        // The breath or punch comes before the enemies move, but it may
+        // have moved some (pushed or defeated) or held them: trace each
+        // enemy from where it is after it, not along a sweep across the
+        // jump. A player a punch knocked back (versus) has made its move
+        // this tick, so it stays where it now is drawn for the rest of it.
+        // (Known gap, rare and left: the bit of its own move it made this
+        // tick, before the shove, isn't checked for catches.)
         const after = tickStarts(state, dt)
-        start = { ...after, players: start.players }
+        start = {
+            ...after,
+            players: start.players.map((s, i) =>
+                shoved.has(i) ? { ...after.players[i], arrive: Infinity } : s
+            ),
+        }
     }
     const blocked = enemyBlocks(state)
     // Cells as enemies see them, so blocked cells also end slides.

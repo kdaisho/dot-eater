@@ -58,6 +58,7 @@ import {
     stageSlots,
     type Progress,
 } from "./progress"
+import { createJabs } from "./jab"
 import { createParticles } from "./particles"
 import { createRenderer, type Effects, type Hud } from "./render"
 import { ANIMAL_IDS, ANIMALS, type AnimalId } from "./roster"
@@ -173,24 +174,28 @@ applyDpad()
 // shorter; the Screen shake setting, when set, overrides the shake part.
 const particles = createParticles({ random: Math.random })
 const shake = createShake()
+// The players' jab looks after a punch (KDA-258; see jab.ts).
+const jabs = createJabs()
 const effects = {
     // Follow reduced motion and the Screen shake setting: on load, when the
     // settings change and when the system setting does.
     motion() {
         const reduced = reducedMotion?.matches ?? false
-        applyMotion({ particles, shake }, settings, reduced)
+        applyMotion({ particles, shake, jabs }, settings, reduced)
     },
     // The bursts and shakes for a tick's game events (see eventEffects.ts).
     events(events: readonly GameEvent[], game: GameState) {
-        effectsForEvents(events, game, { particles, shake })
+        effectsForEvents(events, game, { particles, shake, jabs })
     },
     tick(dt: number) {
         particles.update(dt)
         shake.update(dt)
+        jabs.update(dt)
     },
     reset() {
         particles.clear()
         shake.clear()
+        jabs.clear()
     },
     of(s: Screen): Effects {
         if (
@@ -203,6 +208,7 @@ const effects = {
         const moving = s.kind !== "paused"
         return {
             particles: particles.list,
+            jabs: jabs.list,
             ...(moving ? { shake: shake.offset(Math.random) } : {}),
             // The facing guide the settings pick (KDA-247). The arrow shows
             // with the rings, paused and ending too; the aim preview only
@@ -228,6 +234,7 @@ const tickInput: TickInput = {
             held: p.heldSteps(),
             pressed: p.pressedStep(),
             breath: p.wasPressed("breath"),
+            punch: p.wasPressed("punch"),
         }
     },
     captured: () => pendingCapture,
