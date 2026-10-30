@@ -152,7 +152,7 @@ export function enemyMove(
             : blocked[enemy.pos.y][enemy.pos.x]
               ? escapeStep(cells, enemy, blocked)
               : enemy.ai === AiType.phantom
-                ? phantomStep(cells, enemy, target, blocked)
+                ? phantomStep(cells, enemy, target, crowd, blocked)
                 : nextPos(
                       view,
                       ice,
@@ -231,7 +231,7 @@ function nextPos(
         case AiType.patroller:
             return patrolStep(cells, ice, enemy, paths)
         case AiType.phantom:
-            return phantomStep(cells, enemy, target)
+            return phantomStep(cells, enemy, target, crowd)
         default: {
             // Compile-time check that every AiType is handled above.
             const unhandled: never = enemy.ai
@@ -299,17 +299,20 @@ function chaseStep(
     const own = icy
         ? slideDistances(paths(target), ice, target, enemy.pos)
         : cellDistance(distanceMap(paths(target), target, enemy.pos))
-    return spreadChoice(pos, states, own, stacks, mayHold(enemy))
+    const scored = pos.map((v, i) => {
+        const state = states[i]
+        return { v, d: state === null ? Infinity : own(state) }
+    })
+    return spreadChoice(scored, stacks, mayHold(enemy))
 }
 
 // Two enemies of one kind (AI type) that stand on the same cell, having
-// come from the same cell, move as one from then on: chasers and ambushers
-// choose without chance and never block each other, so the player would
-// see one sprite where there are two. So a chaser, ambusher or Splitter
-// keeps from stacking: it takes the first of `pos` (reached in `states`)
-// with the smallest distance in `dist`, ties in direction order, unless
-// moving there `stacks`. Then it takes the next-best that doesn't, by the
-// same order, if that is at most SPREAD_SLACK moves longer. If none is (a
+// come from the same cell, move as one from then on: chasers, ambushers and
+// phantoms choose without chance and never block each other, so the player
+// would see one sprite where there are two. So they keep from stacking: an
+// enemy takes the first of the `scored` candidates (in direction order)
+// with the smallest distance `d`, unless moving there `stacks`. Then it takes the next-best that doesn't, by the
+// same order, if that is at most SPREAD_SLACK longer. If none is (a
 // corridor has no other way, and a much longer one would let the player
 // go), it holds this move (HOLD) and chooses again on the next tick, which
 // it moves on as soon as the one ahead has moved on: it follows a cell
@@ -323,17 +326,12 @@ function chaseStep(
 // twins filling a loop of cells, each waiting on the next, would never
 // move again.
 function spreadChoice(
-    pos: readonly Vec2[],
-    states: readonly (MoveState | null)[],
-    dist: SlideDistance,
+    scored: readonly { v: Vec2; d: number }[],
     stacks: (v: Vec2) => boolean,
     hold: boolean
 ): Vec2 | typeof HOLD {
-    const ranked = pos
-        .map((v, i) => {
-            const state = states[i]
-            return { v, i, d: state === null ? Infinity : dist(state) }
-        })
+    const ranked = scored
+        .map((c, i) => ({ ...c, i }))
         // Infinity - Infinity is NaN, which falls through to the order.
         .sort((a, b) => a.d - b.d || a.i - b.i)
     const [best] = ranked
@@ -347,9 +345,8 @@ function spreadChoice(
 // Whether `enemy` moving to `to` stacks on another enemy of its kind in
 // `crowd`: one on that cell (standing there or gliding in) that came from
 // the cell `enemy` is leaving, whether it moved earlier this tick or not.
-// Only chasers, ambushers and Splitters keep from stacking: random enemies
-// part by chance, patrollers keep to their routes and phantoms are left to
-// go as they do.
+// Only chasers, ambushers, Splitters and phantoms keep from stacking:
+// random enemies part by chance and patrollers keep to their routes.
 export function stacksOn(
     crowd: readonly Character[],
     enemy: Character,
@@ -371,6 +368,7 @@ const SPREADS: ReadonlySet<AiType> = new Set([
     AiType.chase,
     AiType.ambusher,
     AiType.splitter,
+    AiType.phantom,
 ])
 
 // Whether `enemy` may hold its move to keep from stacking (see
@@ -604,18 +602,34 @@ function patrolStep(
 // tunnels, so it can never end up off the board. It may turn back, as the
 // player can double back past it. It stays put on the player's cell. It
 // never steps into a `blocked` cell (see enemyMove).
+//
+// It keeps from stacking on another phantom like a chaser does (see
+// spreadChoice), on straight-line distances: every other step is 2
+// farther than the best or as near, so the next-best may take it a cell
+// away from the player for a move. Holds can't wait on each other round a
+// loop while phantoms go after the players (each waits on a cell nearer
+// the player nearest it), but they can when each heads for its own spawn;
+// the hold limit (mayHold) breaks that.
 function phantomStep(
     cells: Cells,
     enemy: Character,
     target: Vec2,
+    crowd: readonly Character[],
     blocked: BlockMap | null = null
-): Vec2 | null {
+): Vec2 | typeof HOLD | null {
     const away = (v: Vec2) =>
         Math.abs(v.x - target.x) + Math.abs(v.y - target.y)
-    let best: Vec2 | null = null
-    for (const v of mapNeighbours(cells, enemy.pos)) {
-        if (blocked?.[v.y][v.x]) continue
-        if (best === null || away(v) < away(best)) best = v
-    }
-    return best !== null && away(best) < away(enemy.pos) ? best : null
+    const scored = mapNeighbours(cells, enemy.pos)
+        .filter((v) => !blocked?.[v.y][v.x])
+        .map((v) => ({ v, d: away(v) }))
+    const best = scored.reduce<{ v: Vec2; d: number } | null>(
+        (a, c) => (a === null || c.d < a.d ? c : a),
+        null
+    )
+    if (best === null || best.d >= away(enemy.pos)) return null
+    return spreadChoice(
+        scored,
+        (v) => stacksOn(crowd, enemy, v),
+        mayHold(enemy)
+    )
 }
