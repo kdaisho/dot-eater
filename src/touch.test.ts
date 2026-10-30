@@ -364,6 +364,70 @@ describe("TouchSource", () => {
             move(40, 0, 1)
             expect(held()).toEqual(["right"])
         })
+
+        // Regression (PR #79 re-review): release re-anchored only the
+        // steering finger, so a resting finger that had drifted 23 px took
+        // over with a 1 px move.
+        it("measures every finger afresh on release, not only the steering one", () => {
+            down(0, 0, 1)
+            move(40, 0, 1)
+            down(300, 300, 2)
+            move(300, 300 - SWIPE_DISTANCE + 1, 2)
+            source.release()
+            move(300, 300 - SWIPE_DISTANCE, 2)
+            expect(held()).toEqual([])
+            move(300, 277 - SWIPE_DISTANCE, 2)
+            expect(held()).toEqual(["up"])
+        })
+
+        it("measures the fingers left afresh when the steering one lifts", () => {
+            down(0, 0, 1)
+            move(40, 0, 1)
+            down(300, 300, 2)
+            down(500, 500, 3)
+            // Finger 2 drifts, short of taking over.
+            move(300, 300 - SWIPE_DISTANCE + 1, 2)
+            up(40, 0, 1)
+            // Finger 3 steers now; finger 2's drift is forgotten too.
+            move(300, 300 - SWIPE_DISTANCE, 2)
+            expect(held()).toEqual([])
+        })
+    })
+
+    describe("pointer capture", () => {
+        // A board that records the captures asked of it.
+        class Board extends EventTarget {
+            captured: number[] = []
+            setPointerCapture(id: number) {
+                this.captured.push(id)
+            }
+        }
+
+        it("captures each finger on the board, so it keeps its moves and lift off it", () => {
+            const board = new Board()
+            source.detach()
+            source = new TouchSource(board)
+            source.attach(input)
+            board.dispatchEvent(
+                Object.assign(new Event("pointerdown", { cancelable: true }), {
+                    pointerId: 7,
+                    pointerType: "pen",
+                    clientX: 0,
+                    clientY: 0,
+                })
+            )
+            expect(board.captured).toEqual([7])
+        })
+
+        it("lets go when a finger's capture is lost", () => {
+            down(0, 0)
+            move(40, 0)
+            pointer("lostpointercapture", 40, 0)
+            expect(held()).toEqual([])
+            // Forgotten: its moves don't steer.
+            move(80, 0)
+            expect(held()).toEqual([])
+        })
     })
 
     it("drives player 1 only", () => {

@@ -148,6 +148,7 @@ export class TouchSource implements InputSource {
         this.target.addEventListener("pointermove", this.onMove)
         this.target.addEventListener("pointerup", this.onUp)
         this.target.addEventListener("pointercancel", this.onCancel)
+        this.target.addEventListener("lostpointercapture", this.onCancel)
         this.view?.addEventListener("blur", this.forget)
         this.doc?.addEventListener("visibilitychange", this.onVisibility)
     }
@@ -159,25 +160,23 @@ export class TouchSource implements InputSource {
         this.target.removeEventListener("pointermove", this.onMove)
         this.target.removeEventListener("pointerup", this.onUp)
         this.target.removeEventListener("pointercancel", this.onCancel)
+        this.target.removeEventListener("lostpointercapture", this.onCancel)
         this.view?.removeEventListener("blur", this.forget)
         this.doc?.removeEventListener("visibilitychange", this.onVisibility)
         this.input = undefined
     }
 
     // Let go of the dragged direction and its fallback, so the player
-    // stops. A finger still down steers again once it drags SWIPE_DISTANCE
-    // from where it is now.
+    // stops. Every finger still down is measured from where it is now, so
+    // one only steers (or takes over) once it drags SWIPE_DISTANCE from
+    // there, not because it drifted before.
     release(): void {
         for (const held of [this.direction, this.fallback]) {
             if (held) this.player()?.release(held, DRAG)
         }
         this.direction = undefined
         this.fallback = undefined
-        const finger =
-            this.steering === undefined
-                ? undefined
-                : this.fingers.get(this.steering)
-        if (finger) reanchor(finger)
+        for (const finger of this.fingers.values()) reanchor(finger)
     }
 
     // Let go, and forget every finger on the board.
@@ -212,6 +211,15 @@ export class TouchSource implements InputSource {
         // Keep the browser from turning the touch into a scroll, a zoom or
         // a mouse click.
         event.preventDefault()
+        // Keep getting this finger's moves and lift even once it leaves the
+        // board (touch does this by itself; a pen may not), and lift it if
+        // the capture is lost, as dpad.ts does.
+        try {
+            const target = event.target as Partial<Element> | null
+            target?.setPointerCapture?.(p.pointerId)
+        } catch {
+            // Not an active pointer (a synthetic event): nothing to capture.
+        }
         // A pointer id seen again: its lift was missed.
         if (this.fingers.has(p.pointerId)) this.lift(p.pointerId)
         this.fingers.set(p.pointerId, {
@@ -283,17 +291,13 @@ export class TouchSource implements InputSource {
     }
 
     // A finger is gone. If it steered, let go of what it held and give the
-    // steering back to the newest finger left, from where it is now.
+    // steering back to the newest finger left, from where it is now (see
+    // release).
     private lift(pointerId: number) {
         if (!this.fingers.delete(pointerId)) return
         if (pointerId !== this.steering) return
         this.release()
         this.steering = [...this.fingers.keys()].at(-1)
-        const finger =
-            this.steering === undefined
-                ? undefined
-                : this.fingers.get(this.steering)
-        if (finger) reanchor(finger)
     }
 }
 
