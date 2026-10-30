@@ -48,6 +48,10 @@ export type GameEvent =
     // A player's breath finished the boss. Its killing blow reports this
     // only, not a bossHit as well.
     | { type: "bossDefeated"; player: number; at: Vec2 }
+    // A player was hurt (see hurtPlayer in game.ts) on `at` (its cell when
+    // hit, before the knockback) and lost `damage` health, with some left.
+    // A hit that takes its last health reports a playerCaught instead.
+    | { type: "hurt"; player: number; at: Vec2; damage: number }
     // An enemy or the boss caught a player on `at` (its cell). `outForGood`
     // is true when the player won't be back: the solo game's last life, or
     // co-op with the shared lives spent. A solo catch with lives left is
