@@ -10,6 +10,7 @@ import {
     BOSS_HEALTH,
     BOSS_SPEED,
     Cell,
+    Direction,
     DOT_ENERGY,
     TICK_RATE,
 } from "../constants"
@@ -18,7 +19,12 @@ import { createGameState } from "../game"
 import { parseLevel, parseStage } from "../level"
 import { distanceMap, openNeighbours } from "../path"
 import { ANIMAL_IDS } from "../roster"
-import { bossArena, breathEscapes, cellKey } from "../test/bossArena"
+import {
+    bossArena,
+    breathEscapes,
+    cellKey,
+    safeAround,
+} from "../test/bossArena"
 import { EACH_MAP } from "../test/helpers"
 import { stage5 } from "./stage5"
 import { stage10 } from "./stage10"
@@ -68,8 +74,8 @@ it("parses at every difficulty, each its map with its enemies", () => {
 describe.each(EACH_MAP)("stage 10 (%s)", (difficulty) => {
     const level = stage[difficulty]
     const map = MAPS[MAP_SIZE[difficulty]]
-    const { cells, open, dots, reach, bossCells, safe, doors } =
-        bossArena(level)
+    const arena = bossArena(level)
+    const { cells, open, dots, reach, bossCells, safe, doors } = arena
     const spawn = level.playerSpawns[0]
     const escapes = breathEscapes(level)
     // Stage 5 on the same size of map, which this one outdoes.
@@ -159,6 +165,12 @@ describe.each(EACH_MAP)("stage 10 (%s)", (difficulty) => {
     it("gives the boss a bigger arena than stage 5's, with fewer safe cells", () => {
         expect(reach.length).toBeGreaterThan(lair.reach.length)
         expect(safe.length).toBeLessThan(lair.safe.length)
+        // The corridor runs down the sides and along the bottom, joined up,
+        // but not over the top: the arena's top is the map's edge.
+        expect(safeAround(arena)).toEqual({
+            sides: [Direction.left, Direction.down, Direction.right],
+            joined: true,
+        })
         // Outside it only the spawns hold a dot (every "E" and the "Q").
         const spawns = new Set(
             [...level.enemies.map((e) => e.pos), ...level.playerSpawns].map(
@@ -177,8 +189,9 @@ describe.each(EACH_MAP)("stage 10 (%s)", (difficulty) => {
         expect(doors).toHaveLength(map.doors)
     })
 
-    // Its wind-up is 0.8 s; a player moves 4 cells a second. Every lane is
-    // at least 3 wide, so there is always a cell beside the boss's breath.
+    // Its wind-up is 0.8 s (48 ticks); a player moves 4 cells a second, so
+    // 2 moves take 30. Every lane is at least 3 wide, so there is always a
+    // cell beside the boss's breath. Never through the boss's body.
     it("lets a player get out of any breath in two moves", () => {
         expect(Math.max(...escapes.worst.values())).toBeLessThanOrEqual(2)
         for (const door of doors) {
