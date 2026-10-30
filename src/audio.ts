@@ -80,7 +80,10 @@ export const MUSIC_LEVEL = 2
 // The limiter between master and the speakers: with the music lifted, loud
 // music at full volume plus a loud effect or two can top full scale, which
 // the speakers would hard-clip into clicks. It squashes peaks over the
-// threshold (dBFS) instead and leaves quieter sound alone.
+// threshold (dBFS) instead. The browser's compressor also adds its own
+// make-up gain (about +1.7 dB at these settings, which Web Audio can't turn
+// off), so the whole mix comes out a little louder and peaks top out near
+// -0.6 dBFS.
 export const LIMITER = {
     threshold: -3,
     knee: 0,
