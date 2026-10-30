@@ -1,4 +1,5 @@
 import { footprint } from "./boss"
+import { bossLooks, bossWarning } from "./bossBreath"
 import {
     aimPreviews,
     canBreathe,
@@ -57,6 +58,10 @@ export type Hud = {
     // Versus: the round and tally (e.g. "Round 2 · 1–0"), drawn in the
     // middle.
     round?: string
+    // On a boss level, the boss's health (see bossHud in game.ts): the
+    // stage's goal (KDA-267), drawn as a band along the bottom of the
+    // strip, in every mode, so it shows wherever the boss is on the map.
+    boss?: HealthHud
 }
 
 export type PlayerHud = {
@@ -93,6 +98,10 @@ export type Effects = {
     // Each player's jab under way (KDA-258; see jab.ts): its sprite lunges
     // along it, with a fist just ahead.
     jabs?: readonly Jab[]
+    // Whether the boss's wind-up shows (KDA-268; see bossBreath.ts): its
+    // glow and the warning tint on the cells it will strike. Set while
+    // playing, paused and in the ending outro, not on end screens.
+    bossBreath?: boolean
 }
 
 export type Renderer = {
@@ -117,6 +126,10 @@ export type Renderer = {
 
 const COLORS = {
     background: "#fff",
+    // The fill an emoji sprite, badge or fist is drawn with. Opaque: canvas
+    // draws colour emoji with the fill colour's alpha, so drawing one right
+    // after a translucent look disc would leave it see-through.
+    sprite: "#000",
     wall: "#000",
     dot: "#000",
     // Ice floor: a pale blue tile under the dot.
@@ -139,6 +152,9 @@ const COLORS = {
     bossTrack: "#374151",
     bossFrame: "#000",
     bossFlash: "#fff",
+    // The HUD's boss band: the health lost, pale against the white strip
+    // and the maze's black top edge (the health left is bossHealth).
+    bossBandTrack: "#fecaca",
 }
 
 // The width of the fog's soft edge in cells: the darkness fades in over this
@@ -211,6 +227,9 @@ export const BOSS_SCALE = 2
 const BOSS_BAR_HEIGHT = 0.12
 // How opaque the white flash over the sprite is just after a hit.
 const BOSS_FLASH_ALPHA = 0.7
+// The disc of a look on the boss (its glow while it winds up) is this much
+// wider than the sprite, so it shows round it.
+const BOSS_GLOW_SCALE = 1.15
 
 // A status's badge emoji is this size, as a fraction of the sprite's.
 const BADGE_SCALE = 0.5
@@ -384,8 +403,9 @@ export function createRenderer(
         }
         const aims =
             effects.aim && effects.guide === "aim" ? aimPreviews(state) : []
-        drawCells(ctx, state, alpha, cell, seen, aims)
-        drawBoss(ctx, state, alpha, cell, cols, rows, seen)
+        const windUp = effects.bossBreath === true
+        drawCells(ctx, state, alpha, cell, seen, tintsFor(state, aims, windUp))
+        drawBoss(ctx, state, alpha, cell, cols, rows, seen, windUp)
         drawCharacters(
             ctx,
             state,
@@ -608,7 +628,7 @@ function drawCells(
     alpha: number,
     cell: number,
     fog: Sight | null,
-    aims: readonly AimPreview[]
+    tints: readonly Tint[]
 ) {
     const wall = cell * WALL_SCALE
     const dot = Math.max(1, cell * DOT_SCALE)
@@ -631,7 +651,7 @@ function drawCells(
         )
     }
     const looks = tileLooks(state)
-    const aimed = aimGrid(state, aims)
+    const tinted = tintGrid(state, tints)
     state.cells.forEach((row, y) => {
         row.forEach((value, x) => {
             if (fog && !fog.visible(vec2(x, y))) return
@@ -641,9 +661,9 @@ function drawCells(
             for (const look of looks?.[y][x] ?? []) {
                 if (look.color) fillCell(x, y, look.color)
             }
-            for (const player of aimed?.[y][x] ?? []) {
+            for (const color of tinted?.[y][x] ?? []) {
                 ctx.globalAlpha = AIM_FILL_ALPHA
-                fillCell(x, y, PLAYER_COLORS[player])
+                fillCell(x, y, color)
                 ctx.globalAlpha = 1
             }
             if (value === Cell.wall) {
@@ -658,7 +678,7 @@ function drawCells(
             }
         })
     })
-    for (const aim of aims) drawAimEdge(ctx, aim, cell, fog)
+    for (const tint of tints) drawTintEdge(ctx, tint, cell, fog)
     if (!looks) return
     // Tile emoji go on top of everything in the cells, before characters.
     const emoji = looks.flatMap((row, y) =>
@@ -674,6 +694,7 @@ function drawCells(
     ctx.font = `${Math.round(cell * SPRITE_SCALE)}px sans-serif`
     ctx.textAlign = "center"
     ctx.textBaseline = "middle"
+    ctx.fillStyle = COLORS.sprite
     for (const e of emoji) {
         ctx.fillText(e.emoji, (e.x + 0.5) * cell, (e.y + 0.5) * cell)
     }
@@ -690,37 +711,62 @@ function tileLooks(state: GameState): Look[][][] | null {
     return looks
 }
 
-// Per cell [y][x], the players whose aim preview covers it, player 1
-// first, or null with no previews (the common case: no grid each frame).
-function aimGrid(
+// A faint tint over some cells, with a slightly stronger edge round them,
+// drawn under the dots: a player's aim preview in its colour, or the
+// boss's warning while it winds up its breath (see bossWarning).
+type Tint = { cells: readonly Vec2[]; color: string }
+
+// The tints to draw this frame: each aim preview in its player's colour
+// (player 1 first), then, with `windUp` (Effects.bossBreath), the boss's
+// warning if it is winding up. The warning comes from the boss's state and
+// its own colour (BOSS_BREATH in bossBreath.ts), so nothing here knows the
+// boss's breath.
+function tintsFor(
     state: GameState,
-    aims: readonly AimPreview[]
-): number[][][] | null {
-    if (aims.length === 0) return null
-    const grid: number[][][] = state.cells.map((row) => row.map(() => []))
-    for (const { player, cells } of aims) {
-        for (const c of cells) grid[c.y][c.x].push(player)
+    aims: readonly AimPreview[],
+    windUp: boolean
+): Tint[] {
+    const tints: Tint[] = aims.map(({ player, cells }) => ({
+        cells,
+        color: PLAYER_COLORS[player],
+    }))
+    if (!windUp) return tints
+    const warning = bossWarning(state)
+    if (warning && warning.cells.length > 0) tints.push(warning)
+    return tints
+}
+
+// Per cell [y][x], the colours of the tints covering it, in order, or null
+// with no tints (the common case: no grid each frame).
+function tintGrid(
+    state: GameState,
+    tints: readonly Tint[]
+): string[][][] | null {
+    if (tints.length === 0) return null
+    const grid: string[][][] = state.cells.map((row) => row.map(() => []))
+    for (const { color, cells } of tints) {
+        for (const c of cells) grid[c.y][c.x].push(color)
     }
     return grid
 }
 
-// The edge of one aim preview: a line along every side of its cells that
-// doesn't border another of them, so it outlines the whole shape. In fog,
-// cells outside the light get none, as they get no fill.
-function drawAimEdge(
+// The edge of one tint: a line along every side of its cells that doesn't
+// border another of them, so it outlines the whole shape. In fog, cells
+// outside the light get none, as they get no fill.
+function drawTintEdge(
     ctx: CanvasRenderingContext2D,
-    aim: AimPreview,
+    tint: Tint,
     cell: number,
     fog: Sight | null
 ) {
-    const inAim = new Set(aim.cells.map((c) => `${c.x},${c.y}`))
-    const has = (x: number, y: number) => inAim.has(`${x},${y}`)
+    const inTint = new Set(tint.cells.map((c) => `${c.x},${c.y}`))
+    const has = (x: number, y: number) => inTint.has(`${x},${y}`)
     ctx.save()
     ctx.globalAlpha = AIM_EDGE_ALPHA
-    ctx.strokeStyle = PLAYER_COLORS[aim.player]
+    ctx.strokeStyle = tint.color
     ctx.lineWidth = Math.max(1, cell * AIM_EDGE_WIDTH)
     ctx.beginPath()
-    for (const { x, y } of aim.cells) {
+    for (const { x, y } of tint.cells) {
         if (fog && !fog.visible(vec2(x, y))) continue
         const left = x * cell
         const top = y * cell
@@ -759,7 +805,8 @@ function drawBoss(
     cell: number,
     cols: number,
     rows: number,
-    fog: Sight | null
+    fog: Sight | null,
+    windUp: boolean
 ) {
     const { boss } = state
     if (!boss || boss.defeated) return
@@ -768,9 +815,20 @@ function drawBoss(
     const size = cell * SPRITE_SCALE * BOSS_SCALE
     const x = (pos.x + 1) * cell
     const y = (pos.y + 1) * cell
+    // Its looks (see bossLooks: the glow while it winds up its breath, with
+    // `windUp`), each colour as a disc behind the sprite, like an enemy
+    // status's.
+    for (const look of windUp ? bossLooks(state) : []) {
+        if (!look.color) continue
+        ctx.fillStyle = look.color
+        ctx.beginPath()
+        ctx.arc(x, y, (size / 2) * BOSS_GLOW_SCALE, 0, Math.PI * 2)
+        ctx.fill()
+    }
     ctx.textAlign = "center"
     ctx.textBaseline = "middle"
     ctx.font = `${Math.round(size)}px sans-serif`
+    ctx.fillStyle = COLORS.sprite
     ctx.fillText(BOSS_SPRITE, x, y)
     if (boss.flash > 0) {
         ctx.save()
@@ -897,6 +955,7 @@ function drawCharacters(
                 ctx.arc(x, y, size / 2, 0, Math.PI * 2)
                 ctx.fill()
             }
+            ctx.fillStyle = COLORS.sprite
             ctx.fillText(sprite.sprite, x, y)
             if (marker !== null) drawMarker(ctx, marker, x, y, size)
             if (jab) fists.push({ x, y, facing: jab.facing })
@@ -908,6 +967,7 @@ function drawCharacters(
             ]
             if (badges.length === 0) continue
             ctx.font = `${Math.round(size * BADGE_SCALE)}px sans-serif`
+            ctx.fillStyle = COLORS.sprite
             badges.forEach((look, i) => {
                 ctx.fillText(
                     look.emoji!,
@@ -987,6 +1047,7 @@ function drawFist(
     cell: number
 ) {
     ctx.font = `${Math.round(cell * FIST_SCALE)}px sans-serif`
+    ctx.fillStyle = COLORS.sprite
     ctx.fillText(
         FIST,
         x + facing.x * FIST_AHEAD * cell,
@@ -1025,7 +1086,8 @@ function drawArrow(
 // Score on the left, the health gauge on the right, the energy meter in the
 // middle. With two players (hud.players): player 1's score, meter and
 // health on the left, player 2's on the right, each in its marker colour,
-// and in versus the round in the middle.
+// and in versus the round in the middle. On a boss level, the boss's band
+// along the bottom under all of them.
 function drawHud(
     ctx: CanvasRenderingContext2D,
     hud: Hud,
@@ -1036,6 +1098,7 @@ function drawHud(
     ctx.fillStyle = COLORS.text
     ctx.font = `${Math.round(height * 0.6)}px monospace`
     ctx.textBaseline = "middle"
+    if (hud.boss) drawBossBand(ctx, hud.boss, width, height, pad)
     if (hud.players && hud.players.length > 1) {
         drawPlayersHud(ctx, hud, width, height, pad)
         return
@@ -1059,6 +1122,32 @@ function drawHud(
 
 // The bars' height, as a fraction of the HUD strip's.
 const METER_HEIGHT = 0.4
+// The boss band's height, as a fraction of the HUD strip's: below the
+// solo bars (which end at 0.7) and the 2-player health gauges (0.88).
+const BOSS_BAND = 0.1
+
+// The boss's health as a band along the bottom of the HUD strip, from `pad`
+// to `pad` off the right edge: the health left in the boss's colour (as
+// its bar on the map), the rest pale. Text and bars are drawn over it.
+function drawBossBand(
+    ctx: CanvasRenderingContext2D,
+    gauge: HealthHud,
+    width: number,
+    height: number,
+    pad: number
+) {
+    const fraction =
+        gauge.max > 0 ? Math.max(0, Math.min(1, gauge.health / gauge.max)) : 0
+    const h = height * BOSS_BAND
+    const top = height - h
+    const w = width - 2 * pad
+    ctx.save()
+    ctx.fillStyle = COLORS.bossBandTrack
+    ctx.fillRect(pad, top, w, h)
+    ctx.fillStyle = COLORS.bossHealth
+    ctx.fillRect(pad, top, w * fraction, h)
+    ctx.restore()
+}
 // The solo health gauge's width, as a fraction of the HUD's.
 const HEALTH_WIDTH = 0.2
 

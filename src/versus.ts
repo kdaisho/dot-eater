@@ -15,8 +15,8 @@ import { samePos, vec2, type Vec2 } from "./vec2"
 //   loses CATCH_DOTS dots (never below 0) and is out for
 //   PLAYER_RESPAWN_DELAY seconds, then back with full health (see knockOut
 //   in game.ts). A versus game is never lost.
-// - A round ends when the stage is cleared (no dots left and, on a boss
-//   stage, the boss defeated). The player with the most dots (Player.dots)
+// - A round ends when the stage is cleared (no dots left, or on a boss
+//   stage the boss defeated). The player with the most dots (Player.dots)
 //   wins it; a tie goes to the higher score, and an exact tie is replayed.
 //   The first to ROUNDS_TO_WIN round wins takes the match.
 
