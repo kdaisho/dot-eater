@@ -1154,6 +1154,10 @@ function collides(
 // tick still counts (a knockout costs dots and takes the player out)
 // before the round is won, so the round is scored with it.
 //
+// Clearing is checked again after the hits: a knockback that eats the
+// last dot wins on this tick, in every mode, with the hits (and, in
+// versus, any knockout's dots) already counted.
+//
 // The game is lost (see lost) once a hit has taken the solo player's last
 // health, or no co-op player is left in play.
 export function checkEnd(
@@ -1161,14 +1165,16 @@ export function checkEnd(
     start: TickStarts = tickStarts(state, 0)
 ): Outcome | null {
     const bossLeft = state.boss !== null && !state.boss.defeated
-    const cleared = !hasDots(state.cells) && !bossLeft
-    if (cleared && state.mode !== "versus") return "won"
+    const cleared = () => !hasDots(state.cells) && !bossLeft
+    if (cleared() && state.mode !== "versus") return "won"
     state.players.forEach((player, i) => {
         if (player.out || player.invulnerableFor > 0) return
         const hit = touchedBy(state, start, i)
         if (hit) hurtPlayer(state, player, hit.damage, hit.from)
     })
-    if (cleared) return "won"
+    // Checked again: a knockback may have eaten the last dot, which wins
+    // on this tick like any other last dot (the hits stand).
+    if (cleared()) return "won"
     return lost(state) ? "dead" : null
 }
 

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vite-plus/test"
 import { addStatus } from "./breath"
 import {
+    AiType,
     BLINK_RATE,
     Cell,
     ENEMY_DAMAGE,
@@ -11,12 +12,20 @@ import {
 import {
     HURT_INVULNERABLE_TICKS,
     hurtPlayer,
+    IDLE,
     knockBack,
     playerVisible,
+    step,
     type GameState,
     type Mode,
 } from "./game"
-import { drawn, makeEnemy, makeState, textMap } from "./test/helpers"
+import {
+    drawn,
+    fixedRandom,
+    makeEnemy,
+    makeState,
+    textMap,
+} from "./test/helpers"
 import { CATCH_DOTS } from "./versus"
 import { vec2, type Vec2 } from "./vec2"
 
@@ -264,6 +273,41 @@ describe("hurtPlayer", () => {
             expect.objectContaining({ type: "playerCaught", outForGood: false })
         )
     })
+})
+
+describe("a knockback onto the last dot", () => {
+    // The only dot is at (1, 1). Player 1 rests at (2, 1); an enemy
+    // halfway from (3, 1) into its cell hits it on the first tick and
+    // knocks it west, onto the dot.
+    function lastDotHit(mode: Mode) {
+        const { map } = textMap(["#####", "#.  #", "#####"])
+        const players =
+            mode === "solo" ? [vec2(2, 1)] : [vec2(2, 1), vec2(3, 1)]
+        const enemy = makeEnemy(2, 1, AiType.random, { x: 3, y: 1 })
+        enemy.moveProgress = 0.5
+        const state = makeState(map, players, [enemy], {
+            mode,
+            health: MAX_HEALTH,
+        })
+        state.players[0].character.moveProgress = 1
+        // Player 2 is out of the way.
+        if (mode !== "solo") state.players[1].out = true
+        const outcome = step(state, 1 / TICK_RATE, IDLE, fixedRandom(0))
+        return { state, outcome }
+    }
+
+    // Regression: clearing was checked before the hits, so the stage was
+    // only won on the next tick.
+    it.each(["solo", "coop", "versus"] as const)(
+        "wins on that tick (%s)",
+        (mode) => {
+            const { state, outcome } = lastDotHit(mode)
+            expect(state.players[0].health).toBe(MAX_HEALTH - ENEMY_DAMAGE)
+            expect(state.players[0].character.pos).toEqual(vec2(1, 1))
+            expect(state.cells[1][1]).toBe(Cell.none)
+            expect(outcome).toBe("won")
+        }
+    )
 })
 
 describe("playerVisible", () => {
