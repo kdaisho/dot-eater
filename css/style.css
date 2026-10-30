@@ -31,9 +31,10 @@ body * {
 }
 
 /* The play area: the whole window, the maze centred in it. Dragging
-   anywhere on it steers, bands included. On touch screens it leaves the
-   controls' band free (BUTTONS_SPACE in src/layout.ts): below in portrait,
-   on the right in landscape. With the D-pad on, a bigger band
+   anywhere on it steers, bands included. Where touch is the main input
+   (data-buttons) it leaves the punch and breath buttons' band free
+   (BUTTONS_SPACE in src/layout.ts): below in portrait, on the right in
+   landscape. With the D-pad on, a bigger band
    (DPAD_SPACE): below in portrait, both sides in landscape. */
 #play {
     align-items: center;
@@ -44,12 +45,12 @@ body * {
     position: fixed;
 }
 
-body[data-touch="on"] #play {
+body[data-buttons="on"] #play {
     padding-bottom: 104px;
 }
 
 @media (orientation: landscape) {
-    body[data-touch="on"] #play {
+    body[data-buttons="on"] #play {
         padding: 0 104px 0 0;
     }
 }
@@ -394,14 +395,16 @@ body[data-dpad="on"] .dpad {
     transform: translateY(-50%);
 }
 
-/* Punch and breath: during play on touch screens, on the right of the band
+/* Punch and breath: during play where touch is the main input (a coarse
+   primary pointer, not a laptop's touch screen) or the D-pad shows
+   (data-buttons), on the right of the band
    #play leaves free. In portrait they sit side by side below the maze,
    punch in the corner; in landscape breath sits above punch, right of the
    maze. 72 px each with 16 px margins: BUTTONS_SPACE (104 px) in
    src/layout.ts. With the D-pad on they sit further in, in its bigger
    band. */
-body[data-touch="on"][data-playing="on"] .touch-punch,
-body[data-touch="on"][data-playing="on"] .touch-breath {
+body[data-buttons="on"][data-playing="on"] .touch-punch,
+body[data-buttons="on"][data-playing="on"] .touch-breath {
     display: block;
 }
 

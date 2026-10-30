@@ -96,10 +96,19 @@ describe("main on a touch screen", () => {
             }
         }
         happyDOM.setViewport({ width: 600, height: 500 })
-        // A touch screen, so the touch-only parts show.
+        // A touch screen that is the main input (a phone), so the
+        // touch-only parts show.
         Object.defineProperty(navigator, "maxTouchPoints", {
             configurable: true,
             value: 5,
+        })
+        const media = window.matchMedia.bind(window)
+        Object.defineProperty(window, "matchMedia", {
+            configurable: true,
+            value: (query: string) =>
+                query.includes("pointer: coarse")
+                    ? { media: query, matches: true }
+                    : media(query),
         })
         document.body.innerHTML =
             '<main id="play"><canvas id="game"></canvas></main>'
@@ -109,6 +118,7 @@ describe("main on a touch screen", () => {
     it("starts with the D-pad off and no pause button", () => {
         expect(document.querySelector("#touch-controls")).not.toBeNull()
         expect(document.body.dataset.touch).toBe("on")
+        expect(document.body.dataset.buttons).toBe("on")
         expect(document.body.dataset.dpad).toBe("off")
         expect(document.body.dataset.playing).toBe("off")
     })

@@ -95,7 +95,7 @@ import {
     showToast,
     type EndScreenView,
 } from "./ui"
-import { isTouchDevice, TouchSource } from "./touch"
+import { isTouchDevice, isTouchFirst, TouchSource } from "./touch"
 import { roundWins, stunned, tallyText } from "./versus"
 
 let screen: Screen = initialScreen()
@@ -128,13 +128,17 @@ function mediaQuery(query: string): MediaQueryList | undefined {
 }
 const reducedMotion = mediaQuery("(prefers-reduced-motion: reduce)")
 const touch = isTouchDevice(window)
+// Touch is the main input (a phone or tablet, not a laptop's touch screen):
+// the punch and breath buttons show, with room kept for them.
+const touchFirst = isTouchFirst(window)
 
 const canvas = document.getElementById("game")
 if (!(canvas instanceof HTMLCanvasElement)) throw new Error("No #game canvas")
 // Touch: dragging on the play area steers player 1 while the finger is
-// down (TouchSource); the on-screen pause, punch and breath buttons
-// (dpad.ts) show during play on touch devices. The optional D-pad steers
-// too, alongside the drag: it shows on touch devices when the Show D-pad
+// down (TouchSource). The on-screen pause button (dpad.ts) shows during
+// play on touch devices, and the punch and breath buttons where touch is
+// the main input or the D-pad shows. The optional D-pad steers too,
+// alongside the drag: it shows on touch devices when the Show D-pad
 // setting is on (applyDpad, live as the setting changes).
 const playArea = document.getElementById("play") ?? canvas
 const touchControls = createTouchControls()
@@ -142,7 +146,12 @@ const touchControls = createTouchControls()
 // lift may never come.
 const touchSource = new TouchSource(playArea, { view: window, doc: document })
 let dpadShown = false
-setControls(document, { touch, dpad: false, playing: false })
+setControls(document, {
+    touch,
+    buttons: touchFirst,
+    dpad: false,
+    playing: false,
+})
 
 // The renderer fits the maze into the window less the touch controls' band.
 const renderer = createRenderer(canvas, {
@@ -161,17 +170,18 @@ const renderer = createRenderer(canvas, {
 addEventListener("resize", () => renderer.resize())
 
 function controlsRoom() {
-    const shown = dpadShown ? "dpad" : touch ? "buttons" : "none"
+    const shown = dpadShown ? "dpad" : touchFirst ? "buttons" : "none"
     return controlsSpace(innerWidth, innerHeight, shown)
 }
 
 // Show or hide the on-screen D-pad as the settings say, refitting the maze
-// when that changes.
+// when that changes. Punch and breath show beside it, on a laptop's touch
+// screen too.
 function applyDpad() {
     const on = touch && settings.showDpad
     if (on === dpadShown) return
     dpadShown = on
-    setControls(document, { dpad: on })
+    setControls(document, { dpad: on, buttons: touchFirst || on })
     renderer.resize()
 }
 applyDpad()

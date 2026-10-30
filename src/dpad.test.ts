@@ -91,29 +91,44 @@ describe("touch controls' visibility", () => {
     })
     afterEach(() => document.head.replaceChildren())
 
+    const phone = { touch: true, buttons: true, dpad: false }
+
     it("shows pause, punch and breath only on a touch screen during play", () => {
-        expect(shownWith({ touch: true, dpad: false, playing: true })).toEqual([
+        expect(shownWith({ ...phone, playing: true })).toEqual([
             "touch-pause",
             "touch-breath",
             "touch-punch",
         ])
         // Outside play (menus, pause).
-        expect(shownWith({ touch: true, dpad: false, playing: false })).toEqual(
-            []
-        )
+        expect(shownWith({ ...phone, playing: false })).toEqual([])
         // Not a touch screen.
-        expect(shownWith({ touch: false, dpad: false, playing: true })).toEqual(
-            []
-        )
+        expect(
+            shownWith({
+                touch: false,
+                buttons: false,
+                dpad: false,
+                playing: true,
+            })
+        ).toEqual([])
+    })
+
+    // Regression (PR #79 review): a laptop with a touch screen got the
+    // punch and breath buttons (and their band) over its keyboard play.
+    it("shows only pause on a touch screen that isn't the main input", () => {
+        expect(
+            shownWith({
+                touch: true,
+                buttons: false,
+                dpad: false,
+                playing: true,
+            })
+        ).toEqual(["touch-pause"])
     })
 
     it("shows the D-pad with Show D-pad on, beside punch and breath", () => {
-        expect(shownWith({ touch: true, dpad: true, playing: true })).toEqual([
-            "touch-pause",
-            "dpad",
-            "touch-breath",
-            "touch-punch",
-        ])
+        expect(
+            shownWith({ touch: true, buttons: true, dpad: true, playing: true })
+        ).toEqual(["touch-pause", "dpad", "touch-breath", "touch-punch"])
     })
 
     // Where the stylesheet puts each control shown, from its fixed
@@ -164,6 +179,7 @@ describe("touch controls' visibility", () => {
         for (const dpad of [false, true]) {
             const boxes = boxesAt(width, height, {
                 touch: true,
+                buttons: true,
                 dpad,
                 playing: true,
             })
@@ -190,6 +206,7 @@ describe("touch controls' visibility", () => {
         const at = (width: number, height: number, dpad: boolean) => {
             const boxes = boxesAt(width, height, {
                 touch: true,
+                buttons: true,
                 dpad,
                 playing: true,
             })

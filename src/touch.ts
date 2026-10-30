@@ -303,9 +303,8 @@ function reanchor(finger: Finger) {
     finger.anchorY = finger.y
 }
 
-// Whether the device has a touch screen, so the touch-only buttons (pause,
-// punch and breath) show and the maze leaves room for them. `view` is the
-// window.
+// Whether the device has a touch screen, so the touch-only parts (the pause
+// button, the Show D-pad setting) show. `view` is the window.
 export function isTouchDevice(view: {
     matchMedia?: (query: string) => { matches: boolean }
     navigator?: { maxTouchPoints?: number }
@@ -316,4 +315,18 @@ export function isTouchDevice(view: {
         // An old browser without matchMedia queries: go by touch points.
     }
     return (view.navigator?.maxTouchPoints ?? 0) > 0
+}
+
+// Whether touch is the device's main input (its primary pointer is coarse,
+// as on a phone or tablet), so the punch and breath buttons show and the
+// maze leaves room for them. A laptop with a touch screen is a touch device
+// (isTouchDevice) but not this: its trackpad and keys come first.
+export function isTouchFirst(view: {
+    matchMedia?: (query: string) => { matches: boolean }
+}): boolean {
+    try {
+        return view.matchMedia?.("(pointer: coarse)").matches ?? false
+    } catch {
+        return false
+    }
 }

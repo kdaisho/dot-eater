@@ -10,6 +10,7 @@ import {
 import { fixedRandom, makeState } from "./test/helpers"
 import {
     isTouchDevice,
+    isTouchFirst,
     SWIPE_DISTANCE,
     dragHeld,
     swipeDirection,
@@ -61,6 +62,26 @@ describe("dragHeld", () => {
             direction: "down",
             fallback: "right",
         })
+    })
+})
+
+describe("isTouchFirst", () => {
+    it("goes by the primary pointer only", () => {
+        const media = (coarse: readonly string[]) => (query: string) => ({
+            matches: coarse.includes(query),
+        })
+        expect(isTouchFirst({ matchMedia: media(["(pointer: coarse)"]) })).toBe(
+            true
+        )
+        // A laptop's touch screen: a coarse pointer, but not the primary.
+        expect(
+            isTouchFirst({ matchMedia: media(["(any-pointer: coarse)"]) })
+        ).toBe(false)
+        expect(isTouchFirst({})).toBe(false)
+        const matchMedia = () => {
+            throw new Error("no")
+        }
+        expect(isTouchFirst({ matchMedia })).toBe(false)
     })
 })
 

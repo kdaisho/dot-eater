@@ -93,9 +93,11 @@ function button(
 }
 
 export type ControlFlags = {
-    // A touch screen: the pause, punch and breath buttons show during play
-    // (and the maze makes room for them).
+    // A touch screen: the pause button shows during play.
     touch?: boolean
+    // The punch and breath buttons show during play (and the maze makes
+    // room for them): touch is the main input, or the D-pad shows.
+    buttons?: boolean
     // The D-pad shows (and the maze makes a bigger band for it).
     dpad?: boolean
     // A game is being played (not a menu or pause).
@@ -103,7 +105,7 @@ export type ControlFlags = {
 }
 
 // Set which touch controls show, as "on"/"off" data attributes on the body
-// (data-touch, data-dpad, data-playing). Flags left out stay as they are.
+// (data-touch, data-buttons, data-dpad, data-playing). Flags left out stay as they are.
 export function setControls(doc: Document, flags: ControlFlags): void {
     for (const [name, on] of Object.entries(flags)) {
         if (on !== undefined) doc.body.dataset[name] = on ? "on" : "off"
