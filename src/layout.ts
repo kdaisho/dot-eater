@@ -7,10 +7,15 @@ export const PADDING = 16
 // Cells never grow bigger than this, in CSS pixels, so the maze doesn't
 // balloon on big screens.
 export const MAX_CELL = 48
-// Nor smaller than this, so the game stays playable on a phone. A maze
-// that would need smaller cells to fit whole is drawn at this size instead,
-// part of it on screen, and the view follows the player (camera.ts). A
+// A maze that fits whole with cells at least this big is drawn whole, so
+// today's stages stay whole on narrow phones and short windows. A
 // placeholder (KDA-266), to tune on a real phone.
+export const MIN_FIT_CELL_PX = 16
+// A maze that would need smaller cells than MIN_FIT_CELL_PX to fit whole is
+// drawn with cells this big instead, part of it on screen, and the view
+// follows the player (camera.ts). Bigger than MIN_FIT_CELL_PX, so a maze
+// that has to scroll anyway is comfortable to play. A placeholder
+// (KDA-266), to tune on a real phone.
 export const MIN_CELL_PX = 20
 
 export type Layout = {
@@ -32,7 +37,7 @@ export type Layout = {
 
 // Fit a cols x rows maze plus the HUD strip into the viewport (CSS pixels)
 // with square, whole-pixel cells. When that would make the cells smaller
-// than MIN_CELL_PX, they are MIN_CELL_PX and the canvas takes the viewport
+// than MIN_FIT_CELL_PX, they are MIN_CELL_PX and the canvas takes the viewport
 // (at least a cell of maze below the HUD) along each axis the maze doesn't
 // fit; the renderer shows the part of the maze the view picks.
 export function computeLayout(
@@ -46,7 +51,8 @@ export function computeLayout(
         (viewportWidth - 2 * PADDING) / cols,
         (viewportHeight - 2 * PADDING) / (rows + HUD_ROWS)
     )
-    const cell = Math.max(MIN_CELL_PX, Math.min(MAX_CELL, Math.floor(fit)))
+    const whole = Math.min(MAX_CELL, Math.floor(fit))
+    const cell = whole >= MIN_FIT_CELL_PX ? whole : MIN_CELL_PX
     const ratio = dpr > 0 ? dpr : 1
     const width = Math.min(
         cell * cols,

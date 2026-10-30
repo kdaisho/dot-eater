@@ -28,7 +28,7 @@ import {
 } from "./fog"
 import type { GameState, Player } from "./game"
 import { eatenDotVisible, glidePos, wrapCopies } from "./glide"
-import { computeLayout, MIN_CELL_PX, type Layout } from "./layout"
+import { computeLayout, type Layout } from "./layout"
 import type { LevelRules } from "./level"
 import { particleAlpha, type Particle } from "./particles"
 import type { FacingGuide } from "./settings"
@@ -260,8 +260,13 @@ export function createRenderer(
     // Where the view is this frame: eased after the players in play (their
     // midpoint, both kept in view), or held where it was while nobody is in
     // play. A fresh view starts right on the players (all of them when none
-    // is in play).
-    function follow(state: GameState, alpha: number, viewport: Viewport) {
+    // is in play). It zooms in no closer than the layout's cell size.
+    function follow(
+        state: GameState,
+        alpha: number,
+        viewport: Viewport,
+        close: number
+    ) {
         const maze = { cols, rows }
         const time = now()
         const inPlay = state.players.filter((p) => !p.out)
@@ -272,7 +277,7 @@ export function createRenderer(
                 players.map((p) =>
                     glidePos(p.character, alpha, cols, rows, p.rate)
                 ),
-                MIN_CELL_PX
+                close
             )
         let next: View
         if (!camera || camera.state !== state) {
@@ -282,7 +287,7 @@ export function createRenderer(
         } else {
             const dt = (time - camera.time) / 1000
             const eased = easeView(camera.view, viewOf(inPlay), dt)
-            next = clampView(eased, maze, viewport, MIN_CELL_PX)
+            next = clampView(eased, maze, viewport, close)
         }
         camera = { view: next, state, time }
         return next
@@ -309,7 +314,7 @@ export function createRenderer(
         // The view this frame (see camera.ts). From here on `cell` is its
         // cell size: the layout's, or less while the view zooms out to keep
         // two players in view.
-        const shot = follow(state, alpha, viewport)
+        const shot = follow(state, alpha, viewport, layout.cell)
         const cell = shot.cell
         const origin = viewOrigin(shot, viewport)
         // The part of the maze on screen, in maze pixels; its corner on a

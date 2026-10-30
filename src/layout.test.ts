@@ -6,6 +6,7 @@ import {
     HUD_ROWS,
     MAX_CELL,
     MIN_CELL_PX,
+    MIN_FIT_CELL_PX,
     PADDING,
 } from "./layout"
 
@@ -32,6 +33,56 @@ describe("computeLayout", () => {
         expect(computeLayout(5000, 5000, 9, 9).cell).toBe(MAX_CELL)
         expect(computeLayout(50, 50, 9, 9).cell).toBe(MIN_CELL_PX)
         expect(Number.isInteger(computeLayout(777, 555, 9, 9).cell)).toBe(true)
+    })
+
+    describe("today's 17x15 stages on small screens", () => {
+        // A 17x15 maze plus the HUD row, whole, with `cell` px cells.
+        const whole = (cell: number) => ({
+            cell,
+            width: cell * 17,
+            height: cell * 16,
+        })
+
+        it("stay whole on an Android phone in portrait", () => {
+            // (360 - 32) / 17: 19.3 -> 19 px cells, as before KDA-266.
+            expect(computeLayout(360, 740, 17, 15)).toMatchObject(whole(19))
+        })
+
+        it("stay whole on an iPhone SE in landscape with the D-pad", () => {
+            const room = controlsSpace(667, 375, true)
+            const layout = computeLayout(
+                667 - room.width,
+                375 - room.height,
+                17,
+                15
+            )
+            // (667 - 360 - 32) / 17: 16.2 -> 16 px cells.
+            expect(layout).toMatchObject(whole(16))
+            expect(layout.cell).toBe(MIN_FIT_CELL_PX)
+        })
+
+        it("stay whole in a short desktop window", () => {
+            // (340 - 32) / 16 rows: 19.25 -> 19 px cells.
+            expect(computeLayout(1200, 340, 17, 15)).toMatchObject(whole(19))
+        })
+
+        it("follow at MIN_CELL_PX once they'd need cells under MIN_FIT_CELL_PX", () => {
+            // (300 - 32) / 17: 15.8 -> 15 px cells to fit.
+            const layout = computeLayout(300, 740, 17, 15)
+            expect(layout.cell).toBe(MIN_CELL_PX)
+            expect(layout.width).toBe(300 - 2 * PADDING)
+            expect(layout.height).toBe(MIN_CELL_PX * 16)
+        })
+    })
+
+    it("follows a 29x21 maze on a phone at MIN_CELL_PX", () => {
+        // (390 - 32) / 29: 12.3 px cells to fit, so 20 px cells, the
+        // screen's width and every row.
+        expect(computeLayout(390, 844, 29, 21)).toMatchObject({
+            cell: MIN_CELL_PX,
+            width: 390 - 2 * PADDING,
+            height: MIN_CELL_PX * 22,
+        })
     })
 
     it("keeps cells at the minimum and the canvas to the viewport when the maze won't fit", () => {

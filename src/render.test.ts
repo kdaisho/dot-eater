@@ -21,6 +21,7 @@ import {
 } from "./game"
 import { MIN_CELL_PX } from "./layout"
 import type { LevelRules } from "./level"
+import { levels } from "./levels"
 import {
     BOSS_SCALE,
     BOSS_SPRITE,
@@ -1863,6 +1864,19 @@ describe("createRenderer on a maze too big for the screen", () => {
         expect(scroll()[0]).toBeCloseTo(MAX_X)
         const drawn = calls.filter((c) => c.args[0] === "👹")
         expect(drawn.map((c) => c.args[1])).toEqual([0, 29 * CELL])
+    })
+
+    it("draws a maze that fits whole under MIN_CELL_PX whole, without zooming in", () => {
+        const { calls, frame, view } = bigSetup()
+        // Stage 1 (17x15) on an Android phone in portrait: 19 px cells.
+        view.innerWidth = 360
+        view.innerHeight = 740
+        frame(createGameState(levels[0]))
+        expect(calls.filter((c) => c.name === "translate")).toHaveLength(1)
+        const rect = calls.find((c) => c.name === "rect")
+        expect(rect?.args).toEqual([0, 0, 17 * 19, 15 * 19])
+        const sprite = calls.find((c) => c.args[0] === "🐉")
+        expect(sprite?.font).toBe(font(19))
     })
 
     it("draws a maze that fits whole as before, unmoved", () => {
