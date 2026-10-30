@@ -16,7 +16,12 @@ import { step, type MoveInput } from "./game"
 import type { Action } from "./input"
 import { emptyProgress, markCleared } from "./progress"
 import { AnimalId, DEFAULT_ANIMAL } from "./roster"
-import { fixedRandom, parseFlat, sameAtEvery } from "./test/helpers"
+import {
+    difficultySelect,
+    fixedRandom,
+    parseFlat,
+    sameAtEvery,
+} from "./test/helpers"
 import { vec2, type Vec2 } from "./vec2"
 
 // The screen machine with a mode picked on the title, and two players
@@ -184,12 +189,11 @@ describe("2-player stage select", () => {
         selected,
     })
 
-    it("opens character select with both cursors on the last pick", () => {
-        const next = update(
-            select(1),
-            input([["confirm"]]),
-            deps({ lastAnimal: AnimalId.skunk })
-        )
+    it("opens difficulty select, then character select with both cursors on the last pick", () => {
+        const d = deps({ lastAnimal: AnimalId.skunk })
+        const difficulty = update(select(1), input([["confirm"]]), d)
+        expect(difficulty).toEqual(difficultySelect(1, "medium", "coop"))
+        const next = update(difficulty, input([["confirm"]]), d)
         expect(next).toEqual(
             characterSelect([AnimalId.skunk, AnimalId.skunk], [false, false], 1)
         )
@@ -261,13 +265,11 @@ describe("2-player character select", () => {
         expect(next).toEqual(characterSelect())
     })
 
-    it("goes back to stage select on back from a player who hasn't confirmed", () => {
+    it("goes back to difficulty select on back from a player who hasn't confirmed", () => {
         const ready = characterSelect(undefined, [true, false], 1)
-        expect(update(ready, input([[], ["pause"]]), deps())).toEqual({
-            kind: "stageSelect",
-            mode: "coop",
-            selected: 1,
-        })
+        expect(update(ready, input([[], ["pause"]]), deps())).toEqual(
+            difficultySelect(1, "medium", "coop")
+        )
     })
 })
 
