@@ -401,22 +401,29 @@ export function recordBests(
     }
 }
 
-// A win: mark stage `index` cleared, which unlocks the next (whatever the
-// difficulty), record the clear's stars and time as bests at its difficulty
-// where they improve, and save unless storage already holds exactly that
-// (in any key order). Storage is read again first and merged (see
-// mergeProgress), so clears and bests another tab saved since this one
-// loaded aren't overwritten, and this tab's better bests aren't lost either.
-// Returns the new progress.
+// Whether a clear unlocks the next stage (KDA-272): stages unlock only by
+// story progress, so a story mode clear does and a stage mode clear
+// doesn't. Every caller says which.
+export type ClearUnlocks = { unlocks: boolean }
+
+// A win: when it `unlocks`, mark stage `index` cleared, which unlocks the
+// next (whatever the difficulty); either way, record the clear's stars and
+// time as bests at its difficulty where they improve, and save unless
+// storage already holds exactly that (in any key order). Storage is read
+// again first and merged (see mergeProgress), so clears and bests another
+// tab saved since this one loaded aren't overwritten, and this tab's better
+// bests aren't lost either. Returns the new progress.
 export function recordClear(
     progress: Progress,
     storage: ProgressStorage | undefined,
     index: number,
-    clear: ClearRecord
+    clear: ClearRecord,
+    { unlocks }: ClearUnlocks
 ): Progress {
     const stored = loadProgress(storage)
     const latest = mergeProgress(progress, stored)
-    const next = recordBests(markCleared(latest, index), index, clear)
+    const marked = unlocks ? markCleared(latest, index) : latest
+    const next = recordBests(marked, index, clear)
     if (!sameData(next, stored)) {
         saveProgress(storage, next)
     }
@@ -455,8 +462,10 @@ export function recordStoryBest(
 
 // What one stage select slot shows.
 export type StageSlot =
-    // A cleared stage also shows its bests at the difficulty stage select
-    // shows (see bestsAt).
+    // An open stage also shows its bests at the difficulty stage select
+    // shows (see bestsAt), if it has any. A stage mode clear records bests
+    // without clearing the stage (KDA-272), so an open stage that isn't
+    // cleared may have them too.
     | { kind: "open"; name: string; stars?: number; bestTime?: number }
     | { kind: "locked"; name: string }
     // No level exists for this slot yet.
@@ -473,9 +482,11 @@ export function stageSlots(
         if (i >= names.length) return { kind: "comingSoon" }
         const name = names[i]
         if (!isUnlocked(progress, i)) return { kind: "locked", name }
-        const stage = progress.stages[i]
-        if (!stage.cleared) return { kind: "open", name }
-        return { kind: "open", name, ...bestsAt(stage, difficulty) }
+        return {
+            kind: "open",
+            name,
+            ...bestsAt(progress.stages[i], difficulty),
+        }
     })
 }
 

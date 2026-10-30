@@ -145,10 +145,9 @@ describe("story bests in the save", () => {
     it("survive recording a clear", () => {
         const storage = memoryStorage()
         const progress = { ...emptyProgress(), storyBests: { easy: 70 } }
-        const next = recordClear(progress, storage, 0, {
-            difficulty: "easy",
-            stars: 3,
-            ticks: 600,
+        const clear = { difficulty: "easy", stars: 3, ticks: 600 } as const
+        const next = recordClear(progress, storage, 0, clear, {
+            unlocks: true,
         })
         expect(next.storyBests).toEqual({ easy: 70 })
         expect(loadProgress(storage).storyBests).toEqual({ easy: 70 })

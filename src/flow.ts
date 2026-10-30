@@ -119,8 +119,9 @@ import { matchWinner, roundResult, type RoundResult } from "./versus"
 // them, locked ones included, so the player can see what's ahead; confirm
 // only starts a stage that is unlocked and has a level. Saved progress comes
 // in through FlowDeps; main records a clear when stageClear is entered, in
-// 1-player games only (see recordsProgress). A 2-player game can play any
-// stage unlocked in 1-player.
+// 1-player games only (see recordsProgress): its stars and bests, but no
+// unlock, since stages unlock only by story progress (KDA-272). A 2-player
+// game can play any stage unlocked in 1-player.
 //
 // Confirming an open stage goes to difficulty select, then character
 // select, with every cursor on the character picked last
@@ -186,7 +187,8 @@ import { matchWinner, roundResult, type RoundResult } from "./versus"
 //                    \-> gameOver -> playing (retry) / title
 //
 // Main records a story clear as it does a stage clear (in 1-player only),
-// and a run's total at storyEnd as the best story score at its difficulty.
+// except that only a story clear unlocks the next stage (KDA-272), and a
+// run's total at storyEnd as the best story score at its difficulty.
 
 // What an end screen offers, in menu order. The first is selected on entry,
 // so Space retries (once END_CONFIRM_DELAY has passed).
