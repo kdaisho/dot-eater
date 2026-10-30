@@ -15,7 +15,11 @@ import { samePos, vec2 } from "./vec2"
 const spread = vi.hoisted(() => ({ moves: 0, changed: 0 }))
 vi.mock("./ai", async (importOriginal) => {
     const ai = await importOriginal<typeof import("./ai")>()
-    const spreads = new Set([AiType.chase, AiType.ambusher, AiType.splitter])
+    const spreads = new Set<AiType>([
+        AiType.chase,
+        AiType.ambusher,
+        AiType.splitter,
+    ])
     return {
         ...ai,
         enemyMove: (...args: Parameters<typeof ai.enemyMove>) => {

@@ -1113,7 +1113,7 @@ describe("chasing on shared distances", () => {
                         )
                         // A twin that came from `at` on each candidate in
                         // turn, then on every one; and one of another kind.
-                        const twin = (v: Vec2, ai = AiType.chase) =>
+                        const twin = (v: Vec2, ai: AiType = AiType.chase) =>
                             makeEnemy(v.x, v.y, ai, at)
                         const crowds = [
                             ...moves.map((v) => [twin(v)]),
@@ -1152,7 +1152,7 @@ describe("chasing on shared distances", () => {
                             )
                             expect(enemy.pos).toEqual(expected)
                             if (samePos(expected, at)) held++
-                            else if (!samePos(expected, best)) spread++
+                            else if (best && !samePos(expected, best)) spread++
                             compared++
                         }
                     }
