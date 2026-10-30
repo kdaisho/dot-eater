@@ -1,6 +1,7 @@
 import { Cell } from "./constants"
 import { moveStep } from "./glide"
 import { loopPos } from "./level"
+import { wrap } from "./path"
 import { allDirections, directions, samePos, vec2, type Vec2 } from "./vec2"
 
 // Ice floor. Pure, no DOM.
@@ -224,8 +225,7 @@ export function slideDistances(
     const slides = (x: number, y: number, heading: number) => {
         if (!ice[y][x]) return false
         const d = directions[allDirections[heading]]
-        const next = loopPos(cells, vec2(x + d.x, y + d.y))
-        return cells[next.y][next.x] !== Cell.wall
+        return cells[wrap(y + d.y, height)][wrap(x + d.x, width)] !== Cell.wall
     }
 
     // Standing on the target in any state counts as reaching it.
@@ -247,13 +247,14 @@ export function slideDistances(
             if (heading !== FREE && h !== heading) continue
             if (slides(x, y, h) !== (heading !== FREE)) continue
             const d = directions[allDirections[h]]
-            const from = loopPos(cells, vec2(x - d.x, y - d.y))
-            if (cells[from.y][from.x] === Cell.wall) continue
-            if (blocked && samePos(from, blocked)) continue
+            const fx = wrap(x - d.x, width)
+            const fy = wrap(y - d.y, height)
+            if (cells[fy][fx] === Cell.wall) continue
+            if (blocked && blocked.x === fx && blocked.y === fy) continue
             // Either free there and choosing this way, or already sliding
             // this way (which needs ice there).
-            reach(from.x, from.y, FREE, next)
-            if (ice[from.y][from.x]) reach(from.x, from.y, h, next)
+            reach(fx, fy, FREE, next)
+            if (ice[fy][fx]) reach(fx, fy, h, next)
         }
     }
 

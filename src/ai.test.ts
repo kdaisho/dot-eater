@@ -1,6 +1,11 @@
 import { describe, expect, it, vi } from "vite-plus/test"
-import { AiType, AMBUSH_AHEAD } from "./constants"
-import { ambushTarget, candidateMoves, enemyMove } from "./ai"
+import { AiType, AMBUSH_AHEAD, Cell } from "./constants"
+import {
+    ambushTarget,
+    candidateMoves,
+    enemyMove,
+    type ChaseDistances,
+} from "./ai"
 import {
     cellsFrom,
     fixedRandom,
@@ -10,8 +15,10 @@ import {
 } from "./test/helpers"
 import type { Character } from "./character"
 import type { Cells } from "./level"
-import { vec2, type Vec2 } from "./vec2"
-import { slideDistances } from "./ice"
+import { levels } from "./levels"
+import { openNeighbours } from "./path"
+import { allDirections, samePos, vec2, type Vec2 } from "./vec2"
+import { slideDistances, stepFrom, type IceMap } from "./ice"
 
 // slideDistances is spied on (still doing its real work) so tests can tell
 // whether enemy pathing used it or took the no-ice fast path.
@@ -834,5 +841,111 @@ describe("blocked cells", () => {
             cloud
         )
         expect(enemy.pos).toEqual(vec2(2, 1))
+    })
+})
+
+describe("chasing on shared distances", () => {
+    // What chaseStep chose before the distances were shared: each candidate
+    // scored by a search of its own with the enemy's cell blocked.
+    function blockedChoice(
+        cells: Cells,
+        ice: IceMap,
+        enemy: Character,
+        target: Vec2
+    ): Vec2 {
+        const pos = candidateMoves(cells, enemy)
+        const dist = slideDistances(cells, ice, target, enemy.pos)
+        let best = pos[0]
+        let bestDist = Infinity
+        for (const v of pos) {
+            const state = allDirections
+                .map((_, h) => stepFrom(cells, ice, enemy.pos, h))
+                .find((s) => s !== null && samePos(s.pos, v))
+            const d = state ? dist(state) : Infinity
+            if (d < bestDist) {
+                best = v
+                bestDist = d
+            }
+        }
+        return best
+    }
+
+    // Every few open cells of `cells`.
+    function sample(cells: Cells, every: number): Vec2[] {
+        const open = cells.flatMap((row, y) =>
+            row.flatMap((c, x) => (c === Cell.wall ? [] : [vec2(x, y)]))
+        )
+        return open.filter((_, i) => i % every === 0)
+    }
+
+    it("chooses as a search with the enemy's own cell blocked would", () => {
+        let compared = 0
+        for (const level of levels) {
+            const cells = cellsFrom(level.cells)
+            const { ice } = level
+            for (const target of sample(cells, 23)) {
+                const shared: ChaseDistances = new Map()
+                for (const at of sample(cells, 3)) {
+                    // Arriving from each open neighbour, and not having moved.
+                    for (const last of [...openNeighbours(cells, at), at]) {
+                        const enemy = makeEnemy(at.x, at.y, AiType.chase, last)
+                        const expected = blockedChoice(
+                            cells,
+                            ice,
+                            enemy,
+                            target
+                        )
+                        enemyMove(
+                            cells,
+                            enemy,
+                            target,
+                            fixedRandom(0),
+                            target,
+                            ice,
+                            null,
+                            cells,
+                            shared
+                        )
+                        expect(enemy.pos).toEqual(expected)
+                        compared++
+                    }
+                }
+            }
+        }
+        expect(compared).toBeGreaterThan(1000)
+    })
+
+    it("searches once per target for every enemy sharing the distances", () => {
+        const rink = textMap([
+            "#########",
+            "#.~~~~~.#",
+            "#.##.####",
+            "#.##.####",
+            "#.......#",
+            "#########",
+        ])
+        const cells = cellsFrom(rink.map)
+        const shared: ChaseDistances = new Map()
+        vi.mocked(slideDistances).mockClear()
+        // Each heading the way the player is, so none needs a search of its
+        // own.
+        for (const enemy of [
+            makeEnemy(1, 2, AiType.chase, { x: 1, y: 3 }),
+            makeEnemy(4, 3, AiType.chase, { x: 4, y: 4 }),
+            makeEnemy(7, 4, AiType.chase, { x: 6, y: 4 }),
+        ]) {
+            enemyMove(
+                cells,
+                enemy,
+                vec2(7, 1),
+                fixedRandom(0),
+                vec2(7, 1),
+                rink.ice,
+                null,
+                cells,
+                shared
+            )
+        }
+        expect(slideDistances).toHaveBeenCalledTimes(1)
     })
 })
