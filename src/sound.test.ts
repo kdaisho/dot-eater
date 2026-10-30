@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vite-plus/test"
 import { type Audio } from "./audio"
 import { DEFAULT_BINDINGS, rebind } from "./bindings"
 import type { GameEvent } from "./events"
-import { initialScreen, type Screen } from "./flow"
+import { initialScreen, STORY_CARD_SECONDS, type Screen } from "./flow"
 import type { GameState } from "./game"
 import { ANIMAL_IDS } from "./roster"
 import { defaultSettings } from "./settings"
@@ -563,5 +563,18 @@ describe("story mode (KDA-271)", () => {
         expect(menuSound(storyClear, playing(1))).toBe("confirm")
         expect(menuSound(ending, storyClear)).toBeUndefined()
         expect(menuSound(ending, storyEnd)).toBeUndefined()
+    })
+
+    // Regression: the card starting the next stage by itself played the
+    // confirm sound, with nothing pressed.
+    it("is quiet when the card starts the next stage by itself", () => {
+        const waited = (seconds: number): Screen => ({
+            ...(storyClear as ScreenOf<"storyClear">),
+            waited: { seconds },
+        })
+        expect(
+            menuSound(waited(STORY_CARD_SECONDS), playing(1))
+        ).toBeUndefined()
+        expect(menuSound(waited(1), playing(1))).toBe("confirm")
     })
 })

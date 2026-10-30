@@ -5,7 +5,7 @@
 
 import { volumesOf, type Audio } from "./audio"
 import type { GameEvent } from "./events"
-import type { Screen } from "./flow"
+import { storyCardTimedOut, type Screen } from "./flow"
 import { MusicTrackId, stageTrack } from "./music"
 import type { Settings } from "./settings"
 import { breathSfx, SfxId } from "./sfx"
@@ -195,6 +195,9 @@ export function menuSound(prev: Screen, next: Screen): SfxId | undefined {
     )
         return SfxId.pause
     if (prev.kind === "playing" || prev.kind === "ending") return undefined
+    // The story clear card starting the next stage by itself: nobody
+    // pressed anything, so no confirm.
+    if (prev.kind === "storyClear" && storyCardTimedOut(prev)) return undefined
     if (isBack(prev, next)) return SfxId.back
     return SfxId.confirm
 }

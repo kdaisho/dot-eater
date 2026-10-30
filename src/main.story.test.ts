@@ -217,6 +217,10 @@ describe("main in story mode", () => {
         expect(screen()).toBe("game-over")
         expect(lines()).toEqual(["Difficulty Hard", "Score 15", "Run total 50"])
         expect(items()).toEqual(["Retry", "Quit"])
+        // Regression: the HUD behind the card added the failed stage's
+        // score (65); it shows the card's run total, what Retry plays on
+        // from.
+        expect(drawn.hud?.score).toBe(50)
         waitConfirm()
         pressAndTick("Space")
         expect(screen()).toBe("playing")

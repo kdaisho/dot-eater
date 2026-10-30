@@ -48,7 +48,6 @@ import {
     type Mode,
     type PauseChoice,
     type PlayChoice,
-    type Run,
     type Screen,
     type StoryChoice,
     type TickInput,
@@ -157,6 +156,9 @@ function mediaQuery(query: string): MediaQueryList | undefined {
 }
 const reducedMotion = mediaQuery("(prefers-reduced-motion: reduce)")
 const touch = isTouchDevice(window)
+// Whether the window has focus and the tab shows (see autoPause): what
+// flow needs so a game never starts unwatched (FlowDeps.focused).
+let focused = !document.hidden
 // Touch is the main input (a phone or tablet, not a laptop's touch screen):
 // the punch and breath buttons show, with room kept for them.
 const touchFirst = isTouchFirst(window)
@@ -428,6 +430,7 @@ function flowDeps(dt: number): FlowDeps {
         settings,
         touch,
         prefersReducedMotion: reducedMotion?.matches ?? false,
+        focused,
     }
 }
 
@@ -461,17 +464,19 @@ function enter(prev: Screen, next: Screen) {
     // finger still down steers again once it drags anew.
     const wasPlaying = prev.kind === "playing"
     const isPlaying = next.kind === "playing"
-    if (
-        (isPlaying && !wasPlaying && prev.kind !== "paused") ||
-        (wasPlaying && !isPlaying && next.kind !== "paused")
-    ) {
+    // A game starts: playing, or paused when it starts in an unfocused
+    // window (see FlowDeps.focused); not a pause or resume of the same one.
+    const started =
+        (isPlaying || next.kind === "paused") && gameOf(next) !== gameOf(prev)
+    if (started || (wasPlaying && !isPlaying && next.kind !== "paused")) {
         touchSource.release()
     }
-    // Play started from a menu (character select or Retry): a direction
-    // still held from the menu waits for a fresh press. Resuming from pause
-    // keeps held directions, so holding through a pause carries on moving.
-    // A new game also starts with no particles or shake left over.
-    if (next.kind === "playing" && prev.kind !== "paused") {
+    // Play started from a menu (character select, Retry or the story
+    // card): a direction still held from the menu waits for a fresh press.
+    // Resuming from pause keeps held directions, so holding through a pause
+    // carries on moving. A new game also starts with no particles or shake
+    // left over.
+    if (started) {
         input.ignoreHeld()
         effects.reset()
     }
@@ -486,7 +491,7 @@ function enter(prev: Screen, next: Screen) {
         saveLastDifficulty(storage, lastDifficulty)
     }
     if (
-        next.kind === "playing" &&
+        started &&
         prev.kind === "characterSelect" &&
         playerCount(next.mode) === 1
     ) {
@@ -571,15 +576,22 @@ function render(alpha: number) {
     if ("difficulty" in shown) {
         hud.difficulty = DIFFICULTY_LABELS[shown.difficulty]
     }
-    if ("run" in shown && shown.run) withRunTotal(hud, shown.run, game)
+    if ("run" in shown && shown.run) {
+        // On game over, the total Retry plays on from, as the card says:
+        // the failed stage's score is lost.
+        const total =
+            shown.kind === "gameOver"
+                ? shown.run.total
+                : runTotal({ run: shown.run, game })
+        withRunTotal(hud, total)
+    }
     renderer.draw(game, lastAlpha, hud, rules, effects.of(shown))
 }
 
 // In a story run (KDA-271) the HUD shows the run total so far, this
 // stage's score included: in place of the score with one player, and in
 // the middle (above the difficulty) with two, whose own scores stay.
-function withRunTotal(hud: Hud, run: Run, game: GameState) {
-    const total = runTotal({ run, game })
+function withRunTotal(hud: Hud, total: number) {
     if (hud.players) hud.round = `Total ${total}`
     else hud.score = total
 }
@@ -871,15 +883,28 @@ function endView(
 }
 
 // Auto-pause: leaving the window or hiding the tab mid-game pauses it, so
-// the game doesn't play on unwatched.
+// the game doesn't play on unwatched. Whether the window is focused also
+// goes to flow (FlowDeps.focused), so a game doesn't start unwatched
+// either: the story card waits, and a game that starts meanwhile starts
+// paused.
 function autoPause() {
     const next = pauseIfPlaying(screen)
     if (next !== screen) enter(screen, next)
 }
-addEventListener("blur", autoPause)
+function unfocus() {
+    focused = false
+    autoPause()
+}
+addEventListener("blur", unfocus)
 document.addEventListener("visibilitychange", () => {
-    if (document.hidden) autoPause()
+    if (document.hidden) unfocus()
 })
+// Focus back, or a key or pointer press, which only a focused page gets.
+for (const type of ["focus", "keydown", "pointerdown"]) {
+    addEventListener(type, () => {
+        focused = true
+    })
+}
 
 // Taps and clicks on the overlays: a menu item or card puts player 1's
 // cursor on it and confirms (on settings that flips a toggle or runs
