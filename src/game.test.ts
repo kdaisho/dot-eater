@@ -5,6 +5,7 @@ import {
     Cell,
     CharacterId,
     DOT_POINTS,
+    ENEMY_IDS,
     ENEMY_SPEED,
     PHANTOM_SPEED,
     PLAYER_SPEED,
@@ -209,7 +210,7 @@ describe("step: speeds", () => {
             1,
             AiType.random,
             { x: 4, y: 1 },
-            CharacterId.enemy2
+            ENEMY_IDS[1]
         )
         expect(slow.speed).toBe(ENEMY_SPEED)
         fast.speed = 3
@@ -442,7 +443,7 @@ describe("step: simultaneous moves", () => {
             // Moves west to (4, 1), away from the player.
             makeEnemy(5, 1, AiType.random, { x: 6, y: 1 }),
             // Swaps with the player.
-            makeEnemy(2, 1, AiType.random, { x: 3, y: 1 }, CharacterId.enemy2),
+            makeEnemy(2, 1, AiType.random, { x: 3, y: 1 }, ENEMY_IDS[1]),
         ])
         ready(state)
         expect(ticksUntilCaught(state, east)).toBe(SWAP_TICKS)
@@ -647,7 +648,7 @@ describe("step: the tick that ends the game", () => {
         const state = makeState(corridor, { x: 2, y: 1 }, [
             // Half way from (1, 1) into the player's cell: already touching.
             makeEnemy(2, 1, AiType.random, { x: 1, y: 1 }),
-            makeEnemy(6, 1, AiType.random, { x: 7, y: 1 }, CharacterId.enemy2),
+            makeEnemy(6, 1, AiType.random, { x: 7, y: 1 }, ENEMY_IDS[1]),
         ])
         state.players[0].character.moveProgress = 1
         state.enemies[0].moveProgress = 0.5
@@ -771,8 +772,8 @@ describe("createGameState", () => {
         expect(state.players[0].character.pos).toEqual(OLD_PLAYER_START)
         expect(state.players[0].character.speed).toBe(PLAYER_SPEED)
         expect(state.enemies.map((e) => e.id)).toEqual([
-            CharacterId.enemy1,
-            CharacterId.enemy2,
+            ENEMY_IDS[0],
+            ENEMY_IDS[1],
         ])
         expect(state.enemies.map((e) => e.pos)).toEqual([
             vec2(1, 4),
@@ -821,7 +822,7 @@ describe("createGameState", () => {
         ])
         expect(state.players[0].character.pos).toEqual(vec2(1, 1))
         expect(state.enemies).toHaveLength(1)
-        expect(state.enemies[0].id).toBe(CharacterId.enemy1)
+        expect(state.enemies[0].id).toBe(ENEMY_IDS[0])
         expect(state.enemies[0].pos).toEqual(vec2(3, 1))
         expect(state.enemies[0].ai).toBe(AiType.chase)
     })
@@ -890,10 +891,10 @@ describe("createGameState", () => {
         })
         const state = createGameState(level)
         expect(state.enemies.map((e) => e.id)).toEqual([
-            CharacterId.enemy1,
-            CharacterId.enemy2,
-            CharacterId.enemy3,
-            CharacterId.enemy4,
+            ENEMY_IDS[0],
+            ENEMY_IDS[1],
+            ENEMY_IDS[2],
+            ENEMY_IDS[3],
         ])
         expect(state.enemies[3].route).toEqual([vec2(1, 2), vec2(4, 1)])
         expect(state.enemies[3].route).not.toBe(level.enemies[3].route)

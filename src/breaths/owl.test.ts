@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test"
 import { inPlay } from "../breath"
-import { AiType, CharacterId, TICK_RATE } from "../constants"
+import { AiType, ENEMY_IDS, TICK_RATE } from "../constants"
 import { step, type GameState, type MoveInput } from "../game"
 import { fixedRandom, makeEnemy, makeState, textMap } from "../test/helpers"
 import { vec2 } from "../vec2"
@@ -63,20 +63,8 @@ describe("owl wind breath", () => {
 
     it("pushes every enemy in the line, the one on the player's cell too", () => {
         const onPlayer = makeEnemy(1, 1)
-        const near = makeEnemy(
-            2,
-            1,
-            AiType.random,
-            undefined,
-            CharacterId.enemy2
-        )
-        const far = makeEnemy(
-            4,
-            1,
-            AiType.random,
-            undefined,
-            CharacterId.enemy3
-        )
+        const near = makeEnemy(2, 1, AiType.random, undefined, ENEMY_IDS[1])
+        const far = makeEnemy(4, 1, AiType.random, undefined, ENEMY_IDS[2])
         const state = owlState(1, [onPlayer, near, far])
         tick(state, true)
         expect(onPlayer.pos).toEqual(vec2(4, 1))
@@ -109,13 +97,7 @@ describe("owl wind breath", () => {
     it("leaves enemies out of the line alone", () => {
         // Below the line, and in the corridor behind the player.
         const below = makeEnemy(4, 2)
-        const behind = makeEnemy(
-            0,
-            1,
-            AiType.random,
-            undefined,
-            CharacterId.enemy2
-        )
+        const behind = makeEnemy(0, 1, AiType.random, undefined, ENEMY_IDS[1])
         const state = owlState(2, [below, behind])
         tick(state, true)
         expect(below.pos).toEqual(vec2(4, 2))

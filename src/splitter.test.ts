@@ -10,9 +10,11 @@ import {
 } from "./breath"
 import {
     AiType,
-    CharacterId,
     DEFEAT_POINTS,
+    ENEMY_IDS,
     ENEMY_SPEED,
+    MAX_ENEMIES,
+    MAX_ENEMY_SLOTS,
     RESPAWN_BLINK,
     RESPAWN_DELAY,
     SPLITTER_HALF_SPEED,
@@ -73,10 +75,7 @@ const corridor = textMap([
 // The player at the corridor's west end, a whole Splitter at (4, 2) whose
 // spawn is (8, 2), and a meter full enough to breathe.
 function setup({ lives = 1, at = vec2(4, 2) } = {}) {
-    const [main, spare] = createSplitter(
-        [CharacterId.enemy1, CharacterId.enemy2],
-        at
-    )
+    const [main, spare] = createSplitter([ENEMY_IDS[0], ENEMY_IDS[1]], at)
     const state = makeState(corridor, { x: 1, y: 2 }, [main, spare], {
         breath: defeating,
         lives,
@@ -112,9 +111,9 @@ describe("a whole Splitter", () => {
         })
         const state = createGameState(level)
         expect(state.enemies.map((e) => e.id)).toEqual([
-            CharacterId.enemy1,
-            CharacterId.enemy2,
-            CharacterId.enemy3,
+            ENEMY_IDS[0],
+            ENEMY_IDS[1],
+            ENEMY_IDS[2],
         ])
         expect(state.enemies.map((e) => e.ai)).toEqual([
             AiType.splitter,
@@ -128,6 +127,32 @@ describe("a whole Splitter", () => {
             vec2(2, 1),
             vec2(4, 1),
         ])
+    })
+
+    it("has slots for a level of MAX_ENEMIES Splitters, and the last one splits", () => {
+        const level = parseLevel({
+            name: "test",
+            parTime: 60,
+            map: ["###########", "#PEEEEEEEE#", "#.........#", "###########"],
+            enemies: Array.from({ length: MAX_ENEMIES }, () => ({
+                ai: "splitter" as const,
+            })),
+        })
+        const state = createGameState(level)
+        expect(state.enemies).toHaveLength(MAX_ENEMY_SLOTS)
+        expect(state.enemies.map((e) => e.id)).toEqual(ENEMY_IDS)
+        expect(new Set(ENEMY_IDS).size).toBe(MAX_ENEMY_SLOTS)
+        const [main, spare] = state.enemies.slice(-2)
+        defeatEnemy(state, main)
+        expect([main, spare].every(isSplitterHalf)).toBe(true)
+        expect([main, spare].every(inPlay)).toBe(true)
+        expect(state.events).toContainEqual(
+            expect.objectContaining({
+                type: "enemyDefeated",
+                enemy: MAX_ENEMY_SLOTS - 2,
+                split: true,
+            })
+        )
     })
 
     it("splits into two halves when a breath defeats it, scoring DEFEAT_POINTS", () => {
@@ -260,7 +285,7 @@ describe("a Splitter's halves", () => {
         for (const gone of [1, 2]) {
             const catcher = makeEnemy(9, 2, AiType.random)
             const [main, spare] = createSplitter(
-                [CharacterId.enemy1, CharacterId.enemy2],
+                [ENEMY_IDS[0], ENEMY_IDS[1]],
                 vec2(4, 2)
             )
             const state = makeState(
@@ -317,10 +342,7 @@ describe("a split next to the player", () => {
         player: Vec2,
         breath: BreathDef = defeating
     ) {
-        const [main, spare] = createSplitter(
-            [CharacterId.enemy1, CharacterId.enemy2],
-            at
-        )
+        const [main, spare] = createSplitter([ENEMY_IDS[0], ENEMY_IDS[1]], at)
         main.lastPos = vec2(from.x, from.y)
         main.moveProgress = 0.2
         const state = makeState(corridor, player, [main, spare], {

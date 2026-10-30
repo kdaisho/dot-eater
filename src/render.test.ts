@@ -6,6 +6,7 @@ import {
     AiType,
     Cell,
     CharacterId,
+    ENEMY_IDS,
     PLAYER_RESPAWN_DELAY,
     RESPAWN_BLINK,
     RESPAWN_DELAY,
@@ -117,12 +118,7 @@ describe("createRenderer", () => {
     }
 
     it("draws each enemy by its AI type, not its slot", () => {
-        const ids = [
-            CharacterId.enemy1,
-            CharacterId.enemy2,
-            CharacterId.enemy3,
-            CharacterId.enemy4,
-        ]
+        const ids = [ENEMY_IDS[0], ENEMY_IDS[1], ENEMY_IDS[2], ENEMY_IDS[3]]
         const types = [
             AiType.phantom,
             AiType.patroller,
@@ -133,19 +129,14 @@ describe("createRenderer", () => {
             makeEnemy(i + 1, 1, types[i], undefined, id)
         )
         expect(drawEnemies(enemies)).toEqual(["🐉", "👻", "🤖", "🦊", "👹"])
-        enemies.push(
-            makeEnemy(5, 1, AiType.random, undefined, CharacterId.enemy1)
-        )
+        enemies.push(makeEnemy(5, 1, AiType.random, undefined, ENEMY_IDS[0]))
         expect(drawEnemies(enemies).at(-1)).toBe("👺")
     })
 
     it("draws a Splitter's halves smaller than the whole one", () => {
-        const [whole] = createSplitter(
-            [CharacterId.enemy1, CharacterId.enemy2],
-            vec2(1, 1)
-        )
+        const [whole] = createSplitter([ENEMY_IDS[0], ENEMY_IDS[1]], vec2(1, 1))
         const [main, spare] = createSplitter(
-            [CharacterId.enemy3, CharacterId.enemy4],
+            [ENEMY_IDS[2], ENEMY_IDS[3]],
             vec2(3, 1)
         )
         const state = makeState(
@@ -176,8 +167,8 @@ describe("createRenderer", () => {
 
     it("draws enemies of one AI type with the same sprite", () => {
         const enemies = [
-            makeEnemy(1, 1, AiType.chase, undefined, CharacterId.enemy1),
-            makeEnemy(2, 1, AiType.chase, undefined, CharacterId.enemy3),
+            makeEnemy(1, 1, AiType.chase, undefined, ENEMY_IDS[0]),
+            makeEnemy(2, 1, AiType.chase, undefined, ENEMY_IDS[2]),
         ]
         expect(drawEnemies(enemies)).toEqual(["🐉", "👹", "👹"])
     })
@@ -369,8 +360,8 @@ describe("createRenderer", () => {
         }
 
         const enemies = () => [
-            makeEnemy(4, 1, AiType.random, undefined, CharacterId.enemy1),
-            makeEnemy(9, 1, AiType.chase, undefined, CharacterId.enemy2),
+            makeEnemy(4, 1, AiType.random, undefined, ENEMY_IDS[0]),
+            makeEnemy(9, 1, AiType.chase, undefined, ENEMY_IDS[1]),
         ]
 
         it("hides dots, walls and enemies outside the radius", () => {
@@ -392,7 +383,7 @@ describe("createRenderer", () => {
         it("draws what reaches into the light, so it fades in", () => {
             const { calls, canvas, renderer, texts } = setup()
             const state = makeState(corridor(), { x: 2, y: 1 }, [
-                makeEnemy(5, 1, AiType.random, undefined, CharacterId.enemy1),
+                makeEnemy(5, 1, AiType.random, undefined, ENEMY_IDS[0]),
             ])
             renderer.draw(state, 0, {}, { fog: { radius: 2.5 } })
             // The enemy's centre is 3 cells away, the wall at (4, 0) 2.24 and
@@ -439,8 +430,8 @@ describe("createRenderer", () => {
         it("sees through a wrap tunnel onto the opposite edge", () => {
             const { calls, canvas, renderer, texts } = setup()
             const state = makeState(corridor(true), { x: 1, y: 1 }, [
-                makeEnemy(11, 1, AiType.random, undefined, CharacterId.enemy1),
-                makeEnemy(8, 1, AiType.chase, undefined, CharacterId.enemy2),
+                makeEnemy(11, 1, AiType.random, undefined, ENEMY_IDS[0]),
+                makeEnemy(8, 1, AiType.chase, undefined, ENEMY_IDS[1]),
             ])
             renderer.draw(state, 0, {}, { fog: { radius: 3 } })
             expect(texts()).toEqual(["🐉", "👺"])
@@ -940,27 +931,9 @@ describe("createRenderer with two players", () => {
                     { x: 11, y: 1 },
                 ],
                 [
-                    makeEnemy(
-                        3,
-                        1,
-                        AiType.random,
-                        undefined,
-                        CharacterId.enemy1
-                    ),
-                    makeEnemy(
-                        6,
-                        1,
-                        AiType.chase,
-                        undefined,
-                        CharacterId.enemy2
-                    ),
-                    makeEnemy(
-                        10,
-                        1,
-                        AiType.ambusher,
-                        undefined,
-                        CharacterId.enemy3
-                    ),
+                    makeEnemy(3, 1, AiType.random, undefined, ENEMY_IDS[0]),
+                    makeEnemy(6, 1, AiType.chase, undefined, ENEMY_IDS[1]),
+                    makeEnemy(10, 1, AiType.ambusher, undefined, ENEMY_IDS[2]),
                 ]
             )
             renderer.draw(state, 0, {}, { fog: { radius: 2 } })

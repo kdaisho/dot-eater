@@ -1,7 +1,7 @@
 import { createBoss, type Boss } from "../boss"
 import type { BreathDef } from "../breath"
 import { BREATHS } from "../breaths"
-import { AiType, Cell, CharacterId, TICK_RATE } from "../constants"
+import { AiType, Cell, CharacterId, ENEMY_IDS, TICK_RATE } from "../constants"
 import { DEFAULT_ANIMAL } from "../roster"
 import { createCharacter, type Character } from "../character"
 import {
@@ -64,7 +64,7 @@ export function makeEnemy(
     y: number,
     ai: AiType = AiType.random,
     last: { x: number; y: number } = { x, y },
-    id: CharacterId = CharacterId.enemy1
+    id: CharacterId = ENEMY_IDS[0]
 ): Character {
     const enemy = createCharacter(id, vec2(x, y), ai)
     enemy.lastPos = vec2(last.x, last.y)
@@ -79,7 +79,7 @@ export function makePatroller(
     last: { x: number; y: number } = { x, y }
 ): Character {
     const enemy = createCharacter(
-        CharacterId.enemy1,
+        ENEMY_IDS[0],
         vec2(x, y),
         AiType.patroller,
         undefined,
