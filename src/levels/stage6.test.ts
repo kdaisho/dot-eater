@@ -9,7 +9,7 @@ import {
 import { parseLevel, type Cells } from "../level"
 import { distanceMap } from "../path"
 import { EACH_MAP } from "../test/helpers"
-import { bridges, deadEnds } from "../test/maze"
+import { chokepoints, deadEnds } from "../test/maze"
 import { stages } from "./index"
 import { stage6 } from "./stage6"
 
@@ -90,10 +90,11 @@ describe.each(EACH_MAP)("stage 6 (%s)", (difficulty) => {
     })
 
     // With phantoms coming through the walls, the player must never be
-    // boxed in: no dead ends, and every passage has another way round.
-    it("has no dead ends and a way round every passage", () => {
+    // boxed in: no dead ends, and no cell an enemy could stand on to cut the
+    // maze in two.
+    it("has no dead ends and a way round every cell", () => {
         expect(deadEnds(cells)).toEqual([])
-        expect(bridges(cells)).toEqual([])
+        expect(chokepoints(cells)).toEqual([])
     })
 
     it("starts the enemies far from the player, phantoms included", () => {
