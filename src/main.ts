@@ -34,7 +34,7 @@ import {
     type TickInput,
     type TitleChoice,
 } from "./flow"
-import { healthHud, totalScore, type GameState } from "./game"
+import { bossHud, healthHud, totalScore, type GameState } from "./game"
 import {
     CONTROLS_ROWS,
     controlsRowLabel,
@@ -478,6 +478,8 @@ function render(alpha: number) {
     // Every screen with a game also says which level it is.
     const rules = "level" in shown ? levels[shown.level]?.rules : undefined
     const hud = game.mode === "versus" ? versusHud(game, shown) : hudOf(game)
+    const boss = bossHud(game)
+    if (boss) hud.boss = boss
     renderer.draw(game, lastAlpha, hud, rules, effects.of(shown))
 }
 

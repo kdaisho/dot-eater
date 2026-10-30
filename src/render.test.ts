@@ -321,6 +321,35 @@ describe("createRenderer", () => {
         expect(fill.args[2]).toBeCloseTo(w * 0.75)
     })
 
+    it("draws the boss's band along the bottom of the HUD, filled to its health", () => {
+        const state = createGameState(OLD_LEVEL)
+        state.enemies = []
+        const band = (calls: ReturnType<typeof setup>["calls"]) =>
+            calls.filter(
+                (c) =>
+                    c.name === "fillRect" &&
+                    (c.fillStyle === "#dc2626" || c.fillStyle === "#fecaca")
+            )
+        const none = setup()
+        none.renderer.draw(state, 0, { score: 0 })
+        expect(band(none.calls)).toHaveLength(0)
+
+        const { calls, canvas, renderer } = setup()
+        renderer.draw(state, 0, { score: 0, boss: { health: 3, max: 12 } })
+        const [track, fill] = band(calls)
+        expect(track.fillStyle).toBe("#fecaca")
+        expect(fill.fillStyle).toBe("#dc2626")
+        const width = parseFloat(canvas.style.width)
+        const [left, top, w, h] = track.args as number[]
+        // Nearly the strip's whole width, at the strip's bottom (the maze
+        // starts a cell down: the HUD strip is a cell high).
+        expect(w).toBeGreaterThan(width * 0.9)
+        const hudHeight = width / OLD_LEVEL.cells[0].length
+        expect(top + h).toBeCloseTo(hudHeight)
+        expect(fill.args[0]).toBe(left)
+        expect(fill.args[2]).toBeCloseTo(w / 4)
+    })
+
     it("blinks a player invulnerable after a hit", () => {
         const state = createGameState(OLD_LEVEL)
         state.enemies = []

@@ -136,8 +136,5 @@ export const BOSS_DAMAGE_PER_ENERGY = 1 / 25
 export const BOSS_SPEED = 1.5
 // Points for defeating the boss.
 export const BOSS_DEFEAT_POINTS = 500
-// Energy per second the player's meter refills by itself once every dot is
-// eaten with the boss still about, so there is always a way to finish it.
-export const BOSS_TRICKLE = 10
 // Seconds the boss flashes white after each hit.
 export const BOSS_FLASH = 0.15

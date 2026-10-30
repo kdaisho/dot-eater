@@ -5,6 +5,7 @@ import { damageBoss } from "./boss"
 import {
     BOSS_DEFEAT_POINTS,
     BOSS_HEALTH,
+    Cell,
     PLAYER_RESPAWN_DELAY,
     ENEMY_DAMAGE,
     MAX_HEALTH,
@@ -31,6 +32,7 @@ import {
 import { vec2, type Vec2 } from "./vec2"
 import {
     CATCH_DOTS,
+    roundWinner,
     STUN_IMMUNITY_SECONDS,
     STUN_SECONDS,
     stunImmune,
@@ -488,5 +490,51 @@ describe("a versus round's end", () => {
         expect(checkEnd(state)).toBe("won")
         expect(state.players[1].score).toBe(BOSS_DEFEAT_POINTS)
         expect(state.players[1].dots).toBe(0)
+    })
+
+    // KDA-267: the boss is the goal there, so dots left don't hold the
+    // round up; dots still decide who wins it.
+    it("comes when the boss is defeated, with dots left, and dots pick the winner", () => {
+        const arena = textMap([
+            "#######",
+            "#.    #",
+            "#     #",
+            "#    .#",
+            "#######",
+        ]).map
+        const state = makeState(arena, [vec2(1, 2), vec2(5, 2)], [], {
+            mode: "versus",
+            boss: makeBoss(3, 1, 0),
+        })
+        state.players[0].dots = 3
+        damageBoss(state, BOSS_HEALTH, state.players[1])
+        expect(checkEnd(state)).toBe("won")
+        expect(state.cells[1][1]).toBe(Cell.dot)
+        const dots = state.players.map((p) => p.dots)
+        const scores = state.players.map((p) => p.score)
+        expect(scores).toEqual([0, BOSS_DEFEAT_POINTS])
+        // Player 2 got the +500, but player 1 ate more dots.
+        expect(roundWinner(dots, scores)).toBe(0)
+    })
+
+    it(`still costs a player knocked out on the boss's last tick ${CATCH_DOTS} dots`, () => {
+        const arena = textMap([
+            "#######",
+            "#.    #",
+            "#     #",
+            "#     #",
+            "#######",
+        ]).map
+        const enemy = makeEnemy(5, 3)
+        enemy.speed = 0
+        const state = makeState(arena, [vec2(1, 3), vec2(5, 3)], [enemy], {
+            mode: "versus",
+            boss: makeBoss(2, 1, 0),
+        })
+        state.players[1].dots = 7
+        damageBoss(state, BOSS_HEALTH, state.players[0])
+        expect(checkEnd(state)).toBe("won")
+        expect(state.players[1].dots).toBe(7 - CATCH_DOTS)
+        expect(state.players[1].out).toBe(true)
     })
 })

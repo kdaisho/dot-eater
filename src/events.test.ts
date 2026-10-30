@@ -309,9 +309,11 @@ describe("bossHit and bossDefeated", () => {
         boss.health = 2
         const state = breather(strong, room, { boss })
         tick(state, breath)
+        // Defeating it clears the stage too (KDA-267).
         expect(state.events.map((e) => e.type)).toEqual([
             "breathed",
             "bossDefeated",
+            "gameWon",
         ])
         expect(ofType(state, "bossDefeated")).toEqual([
             { type: "bossDefeated", player: 0, at: vec2(3, 1) },

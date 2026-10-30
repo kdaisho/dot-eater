@@ -56,6 +56,10 @@ export type Hud = {
     // Versus: the round and tally (e.g. "Round 2 · 1–0"), drawn in the
     // middle.
     round?: string
+    // On a boss level, the boss's health (see bossHud in game.ts): the
+    // stage's goal (KDA-267), drawn as a band along the bottom of the
+    // strip, in every mode, so it shows wherever the boss is on the map.
+    boss?: HealthHud
 }
 
 export type PlayerHud = {
@@ -135,6 +139,9 @@ const COLORS = {
     bossTrack: "#374151",
     bossFrame: "#000",
     bossFlash: "#fff",
+    // The HUD's boss band: the health lost, pale against the white strip
+    // and the maze's black top edge (the health left is bossHealth).
+    bossBandTrack: "#fecaca",
 }
 
 // The width of the fog's soft edge in cells: the darkness fades in over this
@@ -975,7 +982,8 @@ function drawArrow(
 // Score on the left, the health gauge on the right, the energy meter in the
 // middle. With two players (hud.players): player 1's score, meter and
 // health on the left, player 2's on the right, each in its marker colour,
-// and in versus the round in the middle.
+// and in versus the round in the middle. On a boss level, the boss's band
+// along the bottom under all of them.
 function drawHud(
     ctx: CanvasRenderingContext2D,
     hud: Hud,
@@ -986,6 +994,7 @@ function drawHud(
     ctx.fillStyle = COLORS.text
     ctx.font = `${Math.round(height * 0.6)}px monospace`
     ctx.textBaseline = "middle"
+    if (hud.boss) drawBossBand(ctx, hud.boss, width, height, pad)
     if (hud.players && hud.players.length > 1) {
         drawPlayersHud(ctx, hud, width, height, pad)
         return
@@ -1009,6 +1018,32 @@ function drawHud(
 
 // The bars' height, as a fraction of the HUD strip's.
 const METER_HEIGHT = 0.4
+// The boss band's height, as a fraction of the HUD strip's: below the
+// solo bars (which end at 0.7) and the 2-player health gauges (0.88).
+const BOSS_BAND = 0.1
+
+// The boss's health as a band along the bottom of the HUD strip, from `pad`
+// to `pad` off the right edge: the health left in the boss's colour (as
+// its bar on the map), the rest pale. Text and bars are drawn over it.
+function drawBossBand(
+    ctx: CanvasRenderingContext2D,
+    gauge: HealthHud,
+    width: number,
+    height: number,
+    pad: number
+) {
+    const fraction =
+        gauge.max > 0 ? Math.max(0, Math.min(1, gauge.health / gauge.max)) : 0
+    const h = height * BOSS_BAND
+    const top = height - h
+    const w = width - 2 * pad
+    ctx.save()
+    ctx.fillStyle = COLORS.bossBandTrack
+    ctx.fillRect(pad, top, w, h)
+    ctx.fillStyle = COLORS.bossHealth
+    ctx.fillRect(pad, top, w * fraction, h)
+    ctx.restore()
+}
 // The solo health gauge's width, as a fraction of the HUD's.
 const HEALTH_WIDTH = 0.2
 

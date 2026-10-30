@@ -2,7 +2,6 @@ import {
     AiType,
     BLINK_RATE,
     BOSS_DAMAGE,
-    BOSS_TRICKLE,
     CATCH_DISTANCE,
     Cell,
     CharacterId,
@@ -32,7 +31,6 @@ import {
     gainEnergy,
     hasStatus,
     inPlay,
-    playersInPlay,
     START_FACING,
     tickEffects,
     type ActiveTile,
@@ -680,6 +678,14 @@ export function healthHud(player: Player): HealthHud {
     return { health: player.health, max: MAX_HEALTH }
 }
 
+// What the HUD shows of the boss (KDA-267): its health, the stage's goal on
+// a boss level (see cleared). Null on a level without one. A defeated boss
+// shows an empty gauge.
+export function bossHud(state: GameState): HealthHud | null {
+    const { boss } = state
+    return boss ? { health: boss.health, max: boss.maxHealth } : null
+}
+
 // Whether to draw `player` now: not while out of play, and while
 // invulnerable after a hit, on and off BLINK_RATE times a second (starting
 // on, so the knockback is seen).
@@ -792,9 +798,7 @@ function wait(character: Glider) {
 // tile effect blocks.
 //
 // A boss (see boss.ts) moves with the enemies, after the breaths, and keeps
-// out of blocked cells too; a defeated one doesn't move or catch. Once the
-// dots are gone with the boss still about, every energy meter refills by
-// itself (BOSS_TRICKLE per second), so the boss can always be finished.
+// out of blocked cells too; a defeated one doesn't move or catch.
 //
 // What happened is reported in GameState.events (see events.ts), which is
 // emptied first, so it holds this tick's events only.
@@ -818,7 +822,6 @@ export function step(
     for (const player of players) {
         if (player.invulnerableFor > 0) player.invulnerableFor--
     }
-    trickle(state, dt)
     const from = positions(state)
     let start = tickStarts(state, dt)
     // Where each player came from on its latest move before this tick, for
@@ -954,20 +957,6 @@ function bossChaseStep(
     const fromPlayers = targets.map((p) => distanceMap(state.cells, p))
     const target = bossTarget(state, targets, blocked, fromPlayers)
     return bossMove(state, targets[target], blocked, fromPlayers[target])
-}
-
-// On a boss level, once every dot is eaten and the boss is still about,
-// there is no other way to fill the energy meters: they refill by
-// themselves at BOSS_TRICKLE per second, up to each breath's maxEnergy.
-function trickle(state: GameState, dt: number) {
-    const { boss } = state
-    if (!boss || boss.defeated || hasDots(state.cells)) return
-    for (const { breather } of playersInPlay(state)) {
-        breather.energy = Math.min(
-            breather.breath.maxEnergy,
-            breather.energy + BOSS_TRICKLE * dt
-        )
-    }
 }
 
 // Finish the glides in progress after the game has ended, for the short
@@ -1322,18 +1311,18 @@ function collides(
 // The default is a tick of no time, so only where they are drawn now
 // counts.
 //
-// No dots left (and, on a boss level, the boss defeated) is won, checked
-// first: eating the last dot (whichever player eats it), or defeating the
-// boss when that comes last, clears the stage even if a player is touched
-// on that same tick, and costs it nothing. Otherwise each player in play
+// The stage cleared (see cleared) is won, checked first: eating the last
+// dot (whichever player eats it), or on a boss level defeating the boss,
+// clears the stage even if a player is touched on that same tick, and
+// costs it nothing. Otherwise each player in play
 // and not invulnerable that an enemy or the boss touched this tick is hurt
 // (see touchedBy and hurtPlayer), player 1 first. In versus a touch on that
 // tick still counts (a knockout costs dots and takes the player out)
 // before the round is won, so the round is scored with it.
 //
 // Clearing is checked again after the hits: a knockback that eats the
-// last dot wins on this tick, in every mode, with the hits (and, in
-// versus, any knockout's dots) already counted.
+// last dot of a level without a boss wins on this tick, in every mode,
+// with the hits (and, in versus, any knockout's dots) already counted.
 //
 // The game is lost (see lost) once a hit has taken the solo player's last
 // health, or no co-op player is left in play.
@@ -1341,9 +1330,7 @@ export function checkEnd(
     state: GameState,
     start: TickStarts = tickStarts(state, 0)
 ): Outcome | null {
-    const bossLeft = state.boss !== null && !state.boss.defeated
-    const cleared = () => !hasDots(state.cells) && !bossLeft
-    if (cleared() && state.mode !== "versus") return "won"
+    if (cleared(state) && state.mode !== "versus") return "won"
     state.players.forEach((player, i) => {
         if (player.out || player.invulnerableFor > 0) return
         const hit = touchedBy(state, start, i)
@@ -1351,8 +1338,16 @@ export function checkEnd(
     })
     // Checked again: a knockback may have eaten the last dot, which wins
     // on this tick like any other last dot (the hits stand).
-    if (cleared()) return "won"
+    if (cleared(state)) return "won"
     return lost(state) ? "dead" : null
+}
+
+// Whether the stage is cleared (KDA-267): on a boss level once the boss is
+// defeated, whatever dots are left (dots there are the breaths' energy, not
+// the goal); on any other level once every dot is eaten.
+export function cleared(state: GameState): boolean {
+    const { boss } = state
+    return boss ? boss.defeated : !hasDots(state.cells)
 }
 
 // Whether the game is lost, by its mode: in solo once the player's health
