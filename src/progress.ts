@@ -8,7 +8,7 @@
 // progress starts fresh; there are no migrations.
 
 // Stage select always shows this many slots, real stages or not.
-export const STAGE_COUNT = 5
+export const STAGE_COUNT = 10
 
 // Versioned, so a future save shape can live beside this one under a new key.
 export const PROGRESS_KEY = "dot-eater:progress:v1"
