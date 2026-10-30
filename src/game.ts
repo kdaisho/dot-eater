@@ -768,8 +768,10 @@ function movePlayerTick(
 
 // Player's slide step, if it is sliding (see movePlayerTick): whether it
 // moved, or null if it isn't sliding, so it is free to make a move of its
-// own. Enemies don't end a slide: it passes over a frozen one. A player whose
-// breath walks on ice (BreathDef.walksOnIce) never slides.
+// own. Enemies don't end a slide, but the floor under one may: a frozen
+// enemy on level ice is slid over, while one in breath ice stands on floor
+// (breath ice never forms under a character), so a slide ends on its cell. A
+// player whose breath walks on ice (BreathDef.walksOnIce) never slides.
 function slideTick(state: GameState, player: Player): boolean | null {
     const { cells } = state
     const { character } = player

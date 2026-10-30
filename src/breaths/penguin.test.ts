@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vite-plus/test"
-import { addStatus, type BreathDef } from "../breath"
+import { addStatus, enemyVisible, type BreathDef } from "../breath"
 import type { Character } from "../character"
 import { AiType, PLAYER_SPEED, TICK_RATE } from "../constants"
 import { step, type GameState, type MoveInput } from "../game"
@@ -79,7 +79,11 @@ describe("penguin's ice breath", () => {
         expect(penguin.duration).toBe(3)
         expect(penguin.maxEnergy).toBe(100)
         expect(penguin.walksOnIce).toBe(true)
-        expect(FROZEN).toMatchObject({ holds: true, harmless: true })
+        expect(FROZEN).toMatchObject({
+            holds: true,
+            harmless: true,
+            blinksBeforeEnd: true,
+        })
     })
 
     it("freezes an enemy for 3 s: it doesn't move or catch, then does", () => {
@@ -100,6 +104,30 @@ describe("penguin's ice breath", () => {
         // that stops being harmless there would.
         expect(ticksUntilCaught(state, none, 1)).toBe(1)
         expect(enemy.statuses).toEqual([])
+    })
+
+    it("blinks a frozen enemy for the last second before it thaws", () => {
+        const enemy = makeEnemy(3, 1, AiType.chase)
+        enemy.moveProgress = 1
+        const state = penguinState(corridor, [enemy])
+        tick(state, { breath: true })
+        // Shown all through the first 2 s.
+        for (let i = 0; i < TICK_RATE * 2; i++) {
+            tick(state)
+            expect(enemyVisible(enemy)).toBe(true)
+        }
+        // Then on and off until the thaw.
+        const shown: boolean[] = []
+        for (let i = 0; i < TICK_RATE - 1; i++) {
+            tick(state)
+            shown.push(enemyVisible(enemy))
+        }
+        expect(enemy.statuses.map((s) => s.status)).toEqual([FROZEN])
+        expect(shown).toContain(false)
+        expect(shown).toContain(true)
+        tick(state)
+        expect(enemy.statuses).toEqual([])
+        expect(enemyVisible(enemy)).toBe(true)
     })
 
     // Regression (KDA-260): a frozen enemy blocked the player like a wall,

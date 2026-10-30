@@ -9,13 +9,15 @@ import { AnimalId } from "../roster"
 export const ICE_SECONDS = 5
 
 // A frozen enemy is an ice block: it doesn't move or catch. Players walk
-// and slide over it, as over any enemy (KDA-260). When the freeze ends it
-// moves by the usual rules, so one left standing on ice slides on the way it
-// last moved, and one with a player on it catches at once.
+// through it, as through any enemy (KDA-260). It blinks for the last second
+// as a warning, since when the freeze ends it moves by the usual rules: one
+// left standing on ice slides on the way it last moved, and one with a
+// player on it catches at once.
 export const FROZEN: EnemyStatus = {
     name: "penguin.frozen",
     holds: true,
     harmless: true,
+    blinksBeforeEnd: true,
     look: { color: "rgba(150, 210, 255, 0.6)", emoji: "🧊" },
 }
 
