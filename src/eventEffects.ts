@@ -20,14 +20,30 @@ export type EffectTargets = {
 }
 
 // The effects of every event of a tick, in order. `state` is the game
-// after the tick (a breath's cells are worked out on it).
+// after the tick (a breath's cells are worked out on it). A punch shakes
+// once however many things it hits (a player punches once a tick at most),
+// with a burst on each.
 export function effectsForEvents(
     events: readonly GameEvent[],
     state: GameState,
     targets: EffectTargets
 ) {
-    for (const event of events) effectsForEvent(event, state, targets)
+    const landed = new Set<number>()
+    for (const event of events) {
+        if (event.type === "punchHit") {
+            const first = !landed.has(event.player)
+            landed.add(event.player)
+            if (!first) {
+                effectsForEvent(event, state, { ...targets, shake: NO_SHAKE })
+                continue
+            }
+        }
+        effectsForEvent(event, state, targets)
+    }
 }
+
+// A shake that does nothing, for the hits after a punch's first.
+const NO_SHAKE: EffectTargets["shake"] = { add() {} }
 
 export function effectsForEvent(
     event: GameEvent,

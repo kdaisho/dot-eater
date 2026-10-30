@@ -315,6 +315,44 @@ describe("effectsForEvents", () => {
         expect(r.bursts.map((b) => b.kind)).toEqual(["dot", "caught"])
         expect(r.shakes).toEqual([SHAKES.caught])
     })
+
+    // Regression: each hit shook, so a jab into three stacked enemies
+    // shook three times as hard as one into a single enemy.
+    it("shakes once per punch, however many it hits, with a burst on each", () => {
+        const r = recorder()
+        const hit = (player: number, enemy: number): GameEvent => ({
+            type: "punchHit",
+            player,
+            at: vec2(3, 2),
+            target: "enemy",
+            enemy,
+        })
+        const punched = (player: number): GameEvent => ({
+            type: "punched",
+            player,
+            at: vec2(2, 2),
+            facing: vec2(1, 0),
+        })
+        effectsForEvents(
+            [
+                punched(0),
+                hit(0, 0),
+                hit(0, 1),
+                hit(0, 2),
+                punched(1),
+                hit(1, 3),
+            ],
+            room(),
+            r.targets
+        )
+        expect(r.bursts.map((b) => b.kind)).toEqual([
+            "punch",
+            "punch",
+            "punch",
+            "punch",
+        ])
+        expect(r.shakes).toEqual([SHAKES.punch, SHAKES.punch])
+    })
 })
 
 describe("applyMotion", () => {
