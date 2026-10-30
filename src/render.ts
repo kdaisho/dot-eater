@@ -94,6 +94,10 @@ export type Effects = {
     // Each player's jab under way (KDA-258; see jab.ts): its sprite lunges
     // along it, with a fist just ahead.
     jabs?: readonly Jab[]
+    // Whether the boss's wind-up shows (KDA-268; see bossBreath.ts): its
+    // glow and the warning tint on the cells it will strike. Set while
+    // playing, paused and in the ending outro, not on end screens.
+    bossBreath?: boolean
 }
 
 export type Renderer = {
@@ -118,6 +122,10 @@ export type Renderer = {
 
 const COLORS = {
     background: "#fff",
+    // The fill an emoji sprite, badge or fist is drawn with. Opaque: canvas
+    // draws colour emoji with the fill colour's alpha, so drawing one right
+    // after a translucent look disc would leave it see-through.
+    sprite: "#000",
     wall: "#000",
     dot: "#000",
     // Ice floor: a pale blue tile under the dot.
@@ -388,8 +396,9 @@ export function createRenderer(
         }
         const aims =
             effects.aim && effects.guide === "aim" ? aimPreviews(state) : []
-        drawCells(ctx, state, alpha, cell, seen, tintsFor(state, aims))
-        drawBoss(ctx, state, alpha, cell, cols, rows, seen)
+        const windUp = effects.bossBreath === true
+        drawCells(ctx, state, alpha, cell, seen, tintsFor(state, aims, windUp))
+        drawBoss(ctx, state, alpha, cell, cols, rows, seen, windUp)
         drawCharacters(
             ctx,
             state,
@@ -678,6 +687,7 @@ function drawCells(
     ctx.font = `${Math.round(cell * SPRITE_SCALE)}px sans-serif`
     ctx.textAlign = "center"
     ctx.textBaseline = "middle"
+    ctx.fillStyle = COLORS.sprite
     for (const e of emoji) {
         ctx.fillText(e.emoji, (e.x + 0.5) * cell, (e.y + 0.5) * cell)
     }
@@ -700,14 +710,20 @@ function tileLooks(state: GameState): Look[][][] | null {
 type Tint = { cells: readonly Vec2[]; color: string }
 
 // The tints to draw this frame: each aim preview in its player's colour
-// (player 1 first), then the boss's warning, if it is winding up. The
-// warning comes from the boss's state and its own colour (BOSS_BREATH in
-// bossBreath.ts), so nothing here knows the boss's breath.
-function tintsFor(state: GameState, aims: readonly AimPreview[]): Tint[] {
+// (player 1 first), then, with `windUp` (Effects.bossBreath), the boss's
+// warning if it is winding up. The warning comes from the boss's state and
+// its own colour (BOSS_BREATH in bossBreath.ts), so nothing here knows the
+// boss's breath.
+function tintsFor(
+    state: GameState,
+    aims: readonly AimPreview[],
+    windUp: boolean
+): Tint[] {
     const tints: Tint[] = aims.map(({ player, cells }) => ({
         cells,
         color: PLAYER_COLORS[player],
     }))
+    if (!windUp) return tints
     const warning = bossWarning(state)
     if (warning && warning.cells.length > 0) tints.push(warning)
     return tints
@@ -782,7 +798,8 @@ function drawBoss(
     cell: number,
     cols: number,
     rows: number,
-    fog: Sight | null
+    fog: Sight | null,
+    windUp: boolean
 ) {
     const { boss } = state
     if (!boss || boss.defeated) return
@@ -791,9 +808,10 @@ function drawBoss(
     const size = cell * SPRITE_SCALE * BOSS_SCALE
     const x = (pos.x + 1) * cell
     const y = (pos.y + 1) * cell
-    // Its looks (see bossLooks: the glow while it winds up its breath),
-    // each colour as a disc behind the sprite, like an enemy status's.
-    for (const look of bossLooks(state)) {
+    // Its looks (see bossLooks: the glow while it winds up its breath, with
+    // `windUp`), each colour as a disc behind the sprite, like an enemy
+    // status's.
+    for (const look of windUp ? bossLooks(state) : []) {
         if (!look.color) continue
         ctx.fillStyle = look.color
         ctx.beginPath()
@@ -803,6 +821,7 @@ function drawBoss(
     ctx.textAlign = "center"
     ctx.textBaseline = "middle"
     ctx.font = `${Math.round(size)}px sans-serif`
+    ctx.fillStyle = COLORS.sprite
     ctx.fillText(BOSS_SPRITE, x, y)
     if (boss.flash > 0) {
         ctx.save()
@@ -929,6 +948,7 @@ function drawCharacters(
                 ctx.arc(x, y, size / 2, 0, Math.PI * 2)
                 ctx.fill()
             }
+            ctx.fillStyle = COLORS.sprite
             ctx.fillText(sprite.sprite, x, y)
             if (marker !== null) drawMarker(ctx, marker, x, y, size)
             if (jab) fists.push({ x, y, facing: jab.facing })
@@ -940,6 +960,7 @@ function drawCharacters(
             ]
             if (badges.length === 0) continue
             ctx.font = `${Math.round(size * BADGE_SCALE)}px sans-serif`
+            ctx.fillStyle = COLORS.sprite
             badges.forEach((look, i) => {
                 ctx.fillText(
                     look.emoji!,
@@ -1019,6 +1040,7 @@ function drawFist(
     cell: number
 ) {
     ctx.font = `${Math.round(cell * FIST_SCALE)}px sans-serif`
+    ctx.fillStyle = COLORS.sprite
     ctx.fillText(
         FIST,
         x + facing.x * FIST_AHEAD * cell,
