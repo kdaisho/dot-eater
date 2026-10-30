@@ -1,15 +1,19 @@
 import {
     AiType,
+    BLINK_RATE,
     BOSS_TRICKLE,
     CATCH_DISTANCE,
     Cell,
     CharacterId,
     DOT_POINTS,
     ENEMY_IDS,
+    HURT_INVULNERABLE_SECONDS,
+    MAX_HEALTH,
     PLAYER_RESPAWN_DELAY,
     PLAYER_SPEED,
     RESPAWN_CLEAR_DISTANCE,
     START_LIVES,
+    TICK_RATE,
 } from "./constants"
 import {
     blockedView,
@@ -146,6 +150,15 @@ export type Player = {
     // versus.ts): once a stun wears off the player can't be stunned again
     // until this is over. 0 when not immune.
     stunImmuneFor: number
+    // Health left (KDA-257), from MAX_HEALTH down: a hit takes its damage
+    // off (see hurtPlayer), and at 0 the player is knocked out. Full at the
+    // start of every stage, and when it is back in play (bringBack).
+    health: number
+    // Ticks left of the invulnerability after a hit (see
+    // HURT_INVULNERABLE_TICKS), 0 when not invulnerable: enemies and the
+    // boss pass through it without hurting it, and it is drawn blinking
+    // (see playerVisible).
+    invulnerableFor: number
 }
 
 export type Spawns = {
@@ -279,6 +292,8 @@ export function newPlayer(character: Character, breath: BreathDef): Player {
         respawnIn: null,
         stunnedFor: 0,
         stunImmuneFor: 0,
+        health: MAX_HEALTH,
+        invulnerableFor: 0,
     }
 }
 
@@ -313,8 +328,9 @@ function respawn(state: GameState) {
 }
 
 // Put `player` back in play on its own spawn, as at the start of a game:
-// ready to move, facing right, nothing buffered. Its score, energy and
-// cooldown are kept. Nobody else is touched (see respawn for everyone).
+// ready to move, facing right, nothing buffered, full health. Its score,
+// energy and cooldown are kept. Nobody else is touched (see respawn for
+// everyone).
 export function bringBack(state: GameState, player: Player) {
     const index = state.players.indexOf(player)
     const spawn = state.spawns.players[index]
@@ -330,6 +346,8 @@ export function bringBack(state: GameState, player: Player) {
     player.respawnIn = null
     player.stunnedFor = 0
     player.stunImmuneFor = 0
+    player.health = MAX_HEALTH
+    player.invulnerableFor = 0
     emit(state, {
         type: "playerRespawned",
         player: index,
@@ -353,6 +371,7 @@ export function takeOut(player: Player, respawnAfter: number | null) {
     player.respawnIn = respawnAfter
     player.stunnedFor = 0
     player.stunImmuneFor = 0
+    player.invulnerableFor = 0
 }
 
 // Whether `player` is out of play with no way back (see takeOut).
@@ -422,15 +441,24 @@ export function movePlayer(
     who: Player = state.players[0]
 ): boolean {
     if (isZero(step)) return false
-    const { cells } = state
     const player = who.character
     const target = loopPos(
-        cells,
+        state.cells,
         vec2(player.pos.x + step.x, player.pos.y + step.y)
     )
-    const value = cells[target.y][target.x]
-    let ate = false
+    if (!playerCanEnter(state, target)) return false
+    const ate = eatDot(state, who, target)
+    player.lastPos = vec2(player.pos.x, player.pos.y)
+    player.pos = target
+    who.breather.facing = vec2(step.x, step.y)
+    who.eatenAt = ate ? vec2(target.x, target.y) : null
+    return true
+}
 
+// Whether a player may move onto `cell` (on the map): not a wall, and no
+// solid enemy (see EnemyStatus) on it. Other players never block it.
+function playerCanEnter(state: GameState, cell: Vec2): boolean {
+    const value = state.cells[cell.y][cell.x]
     switch (value) {
         case Cell.none:
             break
@@ -444,24 +472,177 @@ export function movePlayer(
             throw new Error(`Unknown cell: ${String(unhandled)}`)
         }
     }
-    if (solidAt(state, target)) return false
-    if (value === Cell.dot) {
-        cells[target.y][target.x] = Cell.none
-        who.score += DOT_POINTS
-        who.dots++
-        gainEnergy(who.breather)
-        ate = true
-        emit(state, {
-            type: "dotEaten",
-            player: state.players.indexOf(who),
-            at: vec2(target.x, target.y),
-        })
-    }
-    player.lastPos = vec2(player.pos.x, player.pos.y)
-    player.pos = target
-    who.breather.facing = vec2(step.x, step.y)
-    who.eatenAt = ate ? vec2(target.x, target.y) : null
+    return !solidAt(state, cell)
+}
+
+// Eat (and score) the dot on `cell`, if there is one, for `who`, filling
+// its energy meter. Returns whether there was one.
+function eatDot(state: GameState, who: Player, cell: Vec2): boolean {
+    const { cells } = state
+    if (cells[cell.y][cell.x] !== Cell.dot) return false
+    cells[cell.y][cell.x] = Cell.none
+    who.score += DOT_POINTS
+    who.dots++
+    gainEnergy(who.breather)
+    emit(state, {
+        type: "dotEaten",
+        player: state.players.indexOf(who),
+        at: vec2(cell.x, cell.y),
+    })
     return true
+}
+
+// Knock `player` one cell along the unit `step`, if it could move into
+// that cell (see playerCanEnter): with a wall or a solid enemy there it
+// stays put. Returns whether it moved. Not tied to being hurt (see
+// hurtPlayer): anything that shoves a player uses it.
+//
+// It glides there like a normal move, at its normal speed, eating a dot
+// there and sliding on if it lands on ice, but keeps its facing (being
+// shoved doesn't turn it round) and its tap buffer. The cell is one on from
+// the cell the player is drawn nearest: its pos, or the cell it is leaving
+// while less than halfway out of it. When the new cell lies on the glide it
+// is in (shoved back the way it came, or on the way it was going) the glide
+// carries on from where it is drawn; otherwise it starts from that nearest
+// cell, at most half a cell from where it was drawn.
+export function knockBack(
+    state: GameState,
+    player: Player,
+    step: Vec2
+): boolean {
+    if (player.out || isZero(step)) return false
+    const c = player.character
+    const progress = Math.min(c.moveProgress, 1)
+    const gliding = progress < 1 - EPSILON
+    const base = gliding && progress < 0.5 ? c.lastPos : c.pos
+    const target = loopPos(state.cells, vec2(base.x + step.x, base.y + step.y))
+    if (!playerCanEnter(state, target)) return false
+    player.rate = 1
+    if (gliding && samePos(target, c.pos)) {
+        // On the way it was going: the glide it is in takes it there.
+        return true
+    }
+    if (gliding && samePos(target, c.lastPos)) {
+        // Back the way it came, from where it is drawn.
+        c.lastPos = vec2(c.pos.x, c.pos.y)
+        c.pos = target
+        c.moveProgress = 1 - progress
+        player.eatenAt = null
+        return true
+    }
+    const ate = eatDot(state, player, target)
+    c.lastPos = vec2(base.x, base.y)
+    c.pos = target
+    c.moveProgress = 0
+    player.eatenAt = ate ? vec2(target.x, target.y) : null
+    return true
+}
+
+// Ticks a player stays invulnerable after a hit (HURT_INVULNERABLE_SECONDS).
+export const HURT_INVULNERABLE_TICKS = Math.round(
+    HURT_INVULNERABLE_SECONDS * TICK_RATE
+)
+
+// Hurt `player` by `damage` health (KDA-257), hit by something drawn at
+// `from` (in cells; for the boss, its footprint's centre). This is the one
+// path every hit takes, whatever it comes from (see checkEnd for touches).
+// A player out of play, still invulnerable from an earlier hit or already
+// knocked out isn't hurt; returns whether it was.
+//
+// With health left, the player is knocked back a cell away from `from`
+// (see knockBack and awayFrom; against a wall it stays put) and is
+// invulnerable for HURT_INVULNERABLE_TICKS, blinking; a hurt event reports
+// it. Nothing else is reset: the enemies, the boss, the dots and the tile
+// effects stay as they are. At 0 it is knocked out instead (see knockOut).
+export function hurtPlayer(
+    state: GameState,
+    player: Player,
+    damage: number,
+    from: Vec2
+): boolean {
+    if (player.out || player.invulnerableFor > 0 || player.health <= 0) {
+        return false
+    }
+    player.health = Math.max(0, player.health - damage)
+    if (player.health <= 0) {
+        knockOut(state, player)
+        return true
+    }
+    const { pos } = player.character
+    emit(state, {
+        type: "hurt",
+        player: state.players.indexOf(player),
+        at: vec2(pos.x, pos.y),
+        damage,
+    })
+    knockBack(state, player, awayFrom(state, player, from))
+    player.invulnerableFor = HURT_INVULNERABLE_TICKS
+    return true
+}
+
+// What a player whose health ran out costs, by the game's mode, reported
+// as a playerCaught event where it stands:
+//
+// - solo: nothing more here; the game is lost (see lost).
+// - coop: it is out for good (takeOut); the game is lost once no player is
+//   in play.
+// - versus: it loses CATCH_DOTS of its dot count (not below 0) and is out
+//   for PLAYER_RESPAWN_DELAY seconds, then back at its spawn with full
+//   health (see tickPlayersOut). A versus game is never lost.
+function knockOut(state: GameState, player: Player) {
+    const { pos } = player.character
+    const at = vec2(pos.x, pos.y)
+    switch (state.mode) {
+        case "solo":
+            break
+        case "coop":
+            takeOut(player, null)
+            break
+        case "versus":
+            loseDots(player)
+            takeOut(player, PLAYER_RESPAWN_DELAY)
+            break
+        default: {
+            // Compile-time check that every Mode is handled above.
+            const unhandled: never = state.mode
+            throw new Error(`Unknown mode: ${String(unhandled)}`)
+        }
+    }
+    emit(state, {
+        type: "playerCaught",
+        player: state.players.indexOf(player),
+        at,
+        outForGood: state.mode !== "versus",
+    })
+}
+
+// The unit step taking `player` away from `from`, along the axis it is
+// further off on (x on a tie), the short way round the map. If it is drawn
+// right on `from`, it backs away from its facing.
+function awayFrom(state: GameState, player: Player, from: Vec2): Vec2 {
+    const cols = state.cells[0].length
+    const rows = state.cells.length
+    const at = drawnPos(player.character, cols, rows)
+    const dx = wrapDelta(at.x - from.x, cols)
+    const dy = wrapDelta(at.y - from.y, rows)
+    if (Math.abs(dx) < EPSILON && Math.abs(dy) < EPSILON) {
+        const { facing } = player.breather
+        return vec2(-facing.x, -facing.y)
+    }
+    return Math.abs(dx) >= Math.abs(dy)
+        ? vec2(Math.sign(dx), 0)
+        : vec2(0, Math.sign(dy))
+}
+
+// Whether to draw `player` now: not while out of play, and while
+// invulnerable after a hit, on and off BLINK_RATE times a second (starting
+// on, so the knockback is seen).
+export function playerVisible(player: Player): boolean {
+    if (player.out) return false
+    if (player.invulnerableFor <= 0) return true
+    const elapsed = HURT_INVULNERABLE_TICKS - player.invulnerableFor
+    const phase = Math.floor((elapsed * BLINK_RATE * 2) / TICK_RATE + EPSILON)
+    return phase % 2 === 0
 }
 
 // Whether an enemy in play with a solid status (see EnemyStatus) stands on
@@ -564,6 +745,9 @@ export function step(
     tickEffects(state, dt)
     tickPlayersOut(state, dt)
     tickStuns(players, dt)
+    for (const player of players) {
+        if (player.invulnerableFor > 0) player.invulnerableFor--
+    }
     trickle(state, dt)
     const from = positions(state)
     let start = tickStarts(state, dt)
