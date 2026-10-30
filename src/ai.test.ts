@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vite-plus/test"
-import { AiType, AMBUSH_AHEAD, Cell } from "./constants"
+import { AiType, AMBUSH_AHEAD, Cell, SPREAD_SLACK } from "./constants"
 import {
     ambushTarget,
     candidateMoves,
@@ -18,7 +18,12 @@ import type { Cells } from "./level"
 import { levels } from "./levels"
 import { openNeighbours } from "./path"
 import { allDirections, samePos, vec2, type Vec2 } from "./vec2"
-import { slideDistances, stepFrom, type IceMap } from "./ice"
+import {
+    slideDistances,
+    stepFrom,
+    type IceMap,
+    type SlideDistance,
+} from "./ice"
 
 // slideDistances is spied on (still doing its real work) so tests can tell
 // whether enemy pathing used it or took the no-ice fast path.
@@ -844,6 +849,173 @@ describe("blocked cells", () => {
     })
 })
 
+describe("enemyMove keeps same-kind enemies from stacking", () => {
+    // A loop round a 2x1 wall block. From (1, 1), (3, 3) is 3 moves away
+    // going down and 5 going right (2 more); (2, 3) is 2 down and 5 right
+    // (3 more).
+    const block = [
+        [1, 1, 1, 1, 1, 1],
+        [1, 0, 0, 0, 0, 1],
+        [1, 0, 1, 1, 0, 1],
+        [1, 0, 0, 0, 0, 1],
+        [1, 1, 1, 1, 1, 1],
+    ] as const
+
+    // Move `enemy` towards `target` among `crowd`.
+    function move(
+        cells: Cells,
+        enemy: Character,
+        target: Vec2,
+        crowd: readonly Character[]
+    ) {
+        enemyMove(
+            cells,
+            enemy,
+            target,
+            fixedRandom(0),
+            target,
+            undefined,
+            null,
+            cells,
+            new Map(),
+            crowd
+        )
+    }
+
+    it.each([
+        ["chasers", AiType.chase],
+        ["ambushers", AiType.ambusher],
+        ["Splitters", AiType.splitter],
+    ] as const)(
+        "sends the second of two stacked %s the next-best way",
+        (_, ai) => {
+            // From (1, 1) both ways round the block to (3, 3) are 4 moves.
+            const cells = cellsFrom(ring)
+            const first = makeEnemy(1, 1, ai, { x: 1, y: 0 })
+            const second = makeEnemy(1, 1, ai, { x: 1, y: 0 })
+            const crowd = [first, second]
+            move(cells, first, vec2(3, 3), crowd)
+            move(cells, second, vec2(3, 3), crowd)
+            // Down comes before right in direction order.
+            expect(first.pos).toEqual(vec2(1, 2))
+            expect(second.pos).toEqual(vec2(2, 1))
+            expect(second.lastPos).toEqual(vec2(1, 1))
+        }
+    )
+
+    it("takes a next-best way up to SPREAD_SLACK moves longer", () => {
+        expect(SPREAD_SLACK).toBe(2)
+        const cells = cellsFrom(block)
+        const first = makeEnemy(1, 1, AiType.chase)
+        const second = makeEnemy(1, 1, AiType.chase)
+        const crowd = [first, second]
+        move(cells, first, vec2(3, 3), crowd)
+        move(cells, second, vec2(3, 3), crowd)
+        expect(first.pos).toEqual(vec2(1, 2))
+        expect(second.pos).toEqual(vec2(2, 1))
+    })
+
+    it("holds a move rather than go more than SPREAD_SLACK longer", () => {
+        const cells = cellsFrom(block)
+        const first = makeEnemy(1, 1, AiType.chase, { x: 1, y: 0 })
+        const second = makeEnemy(1, 1, AiType.chase, { x: 1, y: 0 })
+        const crowd = [first, second]
+        move(cells, first, vec2(2, 3), crowd)
+        move(cells, second, vec2(2, 3), crowd)
+        expect(first.pos).toEqual(vec2(1, 2))
+        expect(second.pos).toEqual(vec2(1, 1))
+        expect(second.lastPos).toEqual(vec2(1, 0))
+    })
+
+    it("tells the caller it held, and holds no longer than a move's time", () => {
+        const cells = cellsFrom(corridor)
+        const first = makeEnemy(3, 1, AiType.chase, { x: 2, y: 1 })
+        const second = makeEnemy(2, 1, AiType.chase, { x: 1, y: 1 })
+        const crowd = [first, second]
+        const moveSecond = () =>
+            enemyMove(
+                cells,
+                second,
+                vec2(5, 1),
+                fixedRandom(0),
+                vec2(5, 1),
+                undefined,
+                null,
+                cells,
+                new Map(),
+                crowd
+            )
+        // Just short of a move's time: it may still hold.
+        second.heldFor = 1 / second.speed - 1 / 60
+        expect(moveSecond()).toBe(true)
+        expect(second.pos).toEqual(vec2(2, 1))
+        // A whole move's time: it takes the best way and stacks.
+        second.heldFor = 1 / second.speed
+        expect(moveSecond()).toBe(false)
+        expect(second.pos).toEqual(first.pos)
+        expect(second.lastPos).toEqual(first.lastPos)
+    })
+
+    it("follows a cell behind down a corridor", () => {
+        const cells = cellsFrom(corridor)
+        const first = makeEnemy(2, 1, AiType.chase, { x: 1, y: 1 })
+        const second = makeEnemy(2, 1, AiType.chase, { x: 1, y: 1 })
+        const crowd = [first, second]
+        const target = vec2(5, 1)
+        move(cells, first, target, crowd)
+        move(cells, second, target, crowd)
+        expect(first.pos).toEqual(vec2(3, 1))
+        expect(second.pos).toEqual(vec2(2, 1))
+        // Still gliding in: it holds again.
+        move(cells, second, target, crowd)
+        expect(second.pos).toEqual(vec2(2, 1))
+        // The first moves on, and the second follows.
+        move(cells, first, target, crowd)
+        move(cells, second, target, crowd)
+        expect(first.pos).toEqual(vec2(4, 1))
+        expect(second.pos).toEqual(vec2(3, 1))
+        expect(second.lastPos).toEqual(vec2(2, 1))
+    })
+
+    it("keeps off a twin that moved there earlier and isn't moving now", () => {
+        const cells = cellsFrom(ring)
+        const ahead = makeEnemy(1, 2, AiType.chase, { x: 1, y: 1 })
+        const enemy = makeEnemy(1, 1, AiType.chase, { x: 1, y: 0 })
+        move(cells, enemy, vec2(3, 3), [ahead, enemy])
+        expect(enemy.pos).toEqual(vec2(2, 1))
+    })
+
+    it("joins one of its kind that came from another cell", () => {
+        // Same cell, different heading: they part at the next turn.
+        const cells = cellsFrom(ring)
+        const there = makeEnemy(1, 2, AiType.chase, { x: 1, y: 3 })
+        const enemy = makeEnemy(1, 1, AiType.chase, { x: 1, y: 0 })
+        move(cells, enemy, vec2(3, 3), [there, enemy])
+        expect(enemy.pos).toEqual(vec2(1, 2))
+    })
+
+    it("joins an enemy of another kind", () => {
+        const cells = cellsFrom(ring)
+        const ambusher = makeEnemy(1, 2, AiType.ambusher, { x: 1, y: 1 })
+        const chaser = makeEnemy(1, 1, AiType.chase, { x: 1, y: 0 })
+        const splitter = makeEnemy(1, 1, AiType.splitter, { x: 1, y: 0 })
+        move(cells, chaser, vec2(3, 3), [ambusher, chaser])
+        move(cells, splitter, vec2(3, 3), [ambusher, chaser, splitter])
+        expect(chaser.pos).toEqual(vec2(1, 2))
+        expect(splitter.pos).toEqual(vec2(1, 2))
+    })
+
+    it("leaves phantoms to stack", () => {
+        const cells = cellsFrom(ring)
+        const first = makeEnemy(1, 1, AiType.phantom)
+        const second = makeEnemy(1, 1, AiType.phantom)
+        const crowd = [first, second]
+        move(cells, first, vec2(3, 3), crowd)
+        move(cells, second, vec2(3, 3), crowd)
+        expect(second.pos).toEqual(first.pos)
+    })
+})
+
 // Its checks sweep every stage's maps, which outgrows vitest's 5 s default
 // on slow CI machines as stages are added.
 describe("chasing on shared distances", { timeout: 30_000 }, () => {
@@ -915,6 +1087,126 @@ describe("chasing on shared distances", { timeout: 30_000 }, () => {
             }
         }
         expect(compared).toBeGreaterThan(1000)
+    })
+
+    // What chaseStep should choose among `crowd` (see spreadChoice), worked
+    // out on `dist`, a search of its own with the enemy's cell blocked, as
+    // above: the best candidate unless it stacks on a twin, then the
+    // next-best by distance and direction order that doesn't, within
+    // SPREAD_SLACK, else null (it holds), or the best once it has held for
+    // a move's time (`hold` false).
+    function blockedSpread(
+        cells: Cells,
+        ice: IceMap,
+        enemy: Character,
+        dist: SlideDistance,
+        crowd: readonly Character[],
+        hold = true
+    ): Vec2 | null {
+        const scored = candidateMoves(cells, enemy).map((v) => {
+            const state = allDirections
+                .map((_, h) => stepFrom(cells, ice, enemy.pos, h))
+                .find((s) => s !== null && samePos(s.pos, v))
+            return { v, d: state ? dist(state) : Infinity }
+        })
+        const stacks = (v: Vec2) =>
+            crowd.some(
+                (o) =>
+                    o !== enemy &&
+                    o.ai === enemy.ai &&
+                    samePos(o.pos, v) &&
+                    samePos(o.lastPos, enemy.pos)
+            )
+        // Stable: equal distances keep direction order.
+        const [best, ...rest] = scored.sort((a, b) =>
+            a.d === b.d ? 0 : a.d - b.d
+        )
+        if (!stacks(best.v)) return best.v
+        const other = rest.find(
+            (c) => c.d <= best.d + SPREAD_SLACK && !stacks(c.v)
+        )
+        return other?.v ?? (hold ? null : best.v)
+    }
+
+    it("spreads as a search with the enemy's own cell blocked would", () => {
+        let compared = 0
+        let held = 0
+        let spread = 0
+        for (const level of levels) {
+            const cells = cellsFrom(level.cells)
+            const { ice } = level
+            for (const target of sample(cells, 29)) {
+                const shared: ChaseDistances = new Map()
+                for (const at of sample(cells, 5)) {
+                    const dist = slideDistances(cells, ice, target, at)
+                    for (const last of [...openNeighbours(cells, at), at]) {
+                        const moves = candidateMoves(
+                            cells,
+                            makeEnemy(at.x, at.y, AiType.chase, last)
+                        )
+                        // A twin that came from `at` on each candidate in
+                        // turn, then on every one; and one of another kind.
+                        const twin = (v: Vec2, ai: AiType = AiType.chase) =>
+                            makeEnemy(v.x, v.y, ai, at)
+                        const crowds = [
+                            ...moves.map((v) => [twin(v)]),
+                            moves.map((v) => twin(v)),
+                            moves.map((v) => twin(v, AiType.ambusher)),
+                        ]
+                        // Each crowd with the enemy free to hold, and having
+                        // held for a move's time already.
+                        const runs = crowds.flatMap((others) =>
+                            [true, false].map((hold) => ({ others, hold }))
+                        )
+                        for (const { others, hold } of runs) {
+                            const enemy = makeEnemy(
+                                at.x,
+                                at.y,
+                                AiType.chase,
+                                last
+                            )
+                            if (!hold) enemy.heldFor = 1 / enemy.speed
+                            const crowd = [...others, enemy]
+                            const expected =
+                                blockedSpread(
+                                    cells,
+                                    ice,
+                                    enemy,
+                                    dist,
+                                    crowd,
+                                    hold
+                                ) ?? at
+                            const best = blockedSpread(
+                                cells,
+                                ice,
+                                enemy,
+                                dist,
+                                []
+                            )
+                            enemyMove(
+                                cells,
+                                enemy,
+                                target,
+                                fixedRandom(0),
+                                target,
+                                ice,
+                                null,
+                                cells,
+                                shared,
+                                crowd
+                            )
+                            expect(enemy.pos).toEqual(expected)
+                            if (samePos(expected, at)) held++
+                            else if (best && !samePos(expected, best)) spread++
+                            compared++
+                        }
+                    }
+                }
+            }
+        }
+        expect(compared).toBeGreaterThan(1000)
+        expect(held).toBeGreaterThan(100)
+        expect(spread).toBeGreaterThan(100)
     })
 
     it("searches once per target for every enemy sharing the distances", () => {

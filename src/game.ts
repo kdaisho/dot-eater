@@ -19,7 +19,9 @@ import {
 import {
     blockedView,
     enemyMove,
+    mayHold,
     nearestTarget,
+    stacksOn,
     targetPaths,
     type ChaseDistances,
     type Random,
@@ -931,28 +933,48 @@ export function step(
     const paths = targetPaths(cells, targets, enemyCells)
     // The distances chasers and ambushers aim by, shared the same way.
     const aims: ChaseDistances = new Map()
+    // The enemies a chaser, ambusher or Splitter keeps from stacking on,
+    // where each is as the loop goes (see spreadChoice in ai.ts).
+    const crowd = enemies.filter(inPlay)
     enemies.forEach((enemy, i) => {
-        if (!inPlay(enemy) || hasStatus(enemy, "holds")) return
-        if (!advance(enemy, dt)) return
+        if (!inPlay(enemy) || hasStatus(enemy, "holds")) {
+            enemy.heldFor = 0
+            return
+        }
+        // Still gliding: not holding (a hold is always ready to move), so a
+        // push, knock-back or split that cut a hold short leaves none to
+        // count against the next.
+        if (!advance(enemy, dt)) {
+            enemy.heldFor = 0
+            return
+        }
         const slide =
             enemy.ai === AiType.phantom
                 ? null
                 : slideStep(enemyCells, state.ice, enemy.pos, enemy.lastPos)
-        if (slide) {
-            // A patroller has reached its waypoint when it stands on it as
-            // the slide carries it off (patrolStep, which would notice, is
-            // skipped) or slides onto it; otherwise it could keep sliding
-            // past and turning back for it.
-            reachWaypoint(enemy)
-            enemy.lastPos = vec2(enemy.pos.x, enemy.pos.y)
-            enemy.pos = loopPos(
-                cells,
-                vec2(enemy.pos.x + slide.x, enemy.pos.y + slide.y)
-            )
-            reachWaypoint(enemy)
+        const slideTo =
+            slide &&
+            loopPos(cells, vec2(enemy.pos.x + slide.x, enemy.pos.y + slide.y))
+        // Whether it holds its move so as not to stack (see spreadChoice).
+        let held = false
+        if (slideTo) {
+            // A slide is no choice, but it may still carry a chaser,
+            // ambusher or Splitter onto one of its kind: then it holds, as
+            // a choice would, and slides on a cell behind.
+            held = mayHold(enemy) && stacksOn(crowd, enemy, slideTo)
+            if (!held) {
+                // A patroller has reached its waypoint when it stands on
+                // it as the slide carries it off (patrolStep, which would
+                // notice, is skipped) or slides onto it; otherwise it could
+                // keep sliding past and turning back for it.
+                reachWaypoint(enemy)
+                enemy.lastPos = vec2(enemy.pos.x, enemy.pos.y)
+                enemy.pos = slideTo
+                reachWaypoint(enemy)
+            }
         } else if (goingHome) {
             const home = state.spawns.enemies[i]
-            enemyMove(
+            held = enemyMove(
                 cells,
                 enemy,
                 home,
@@ -961,7 +983,8 @@ export function step(
                 state.ice,
                 blocked,
                 enemyCells,
-                aims
+                aims,
+                crowd
             )
         } else {
             const target = nearestTarget(
@@ -971,7 +994,7 @@ export function step(
                 enemyCells,
                 paths
             )
-            enemyMove(
+            held = enemyMove(
                 cells,
                 enemy,
                 targets[target],
@@ -980,9 +1003,11 @@ export function step(
                 state.ice,
                 blocked,
                 enemyCells,
-                aims
+                aims,
+                crowd
             )
         }
+        enemy.heldFor = held ? enemy.heldFor + dt : 0
         if (samePos(enemy.pos, from.enemies[i])) {
             wait(enemy)
         } else {

@@ -38,6 +38,11 @@ export type Character = {
     // Infinity (GONE in splitter.ts) is out of play with no timer: a
     // Splitter's half that is gone, or its spare slot before a split.
     respawnIn: number
+    // Seconds in a row a chaser, ambusher or Splitter has held its move so
+    // as not to stack on one of its kind (see spreadChoice in ai.ts); 0
+    // on any tick it doesn't hold (it moves, stays put for another reason,
+    // glides, is frozen or is out of play).
+    heldFor: number
     // Splitters only: which of the Splitter's two enemy slots this is, and
     // whether it is whole or a half (see splitter.ts).
     part?: SplitterPart
@@ -66,6 +71,7 @@ export function createCharacter(
         routeIndex: 0,
         statuses: [],
         respawnIn: 0,
+        heldFor: 0,
     }
 }
 

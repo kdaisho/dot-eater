@@ -71,6 +71,11 @@ export const SPLITTER_DROP_SECONDS = 4
 // How many cells ahead of the player's heading an ambusher aims.
 export const AMBUSH_AHEAD = 4
 
+// How many moves longer than its best way a chaser, ambusher or Splitter
+// takes its next-best way rather than stack on another enemy of its kind
+// (see spreadChoice in ai.ts).
+export const SPREAD_SLACK = 2
+
 // How wide characters are drawn, as a fraction of a cell (the emoji's font
 // size; see render.ts).
 export const SPRITE_SCALE = 0.8
