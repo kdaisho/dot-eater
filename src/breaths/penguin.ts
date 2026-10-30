@@ -21,8 +21,8 @@ export const FROZEN: EnemyStatus = {
 }
 
 // The cone's floor as ice (as level ice: everyone but a Penguin slides on
-// it). The engine leaves out
-// any cell a character stands on, frozen enemies included.
+// it). The engine leaves out any cell a character stands on, frozen enemies
+// included.
 export const BREATH_ICE: TileEffect = {
     name: "penguin.ice",
     ice: true,
