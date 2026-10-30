@@ -25,7 +25,7 @@ import {
     type MoveState,
     type SlideDistance,
 } from "./ice"
-import { samePos, vec2, type Vec2 } from "./vec2"
+import { allDirections, directions, samePos, vec2, type Vec2 } from "./vec2"
 
 export type Cells = Cell[][]
 
@@ -528,6 +528,7 @@ function spawnStageProblems(
         )
     }
     problems.push(...tunnelProblems(cells))
+    problems.push(...sealedProblems(map))
     problems.push(...bossProblems(rows, bossPositions, boss))
     enemies.forEach((enemy, i) => {
         enemy.route?.forEach(([x, y], j) => {
@@ -908,6 +909,54 @@ function routeShapeProblems(enemy: EnemyData, i: number): string[] {
             )
         }
     })
+    return problems
+}
+
+// Open areas walled off from every spawn and dot (KDA-245), one problem per
+// area, named by its first cell in reading order. Nothing ever goes there
+// but a player who breaks in through a wall (the Boar), who could then be
+// sealed inside, with no dots to refill its energy and break out again.
+// Areas are found by plain steps, wrap tunnels included; ice doesn't
+// matter, as sliding never crosses a wall.
+function sealedProblems(map: BuiltMap): string[] {
+    const { cells } = map
+    const height = cells.length
+    const width = cells[0].length
+    const reached = cells.map((row) => row.map(() => false))
+    // Mark everything open that `starts` connect to; the cells newly marked.
+    const flood = (starts: readonly Vec2[]): Vec2[] => {
+        const queue = starts.filter(({ x, y }) => !reached[y][x])
+        for (const { x, y } of queue) reached[y][x] = true
+        for (let head = 0; head < queue.length; head++) {
+            for (const d of allDirections) {
+                const { x, y } = queue[head]
+                const step = directions[d]
+                const next = loopPos(cells, vec2(x + step.x, y + step.y))
+                if (cells[next.y][next.x] === Cell.wall) continue
+                if (reached[next.y][next.x]) continue
+                reached[next.y][next.x] = true
+                queue.push(next)
+            }
+        }
+        return queue
+    }
+    const sources: Vec2[] = map.playerPositions.flat()
+    cells.forEach((row, y) =>
+        row.forEach((cell, x) => {
+            if (cell === Cell.dot) sources.push(vec2(x, y))
+        })
+    )
+    flood(sources)
+    const problems: string[] = []
+    for (let y = 0; y < height; y++) {
+        for (let x = 0; x < width; x++) {
+            if (cells[y][x] === Cell.wall || reached[y][x]) continue
+            const size = flood([vec2(x, y)]).length
+            problems.push(
+                `open area at (${x}, ${y}) (${size} ${size === 1 ? "cell" : "cells"}) is sealed off: no spawn or dot reaches it`
+            )
+        }
+    }
     return problems
 }
 

@@ -603,12 +603,12 @@ describe("parseLevel", () => {
         })
 
         it("waypoints the patroller can't reach from its spawn", () => {
-            // (4, 2) is an empty pocket, sealed off from the rest.
+            // (4, 2) is a pocket with a dot, walled off from the rest.
             expect(
                 problemsOf({
                     name: "pocket",
                     parTime: 60,
-                    map: ["######", "#P.E##", "#### #", "######"],
+                    map: ["######", "#P.E##", "####.#", "######"],
                     enemies: [
                         {
                             ai: "patroller",
@@ -620,8 +620,40 @@ describe("parseLevel", () => {
                     ],
                 })
             ).toEqual([
+                "dot at (4, 2) can't be reached from the player spawn",
                 "enemies[0].route[1] (4, 2) can't be reached from the enemy's spawn",
             ])
+        })
+
+        // KDA-245: a Boar could break into one and be sealed inside.
+        it("open areas sealed off from every spawn and dot", () => {
+            expect(
+                problemsOf({
+                    ...valid,
+                    map: [
+                        "########",
+                        "#P.E#  #",
+                        "#. .## #",
+                        "#####  #",
+                        "#  #####",
+                        "########",
+                    ],
+                })
+            ).toEqual([
+                "open area at (5, 1) (5 cells) is sealed off: no spawn or dot reaches it",
+                "open area at (1, 4) (2 cells) is sealed off: no spawn or dot reaches it",
+            ])
+        })
+
+        it("no open area that a tunnel joins to the rest", () => {
+            // The empty cell at (5, 1) is reached only through the tunnel
+            // from (0, 1).
+            expect(
+                problemsOf({
+                    ...valid,
+                    map: ["######", " P.E# ", "#. .##", "######"],
+                })
+            ).toEqual([])
         })
 
         it("a tunnel that wraps into a wall", () => {
