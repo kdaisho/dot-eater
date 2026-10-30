@@ -175,6 +175,12 @@ describe("main", () => {
         expect(selectedItem()).toBe(levels[0].name)
         expect(steps()).toBe(0)
 
+        // Space: difficulty select, on Medium with nothing saved.
+        pressAndTick("Space")
+        expect(screen()).toBe("difficulty-select")
+        expect(selectedItem()).toBe("Medium 4 enemies, medium maze")
+        expect(starts()).toBe(0)
+
         // Space: character select, on the Dragon with nothing saved.
         pressAndTick("Space")
         expect(screen()).toBe("character-select")
@@ -206,6 +212,9 @@ describe("main", () => {
         for (let i = 0; i < 4 && screen() !== "playing"; i++) {
             if (screen() === "pause") {
                 pressAndTick("KeyP")
+            } else if (screen() === "difficulty-select") {
+                // Medium, which the other tests play.
+                pressAndTick("Space")
             } else {
                 // A menu: pick its first item.
                 pressAndTick("ArrowUp")
@@ -411,19 +420,26 @@ describe("main", () => {
         expect(selectedItem()).toBe(levels[0].name)
         const before = starts()
         pressAndTick("Space")
+        expect(screen()).toBe("difficulty-select")
+        pressAndTick("Space")
         expect(screen()).toBe("character-select")
         pressAndTick("Space")
         expect(screen()).toBe("playing")
         expect(starts()).toBe(before + 1)
     })
 
-    it("goes back from character select to stage select on Escape", () => {
+    it("goes back from character select to difficulty select, then stage select, on Escape", () => {
         gameOver()
         pressAndTick("ArrowDown")
+        pressAndTick("Space")
+        // Difficulty select, on Medium.
         pressAndTick("Space")
         pressAndTick("Space")
         expect(screen()).toBe("character-select")
         const before = starts()
+        pressAndTick("Escape")
+        expect(screen()).toBe("difficulty-select")
+        expect(selectedItem()).toBe("Medium 4 enemies, medium maze")
         pressAndTick("Escape")
         expect(screen()).toBe("stage-select")
         expect(selectedItem()).toBe(levels[0].name)
@@ -433,6 +449,8 @@ describe("main", () => {
     it("shows a card per character and clears the canvas on character select", () => {
         gameOver()
         pressAndTick("ArrowDown")
+        pressAndTick("Space")
+        // Difficulty select, on Medium.
         pressAndTick("Space")
         pressAndTick("Space")
         expect(screen()).toBe("character-select")
@@ -450,6 +468,8 @@ describe("main", () => {
     it("saves the pick, keeps it on retry and opens character select on it next time", () => {
         gameOver()
         pressAndTick("ArrowDown")
+        pressAndTick("Space")
+        // Difficulty select, on Medium.
         pressAndTick("Space")
         pressAndTick("Space")
         expect(screen()).toBe("character-select")
@@ -470,6 +490,8 @@ describe("main", () => {
 
         gameOver()
         pressAndTick("ArrowDown")
+        pressAndTick("Space")
+        // Difficulty select, on Medium.
         pressAndTick("Space")
         pressAndTick("Space")
         expect(screen()).toBe("character-select")
@@ -524,6 +546,8 @@ describe("main", () => {
         gameOver()
         pressAndTick("ArrowDown")
         pressAndTick("Space")
+        // Difficulty select, on Medium.
+        pressAndTick("Space")
         pressAndTick("Space")
         expect(screen()).toBe("character-select")
         // Right moves the cursor, then stays held through the confirm.
@@ -547,6 +571,8 @@ describe("main", () => {
         // Back to the Dragon, which the other tests expect.
         gameOver()
         pressAndTick("ArrowDown")
+        pressAndTick("Space")
+        // Difficulty select, on Medium.
         pressAndTick("Space")
         pressAndTick("Space")
         for (const _ of ANIMAL_IDS) pressAndTick("ArrowLeft")
@@ -728,7 +754,7 @@ describe("main", () => {
         game.ticks = ticks
         game.players[0].health = MAX_HEALTH / 2 - 1
         gameOver("won")
-        expect(overlayLines().slice(1)).toEqual([
+        expect(overlayLines().slice(2)).toEqual([
             `Time ${formatTicks(ticks)}`,
             "★ Cleared",
             "☆ At least half health",
@@ -775,7 +801,7 @@ describe("main", () => {
         )
     })
 
-    it("draws the game's score and health in the HUD", () => {
+    it("draws the game's score, health and difficulty in the HUD", () => {
         const game = drawnGame()
         game.players[0].score = 7 * DOT_POINTS
         game.players[0].health = 60
@@ -784,6 +810,7 @@ describe("main", () => {
             score: 7 * DOT_POINTS,
             health: { health: 60, max: MAX_HEALTH },
             energy: energyHud(game),
+            difficulty: "Medium",
         })
     })
 
@@ -834,6 +861,7 @@ describe("main", () => {
         expect(selectedItem()).toBe(levels[fog].name)
         pressAndTick("Space")
         pressAndTick("Space")
+        pressAndTick("Space")
         try {
             expect(screen()).toBe("playing")
             expect(lastStartedLevel()).toBe(levels[fog])
@@ -850,16 +878,20 @@ describe("main", () => {
             for (let i = 0; i < fog; i++) pressAndTick("ArrowUp")
             pressAndTick("Space")
             pressAndTick("Space")
+            pressAndTick("Space")
         }
         expect(lastStartedLevel()).toBe(levels[0])
     })
 
     it.each(["dead", "won"] as const)(
-        "shows the final score on the end screen (%s), and retries from 0",
+        "shows the difficulty and final score on the end screen (%s), and retries from 0",
         (outcome) => {
             drawnGame().players[0].score = 12 * DOT_POINTS
             gameOver(outcome)
-            expect(overlayLines()[0]).toBe(`Score ${12 * DOT_POINTS}`)
+            expect(overlayLines().slice(0, 2)).toEqual([
+                "Difficulty Medium",
+                `Score ${12 * DOT_POINTS}`,
+            ])
             pressAndTick("Space")
             expect(screen()).toBe("playing")
             expect(drawn.last?.[2]).toMatchObject({
