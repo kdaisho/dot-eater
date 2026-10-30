@@ -1005,14 +1005,66 @@ describe("enemyMove keeps same-kind enemies from stacking", () => {
         expect(splitter.pos).toEqual(vec2(1, 2))
     })
 
-    it("leaves phantoms to stack", () => {
+    it("sends the second of two stacked phantoms the next-best step", () => {
+        // Through walls: from (1, 1), down and right both bring (3, 3) a
+        // step nearer, down first in direction order.
         const cells = cellsFrom(ring)
         const first = makeEnemy(1, 1, AiType.phantom)
         const second = makeEnemy(1, 1, AiType.phantom)
         const crowd = [first, second]
         move(cells, first, vec2(3, 3), crowd)
         move(cells, second, vec2(3, 3), crowd)
+        expect(first.pos).toEqual(vec2(1, 2))
+        expect(second.pos).toEqual(vec2(2, 1))
+    })
+
+    it("steps a phantom away from the player rather than stack", () => {
+        // Straight below the player: every other step is 2 farther, within
+        // SPREAD_SLACK.
+        const cells = cellsFrom(cross)
+        const first = makeEnemy(2, 0, AiType.phantom)
+        const second = makeEnemy(2, 0, AiType.phantom)
+        const crowd = [first, second]
+        move(cells, first, vec2(2, 4), crowd)
+        move(cells, second, vec2(2, 4), crowd)
+        expect(first.pos).toEqual(vec2(2, 1))
+        expect(second.pos).toEqual(vec2(1, 0))
+    })
+
+    it("holds a phantom with no other step, for a move's time at most", () => {
+        // A one-cell-wide map: from its top end the only step is down.
+        const cells = cellsFrom([[0], [0], [0], [0]])
+        const first = makeEnemy(0, 0, AiType.phantom)
+        const second = makeEnemy(0, 0, AiType.phantom)
+        const crowd = [first, second]
+        move(cells, first, vec2(0, 3), crowd)
+        move(cells, second, vec2(0, 3), crowd)
+        expect(first.pos).toEqual(vec2(0, 1))
+        expect(second.pos).toEqual(vec2(0, 0))
+        second.heldFor = 1 / second.speed
+        move(cells, second, vec2(0, 3), crowd)
         expect(second.pos).toEqual(first.pos)
+    })
+
+    // Two phantoms that have just passed each other, each now heading for
+    // the cell the other is on (each for its own spawn, say), with no other
+    // step: each would hold for the other for good. The hold limit lets
+    // them pass.
+    it("lets two phantoms waiting on each other pass", () => {
+        const cells = cellsFrom([[0, 0]])
+        const left = makeEnemy(0, 0, AiType.phantom, { x: 1, y: 0 })
+        const right = makeEnemy(1, 0, AiType.phantom, { x: 0, y: 0 })
+        const crowd = [left, right]
+        move(cells, left, vec2(1, 0), crowd)
+        move(cells, right, vec2(0, 0), crowd)
+        expect(left.pos).toEqual(vec2(0, 0))
+        expect(right.pos).toEqual(vec2(1, 0))
+        left.heldFor = 1 / left.speed
+        right.heldFor = 1 / right.speed
+        move(cells, left, vec2(1, 0), crowd)
+        move(cells, right, vec2(0, 0), crowd)
+        expect(left.pos).toEqual(vec2(1, 0))
+        expect(right.pos).toEqual(vec2(0, 0))
     })
 })
 

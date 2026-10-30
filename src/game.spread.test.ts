@@ -9,6 +9,7 @@ import {
     type GameState,
     type MoveInput,
 } from "./game"
+import { DIFFICULTIES, DIFFICULTY_LABELS } from "./difficulty"
 import type { Level } from "./level"
 import { stages } from "./levels"
 import {
@@ -31,7 +32,12 @@ vi.mock("./ai", async (importOriginal) => {
     const ai = await importOriginal<typeof import("./ai")>()
     // Imported here: the mock is set up before the file's imports.
     const { AiType: Ai } = await import("./constants")
-    const spreads = new Set<AiType>([Ai.chase, Ai.ambusher, Ai.splitter])
+    const spreads = new Set<AiType>([
+        Ai.chase,
+        Ai.ambusher,
+        Ai.splitter,
+        Ai.phantom,
+    ])
     return {
         ...ai,
         enemyMove: (...args: Parameters<typeof ai.enemyMove>) => {
@@ -178,6 +184,7 @@ const SPREADING = new Set<AiType>([
     AiType.chase,
     AiType.ambusher,
     AiType.splitter,
+    AiType.phantom,
 ])
 
 // The longest run of ticks, over every pair of enemies, that the two were
@@ -221,6 +228,12 @@ describe("same-kind enemies in a whole game", () => {
         ["stage 8 at Super Hard", stages[7].superHard],
         ["stage 5 at Easy", stages[4].easy],
         ["stage 10 at Easy", stages[9].easy],
+        // Two phantoms (KDA-285): 17-85 s on every seed.
+        ["stage 4's phantoms at Super Hard", stages[3].superHard],
+        ...DIFFICULTIES.map((d): [string, Level] => [
+            `stage 6's phantoms at ${DIFFICULTY_LABELS[d]}`,
+            stages[5][d],
+        ]),
     ] satisfies [string, Level][])(
         "keeps %s from going as one",
         (_, level) => {
@@ -237,14 +250,18 @@ describe("same-kind enemies in a whole game", () => {
     // it did before the rule: every stage at Easy but the boss stages (see
     // above).
     const bossStages = [5, 10]
+    // And stage 6, whose two phantoms come out at every difficulty.
+    const stacking = [...bossStages, 6]
     const calm: [string, Level][] = [
         ...stages.flatMap((stage, i): [string, Level][] =>
-            bossStages.includes(i + 1)
+            stacking.includes(i + 1)
                 ? []
                 : [[`stage ${i + 1} at Easy`, stage.easy]]
         ),
         ["stage 1 at Medium", stages[0].medium],
         ["stage 1 at Hard", stages[0].hard],
+        // One phantom among the others.
+        ["stage 4 at Medium", stages[3].medium],
     ]
     it.each(calm)(
         "leaves every move as it was on %s",
