@@ -9,6 +9,7 @@ import { stage6 } from "./stage6"
 import { stage7 } from "./stage7"
 import { stage8 } from "./stage8"
 import { stage9 } from "./stage9"
+import { stage10 } from "./stage10"
 
 // Every stage at every difficulty. Parsed once on load, so a broken level
 // file fails immediately.
@@ -22,6 +23,7 @@ export const stages: readonly Stage[] = [
     stage7,
     stage8,
     stage9,
+    stage10,
 ].map((data) => parseStage(data))
 
 // Every stage at the default difficulty. A stage's name and rules are the
