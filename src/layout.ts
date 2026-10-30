@@ -76,21 +76,42 @@ export function computeLayout(
     }
 }
 
-// The band (CSS pixels) kept for the on-screen D-pad and breath button
-// when they show: below the maze in portrait, and on both sides of it in
-// landscape (D-pad left, breath right). css/style.css uses the same size.
+// The band (CSS pixels) kept for the punch and breath buttons on a touch
+// screen without the D-pad: below the maze in portrait (the buttons side by
+// side on the right), right of it in landscape (one above the other). Just
+// a button (72 px) and a margin each side, so the maze stays as big as it
+// can. css/style.css uses the same sizes.
+export const BUTTONS_SPACE = 104
+
+// The band (CSS pixels) kept with the on-screen D-pad on: below the maze in
+// portrait, and on both sides of it in landscape (D-pad left, punch and
+// breath right). css/style.css uses the same size.
 export const DPAD_SPACE = 180
 
+// Which touch controls take room: none (no touch screen), the punch and
+// breath buttons, or those and the D-pad.
+export type ControlsShown = "none" | "buttons" | "dpad"
+
 // The room the touch controls take from a viewport (CSS pixels), to fit
-// the maze in the rest. None without the D-pad. Portrait is a viewport at
-// least as tall as it is wide, as in CSS's orientation media feature.
+// the maze in the rest. Kept on menus too, so the maze doesn't jump when
+// play starts. Portrait is a viewport at least as tall as it is wide, as in
+// CSS's orientation media feature.
 export function controlsSpace(
     viewportWidth: number,
     viewportHeight: number,
-    dpad: boolean
+    shown: ControlsShown
 ): { width: number; height: number } {
-    if (!dpad) return { width: 0, height: 0 }
-    return viewportHeight >= viewportWidth
-        ? { width: 0, height: DPAD_SPACE }
-        : { width: 2 * DPAD_SPACE, height: 0 }
+    const portrait = viewportHeight >= viewportWidth
+    switch (shown) {
+        case "none":
+            return { width: 0, height: 0 }
+        case "buttons":
+            return portrait
+                ? { width: 0, height: BUTTONS_SPACE }
+                : { width: BUTTONS_SPACE, height: 0 }
+        case "dpad":
+            return portrait
+                ? { width: 0, height: DPAD_SPACE }
+                : { width: 2 * DPAD_SPACE, height: 0 }
+    }
 }
