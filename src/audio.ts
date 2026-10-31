@@ -231,6 +231,12 @@ export type Audio = {
     pauseMusic(): void
     // Carry on from where the tune was paused.
     resumeMusic(): void
+    // Seconds into the tune: its place while it plays (0 until it starts,
+    // round the loop included), or where it is held while paused or
+    // waiting for its file. Undefined without a tune, before unlock, or
+    // where there is no sound at all, so callers fall back to their own
+    // clock.
+    musicPosition(): number | undefined
     // Whether unlock has been called.
     readonly unlocked: boolean
     // The tune playing, paused, or waiting for unlock to start.
@@ -488,6 +494,11 @@ export function createAudio(options: AudioOptions): Audio {
             if (!paused) return
             paused = false
             startMusic()
+        },
+        musicPosition() {
+            if (!music || failed || !context) return undefined
+            if (!playing) return position
+            return Math.max(0, context.currentTime - playing.start)
         },
         get unlocked() {
             return unlocked
