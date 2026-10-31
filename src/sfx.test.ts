@@ -60,6 +60,26 @@ describe("the hurt sound", () => {
 })
 
 describe("the boss's breath sounds", () => {
+    // KDA-293, with the user: the mock-up's sound 3.
+    it("thocks a block: a low falling sine knock and a short mid click", () => {
+        const [knock, click] = SFX[SfxId.punchBlocked]
+        expect(knock).toMatchObject({
+            wave: "sine",
+            at: 0,
+            duration: 0.12,
+            freq: 320,
+            freqEnd: 140,
+        })
+        expect(click).toMatchObject({
+            wave: "noise",
+            at: 0,
+            duration: 0.04,
+            freq: 900,
+        })
+        expect(click.volume).toBeLessThan(knock.volume)
+        expect(SFX[SfxId.punchBlocked]).toHaveLength(2)
+    })
+
     it("rumble low through about the wind-up, then roar", () => {
         expect(soundLength(SFX[SfxId.bossWindUp])).toBeCloseTo(
             BOSS_BREATH_WIND_UP,

@@ -56,7 +56,7 @@ import { createCharacter, type Character } from "./character"
 import { GUARD, type Difficulty, type GuardOdds } from "./difficulty"
 import { emit, type GameEvent } from "./events"
 import { glidePos, wrapDelta, type Glider } from "./glide"
-import { rollGuards } from "./guard"
+import { inStance, rollGuards, tickStances } from "./guard"
 import { slideStep, type IceMap } from "./ice"
 import { hasDots, loopPos, type Cells, type Level } from "./level"
 import { levels } from "./levels"
@@ -851,8 +851,9 @@ function wait(character: Glider) {
 // Punches (see punch.ts) come right after the breaths, from where each
 // player is drawn after its move, and knock enemies back like a breath's
 // push. They cost nothing and never stop or slow the player. Their timers
-// (see tickPunches) move on with the others; enemies just in play roll
-// their guard (see guard.ts) after them.
+// (see tickPunches) move on with the others, and so do the enemies' guard
+// stances (see tickStances in guard.ts): one in its stance holds still.
+// Enemies just in play roll their guard (see guard.ts) after them.
 //
 // On a level with rules.regrowDots, eaten dots due back grow back with the
 // timers, on cells no character is on (see regrow.ts), so a player moving
@@ -880,6 +881,7 @@ export function step(
     tickPlayersOut(state, dt)
     tickStuns(players, dt)
     tickPunches(state, dt)
+    tickStances(state, dt)
     for (const player of players) {
         if (player.invulnerableFor > 0) player.invulnerableFor--
     }
@@ -967,10 +969,11 @@ export function step(
         // Still gliding: not holding (a hold is always ready to move), so a
         // push, knock-back or split that cut a hold short leaves none to
         // count against the next. A short knock turns round as its
-        // progress moves on (see turnKnock in punch.ts).
+        // progress moves on (see turnKnock in punch.ts). One in its guard
+        // stance (see guard.ts) finishes its glide but makes no new move.
         advance(enemy, dt)
         turnKnock(enemy, crowd)
-        if (enemy.moveProgress < 1 - EPSILON) {
+        if (enemy.moveProgress < 1 - EPSILON || inStance(enemy)) {
             enemy.heldFor = 0
             return []
         }

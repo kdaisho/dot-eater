@@ -1,5 +1,6 @@
 import type { Random } from "./ai"
 import { inPlay } from "./breath"
+import type { Character } from "./character"
 import { GUARD_CAP, type GuardOdds } from "./difficulty"
 import type { GameState } from "./game"
 
@@ -70,4 +71,40 @@ export function guardFactor(interval: number): number {
 // after the same player's previous one.
 export function blockChance(skill: number, interval: number): number {
     return skill * guardFactor(interval)
+}
+
+// The guard stance (KDA-293, with the user; the numbers are placeholders to
+// tune at preview): each block puts the enemy in a stance for GUARD_STANCE
+// seconds (Character.stance), and a block during one starts it over. It
+// holds still: it finishes the glide it is in, with no jump, then makes no
+// new move (see step in game.ts) until the stance is over. A punch that
+// lands on it ends the stance (and knocks it back as usual), and so does a
+// defeat (see freshFromPunches). Counted in game time, at the start of each
+// tick with the other timers, so a pause freezes it. Its look is drawn from
+// it (see stanceLook in render.ts).
+export const GUARD_STANCE = 0.4
+
+// `enemy` has blocked a punch: start its stance, or start it over.
+export function startStance(enemy: Character) {
+    enemy.stance = GUARD_STANCE
+}
+
+// A punch has landed on `enemy`: its stance, if any, is over.
+export function endStance(enemy: Character) {
+    enemy.stance = 0
+}
+
+// Whether `enemy` is in its guard stance.
+export function inStance(enemy: Character): boolean {
+    return enemy.stance > 0
+}
+
+// Count every enemy's stance down by `dt` seconds, at the start of a tick
+// (see step in game.ts).
+export function tickStances(state: GameState, dt: number) {
+    for (const enemy of state.enemies) {
+        if (enemy.stance <= 0) continue
+        enemy.stance -= dt
+        if (enemy.stance <= EPSILON) enemy.stance = 0
+    }
 }

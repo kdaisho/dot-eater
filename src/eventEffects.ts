@@ -5,7 +5,6 @@ import type { Jabs } from "./jab"
 import type { Particles } from "./particles"
 import { shakeEnabled, type Settings } from "./settings"
 import { SHAKES, type Shake } from "./shake"
-import type { Shields } from "./shield"
 import { vec2, type Vec2 } from "./vec2"
 
 // Particles and screen shake for what happened in a tick (KDA-213): which
@@ -13,20 +12,18 @@ import { vec2, type Vec2 } from "./vec2"
 // from the particle system and shake it is handed; main.ts calls it with
 // each tick's events. Visual only: the game never reads any of it.
 
-// What the effects go to: the particle system, the shake, the players' jab
-// looks and the enemies' block looks (or test doubles of them). Without
-// `jabs`, punches show none; without `shields`, blocks show none.
+// What the effects go to: the particle system, the shake and the players'
+// jab looks (or test doubles of them). Without `jabs`, punches show none.
 export type EffectTargets = {
     particles: Pick<Particles, "burst" | "emit">
     shake: Pick<Shake, "add">
-    jabs?: Pick<Jabs, "add">
-    shields?: Pick<Shields, "add">
+    jabs?: Pick<Jabs, "add" | "block">
 }
 
 // The effects of every event of a tick, in order. `state` is the game
 // after the tick (a breath's cells are worked out on it). A punch shakes
 // once however many things it hits (a player punches once a tick at most),
-// with a burst on each; a block (KDA-288) only shows its shield.
+// with a burst on each; a block (KDA-293) gets sparks but no shake.
 export function effectsForEvents(
     events: readonly GameEvent[],
     state: GameState,
@@ -52,7 +49,7 @@ const NO_SHAKE: EffectTargets["shake"] = { add() {} }
 export function effectsForEvent(
     event: GameEvent,
     state: GameState,
-    { particles, shake, jabs, shields }: EffectTargets
+    { particles, shake, jabs }: EffectTargets
 ) {
     switch (event.type) {
         case "dotEaten":
@@ -112,8 +109,14 @@ export function effectsForEvent(
             shake.add(SHAKES.punch)
             return
         case "punchBlocked":
-            // A 🛡 over the enemy, and no burst or shake: nothing landed.
-            shields?.add(event.enemy)
+            // Sparks thrown back at the puncher from the impact point, on
+            // the enemy's side facing it, and the fist bounces back
+            // (KDA-293). No shake: nothing landed. The stance's look is
+            // drawn from the enemy's state (see stanceLook in render.ts).
+            particles.burst("block", blockImpact(event), {
+                direction: vec2(-event.facing.x, -event.facing.y),
+            })
+            jabs?.block(event.player)
             return
         case "playerRespawned":
         case "gameWon":
@@ -139,6 +142,20 @@ export function applyMotion(
     targets.particles.reduced = prefersReducedMotion
     if (targets.jabs) targets.jabs.reduced = prefersReducedMotion
     targets.shake.enabled = shakeEnabled(settings, prefersReducedMotion)
+}
+
+// A block's sparks start this far from the enemy's centre, towards the
+// puncher, in cells: on the edge of its sprite, where the fist met it.
+export const BLOCK_IMPACT = 0.42
+
+// Where a blocked punch met the enemy (see BLOCK_IMPACT).
+export function blockImpact(
+    event: Extract<GameEvent, { type: "punchBlocked" }>
+): Vec2 {
+    return vec2(
+        event.at.x - event.facing.x * BLOCK_IMPACT,
+        event.at.y - event.facing.y * BLOCK_IMPACT
+    )
 }
 
 // The middle of the boss's 2x2 footprint, from its top-left cell, in cell

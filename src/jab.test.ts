@@ -1,5 +1,13 @@
 import { describe, expect, it } from "vite-plus/test"
-import { createJabs, jabLunge, JAB_LUNGE, JAB_SECONDS } from "./jab"
+import {
+    createJabs,
+    FIST_BOUNCE,
+    FIST_BOUNCE_SECONDS,
+    fistBounce,
+    jabLunge,
+    JAB_LUNGE,
+    JAB_SECONDS,
+} from "./jab"
 import { vec2 } from "./vec2"
 
 describe("jabs", () => {
@@ -52,5 +60,38 @@ describe("jabs", () => {
         jabs.reduced = false
         jabs.add(1, vec2(1, 0))
         expect(jabs.list.map((j) => j.lunge)).toEqual([0, JAB_LUNGE])
+    })
+
+    // KDA-293, with the user: about a quarter of a cell over 0.12 s.
+    it("bounce a blocked one's fist back, then out again", () => {
+        expect(FIST_BOUNCE).toBe(0.25)
+        expect(FIST_BOUNCE_SECONDS).toBe(0.12)
+        expect(FIST_BOUNCE_SECONDS).toBeLessThan(JAB_SECONDS)
+        const jabs = createJabs()
+        jabs.add(0, vec2(1, 0))
+        jabs.add(1, vec2(-1, 0))
+        jabs.block(1)
+        const [plain, blocked] = jabs.list
+        expect(plain.blocked).toBeUndefined()
+        expect(blocked.blocked).toBe(true)
+        expect(fistBounce(plain)).toBe(0)
+        expect(fistBounce(blocked)).toBeCloseTo(FIST_BOUNCE)
+        jabs.update(FIST_BOUNCE_SECONDS / 2)
+        expect(fistBounce(jabs.list[1]!)).toBeCloseTo(FIST_BOUNCE / 2)
+        jabs.update(FIST_BOUNCE_SECONDS / 2)
+        expect(fistBounce(jabs.list[1]!)).toBe(0)
+    })
+
+    it("bounce with reduced motion too: only the sprite's lunge stops", () => {
+        const jabs = createJabs({ reduced: true })
+        jabs.add(0, vec2(1, 0))
+        jabs.block(0)
+        expect(fistBounce(jabs.list[0]!)).toBeCloseTo(FIST_BOUNCE)
+    })
+
+    it("ignore a block for a player with no jab", () => {
+        const jabs = createJabs()
+        jabs.block(0)
+        expect(jabs.list).toEqual([])
     })
 })

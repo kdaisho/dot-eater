@@ -35,10 +35,16 @@ import {
     PLAYER_COLORS,
     IMMUNE_BADGE,
     STUN_BADGE,
+    stanceLook,
+    STANCE_OUTLINE,
+    STANCE_TINT,
     stunLabel,
     type Effects,
+    CROUCH_HEIGHT,
+    CROUCH_WIDTH,
 } from "./render"
-import { JAB_LUNGE, JAB_SECONDS } from "./jab"
+import { GUARD_STANCE } from "./guard"
+import { FIST_BOUNCE, FIST_BOUNCE_SECONDS, JAB_LUNGE, JAB_SECONDS } from "./jab"
 import type { Particle } from "./particles"
 import { createSplitter } from "./splitter"
 import { DEFAULT_ANIMAL } from "./roster"
@@ -1690,41 +1696,140 @@ describe("createRenderer with effects", () => {
         })
     })
 
-    describe("a block's shield (KDA-288)", () => {
-        const at = (calls: ReturnType<typeof setup>["calls"], text: string) =>
-            calls.findIndex((c) => c.name === "fillText" && c.args[0] === text)
+    const sprite = (calls: ReturnType<typeof setup>["calls"], text: string) =>
+        calls.find((c) => c.name === "fillText" && c.args[0] === text)
 
-        it("shows over the enemy that blocked, over every character", () => {
+    it("bounces a blocked jab's fist back towards the player (KDA-293)", () => {
+        const fistAt = (blocked: boolean, age: number) => {
             const { calls, canvas, renderer } = setup()
+            const jab = {
+                player: 0,
+                facing: vec2(1, 0),
+                age,
+                lunge: 0,
+                blocked,
+            }
+            renderer.draw(corridor(), 0, {}, {}, { jabs: [jab] })
+            const fist = sprite(calls, "👊")
+            return (fist?.args[1] as number) / cellOf(canvas)
+        }
+        expect(fistAt(false, 0) - fistAt(true, 0)).toBeCloseTo(FIST_BOUNCE)
+        const half = FIST_BOUNCE_SECONDS / 2
+        expect(fistAt(false, half) - fistAt(true, half)).toBeCloseTo(
+            FIST_BOUNCE / 2
+        )
+        expect(fistAt(true, FIST_BOUNCE_SECONDS)).toBeCloseTo(fistAt(false, 0))
+    })
+
+    describe("an enemy in its guard stance (KDA-293)", () => {
+        // Each canvas the renderer makes for a guarding sprite shares one
+        // stub context.
+        function setupLayers() {
+            const drawn = setup()
+            const image = document.createElement("canvas")
+            const layer = stubContext()
+            vi.spyOn(image, "getContext").mockReturnValue(layer.ctx as never)
+            vi.spyOn(document, "createElement").mockReturnValue(image)
+            return { ...drawn, image, layer }
+        }
+        const guarding = (stance = GUARD_STANCE) => {
             const state = corridor()
-            state.enemies.push(makeEnemy(2, 1), makeEnemy(3, 1))
-            renderer.draw(
-                state,
-                0,
-                {},
-                {},
-                {
-                    shields: [{ enemy: 1, age: 0.1 }],
-                }
-            )
+            const enemy = makeEnemy(2, 1)
+            enemy.stance = stance
+            state.enemies.push(enemy)
+            return state
+        }
+
+        it("crouches, tinted, with its feet where they were", () => {
+            const { calls, canvas, image, layer, renderer } = setupLayers()
+            renderer.draw(guarding(), 0, {}, {}, {})
             const cell = cellOf(canvas)
-            const shield = calls[at(calls, "🛡")]
-            expect(shield?.args[1]).toBeCloseTo(3.5 * cell)
-            expect(shield?.args[2]).toBeCloseTo(1.5 * cell)
-            const enemies = calls.flatMap((c, i) =>
-                c.name === "fillText" && c.args[0] === "👺" ? [i] : []
+            const size = cell * SPRITE_SCALE
+            // Drawn from its tinted canvas, not as text.
+            expect(sprite(calls, "👺")).toBeUndefined()
+            const draws = calls.filter((c) => c.name === "drawImage")
+            expect(draws).toHaveLength(1)
+            const [source, left, top, width, height] = draws[0].args as [
+                unknown,
+                number,
+                number,
+                number,
+                number,
+            ]
+            expect(source).toBe(image)
+            expect(left + width / 2).toBeCloseTo(2.5 * cell)
+            const box = width / CROUCH_WIDTH
+            expect(height).toBeCloseTo(box * CROUCH_HEIGHT)
+            // Its box is the sprite and its outline on each side; the
+            // feet stay put.
+            const edge = (box - size) / 2
+            expect(edge).toBeGreaterThan(0)
+            expect(top + height - edge * CROUCH_HEIGHT).toBeCloseTo(
+                1.5 * cell + size / 2
             )
-            expect(enemies).toHaveLength(2)
-            expect(at(calls, "🛡")).toBeGreaterThan(Math.max(...enemies))
+            // Tinted steel-blue, outlined in pale blue.
+            const fills = layer.calls
+                .filter((c) => c.name === "fillRect")
+                .map((c) => c.fillStyle)
+            expect(fills).toContain(STANCE_TINT)
+            expect(fills).toContain(STANCE_OUTLINE)
+            expect(
+                layer.calls.some(
+                    (c) => c.name === "fillText" && c.args[0] === "👺"
+                )
+            ).toBe(true)
         })
 
-        it("shows nothing without one", () => {
-            const { calls, renderer } = setup()
-            const state = corridor()
-            state.enemies.push(makeEnemy(2, 1))
-            renderer.draw(state, 0, {}, {}, {})
-            expect(at(calls, "🛡")).toBe(-1)
+        it("doesn't crouch with reduced motion, but stays tinted", () => {
+            const { calls, renderer } = setupLayers()
+            renderer.draw(guarding(), 0, {}, {}, { reducedMotion: true })
+            const [draw] = calls.filter((c) => c.name === "drawImage")
+            const [, , , width, height] = draw.args as number[]
+            expect(width).toBeCloseTo(height)
         })
+
+        it("makes its tinted sprite once and keeps it", () => {
+            const { layer, renderer } = setupLayers()
+            renderer.draw(guarding(), 0, {}, {}, {})
+            const made = layer.calls.length
+            renderer.draw(guarding(), 0, {}, {}, {})
+            expect(layer.calls.length).toBe(made)
+        })
+
+        it("is drawn as usual without a stance", () => {
+            const { calls, layer, renderer } = setupLayers()
+            renderer.draw(guarding(0), 0, {}, {}, {})
+            expect(sprite(calls, "👺")?.args[1]).toBeDefined()
+            expect(calls.some((c) => c.name === "drawImage")).toBe(false)
+            expect(layer.calls).toEqual([])
+        })
+
+        it("still crouches, untinted, where a canvas has no 2D context", () => {
+            const { calls, renderer } = setup()
+            renderer.draw(guarding(), 0, {}, {}, {})
+            const scales = calls.filter((c) => c.name === "scale")
+            expect(scales.map((c) => c.args)).toEqual([
+                [CROUCH_WIDTH, CROUCH_HEIGHT],
+            ])
+            expect(sprite(calls, "👺")).toBeDefined()
+        })
+    })
+})
+
+describe("stanceLook (KDA-293)", () => {
+    it("crouches an enemy in its guard stance, and not without one", () => {
+        const enemy = makeEnemy(2, 1)
+        expect(stanceLook(enemy, false)).toBeNull()
+        expect(stanceLook(enemy, true)).toBeNull()
+        enemy.stance = GUARD_STANCE
+        expect(stanceLook(enemy, false)).toEqual({
+            width: CROUCH_WIDTH,
+            height: CROUCH_HEIGHT,
+        })
+        expect(CROUCH_HEIGHT).toBeCloseTo(0.85)
+        expect(CROUCH_WIDTH).toBeCloseTo(1.06)
+        // Reduced motion: no crouch, but still the stance's look.
+        expect(stanceLook(enemy, true)).toEqual({ width: 1, height: 1 })
     })
 })
 
