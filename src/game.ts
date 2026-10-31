@@ -56,6 +56,7 @@ import { createCharacter, type Character } from "./character"
 import { GUARD, type Difficulty, type GuardOdds } from "./difficulty"
 import { emit, type GameEvent } from "./events"
 import { glidePos, wrapDelta, type Glider } from "./glide"
+import { tickEnemyBreaths } from "./enemyBreath"
 import { rollGuards } from "./guard"
 import { slideStep, type IceMap } from "./ice"
 import { hasDots, loopPos, type Cells, type Level } from "./level"
@@ -939,6 +940,12 @@ export function step(
             ),
         }
     }
+    // ---- Breathers (KDA-291, see enemyBreath.ts) ----
+    // After the punches (one that landed calls a wind-up off) and before
+    // the enemies move (one winding up holds still): each breather's
+    // breath ticks, and it may wind up or breathe, hurting the players it
+    // strikes.
+    tickEnemyBreaths(state)
     const blocked = enemyBlocks(state)
     // Cells as enemies see them, so blocked cells also end slides.
     const enemyCells = blocked ? blockedView(cells, blocked) : cells

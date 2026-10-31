@@ -19,13 +19,13 @@ describe("stage 9", () => {
         expect(stage9.large).not.toBe(stage9.medium)
     })
 
-    it("brings out every enemy type, all six from Hard on", () => {
+    // Seven types and a second breather (KDA-291) fill Super Hard's eight.
+    it("brings out every enemy type, all seven at Super Hard", () => {
         const all = Object.values(AiType)
         for (const d of DIFFICULTIES) {
             const ais = new Set(stage[d].enemies.map((e) => e.ai))
-            if (MAP_SIZE[d] === "large") {
-                expect(ais).toEqual(new Set(all))
-            }
+            if (d === "superHard") expect(ais).toEqual(new Set(all))
+            if (d === "hard") expect(ais.size).toBe(5)
             // Even Easy's three are all different.
             expect(ais.size).toBeGreaterThanOrEqual(3)
         }

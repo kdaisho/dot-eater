@@ -67,6 +67,20 @@ export type GameEvent =
           facing: Vec2
           cells: readonly Vec2[]
       }
+    // Breather `enemy` (its index in GameState.enemies), on `at`, started
+    // winding up its breath, facing `facing` (a unit step) at the player it
+    // targets (KDA-291, see enemyBreath.ts).
+    | { type: "enemyWindUp"; enemy: number; at: Vec2; facing: Vec2 }
+    // Breather `enemy`, on `at`, breathed along `facing`, striking `cells`,
+    // nearest first. The players it hurt report their own hurt (or
+    // playerCaught) after it.
+    | {
+          type: "enemyBreathed"
+          enemy: number
+          at: Vec2
+          facing: Vec2
+          cells: readonly Vec2[]
+      }
     // A player was hurt (see hurtPlayer in game.ts) on `at` (its cell when
     // hit, before the knockback) and lost `damage` health, with some left.
     // A hit that takes its last health reports a playerCaught instead.

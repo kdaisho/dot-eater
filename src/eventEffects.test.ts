@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vite-plus/test"
 import { BOSS_BREATH } from "./bossBreath"
+import { ENEMY_BREATH } from "./enemyBreath"
 import { BREATHS } from "./breaths"
 import { TICK_RATE } from "./constants"
 import {
@@ -125,6 +126,43 @@ describe("effectsForEvent", () => {
         expect(r.bursts).toEqual([])
         expect(r.shakes).toEqual([SHAKES.bossBreath])
         expect(SHAKES.bossBreath).toBeLessThan(SHAKES.hit)
+    })
+
+    it("a breather's breath look on every cell it struck, and a smaller shake", () => {
+        const cells = [vec2(2, 1), vec2(3, 1)]
+        const r = run({
+            type: "enemyBreathed",
+            enemy: 1,
+            at: vec2(1, 1),
+            facing: vec2(1, 0),
+            cells,
+        })
+        expect(r.emits).toEqual(
+            cells.map((at) => ({
+                look: ENEMY_BREATH.particles,
+                at,
+                direction: vec2(1, 0),
+            }))
+        )
+        expect(r.bursts).toEqual([])
+        expect(r.shakes).toEqual([SHAKES.enemyBreath])
+        // Softer than the boss's (KDA-291).
+        expect(SHAKES.enemyBreath).toBeLessThan(SHAKES.bossBreath)
+        expect(ENEMY_BREATH.particles.count).toBeLessThan(
+            BOSS_BREATH.particles.count
+        )
+    })
+
+    it("nothing for a breather winding up (drawn from its state)", () => {
+        const r = run({
+            type: "enemyWindUp",
+            enemy: 1,
+            at: vec2(1, 1),
+            facing: vec2(0, 1),
+        })
+        expect(r.emits).toEqual([])
+        expect(r.bursts).toEqual([])
+        expect(r.shakes).toEqual([])
     })
 
     it("nothing for the boss winding up (drawn from its state)", () => {

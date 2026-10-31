@@ -1,4 +1,5 @@
 import { BOSS_BREATH } from "./bossBreath"
+import { ENEMY_BREATH } from "./enemyBreath"
 import type { GameEvent } from "./events"
 import type { GameState } from "./game"
 import type { Jabs } from "./jab"
@@ -92,6 +93,20 @@ export function effectsForEvent(
         case "bossWindUp":
             // Its glow and the warning tint are drawn from the boss's state
             // (see bossLooks and bossWarning); its sound is the warning.
+            return
+        case "enemyBreathed":
+            // A breather's breath (KDA-291): its look on every cell it
+            // struck, as the boss's, with a smaller shake.
+            for (const cell of event.cells) {
+                particles.emit(ENEMY_BREATH.particles, cell, {
+                    direction: event.facing,
+                })
+            }
+            shake.add(SHAKES.enemyBreath)
+            return
+        case "enemyWindUp":
+            // Drawn from its state (see enemyBreathLooks and
+            // enemyWarnings); its sound is the warning.
             return
         case "hurt":
             particles.burst("hurt", event.at)

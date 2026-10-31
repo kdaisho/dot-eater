@@ -4,8 +4,8 @@ import type { LevelData } from "../level"
 // that runs all round the base. Patrollers walk fixed beats: one round the
 // outer corridor, others along a row of rooms or (on the large map) a loop
 // round the middle of the base, so the player learns their timing and slips
-// past behind them. Ambushers start on the doors between rooms, and chasers
-// inside the rooms. Every inner wall is one cell thick, so the Boar can open
+// past behind them. Breathers (KDA-291) and an ambusher start on the doors
+// between rooms, and chasers inside the rooms. Every inner wall is one cell thick, so the Boar can open
 // a shortcut into the next room, and a punch shoves a guard back out of a
 // doorway. Every room has at least two doors, so there is always another way
 // round. No tunnels, ice or fog. Left-right symmetric walls, no dead ends.
@@ -43,7 +43,7 @@ export const stage7: LevelData = {
                     [1, 1],
                 ],
             },
-            { ai: "ambusher" },
+            { ai: "breather" },
             // Back and forth through the top row of rooms.
             {
                 ai: "patroller",
@@ -91,7 +91,7 @@ export const stage7: LevelData = {
                     [1, 1],
                 ],
             },
-            { ai: "ambusher" },
+            { ai: "breather" },
             // Back and forth through the top row of rooms, from its spawn
             // at the right-hand end. Going by the door in the centre wall
             // keeps it in the rooms: from end to end the outer corridor is
@@ -120,7 +120,7 @@ export const stage7: LevelData = {
                     [11, 3],
                 ],
             },
-            { ai: "chase" },
+            { ai: "breather" },
             { ai: "ambusher" },
             // Back and forth through the third row of rooms.
             {

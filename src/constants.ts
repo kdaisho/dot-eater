@@ -26,6 +26,10 @@ export const AiType = {
     // splitter.ts). Takes two enemy slots but counts as one enemy toward
     // MAX_ENEMIES.
     splitter: 5,
+    // Chases until a player is in line, then breathes at it from a few
+    // cells off, and keeps its distance between breaths (KDA-291, see
+    // enemyBreath.ts).
+    breather: 6,
 } as const
 export type AiType = (typeof AiType)[keyof typeof AiType]
 
@@ -75,6 +79,26 @@ export const AMBUSH_AHEAD = 4
 // takes its next-best way rather than stack on another enemy of its kind
 // (see spreadChoice in ai.ts).
 export const SPREAD_SLACK = 2
+
+// ---- The breather (KDA-291, see enemyBreath.ts; placeholders to tune at
+// preview) ----
+
+// Seconds between a breather's breaths: it may breathe again this long
+// after its last one, and first this long after it comes into play (a
+// grace period).
+export const ENEMY_BREATH_EVERY = 3
+// Seconds it winds up (holding still, glowing, the cells it will hit
+// tinted) before it breathes.
+export const ENEMY_BREATH_WIND_UP = 0.6
+// How far its breath reaches, in cells from its own.
+export const ENEMY_BREATH_RANGE = 4
+// Health its breath costs a player it hits.
+export const ENEMY_BREATH_DAMAGE = 20
+// Between breaths it keeps this far from the player it goes after, by path
+// (see breatherStep in ai.ts): it steps away when nearer than KEEP_NEAR,
+// comes closer when farther than KEEP_FAR, and holds its spot in between.
+export const BREATHER_KEEP_NEAR = 3
+export const BREATHER_KEEP_FAR = 4
 
 // How wide characters are drawn, as a fraction of a cell (the emoji's font
 // size; see render.ts).
