@@ -7,7 +7,7 @@ import {
     SPLITTER_HALF_SPEED,
     type CharacterId,
 } from "./constants"
-import { createCharacter, type Character } from "./character"
+import { createCharacter, freshFromPunches, type Character } from "./character"
 import { emit } from "./events"
 import type { GameState } from "./game"
 import { distanceMap, openNeighbours } from "./path"
@@ -123,6 +123,8 @@ export function splitSplitter(state: GameState, i: number) {
         half.speed = SPLITTER_HALF_SPEED
         half.statuses = []
         half.respawnIn = 0
+        // Each half is new to the punch: no decay, and its own guard roll.
+        freshFromPunches(half)
     }
     spread(state, [main, spare])
 }

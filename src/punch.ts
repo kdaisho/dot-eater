@@ -1,9 +1,11 @@
+import { stacksOn, type Random } from "./ai"
 import { addStatus, hasStatus, inPlay, type EnemyStatus } from "./breath"
-import type { Character } from "./character"
+import { skipKnockTurn, type Character } from "./character"
 import { Cell, PUNCH_ACROSS, PUNCH_REACH } from "./constants"
 import { emit } from "./events"
 import { drawnPos, knockBack, type GameState, type Player } from "./game"
 import { wrapDelta } from "./glide"
+import { blockChance } from "./guard"
 import { loopPos } from "./level"
 import { vec2, type Vec2 } from "./vec2"
 import { stunned } from "./versus"
@@ -20,11 +22,19 @@ import { stunned } from "./versus"
 // nearest: enemies overlap, and a jab that left one of two stacked enemies
 // standing wouldn't clear the way.
 //
-// - An enemy hit is knocked back a cell along the facing from where it is
-//   drawn (see knockEnemy): it doesn't move into a wall, glides there with
-//   no jump, slides on if it lands on ice and never catches on the punch's
+// - An enemy hit is knocked back along the facing from where it is drawn
+//   (see knockEnemy): it doesn't move into a wall, glides there with no
+//   jump, slides on if it lands on ice and never catches on the punch's
 //   tick. It is never defeated (a Splitter doesn't split), and a held one
 //   (e.g. frozen) is hit but not moved. Harmless ones are knocked too.
+// - The knock decays (KDA-288): each landed punch knocks an enemy back
+//   less than the last, by KNOCK_STEPS, until it has had a lull (see
+//   knockLevel). Then it comes straight back at the player: a full knock
+//   lets it turn back on its next move (Character.turnsBack), and a short
+//   one glides it out and back into the cell it was knocked from.
+// - An enemy with a guard skill may block the punch (see guard.ts): it
+//   isn't moved and the punch doesn't count towards its decay. A held one
+//   never blocks.
 // - The boss is hit on any part of its body (the square of its four cell
 //   centres) but isn't hurt or moved: the hit is reported, for its thud.
 // - The other player is never hit in co-op: the punch passes through.
@@ -45,11 +55,21 @@ export type Punched = {
 }
 
 // Punch as `who`, if it can: a player out of play or stunned (versus)
-// can't. Reports a punched event, then a punchHit per hit (enemies nearest
-// first, then the boss, then the other player). Returns what it moved.
-export function punch(state: GameState, who: Player): Punched {
+// can't. Reports a punched event, then a punchHit per hit, or a
+// punchBlocked for an enemy that blocked it (enemies nearest first, then
+// the boss, then the other player). Returns what it moved. `random` decides
+// the blocks, one draw for each enemy in reach with a guard skill; left
+// out, nothing blocks.
+export function punch(
+    state: GameState,
+    who: Player,
+    random: Random = NEVER
+): Punched {
     const result: Punched = { enemies: false, players: [] }
     if (who.out || stunned(who)) return result
+    // The time since this player's previous punch, for the guard.
+    const interval = who.sincePunch
+    who.sincePunch = 0
     const cols = state.cells[0].length
     const rows = state.cells.length
     const player = state.players.indexOf(who)
@@ -69,9 +89,17 @@ export function punch(state: GameState, who: Player): Punched {
         })
         .sort((a, b) => a.along - b.along)
     for (const { enemy, i, at } of hits) {
+        const held = hasStatus(enemy, "holds")
+        const skill = enemy.guard ?? 0
+        if (!held && skill > 0 && random() < blockChance(skill, interval)) {
+            emit(state, { type: "punchBlocked", player, at, enemy: i })
+            continue
+        }
         emit(state, { type: "punchHit", player, at, target: "enemy", enemy: i })
-        if (hasStatus(enemy, "holds")) continue
-        if (knockEnemy(state, enemy, step)) result.enemies = true
+        if (held) continue
+        if (knockEnemy(state, enemy, step, landKnock(enemy))) {
+            result.enemies = true
+        }
     }
     const boss = bossHitAt(state, from, step)
     if (boss) {
@@ -88,15 +116,69 @@ export function punch(state: GameState, who: Player): Punched {
     return result
 }
 
+// A random source that never blocks (every chance is below 1).
+const NEVER: Random = () => 1
+
+// How far each landed punch in a row knocks an enemy back, in cells: the
+// first a full cell, then less each time, then none (KDA-288, with the user;
+// placeholders to tune at preview). After a lull of KNOCK_LULL seconds with
+// no landed punch it recovers a step, and another every KNOCK_RECOVER
+// seconds after that, back to a full cell.
+export const KNOCK_STEPS: readonly number[] = [1, 0.7, 0.5, 0.3, 0]
+export const KNOCK_LULL = 2
+export const KNOCK_RECOVER = 0.5
+
+// Tolerance for the decay's timing.
+const TIME_EPSILON = 1e-9
+
+// Which of KNOCK_STEPS the next landed punch on `enemy` knocks it back by:
+// its knocks, less the steps it has recovered since the latest (see
+// KNOCK_LULL).
+export function knockLevel(enemy: Character): number {
+    const { knocks, sinceKnock } = enemy
+    if (knocks === 0 || sinceKnock < KNOCK_LULL - TIME_EPSILON) return knocks
+    const back =
+        Math.floor((sinceKnock - KNOCK_LULL) / KNOCK_RECOVER + TIME_EPSILON) + 1
+    return Math.max(0, knocks - back)
+}
+
+// A punch has landed on `enemy` (not blocked, not held): how far it knocks
+// it back, in cells (see knockLevel), counting it towards the decay.
+function landKnock(enemy: Character): number {
+    const level = knockLevel(enemy)
+    enemy.knocks = Math.min(level + 1, KNOCK_STEPS.length - 1)
+    enemy.sinceKnock = 0
+    return KNOCK_STEPS[level]
+}
+
+// Move every player's and enemy's punch timers on by `dt` seconds, at the
+// start of a tick (see step in game.ts): the time since each player's
+// latest punch (for the guard) and since each enemy in play last had a
+// punch land (for the decay).
+export function tickPunches(state: GameState, dt: number) {
+    for (const player of state.players) player.sincePunch += dt
+    for (const enemy of state.enemies) {
+        if (inPlay(enemy)) enemy.sinceKnock += dt
+    }
+}
+
 // What a knocked-back enemy wears for the rest of the punch's tick (it is
 // gone at the next tick's start; see tickEffects in breath.ts): harmless,
 // so the knock never catches anyone on the punch's tick. No look.
 export const KNOCKED: EnemyStatus = { name: "punch.knocked", harmless: true }
 
-// Knock `enemy` back a cell along the unit `step`, from where it is drawn:
-// to the cell one on from the cell it is drawn nearest (its pos, or the
-// cell it is leaving while less than halfway out of it), unless that is a
-// wall. Returns whether it moved.
+// Knock `enemy` back `distance` cells (at most 1) along the unit `step`,
+// from where it is drawn: towards the cell one on from the cell it is
+// drawn nearest (its pos, or the cell it is leaving while less than halfway
+// out of it), unless that is a wall. Returns whether it moved.
+//
+// A full knock (1) takes it to that cell. It may then turn back into the
+// cell it was knocked from on its next move (turnsBack), so it comes
+// straight back at the player instead of going on away. A short one stops
+// `distance` past the nearest cell: it glides out as a full knock would,
+// but turns round at that point (knockTurn, see turnKnock) and glides back
+// into the nearest cell, which it then moves on from as usual. One drawn
+// that far out already, or a knock of 0, doesn't move it.
 //
 // It glides there from exactly where it is drawn, with no jump, as if it
 // were that far into a move from the nearest cell: its move progress is
@@ -113,7 +195,13 @@ export const KNOCKED: EnemyStatus = { name: "punch.knocked", harmless: true }
 // blocks enemies (and leaves by the shortest way), and slides on if it
 // lands on ice (its latest move was the knock). Unlike the push, it can't
 // jump onto anyone. It is harmless for the rest of the tick (KNOCKED).
-function knockEnemy(state: GameState, enemy: Character, step: Vec2): boolean {
+function knockEnemy(
+    state: GameState,
+    enemy: Character,
+    step: Vec2,
+    distance: number
+): boolean {
+    if (distance <= 0) return false
     const cols = state.cells[0].length
     const rows = state.cells.length
     const drawn = drawnPos(enemy, cols, rows)
@@ -127,10 +215,44 @@ function knockEnemy(state: GameState, enemy: Character, step: Vec2): boolean {
         ),
         step
     )
+    const full = distance >= 1
+    if (!full && along >= distance - EPSILON) return false
     enemy.lastPos = vec2(base.x, base.y)
     enemy.pos = target
     enemy.moveProgress = along
+    enemy.knockTurn = full ? null : distance
+    enemy.turnsBack = full
     addStatus(enemy, KNOCKED, 0)
+    return true
+}
+
+// Once a short knock (see knockEnemy) has glided `enemy` out to its
+// knockTurn, turn it round: it glides back from there into the cell it was
+// knocked from, as if it were that far into a move from the cell it was
+// knocked towards, with any progress past the turn carried on. Called after
+// its progress moves on (see step and settle in game.ts). Returns whether
+// it turned.
+//
+// Turning back is a move like any other for the spread rule: if it would
+// stack on one of its kind in `crowd` (see stacksOn in ai.ts), it doesn't
+// turn but carries on as a full knock would (see skipKnockTurn), so twins
+// stay apart.
+export function turnKnock(
+    enemy: Character,
+    crowd: readonly Character[] = []
+): boolean {
+    const turn = enemy.knockTurn
+    if (turn === null || enemy.moveProgress < turn - EPSILON) return false
+    if (stacksOn(crowd, enemy, enemy.lastPos)) {
+        skipKnockTurn(enemy)
+        return false
+    }
+    const past = Math.max(0, enemy.moveProgress - turn)
+    const from = enemy.pos
+    enemy.pos = enemy.lastPos
+    enemy.lastPos = from
+    enemy.moveProgress = 1 - turn + past
+    enemy.knockTurn = null
     return true
 }
 

@@ -38,6 +38,26 @@ export const MAP_SIZE: Readonly<Record<Difficulty, MapSize>> = {
     superHard: "large",
 }
 
+// How well enemies guard against the punch at each difficulty (KDA-288,
+// with the user; placeholders to tune at preview; see guard.ts): the
+// chance each enemy is a guarder as it comes into play, and the range its
+// skill (the chance it blocks a quick punch) is drawn from, evenly. Any
+// enemy type can be one. No skill is above GUARD_CAP.
+export type GuardOdds = {
+    chance: number
+    min: number
+    max: number
+}
+
+export const GUARD: Readonly<Record<Difficulty, GuardOdds>> = {
+    easy: { chance: 0.25, min: 0.2, max: 0.5 },
+    medium: { chance: 0.4, min: 0.3, max: 0.7 },
+    hard: { chance: 0.6, min: 0.4, max: 0.85 },
+    superHard: { chance: 0.75, min: 0.5, max: 0.85 },
+}
+
+export const GUARD_CAP = 0.85
+
 export function isDifficulty(value: unknown): value is Difficulty {
     return DIFFICULTIES.includes(value as Difficulty)
 }

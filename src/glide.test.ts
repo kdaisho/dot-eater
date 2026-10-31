@@ -31,6 +31,13 @@ const alphaFor = (cells: number, speed = 4) =>
     cells / ((speed * TICK_MS) / 1000)
 
 describe("glideT", () => {
+    it("stops a short knock where it turns round (KDA-288)", () => {
+        const c = mover([1, 1], [2, 1], 0.65)
+        c.knockTurn = 0.7
+        expect(glideT(c, 0)).toBeCloseTo(0.65)
+        expect(glideT(c, 0.99)).toBeCloseTo(0.7)
+    })
+
     it("is 1 for a resting character, whatever alpha", () => {
         expect(glideT(mover([1, 1], [2, 1], 1), 0)).toBe(1)
         expect(glideT(mover([1, 1], [2, 1], 1), 0.9)).toBe(1)

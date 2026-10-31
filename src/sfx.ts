@@ -34,6 +34,8 @@ export const SfxId = {
     punch: "punch",
     punchHit: "punchHit",
     punchHitBoss: "punchHit.boss",
+    // A punch an enemy blocked with its guard (KDA-288): a dull short tok.
+    punchBlocked: "punch.blocked",
     // Results: also fit a won or lost versus round.
     stageClear: "stageClear",
     gameOver: "gameOver",
@@ -377,6 +379,24 @@ export const SFX: Readonly<Record<SfxId, readonly Tone[]>> = {
             duration: 0.06,
             freq: 500,
             volume: 0.25,
+        },
+    ],
+    // A dull, short tok: a block, wooden rather than a hit's crack.
+    "punch.blocked": [
+        {
+            wave: "triangle",
+            at: 0,
+            duration: 0.05,
+            freq: 520,
+            freqEnd: 380,
+            volume: 0.4,
+        },
+        {
+            wave: "noise",
+            at: 0,
+            duration: 0.02,
+            freq: 900,
+            volume: 0.12,
         },
     ],
     // A short rising jingle on a major chord.

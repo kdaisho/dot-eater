@@ -160,6 +160,19 @@ describe("main's particles and shake", () => {
         expect(seen.effects?.bossBreath).toBe(true)
     })
 
+    it("draws a blocked punch's shield (KDA-288) and ages it with the steps", () => {
+        nextEvents = [
+            { type: "punchBlocked", player: 0, at: vec2(2, 1), enemy: 0 },
+        ]
+        vi.advanceTimersByTime(20)
+        nextEvents = []
+        expect(seen.effects?.shields).toEqual([
+            { enemy: 0, age: expect.any(Number) },
+        ])
+        vi.advanceTimersByTime(1000)
+        expect(seen.effects?.shields).toEqual([])
+    })
+
     // Regression (the resume tick): effects moved on once more than the
     // game, on the tick that resumed it.
     it("freezes the effects while paused, and moves them only with steps", () => {

@@ -40,6 +40,7 @@ import type { LevelRules } from "./level"
 import { particleAlpha, type Particle } from "./particles"
 import type { FacingGuide } from "./settings"
 import { ANIMALS } from "./roster"
+import type { Shield } from "./shield"
 import { isSplitterHalf } from "./splitter"
 import { vec2, type Vec2 } from "./vec2"
 import { stunImmune, stunned } from "./versus"
@@ -103,6 +104,8 @@ export type Effects = {
     // Each player's jab under way (KDA-258; see jab.ts): its sprite lunges
     // along it, with a fist just ahead.
     jabs?: readonly Jab[]
+    // Each enemy's block under way (KDA-288; see shield.ts): a 🛡 over it.
+    shields?: readonly Shield[]
     // Whether the boss's wind-up shows (KDA-268; see bossBreath.ts): its
     // glow and the warning tint on the cells it will strike. Set while
     // playing, paused and in the ending outro, not on end screens.
@@ -200,6 +203,11 @@ const ARROW_WIDTH = 0.3
 const FIST = "👊"
 const FIST_AHEAD = 0.6
 const FIST_SCALE = 0.4
+
+// A block (see shield.ts) shows a shield over the enemy's sprite, centred on
+// it, this wide in cells: placeholders to tune at preview.
+const SHIELD = "🛡"
+const SHIELD_SCALE = 0.55
 
 // The aim preview (see Effects.aim) is a tint in the player's colour: a
 // faint fill over each cell its breath would hit, and a slightly stronger
@@ -421,7 +429,8 @@ export function createRenderer(
             rows,
             seen,
             effects.guide === "arrow",
-            effects.jabs ?? []
+            effects.jabs ?? [],
+            effects.shields ?? []
         )
         if (effects.particles) drawParticles(ctx, effects.particles, cell, seen)
         ctx.restore()
@@ -869,7 +878,8 @@ function drawCharacters(
     rows: number,
     fog: Sight | null,
     arrows: boolean,
-    jabs: readonly Jab[]
+    jabs: readonly Jab[],
+    shields: readonly Shield[]
 ) {
     ctx.textAlign = "center"
     ctx.textBaseline = "middle"
@@ -887,7 +897,8 @@ function drawCharacters(
     // half is drawn smaller (HALF_SCALE), its disc and badges too. With
     // `arrows`, each player who could breathe also gets its facing arrow (see
     // drawArrow). A player with a jab under way (see jab.ts) lunges along
-    // it, with a fist just ahead (see drawFist).
+    // it, with a fist just ahead (see drawFist), and an enemy with a block
+    // under way (see shield.ts) wears a shield over it.
     const marked = state.players.length > 1
     const enemySprite = (enemy: Character) => ({
         character: enemy,
@@ -897,6 +908,7 @@ function drawCharacters(
         badge: null,
         arrow: null,
         jab: null,
+        shield: shields.some((s) => state.enemies[s.enemy] === enemy),
     })
     const held = state.enemies.filter((e) => hasStatus(e, "holds"))
     const free = state.enemies.filter((e) => !hasStatus(e, "holds"))
@@ -921,16 +933,19 @@ function drawCharacters(
                                   ? { index: i, facing: player.breather.facing }
                                   : null,
                           jab: jabs.find((j) => j.player === i) ?? null,
+                          shield: false,
                       },
                   ]
         ),
         ...free.map(enemySprite),
     ]
-    // Fists are drawn after every character, so one isn't hidden under the
-    // enemy it hits (players are drawn before enemies).
+    // Fists and shields are drawn after every character, so one isn't
+    // hidden under the enemy it hits (players are drawn before enemies) or
+    // another enemy drawn on top.
     const fists: { x: number; y: number; facing: Vec2 }[] = []
+    const guards: { x: number; y: number }[] = []
     for (const sprite of sprites) {
-        const { character, rate, marker, badge, arrow, jab } = sprite
+        const { character, rate, marker, badge, arrow, jab, shield } = sprite
         const isPlayer = character.id === CharacterId.player
         if (!isPlayer && !enemyVisible(character)) continue
         const held = !isPlayer && hasStatus(character, "holds")
@@ -965,6 +980,7 @@ function drawCharacters(
             ctx.fillText(sprite.sprite, x, y)
             if (marker !== null) drawMarker(ctx, marker, x, y, size)
             if (jab) fists.push({ x, y, facing: jab.facing })
+            if (shield) guards.push({ x, y })
             // A stunned player (versus) wears the stun badge, and one
             // immune just after a stun the immune badge, like a status's.
             const badges = [
@@ -989,6 +1005,11 @@ function drawCharacters(
         }
     }
     for (const fist of fists) drawFist(ctx, fist.facing, fist.x, fist.y, cell)
+    for (const { x, y } of guards) {
+        ctx.font = `${Math.round(cell * SHIELD_SCALE)}px sans-serif`
+        ctx.fillStyle = COLORS.sprite
+        ctx.fillText(SHIELD, x, y)
+    }
 }
 
 // Particles (see particles.ts), each a disc or a square of its colour,

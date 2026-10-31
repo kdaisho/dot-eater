@@ -1728,6 +1728,43 @@ describe("createRenderer with effects", () => {
             expect(at("👊")).toBeGreaterThan(at("👺"))
         })
     })
+
+    describe("a block's shield (KDA-288)", () => {
+        const at = (calls: ReturnType<typeof setup>["calls"], text: string) =>
+            calls.findIndex((c) => c.name === "fillText" && c.args[0] === text)
+
+        it("shows over the enemy that blocked, over every character", () => {
+            const { calls, canvas, renderer } = setup()
+            const state = corridor()
+            state.enemies.push(makeEnemy(2, 1), makeEnemy(3, 1))
+            renderer.draw(
+                state,
+                0,
+                {},
+                {},
+                {
+                    shields: [{ enemy: 1, age: 0.1 }],
+                }
+            )
+            const cell = cellOf(canvas)
+            const shield = calls[at(calls, "🛡")]
+            expect(shield?.args[1]).toBeCloseTo(3.5 * cell)
+            expect(shield?.args[2]).toBeCloseTo(1.5 * cell)
+            const enemies = calls.flatMap((c, i) =>
+                c.name === "fillText" && c.args[0] === "👺" ? [i] : []
+            )
+            expect(enemies).toHaveLength(2)
+            expect(at(calls, "🛡")).toBeGreaterThan(Math.max(...enemies))
+        })
+
+        it("shows nothing without one", () => {
+            const { calls, renderer } = setup()
+            const state = corridor()
+            state.enemies.push(makeEnemy(2, 1))
+            renderer.draw(state, 0, {}, {}, {})
+            expect(at(calls, "🛡")).toBe(-1)
+        })
+    })
 })
 
 describe("createRenderer with the facing guide", () => {
