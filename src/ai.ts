@@ -445,13 +445,19 @@ function interceptStep(
                     !samePos(n, enemy.pos) &&
                     open({ pos: n, heading: FREE }) === here
             ))
-    const near = Math.min(...d) + slack
-    if (d.some((v, i) => v <= near && cutsBack(pos[i], v))) {
-        d = score(
+    const own = () =>
+        score(
             icy
                 ? slideDistances(paths(aim), ice, aim, enemy.pos)
                 : cellDistance(distanceMap(paths(aim), aim, enemy.pos))
         )
+    const near = Math.min(...d) + slack
+    // Whether `d` is the enemy's own (exact for every way), not only for
+    // the ways near the best.
+    let exact = false
+    if (d.some((v, i) => v <= near && cutsBack(pos[i], v))) {
+        d = own()
+        exact = true
     }
     const best = Math.min(...d)
 
@@ -464,15 +470,18 @@ function interceptStep(
         if (side === PLAYER_SIDE || side === NONE) return 0
         return hunters.filter((s) => s === side).length
     }
-    const ranked = pos
-        .map((v, i) => ({
-            v,
-            i,
-            d: d[i],
-            n: d[i] <= best + FLANK_SLACK ? crowding(v) : Infinity,
-        }))
-        // Infinity - Infinity is NaN, which falls through to the next key.
-        .sort((a, b) => a.n - b.n || a.d - b.d || a.i - b.i)
+    const rank = (scores: readonly number[]) =>
+        pos
+            .map((v, i) => ({
+                v,
+                i,
+                d: scores[i],
+                n: scores[i] <= best + FLANK_SLACK ? crowding(v) : Infinity,
+            }))
+            // Infinity - Infinity is NaN, which falls through to the next
+            // key.
+            .sort((a, b) => a.n - b.n || a.d - b.d || a.i - b.i)
+    const ranked = rank(d)
     const [first] = ranked
     const stacks = (v: Vec2) => stacksOn(crowd, enemy, v)
     if (!stacks(first.v)) return first.v
@@ -482,8 +491,12 @@ function interceptStep(
     if (other) return other.v
     if (mayHold(enemy)) return HOLD
     // The hold has run out: any way that doesn't stack, however long,
-    // before stacking.
-    return ranked.find((c) => c.d < Infinity && !stacks(c.v))?.v ?? first.v
+    // before stacking. The shared distances are exact only near the best
+    // (see above), and a way far from it may reach the aim only back
+    // through the enemy's cell, so score them all its own way first (the
+    // ways near the best, and so the best, score the same).
+    const ways = exact ? ranked : rank(own())
+    return ways.find((c) => c.d < Infinity && !stacks(c.v))?.v ?? first.v
 }
 
 // Two enemies of one kind (AI type) that stand on the same cell, having

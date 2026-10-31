@@ -1,7 +1,20 @@
 import { describe, expect, it, vi } from "vite-plus/test"
-import { candidateMoves, enemyMove, stacksOn, type ChaseDistances } from "./ai"
+import {
+    candidateMoves,
+    enemyMove,
+    mayHold,
+    stacksOn,
+    type ChaseDistances,
+} from "./ai"
 import type { BlockMap } from "./breath"
-import { AiType, Cell, ENEMY_IDS, PLAYER_SPEED, TICK_RATE } from "./constants"
+import {
+    AiType,
+    Cell,
+    ENEMY_IDS,
+    PLAYER_SPEED,
+    SPREAD_SLACK,
+    TICK_RATE,
+} from "./constants"
 import type { Character } from "./character"
 import { step } from "./game"
 import { slideDistances, stepFrom, type IceMap } from "./ice"
@@ -458,8 +471,9 @@ describe("the interceptor", () => {
 
 // What interceptStep would choose scoring every way by a search of its own
 // with the enemy's cell blocked, as chaseStep's shared distances are
-// checked against in ai.test.ts. The aim is worked out as interceptStep
-// does; only the scoring differs.
+// checked against in ai.test.ts. The aim, flanking and spreading are
+// worked out as interceptStep does; only the scoring differs. A hold is
+// staying where it is.
 function blockedChoice(
     cells: Cells,
     ice: IceMap,
@@ -503,7 +517,15 @@ function blockedChoice(
             n: d[i] <= best + FLANK_SLACK ? crowding(v) : Infinity,
         }))
         .sort((a, b) => a.n - b.n || a.d - b.d || a.i - b.i)
-    return ranked[0].v
+    const [first] = ranked
+    const stacks = (v: Vec2) => stacksOn(crowd, enemy, v)
+    if (!stacks(first.v)) return first.v
+    const other = ranked.find(
+        (c) => c !== first && c.d <= best + SPREAD_SLACK && !stacks(c.v)
+    )
+    if (other) return other.v
+    if (mayHold(enemy)) return enemy.pos
+    return ranked.find((c) => c.d < Infinity && !stacks(c.v))?.v ?? first.v
 }
 
 describe("the interceptor on shared distances", { timeout: 30_000 }, () => {
@@ -514,6 +536,41 @@ describe("the interceptor on shared distances", { timeout: 30_000 }, () => {
                 row.flatMap((c, x) => (c === Cell.wall ? [] : [vec2(x, y)]))
             )
             .filter((_, i) => i % every === 0)
+
+    it("doesn't go round a way back through its own cell on ice once its hold runs out", () => {
+        // Stage 3's medium map (KDA-292 review): every way but onto the
+        // twin reaches the player only back through (10, 8), so it stacks
+        // rather than slide off the wrong way.
+        const level = stages[2].medium
+        const cells = cellsFrom(level.cells)
+        const twin = interceptor(10, 7, { x: 10, y: 8 }, 1)
+        const enemy = interceptor(10, 8, { x: 10, y: 9 })
+        enemy.heldFor = 1 / enemy.speed
+        const crowd = [enemy, twin]
+        const target = vec2(1, 1)
+        const expected = blockedChoice(
+            cells,
+            level.ice,
+            enemy,
+            target,
+            target,
+            crowd
+        )
+        expect(expected).toEqual(vec2(10, 7))
+        enemyMove(
+            cells,
+            enemy,
+            target,
+            fixedRandom(0),
+            target,
+            level.ice,
+            null,
+            cells,
+            new Map(),
+            crowd
+        )
+        expect(enemy.pos).toEqual(expected)
+    })
 
     it("chooses as searches with its own cell blocked would", () => {
         let compared = 0
@@ -530,10 +587,10 @@ describe("the interceptor on shared distances", { timeout: 30_000 }, () => {
                     undefined,
                     ENEMY_IDS[1]
                 )
-                for (const target of sample(cells, 97)) {
+                for (const target of sample(cells, 131)) {
                     const targetLast = openNeighbours(cells, target)[0]
                     const shared: ChaseDistances = new Map()
-                    for (const at of sample(cells, 13)) {
+                    for (const at of sample(cells, 17)) {
                         for (const last of [...openNeighbours(cells, at), at]) {
                             const enemy = interceptor(at.x, at.y, last)
                             const crowd = [enemy, chaser]
@@ -559,6 +616,47 @@ describe("the interceptor on shared distances", { timeout: 30_000 }, () => {
                             )
                             expect(enemy.pos).toEqual(expected)
                             compared++
+                            // A twin just gone that way, from its cell: it
+                            // spreads, holds or, with its hold run out,
+                            // goes any other way (KDA-292 review). Only
+                            // where it has another way to take.
+                            if (samePos(expected, at)) continue
+                            if (candidateMoves(cells, enemy).length < 2) {
+                                continue
+                            }
+                            const twin = interceptor(
+                                expected.x,
+                                expected.y,
+                                at,
+                                2
+                            )
+                            for (const held of [0, 1 / enemy.speed]) {
+                                const behind = interceptor(at.x, at.y, last)
+                                behind.heldFor = held
+                                const twins = [behind, chaser, twin]
+                                const choice = blockedChoice(
+                                    cells,
+                                    ice,
+                                    behind,
+                                    target,
+                                    targetLast,
+                                    twins
+                                )
+                                enemyMove(
+                                    cells,
+                                    behind,
+                                    target,
+                                    fixedRandom(0),
+                                    targetLast,
+                                    ice,
+                                    null,
+                                    cells,
+                                    shared,
+                                    twins
+                                )
+                                expect(behind.pos).toEqual(choice)
+                                compared++
+                            }
                         }
                     }
                 }
