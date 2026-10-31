@@ -8,6 +8,12 @@ import { browserAudioContext, createAudio } from "./audio"
 import { RECORDED_TRACKS } from "./recorded"
 import { playEventSounds, screenSound } from "./sound"
 import { energyHud } from "./breath"
+import {
+    drawEndRoll,
+    END_ROLL_HEIGHT,
+    END_ROLL_WIDTH,
+    loadEndRollFont,
+} from "./endRollRender"
 import { MAX_FRAME_MS, TICK_MS } from "./constants"
 import {
     DIFFICULTIES,
@@ -114,6 +120,7 @@ import {
     showStageClear,
     showStageSelect,
     showStoryClear,
+    showEndRoll,
     showStoryEnd,
     showStoryMenu,
     setHintBindings,
@@ -567,6 +574,8 @@ function applyBindings(s: Settings) {
 let lastAlpha = 0
 
 function render(alpha: number) {
+    // The end roll draws on its own canvas, over everything.
+    if (screen.kind === "endRoll") return renderEndRoll(screen)
     // Settings over a paused game show that game behind them.
     const shown = baseScreen(screen)
     const game = gameOf(shown)
@@ -593,6 +602,12 @@ function render(alpha: number) {
         withRunTotal(hud, total)
     }
     renderer.draw(game, lastAlpha, hud, rules, effects.of(shown))
+}
+
+function renderEndRoll(s: Extract<Screen, { kind: "endRoll" }>) {
+    const canvas = showEndRoll(END_ROLL_WIDTH, END_ROLL_HEIGHT)
+    const context = canvas.getContext("2d")
+    if (context) drawEndRoll(context, s.elapsed.seconds, s.difficulty)
 }
 
 // In a story run (KDA-271) the HUD shows the run total so far, this
@@ -787,9 +802,13 @@ function showOverlay(s: Screen) {
                 difficulty: DIFFICULTY_LABELS[s.difficulty],
                 runTotal: runTotal(s),
                 ...(best === undefined ? {} : { best }),
-                items: [{ label: "Title", selected: true }],
+                items: [{ label: "Continue", selected: true }],
             })
         }
+        case "endRoll":
+            loadEndRollFont()
+            showEndRoll(END_ROLL_WIDTH, END_ROLL_HEIGHT)
+            return
         case "roundResult": {
             const last = s.match[s.match.length - 1]
             return showRoundResult({

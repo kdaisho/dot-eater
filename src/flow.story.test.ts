@@ -563,12 +563,14 @@ describe("the ending", () => {
         })
     })
 
-    it("goes to the title on confirm, once the delay is over", () => {
+    it("starts the end roll on confirm, once the delay is over", () => {
         const end = finish(storyGame(last, 900), "won", 100)
         expect(update(end, p1("confirm"), deps())).toBe(end)
         expect(afterDelay(end, deps(), "confirm")).toEqual({
-            kind: "title",
+            kind: "endRoll",
             mode: "solo",
+            difficulty: "hard",
+            elapsed: { seconds: 0 },
         })
     })
 

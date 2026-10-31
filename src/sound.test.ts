@@ -350,6 +350,19 @@ describe("musicForScreen", () => {
         expect(musicForScreen(ending)).toBeUndefined()
         expect(musicForScreen(gameOver)).toBeUndefined()
     })
+
+    it("plays the end roll's own track on the end roll", () => {
+        const endRoll: Screen = {
+            kind: "endRoll",
+            mode: "solo",
+            difficulty: "hard",
+            elapsed: { seconds: 12 },
+        }
+        expect(musicForScreen(endRoll)).toEqual({
+            track: "endRoll",
+            paused: false,
+        })
+    })
 })
 
 describe("menuSound", () => {

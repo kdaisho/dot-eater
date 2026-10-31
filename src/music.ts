@@ -224,6 +224,8 @@ export const MusicTrackId = {
     stage8: "stage8",
     stage9: "stage9",
     stage10: "stage10",
+    // The end roll's (endRoll.ts); recorded only, see TRACKS.
+    endRoll: "endRoll",
 } as const
 export type MusicTrackId = (typeof MusicTrackId)[keyof typeof MusicTrackId]
 
@@ -252,7 +254,7 @@ export function stageTrack(stage: number): MusicTrackId {
 
 const BACKBEAT = "k . h . s . h ."
 
-export const TRACKS: Readonly<Record<MusicTrackId, Track>> = {
+const CHIP_TRACKS = {
     // Title: a calm, cheerful C major tune.
     title: {
         bpm: 112,
@@ -743,4 +745,11 @@ export const TRACKS: Readonly<Record<MusicTrackId, Track>> = {
             },
         ],
     },
+} satisfies Record<Exclude<MusicTrackId, "endRoll">, Track>
+
+// Every tune's chip version. The end roll is a recorded track
+// (recorded.ts); should its file fail to load, the title's tune plays.
+export const TRACKS: Readonly<Record<MusicTrackId, Track>> = {
+    ...CHIP_TRACKS,
+    endRoll: CHIP_TRACKS.title,
 }

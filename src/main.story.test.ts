@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 import { beforeAll, describe, expect, it, vi } from "vite-plus/test"
 import confetti from "canvas-confetti"
+import { END_ROLL } from "./endRoll"
 import { END_CONFIRM_DELAY, STORY_CARD_SECONDS } from "./flow"
 import type { GameState, Outcome } from "./game"
 import type { Pad } from "./gamepad"
@@ -98,7 +99,10 @@ function padTap(...buttons: number[]) {
 }
 
 const overlay = () => document.querySelector<HTMLElement>("#overlay")
-const screen = () => overlay()?.dataset.screen ?? "playing"
+const screen = () =>
+    document.querySelector("#end-roll")
+        ? "end-roll"
+        : (overlay()?.dataset.screen ?? "playing")
 const lines = () =>
     [...(overlay()?.querySelectorAll("p") ?? [])].map((p) => p.textContent)
 const items = () =>
@@ -282,7 +286,16 @@ describe("main in story mode", () => {
         ])
         expect(saved().storyBests).toEqual({ hard: total })
         expect(saved().stages.every((s) => s.cleared)).toBe(true)
+        // Continue starts the end roll, with its music; a press skips to
+        // THE END, and a press once that has shown goes to the title.
         waitConfirm()
+        padTap(A)
+        expect(screen()).toBe("end-roll")
+        vi.advanceTimersByTime(5000)
+        expect(screen()).toBe("end-roll")
+        padTap(A)
+        expect(screen()).toBe("end-roll")
+        vi.advanceTimersByTime((END_ROLL.endingReady + 0.5) * 1000)
         padTap(A)
         expect(screen()).toBe("title")
         pads = []

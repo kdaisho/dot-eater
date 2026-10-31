@@ -13,6 +13,7 @@ import {
     type Outcome,
 } from "./game"
 import { DEFAULT_DIFFICULTY, DIFFICULTIES, type Difficulty } from "./difficulty"
+import { endRollPress, SKIP_TO } from "./endRoll"
 import type { Action } from "./input"
 import type { Stage } from "./level"
 import {
@@ -177,14 +178,15 @@ import { matchWinner, roundResult, type RoundResult } from "./versus"
 // (FlowDeps.focused; a game that starts unfocused starts paused, so none
 // ever starts unwatched). When the next stage isn't built yet the card says "To
 // be continued" instead, and confirm goes to the title. Clearing the last
-// stage slot (STAGE_COUNT) goes to storyEnd, whose confirm goes to the
-// title. A lost stage goes to gameOver, whose menu in a run is
+// stage slot (STAGE_COUNT) goes to storyEnd, whose confirm starts the end
+// roll (endRoll.ts): the credits, timed to their music. A press during the
+// roll skips to its THE END, and a press there goes to the title. A lost stage goes to gameOver, whose menu in a run is
 // STORY_END_CHOICES: Retry plays the stage again from the run total it
 // started with, Quit goes to the title. The pause menu in a run has Quit
 // too (STORY_PAUSE_CHOICES).
 //
 //   playing -> ending -> storyClear -> playing (next stage) / title
-//                    \-> storyEnd -> title
+//                    \-> storyEnd -> endRoll -> title
 //                    \-> gameOver -> playing (retry) / title
 //
 // Main records a story clear as it does a stage clear (in 1-player only),
@@ -492,6 +494,15 @@ export type Screen =
           rating: ClearRating
           shown?: ShownFor
       }
+    | {
+          // The end roll after storyEnd: the credits, then THE END for
+          // the difficulty the run was cleared on.
+          kind: "endRoll"
+          mode: Mode
+          difficulty: Difficulty
+          // Seconds it has played (see endRollPhase), counted per tick.
+          elapsed: ShownFor
+      }
 
 export type ScreenKind = Screen["kind"]
 
@@ -661,6 +672,8 @@ function updateScreen(
             return updateStoryClear(screen, input, deps)
         case "storyEnd":
             return updateStoryEnd(screen, input, deps)
+        case "endRoll":
+            return updateEndRoll(screen, input, deps)
         default: {
             const unhandled: never = screen
             throw new Error(`Unknown screen: ${JSON.stringify(unhandled)}`)
@@ -1353,8 +1366,36 @@ function updateStoryEnd(
 ): Screen {
     const ready = confirmReady(screen.shown, deps.dt)
     return ready && input.wasPressed("confirm")
-        ? { kind: "title", mode: screen.mode }
+        ? {
+              kind: "endRoll",
+              mode: screen.mode,
+              difficulty: screen.difficulty,
+              elapsed: { seconds: 0 },
+          }
         : screen
+}
+
+// The end roll plays on by itself. Confirm or pause (any player's) skips
+// to THE END, and once that has shown a moment goes to the title (see
+// endRollPress).
+function updateEndRoll(
+    screen: Extract<Screen, { kind: "endRoll" }>,
+    input: TickInput,
+    deps: FlowDeps
+): Screen {
+    screen.elapsed.seconds += deps.dt
+    const pressed =
+        anyPressed(screen.mode, input, "confirm") ||
+        anyPressed(screen.mode, input, "pause")
+    if (!pressed) return screen
+    switch (endRollPress(screen.elapsed.seconds)) {
+        case "skip":
+            return { ...screen, elapsed: { seconds: SKIP_TO } }
+        case "leave":
+            return { kind: "title", mode: screen.mode }
+        case "none":
+            return screen
+    }
 }
 
 // A versus round is over (the stage is cleared; a versus game is never
