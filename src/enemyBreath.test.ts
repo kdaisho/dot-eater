@@ -579,6 +579,29 @@ describe("calling the breath off", () => {
         expect(enemy.breath!.cooldown).toBeGreaterThan(EVERY - 5)
     })
 
+    // KDA-290 brings it back sooner on Super Hard (GameState.respawnDelay),
+    // and KDA-293 clears its stance: it still gets a whole grace period.
+    it("comes back with a whole cooldown and no stance on Super Hard too", () => {
+        const { state, enemy } = windingUp()
+        state.respawnDelay = 3
+        enemy.stance = 0.2
+        defeatEnemy(state, enemy)
+        expect(enemy.respawnIn).toBe(3)
+        expect(enemy.stance).toBe(0)
+        let back = 0
+        while (enemy.respawnIn > 0) {
+            tick(state)
+            back++
+            expect(back).toBeLessThanOrEqual(3 * TICK_RATE)
+        }
+        // Its first tick back in play counts towards the cooldown.
+        expect(enemy.breath).toMatchObject({
+            windingUp: 0,
+            cooldown: EVERY - 1,
+        })
+        expect(enemy.stance).toBe(0)
+    })
+
     it("is done while nobody is in play", () => {
         const { state, enemy } = windingUp()
         takeOut(state.players[0], 10)

@@ -28,13 +28,13 @@ describe("stage 7", () => {
         expect(stage7.large.parTime).toBe(125)
     })
 
-    // Patrollers lead every list, with a breather from the start (KDA-291);
-    // the higher difficulties add more patrollers, a second breather, an
-    // ambusher and chasers.
+    // Patrollers lead every list, with a breather from the start (KDA-291)
+    // and a chaser from Medium; the higher difficulties add more patrollers,
+    // a second breather and, at Super Hard, an ambusher.
     const MIX = {
         easy: { patroller: 2, ambusher: 0, chase: 0, breather: 1 },
         medium: { patroller: 2, ambusher: 0, chase: 1, breather: 1 },
-        hard: { patroller: 3, ambusher: 1, chase: 0, breather: 2 },
+        hard: { patroller: 3, ambusher: 0, chase: 1, breather: 2 },
         superHard: { patroller: 4, ambusher: 1, chase: 1, breather: 2 },
     }
     it.each(DIFFICULTIES)("brings out a guard mix at %s", (d) => {

@@ -64,13 +64,15 @@ export const stage6: LevelData = {
             "#############################",
         ],
         enemies: [
+            // Hard: three phantoms, two breathers (KDA-291) and a chaser;
+            // Super Hard adds an ambusher and a second chaser.
             { ai: "phantom" },
             { ai: "breather" },
-            { ai: "phantom" },
-            { ai: "breather" },
-            { ai: "ambusher" },
             { ai: "phantom" },
             { ai: "chase" },
+            { ai: "breather" },
+            { ai: "phantom" },
+            { ai: "ambusher" },
             { ai: "chase" },
         ],
     },

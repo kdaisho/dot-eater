@@ -27,12 +27,12 @@ describe("stage 6", () => {
     })
 
     // Every difficulty gets phantoms and a breather from the start (a
-    // phantom first, KDA-291); Medium adds a chaser, the large map a second
-    // breather and an ambusher, and Super Hard more chasers.
+    // phantom first, KDA-291), and a chaser from Medium; the large map adds
+    // a second breather, and Super Hard an ambusher and a second chaser.
     const MIX = {
         easy: { phantom: 2, chase: 0, ambusher: 0, breather: 1 },
         medium: { phantom: 2, chase: 1, ambusher: 0, breather: 1 },
-        hard: { phantom: 3, chase: 0, ambusher: 1, breather: 2 },
+        hard: { phantom: 3, chase: 1, ambusher: 0, breather: 2 },
         superHard: { phantom: 3, chase: 2, ambusher: 1, breather: 2 },
     }
     it.each(DIFFICULTIES)("brings out phantoms and breathers at %s", (d) => {

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vite-plus/test"
 import { enemyMove } from "./ai"
+import { inPlay } from "./breath"
 import type { Character } from "./character"
 import {
     AiType,
@@ -10,19 +11,28 @@ import {
     MAX_HEALTH,
     TICK_RATE,
 } from "./constants"
+import type { Difficulty } from "./difficulty"
 import { enemyInLine, type EnemyBreath } from "./enemyBreath"
-import { IDLE, step, type GameState, type MoveInput } from "./game"
-import type { Cells } from "./level"
-import { distanceMap } from "./path"
+import {
+    createGameState,
+    IDLE,
+    step,
+    type GameState,
+    type MoveInput,
+} from "./game"
+import type { Cells, Level } from "./level"
+import { stages } from "./levels"
+import { distanceMap, openNeighbours } from "./path"
 import {
     cellsFrom,
     fixedRandom,
     makeEnemy,
     makeState,
+    seededRandom,
     textMap,
     type MapLiteral,
 } from "./test/helpers"
-import { vec2, type Vec2 } from "./vec2"
+import { samePos, vec2, type Vec2 } from "./vec2"
 
 // The breather's moves (breatherStep in ai.ts, KDA-291): it chases while
 // its breath is ready, stops once a player is in line, and keeps its
@@ -151,10 +161,18 @@ describe("a breather's moves", () => {
         expect(moveOn(corridorMap, enemy, vec2(1, 1), [ahead, enemy])).toEqual(
             vec2(6, 1)
         )
-        // However long it has held already.
-        enemy.heldFor = 10
+        // Once it has held for a move's time, it takes the free way back
+        // the way it came (PR #103 review), still not the taken one.
+        enemy.heldFor = 1 / enemy.speed
         expect(moveOn(corridorMap, enemy, vec2(1, 1), [ahead, enemy])).toEqual(
-            vec2(6, 1)
+            vec2(7, 1)
+        )
+        // Boxed in by the wall and the other breather, it stays put.
+        const end = breather(9, 1, "chase", { last: vec2(9, 1), slot: 1 })
+        const blocker = breather(8, 1, "hold", { slot: 0 })
+        end.heldFor = 10
+        expect(moveOn(corridorMap, end, vec2(1, 1), [blocker, end])).toEqual(
+            vec2(9, 1)
         )
         // In the open it goes round, a way within SPREAD_SLACK of the best.
         const near = breather(5, 3, "hold", { slot: 0 })
@@ -162,6 +180,20 @@ describe("a breather's moves", () => {
         expect(moveOn(roomMap, other, vec2(1, 3), [near, other])).toEqual(
             vec2(6, 2)
         )
+    })
+
+    // Regression (PR #103 review): each was the other's only way forward
+    // and held with no time limit, so neither moved again.
+    it("doesn't lock two breathers head-on in a corridor", () => {
+        const a = breather(3, 1, "chase", { last: vec2(2, 1), slot: 0 })
+        const b = breather(4, 1, "chase", { last: vec2(5, 1), slot: 1 })
+        const crowd = [a, b]
+        // Both hold at first...
+        expect(moveOn(corridorMap, a, vec2(9, 1), crowd)).toEqual(vec2(3, 1))
+        expect(moveOn(corridorMap, b, vec2(9, 1), crowd)).toEqual(vec2(4, 1))
+        // ... but not for longer than a move's time.
+        b.heldFor = 1 / b.speed
+        expect(moveOn(corridorMap, b, vec2(9, 1), crowd)).toEqual(vec2(5, 1))
     })
 
     it("parts from another breather on its cell, away from the player", () => {
@@ -272,6 +304,38 @@ describe("a breather in play", () => {
         expect(state.players[0].health).toBe(MAX_HEALTH - ENEMY_DAMAGE)
     })
 
+    // Regression (PR #103 review): the head-on corridor through step, the
+    // player idle out of reach. Before, neither moved for good.
+    it("doesn't lock two breathers head-on in a corridor in play", () => {
+        const map = textMap([
+            "###########",
+            "#         #",
+            "######### #",
+            "#         #",
+            "###########",
+            "#.#########",
+        ]).map
+        const a = makeEnemy(3, 1, AiType.breather, vec2(2, 1), ENEMY_IDS[0])
+        const b = makeEnemy(4, 1, AiType.breather, vec2(5, 1), ENEMY_IDS[1])
+        for (const e of [a, b]) {
+            e.breath!.cooldown = 0
+            e.moveProgress = 1
+        }
+        const state = game(map, vec2(1, 3), [a, b])
+        let moved = 0
+        for (let i = 0; i < TICK_RATE * 2; i++) {
+            tick(state)
+            expect(a.pos).not.toEqual(b.pos)
+            if (!samePos(a.pos, vec2(3, 1)) || !samePos(b.pos, vec2(4, 1))) {
+                moved = i + 1
+                break
+            }
+        }
+        // Within a move's time and a tick or two.
+        expect(moved).toBeGreaterThan(0)
+        expect(moved).toBeLessThanOrEqual(TICK_RATE / 2 + 2)
+    })
+
     it("doesn't stand on one cell with another breather", () => {
         const one = makeEnemy(10, 5, AiType.breather, undefined, ENEMY_IDS[0])
         const two = makeEnemy(10, 4, AiType.breather, undefined, ENEMY_IDS[1])
@@ -282,4 +346,82 @@ describe("a breather in play", () => {
             expect(one.pos, `tick ${i + 1}`).not.toEqual(two.pos)
         }
     })
+})
+
+// Regression (PR #103 review): breathers that held behind one another with
+// no time limit spent about 15% of their ticks at Hard and Super Hard stuck
+// in place, ready to chase and with a free way to go (up to 36 s at a time
+// with the player idle, 83 s on stage 5 at Super Hard). Now a breather
+// ready to chase never stands still on its cell for more than LONGEST.
+describe("breathers on the stages", { timeout: 30_000 }, () => {
+    const LONGEST = 1.5 * TICK_RATE
+    const WAYS = [vec2(1, 0), vec2(0, 1), vec2(-1, 0), vec2(0, -1)]
+
+    // The longest run of ticks any breather stood still on its cell, ready
+    // to chase (EnemyBreath.move "chase"), at rest, in play and with an
+    // open neighbour no other breather is on, playing `level` at
+    // `difficulty` for `seconds` with player 1 (who can't be knocked out)
+    // idle, or holding a way picked at random (by `seed`) every 25 ticks.
+    function longestStuck(
+        level: Level,
+        difficulty: Difficulty,
+        seconds: number,
+        seed: number,
+        idle: boolean
+    ): number {
+        const state = createGameState(level, "dragon", "solo", difficulty)
+        state.players[0].health = Infinity
+        const random = seededRandom(seed)
+        const turns = seededRandom(seed * 31)
+        const breathers = state.enemies.filter((e) => e.breath !== undefined)
+        const taken = (e: Character, v: Vec2) =>
+            breathers.some((o) => o !== e && inPlay(o) && samePos(o.pos, v))
+        const runs = new Map<Character, number>()
+        let longest = 0
+        let way = 0
+        for (let t = 0; t < seconds * TICK_RATE; t++) {
+            if (t % 25 === 0) way = Math.floor(turns() * WAYS.length)
+            const move: MoveInput = idle
+                ? IDLE
+                : { held: [WAYS[way]], pressed: vec2(0, 0) }
+            const before = breathers.map((e) => vec2(e.pos.x, e.pos.y))
+            if (step(state, 1 / TICK_RATE, move, random)) break
+            breathers.forEach((e, i) => {
+                const stuck =
+                    inPlay(e) &&
+                    e.breath!.move === "chase" &&
+                    e.moveProgress >= 1 - 1e-9 &&
+                    samePos(before[i], e.pos) &&
+                    openNeighbours(state.cells, e.pos).some((v) => !taken(e, v))
+                const run = stuck ? (runs.get(e) ?? 0) + 1 : 0
+                runs.set(e, run)
+                longest = Math.max(longest, run)
+            })
+        }
+        return longest
+    }
+
+    it.each(stages.map((stage, i) => [i + 1, stage] as const))(
+        "never leaves one stuck on stage %i with the player idle",
+        (_, stage) => {
+            for (const d of ["hard", "superHard"] as const) {
+                expect(
+                    longestStuck(stage[d], d, 60, 1, true),
+                    d
+                ).toBeLessThanOrEqual(LONGEST)
+            }
+        }
+    )
+
+    it.each([
+        [1, "hard", 7],
+        [5, "superHard", 6],
+    ] as const)(
+        "never leaves one stuck on stage %i at %s with the player moving (seed %i)",
+        (n, d, seed) => {
+            expect(
+                longestStuck(stages[n - 1][d], d, 60, seed, false)
+            ).toBeLessThanOrEqual(LONGEST)
+        }
+    )
 })

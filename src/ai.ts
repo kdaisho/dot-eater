@@ -283,9 +283,13 @@ function nextPos(
 // strictly than it keeps other twins apart, since a breather stands still
 // so much (holding, winding up, keeping its distance) that two on one cell
 // would stay as one: it never steps onto a cell another breather is on
-// (standing there or gliding in, whatever cell it came from), and when its
-// best way and every way within SPREAD_SLACK of it are taken it holds,
-// with no time limit, instead of stacking. Distances are slide-aware on
+// (standing there or gliding in, whatever cell it came from). When its best
+// way and every way within SPREAD_SLACK of it are taken it holds, for one
+// move's time at most (see mayHold), as other twins do; then, rather than
+// stack, it takes the best way that is free, by the same scoring, back the
+// way it came included, and stays put only if every way is taken. Without
+// the limit two breathers head-on in a corridor, each the other's only way
+// forward, waited on each other for good. Distances are slide-aware on
 // ice, as a chaser's are.
 function breatherStep(
     cells: Cells,
@@ -302,27 +306,61 @@ function breatherStep(
         crowd.some(
             (o) => o !== enemy && o.ai === AiType.breather && samePos(o.pos, v)
         )
-    const chase = () =>
-        chaseStep(cells, ice, enemy, target, paths, shared, crowd, taken, true)
-    if (move === "chase") return chase()
     const dist = sharedDistance(shared, ice, target, paths)
+    const icy = hasIce(ice)
+    // Every open neighbour (back the way it came included), scored by
+    // `score` of its distance to the target.
+    const ways = (score: (d: number) => number) =>
+        openNeighbours(cells, enemy.pos).map((v) => {
+            const state = icy
+                ? arrival(cells, ice, enemy.pos, v)
+                : { pos: v, heading: FREE }
+            return { v, d: score(state === null ? Infinity : dist(state)) }
+        })
+    // `choice`, unless it is a hold that has run out (see mayHold): then
+    // the first of `scored` with the smallest score that no breather is
+    // on, or null to stay put if there is none.
+    const patient = mayHold(enemy)
+    const unlessStuck = (
+        choice: Vec2 | typeof HOLD | null,
+        scored: () => readonly { v: Vec2; d: number }[]
+    ) => {
+        if (choice !== HOLD || patient) return choice
+        const free = scored().filter((c) => !taken(c.v))
+        return (
+            free.reduce<{ v: Vec2; d: number } | null>(
+                (a, c) => (a === null || c.d < a.d ? c : a),
+                null
+            )?.v ?? null
+        )
+    }
+    const chase = () =>
+        unlessStuck(
+            chaseStep(
+                cells,
+                ice,
+                enemy,
+                target,
+                paths,
+                shared,
+                crowd,
+                taken,
+                true
+            ),
+            () => ways((d) => d)
+        )
+    if (move === "chase") return chase()
     const here = dist({ pos: enemy.pos, heading: FREE })
     if (move === "keep" && here > BREATHER_KEEP_FAR) return chase()
     if (move === "keep" && here >= BREATHER_KEEP_NEAR) return null
-    const icy = hasIce(ice)
     // Farther from the target is better: scored by the distance it gives
     // up, so spreadChoice's smallest is the farthest. Stepping away, only a
     // step that is farther than here will do; parting, any free one.
-    const scored = openNeighbours(cells, enemy.pos).flatMap((v) => {
-        const state = icy
-            ? arrival(cells, ice, enemy.pos, v)
-            : { pos: v, heading: FREE }
-        const d = state === null ? Infinity : dist(state)
-        if (move === "part") return taken(v) ? [] : [{ v, d: -d }]
-        return d > here && d < Infinity ? [{ v, d: -d }] : []
-    })
+    const scored = ways((d) => -d).filter(({ v, d }) =>
+        move === "part" ? !taken(v) : -d > here && d > -Infinity
+    )
     if (scored.length === 0) return null
-    return spreadChoice(scored, taken, true)
+    return unlessStuck(spreadChoice(scored, taken, true), () => scored)
 }
 
 // Follow the shortest path (wrap-around included) to `target`, never
