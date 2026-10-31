@@ -10,9 +10,10 @@ import type { LevelData } from "../level"
 // start in a ring round a wall block in the middle, left by one exit at the
 // top and one at the bottom on the large map, well away from the player at
 // the bottom, and move at the default (half the player's) speed. The first
-// three in are two wanderers and a chaser; the fourth is an interceptor on
-// the medium map and an ambusher on the large one, which adds interceptors
-// and a second ambusher.
+// three in are a wanderer, a chaser and a breather (KDA-291); the fourth
+// is an interceptor (KDA-292) on the medium map and an ambusher on the
+// large one, which adds two more interceptors, a second breather and a
+// second ambusher.
 export const stage1: LevelData = {
     name: "Classic",
     medium: {
@@ -39,7 +40,7 @@ export const stage1: LevelData = {
         enemies: [
             { ai: "random" },
             { ai: "chase" },
-            { ai: "random" },
+            { ai: "breather" },
             { ai: "interceptor" },
         ],
     },
@@ -71,10 +72,10 @@ export const stage1: LevelData = {
         enemies: [
             { ai: "random" },
             { ai: "chase" },
-            { ai: "random" },
-            { ai: "ambusher" },
+            { ai: "breather" },
             { ai: "interceptor" },
             { ai: "interceptor" },
+            { ai: "breather" },
             { ai: "ambusher" },
             { ai: "interceptor" },
         ],

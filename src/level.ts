@@ -41,6 +41,7 @@ export type AiName =
     | "patroller"
     | "phantom"
     | "splitter"
+    | "breather"
     | "interceptor"
 
 // A cell as written in level data: [x, y], counted from the top-left corner
@@ -200,6 +201,7 @@ const AI_TYPES: Record<AiName, AiType> = {
     patroller: AiType.patroller,
     phantom: AiType.phantom,
     splitter: AiType.splitter,
+    breather: AiType.breather,
     interceptor: AiType.interceptor,
 }
 

@@ -106,16 +106,25 @@ describe("levels", () => {
     )
 
     // KDA-292 (PM call): every stage sprinkles interceptors in, none on
-    // Easy and one more at each difficulty above it, never among the first
-    // three of a list (so never at Easy's count).
+    // Easy (never among the medium map's first three) and one more at each
+    // difficulty above it. Stages 6 and 7 have one at Hard: their two
+    // breathers (KDA-291), their chaser and their phantoms or patrollers
+    // leave room for no more in Hard's six (PM call).
     const INTERCEPTORS = { easy: 0, medium: 1, hard: 2, superHard: 3 }
+    const ONE_AT_HARD = [6, 7]
     it.each(everyLevel)(
         "stage %i (%s) brings out its difficulty's interceptors",
-        (_n, difficulty, level) => {
+        (n, difficulty, level) => {
             const ais = level.enemies.map((e) => e.ai)
             const count = ais.filter((ai) => ai === AiType.interceptor).length
-            expect(count).toBe(INTERCEPTORS[difficulty])
-            expect(ais.slice(0, 3)).not.toContain(AiType.interceptor)
+            expect(count).toBe(
+                difficulty === "hard" && ONE_AT_HARD.includes(n)
+                    ? 1
+                    : INTERCEPTORS[difficulty]
+            )
+            if (MAP_SIZE[difficulty] === "medium") {
+                expect(ais.slice(0, 3)).not.toContain(AiType.interceptor)
+            }
         }
     )
 
@@ -244,26 +253,23 @@ describe.each(EACH_MAP)("stage 1 (%s)", (difficulty) => {
         expect(level.name).toBe("Classic")
     })
 
-    // Wanderers and a chaser first, so Easy's three are the gentlest mix;
-    // the ambusher only from the fourth enemy on, on the large map (the
-    // medium map's fourth is an interceptor, KDA-292).
-    it("brings out wanderers and a chaser first, ambushers later, at the default speed", () => {
+    // A wanderer, a chaser and a breather first (KDA-291), so Easy's three
+    // are the gentlest mix with a breather; the fourth is an interceptor
+    // (KDA-292), and an ambusher comes later on the large map.
+    it("brings out a wanderer, a chaser and a breather first, then an interceptor, at the default speed", () => {
         const ais = level.enemies.map((e) => e.ai)
         expect(ais.slice(0, 3)).toEqual([
             AiType.random,
             AiType.chase,
-            AiType.random,
+            AiType.breather,
         ])
-        expect(ais[3]).toBe(
-            MAP_SIZE[difficulty] === "medium"
-                ? AiType.interceptor
-                : AiType.ambusher
-        )
+        expect(ais[3]).toBe(AiType.interceptor)
         for (const ai of ais) {
             expect([
                 AiType.random,
                 AiType.chase,
                 AiType.ambusher,
+                AiType.breather,
                 AiType.interceptor,
             ]).toContain(ai)
         }
@@ -325,24 +331,23 @@ describe.each(EACH_MAP)("stage 2 (%s)", (difficulty) => {
         expect(level.name).toBe("Wrap maze")
     })
 
-    // Easy's three are the ambusher with a chaser and a wanderer; the
-    // fourth is an interceptor on the medium map (KDA-292) and a second
-    // ambusher on the large one.
-    it("introduces the ambusher, with a chaser and a random enemy", () => {
+    // Easy's three are the ambusher with a chaser and a breather
+    // (KDA-291); the fourth is an interceptor (KDA-292), and the large map
+    // has a second ambusher.
+    it("introduces the ambusher, with a chaser and a breather", () => {
         const ais = level.enemies.map((e) => e.ai)
         expect(ais.slice(0, 4)).toEqual([
             AiType.ambusher,
             AiType.chase,
-            AiType.random,
-            MAP_SIZE[difficulty] === "medium"
-                ? AiType.interceptor
-                : AiType.ambusher,
+            AiType.breather,
+            AiType.interceptor,
         ])
         for (const ai of ais) {
             expect([
                 AiType.random,
                 AiType.chase,
                 AiType.ambusher,
+                AiType.breather,
                 AiType.interceptor,
             ]).toContain(ai)
         }

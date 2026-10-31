@@ -39,14 +39,16 @@ describe.each(EACH_MAP)("stage 3 (%s)", (difficulty) => {
 
     // It introduces ice, and the patrollers that walk round and across
     // the rink. Every difficulty on this map gets a patroller and a chaser
-    // among the enemies it brings out, and no phantom (stage 4's) or
-    // splitter (stage 5's).
+    // or, on the large map, interceptors (KDA-292) among the enemies it
+    // brings out, and no phantom (stage 4's) or splitter (stage 5's).
     it("lists patrollers and plain enemies at the default speed", () => {
         expect(level.enemies).toHaveLength(size === "medium" ? 4 : 8)
         for (const d of DIFFICULTIES.filter((d) => MAP_SIZE[d] === size)) {
             const ais = parseLevel(stage3, d).enemies.map((e) => e.ai)
             expect(ais).toContain(AiType.patroller)
-            expect(ais).toContain(AiType.chase)
+            expect(ais).toContain(
+                size === "medium" ? AiType.chase : AiType.interceptor
+            )
             expect(ais).not.toContain(AiType.phantom)
             expect(ais).not.toContain(AiType.splitter)
         }

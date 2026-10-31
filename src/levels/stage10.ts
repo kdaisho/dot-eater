@@ -21,7 +21,9 @@ import type { LevelData } from "../level"
 // starts. Every dot is in the arena; Splitters among the minions drop more
 // in the corridor (KDA-270), and eaten dots grow back after 8 s (KDA-269),
 // sooner than stage 5's, as the fight takes more of them. Interceptors
-// join from Medium, so the corridor is no place to run round in.
+// (KDA-292) join from Medium, so the corridor is no place to run round in.
+// A breather (KDA-291) comes out at every difficulty, and a second from
+// Hard.
 // The players start at the bottom, between two doors and out of every line
 // the boss breathes along, far from the boss and the minions. No tunnels
 // and no ice (the boss uses neither), no dead ends, left-right symmetric
@@ -55,7 +57,7 @@ export const stage10: LevelData = {
         enemies: [
             { ai: "splitter" },
             { ai: "splitter" },
-            { ai: "chase" },
+            { ai: "breather" },
             { ai: "interceptor" },
         ],
     },
@@ -87,10 +89,10 @@ export const stage10: LevelData = {
         ],
         enemies: [
             { ai: "splitter" },
-            { ai: "chase" },
-            { ai: "chase" },
-            { ai: "splitter" },
             { ai: "interceptor" },
+            { ai: "breather" },
+            { ai: "splitter" },
+            { ai: "breather" },
             { ai: "interceptor" },
             { ai: "splitter" },
             { ai: "interceptor" },

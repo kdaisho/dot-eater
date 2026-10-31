@@ -106,6 +106,20 @@ describe("soundForEvent", () => {
                 { type: "bossBreathed", at, facing: at, cells: [at] },
                 "boss.breath",
             ],
+            [
+                { type: "enemyWindUp", enemy: 0, at, facing: at },
+                "breather.windUp",
+            ],
+            [
+                {
+                    type: "enemyBreathed",
+                    enemy: 0,
+                    at,
+                    facing: at,
+                    cells: [at],
+                },
+                "breather.breath",
+            ],
             [{ type: "hurt", player: 0, at, damage: 25 }, "hurt"],
             [
                 { type: "playerCaught", player: 0, at, outForGood: false },

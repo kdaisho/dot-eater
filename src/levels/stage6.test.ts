@@ -26,16 +26,18 @@ describe("stage 6", () => {
         expect(stage6.large.parTime).toBe(110)
     })
 
-    // Every difficulty gets phantoms and chasers from the start (a phantom
-    // first); the higher ones add interceptors (KDA-292), and the large map
-    // a third phantom and, at Super Hard, a second chaser.
+    // Every difficulty gets phantoms and a breather from the start (a
+    // phantom first, KDA-291), and an interceptor from Medium (KDA-292);
+    // the large map adds a second breather and a chaser at Hard (one
+    // interceptor: no room for two, PM call), and Super Hard two more
+    // interceptors.
     const MIX = {
-        easy: { phantom: 2, chase: 1, interceptor: 0 },
-        medium: { phantom: 2, chase: 1, interceptor: 1 },
-        hard: { phantom: 3, chase: 1, interceptor: 2 },
-        superHard: { phantom: 3, chase: 2, interceptor: 3 },
+        easy: { phantom: 2, chase: 0, breather: 1, interceptor: 0 },
+        medium: { phantom: 2, chase: 0, breather: 1, interceptor: 1 },
+        hard: { phantom: 2, chase: 1, breather: 2, interceptor: 1 },
+        superHard: { phantom: 2, chase: 1, breather: 2, interceptor: 3 },
     }
-    it.each(DIFFICULTIES)("brings out phantoms and chasers at %s", (d) => {
+    it.each(DIFFICULTIES)("brings out phantoms and breathers at %s", (d) => {
         const ais = parseLevel(stage6, d).enemies.map((e) => e.ai)
         expect(ais).toHaveLength(ENEMY_COUNT[d])
         expect(ais[0]).toBe(AiType.phantom)
@@ -43,6 +45,7 @@ describe("stage 6", () => {
         expect({
             phantom: count(AiType.phantom),
             chase: count(AiType.chase),
+            breather: count(AiType.breather),
             interceptor: count(AiType.interceptor),
         }).toEqual(MIX[d])
     })

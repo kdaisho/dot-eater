@@ -1,5 +1,6 @@
 import { footprint } from "./boss"
 import { bossLooks, bossWarning } from "./bossBreath"
+import { enemyBreathLooks, enemyWarnings } from "./enemyBreath"
 import {
     aimPreviews,
     canBreathe,
@@ -110,7 +111,8 @@ export type Effects = {
     reducedMotion?: boolean
     // Whether the boss's wind-up shows (KDA-268; see bossBreath.ts): its
     // glow and the warning tint on the cells it will strike. Set while
-    // playing, paused and in the ending outro, not on end screens.
+    // playing, paused and in the ending outro, not on end screens. The
+    // breathers' wind-ups (KDA-291, see enemyBreath.ts) show with it.
     bossBreath?: boolean
 }
 
@@ -234,6 +236,7 @@ const ENEMY_SPRITES: Record<AiType, string> = {
     [AiType.patroller]: "🤖",
     [AiType.phantom]: "👻",
     [AiType.splitter]: "🦠",
+    [AiType.breather]: "🐍",
     [AiType.interceptor]: "🐺",
 }
 
@@ -441,7 +444,8 @@ export function createRenderer(
             effects.guide === "arrow",
             effects.jabs ?? [],
             effects.reducedMotion === true,
-            (sprite, size) => guardSprites(sprite, size, dpr)
+            (sprite, size) => guardSprites(sprite, size, dpr),
+            windUp
         )
         if (effects.particles) drawParticles(ctx, effects.particles, cell, seen)
         ctx.restore()
@@ -744,9 +748,10 @@ type Tint = { cells: readonly Vec2[]; color: string }
 
 // The tints to draw this frame: each aim preview in its player's colour
 // (player 1 first), then, with `windUp` (Effects.bossBreath), the boss's
-// warning if it is winding up. The warning comes from the boss's state and
-// its own colour (BOSS_BREATH in bossBreath.ts), so nothing here knows the
-// boss's breath.
+// warning if it is winding up, and each breather's that is (KDA-291). The
+// warnings come from their state and their own colours (BOSS_BREATH in
+// bossBreath.ts, ENEMY_BREATH in enemyBreath.ts), so nothing here knows the
+// breaths.
 function tintsFor(
     state: GameState,
     aims: readonly AimPreview[],
@@ -759,6 +764,7 @@ function tintsFor(
     if (!windUp) return tints
     const warning = bossWarning(state)
     if (warning && warning.cells.length > 0) tints.push(warning)
+    tints.push(...enemyWarnings(state))
     return tints
 }
 
@@ -891,7 +897,8 @@ function drawCharacters(
     arrows: boolean,
     jabs: readonly Jab[],
     reducedMotion: boolean,
-    guardSprite: (sprite: string, size: number) => GuardSprite | null
+    guardSprite: (sprite: string, size: number) => GuardSprite | null,
+    windUp: boolean
 ) {
     ctx.textAlign = "center"
     ctx.textBaseline = "middle"
@@ -910,7 +917,9 @@ function drawCharacters(
     // `arrows`, each player who could breathe also gets its facing arrow (see
     // drawArrow). A player with a jab under way (see jab.ts) lunges along
     // it, with a fist just ahead (see drawFist), and an enemy in its guard
-    // stance (see guard.ts) crouches, tinted (see stanceLook). An
+    // stance (see guard.ts) crouches, tinted (see stanceLook). With `windUp`
+    // (Effects.bossBreath), a breather winding up its breath glows, a disc
+    // like a status's colour (see enemyBreathLooks, KDA-291). An
     // interceptor (KDA-292) sneaks: it is drawn faint away from the players
     // and fades in as it closes in on the nearest one in play (sneakAlpha),
     // its disc and badges with it; fog hides it as it does any enemy.
@@ -982,9 +991,12 @@ function drawCharacters(
               )
             : glide
         if (fog && !isPlayer && !fog.visible(pos)) continue
-        const looks = character.statuses.flatMap((s) =>
-            s.status.look ? [s.status.look] : []
-        )
+        const looks = [
+            ...character.statuses.flatMap((s) =>
+                s.status.look ? [s.status.look] : []
+            ),
+            ...(windUp && !isPlayer ? enemyBreathLooks(character) : []),
+        ]
         const size =
             cell *
             SPRITE_SCALE *

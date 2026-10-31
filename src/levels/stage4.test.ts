@@ -31,14 +31,17 @@ describe.each(EACH_MAP)("stage 4 (%s)", (difficulty) => {
     })
 
     // Every difficulty on this map brings out the phantom, first, with at
-    // least a chaser and a wanderer; only Super Hard gets a second phantom.
+    // least a breather (KDA-291) and a chaser, or on the large map
+    // interceptors (KDA-292); only Super Hard gets a second phantom.
     it("brings out the phantom at every difficulty, alongside normal enemies", () => {
         expect(level.enemies).toHaveLength(size === "medium" ? 4 : 8)
         for (const d of DIFFICULTIES.filter((d) => MAP_SIZE[d] === size)) {
             const ais = parseLevel(stage4, d).enemies.map((e) => e.ai)
             expect(ais[0]).toBe(AiType.phantom)
-            expect(ais).toContain(AiType.chase)
-            expect(ais).toContain(AiType.random)
+            expect(ais).toContain(
+                size === "medium" ? AiType.chase : AiType.interceptor
+            )
+            expect(ais).toContain(AiType.breather)
             expect(ais.filter((ai) => ai === AiType.phantom)).toHaveLength(
                 d === "superHard" ? 2 : 1
             )

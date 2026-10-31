@@ -28,13 +28,15 @@ describe("stage 7", () => {
         expect(stage7.large.parTime).toBe(125)
     })
 
-    // Patrollers lead every list, with an ambusher from the start; the
-    // higher difficulties add more patrollers, and interceptors (KDA-292).
+    // Patrollers lead every list, with a breather from the start (KDA-291)
+    // and an interceptor from Medium (KDA-292); the large map adds a second
+    // breather and a chaser at Hard (one interceptor: no room for two, PM
+    // call), and Super Hard two more interceptors.
     const MIX = {
-        easy: { patroller: 2, ambusher: 1, interceptor: 0 },
-        medium: { patroller: 2, ambusher: 1, interceptor: 1 },
-        hard: { patroller: 3, ambusher: 1, interceptor: 2 },
-        superHard: { patroller: 4, ambusher: 1, interceptor: 3 },
+        easy: { patroller: 2, chase: 0, breather: 1, interceptor: 0 },
+        medium: { patroller: 2, chase: 0, breather: 1, interceptor: 1 },
+        hard: { patroller: 2, chase: 1, breather: 2, interceptor: 1 },
+        superHard: { patroller: 2, chase: 1, breather: 2, interceptor: 3 },
     }
     it.each(DIFFICULTIES)("brings out a guard mix at %s", (d) => {
         const ais = parseLevel(stage7, d).enemies.map((e) => e.ai)
@@ -43,7 +45,8 @@ describe("stage 7", () => {
         const count = (ai: number) => ais.filter((a) => a === ai).length
         expect({
             patroller: count(AiType.patroller),
-            ambusher: count(AiType.ambusher),
+            chase: count(AiType.chase),
+            breather: count(AiType.breather),
             interceptor: count(AiType.interceptor),
         }).toEqual(MIX[d])
     })

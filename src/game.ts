@@ -20,6 +20,7 @@ import {
 } from "./constants"
 import {
     blockedView,
+    breatherOn,
     enemyMove,
     mayHold,
     nearestTarget,
@@ -69,6 +70,7 @@ import {
 } from "./difficulty"
 import { emit, type GameEvent } from "./events"
 import { glidePos, wrapDelta, type Glider } from "./glide"
+import { tickEnemyBreaths } from "./enemyBreath"
 import { inStance, rollGuards, tickStances } from "./guard"
 import { slideStep, type IceMap } from "./ice"
 import {
@@ -1003,6 +1005,12 @@ export function step(
             ),
         }
     }
+    // ---- Breathers (KDA-291, see enemyBreath.ts) ----
+    // After the punches (one that landed calls a wind-up off) and before
+    // the enemies move (one winding up holds still): each breather's
+    // breath ticks, and it may wind up or breathe, hurting the players it
+    // strikes.
+    tickEnemyBreaths(state)
     const blocked = enemyBlocks(state)
     // Cells as enemies see them, so blocked cells also end slides.
     const enemyCells = blocked ? blockedView(cells, blocked) : cells
@@ -1052,13 +1060,21 @@ export function step(
         const slideTo =
             slide &&
             loopPos(cells, vec2(enemy.pos.x + slide.x, enemy.pos.y + slide.y))
+        // A breather never slides onto another breather (KDA-291, see
+        // breatherOn in ai.ts): it holds, as below, for a move's time at
+        // most; then it gives the slide up and moves as it chooses (see
+        // breatherStep), which never takes it onto one either.
+        const ontoBreather =
+            slideTo !== null && breatherOn(crowd, enemy, slideTo)
         // Whether it holds its move so as not to stack (see spreadChoice).
         let held = false
-        if (slideTo) {
+        if (slideTo && !(ontoBreather && !mayHold(enemy))) {
             // A slide is no choice, but it may still carry a chaser,
             // ambusher or Splitter onto one of its kind: then it holds, as
             // a choice would, and slides on a cell behind.
-            held = mayHold(enemy) && stacksOn(crowd, enemy, slideTo)
+            held =
+                mayHold(enemy) &&
+                (ontoBreather || stacksOn(crowd, enemy, slideTo))
             if (!held) {
                 // A patroller has reached its waypoint when it stands on
                 // it as the slide carries it off (patrolStep, which would

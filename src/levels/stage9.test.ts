@@ -19,19 +19,15 @@ describe("stage 9", () => {
         expect(stage9.large).not.toBe(stage9.medium)
     })
 
-    // Since the interceptors (KDA-292) take three of Super Hard's eight
-    // places, no difficulty has room for every type: the large map has
-    // all but the phantom at Super Hard, the medium map has the phantom.
-    it("brings out every enemy type over its difficulties", () => {
+    // Two breathers (KDA-291) and three interceptors (KDA-292) take five
+    // of Super Hard's eight places, so no difficulty has room for every
+    // type: over its difficulties it has all but the wanderer.
+    it("brings out every enemy type but the wanderer over its difficulties", () => {
         const all = Object.values(AiType)
         const seen = new Set(
             DIFFICULTIES.flatMap((d) => stage[d].enemies.map((e) => e.ai))
         )
-        expect(seen).toEqual(new Set(all))
-        const superHard = new Set(stage.superHard.enemies.map((e) => e.ai))
-        expect(superHard).toEqual(
-            new Set(all.filter((ai) => ai !== AiType.phantom))
-        )
+        expect(seen).toEqual(new Set(all.filter((ai) => ai !== AiType.random)))
         for (const d of DIFFICULTIES) {
             const ais = new Set(stage[d].enemies.map((e) => e.ai))
             // Even Easy's three are all different.
@@ -83,11 +79,16 @@ describe.each(EACH_MAP)("stage 9 (%s)", (difficulty) => {
         expect(level.parTime).toBe(size === "medium" ? 100 : 180)
     })
 
-    it("speeds up the chasers and ambushers, and only them", () => {
-        for (const { ai, speed } of level.enemies) {
-            const hunter = ai === AiType.chase || ai === AiType.ambusher
+    // The hunters: the chaser and the ambusher, and on the large map the
+    // two interceptors (KDA-292) in their places.
+    it("speeds up the hunters, and only them", () => {
+        level.enemies.forEach(({ ai, speed }, i) => {
+            const hunter =
+                ai === AiType.chase ||
+                ai === AiType.ambusher ||
+                (ai === AiType.interceptor && i < 2)
             expect(speed).toBe(hunter ? HUNTER_SPEED : undefined)
-        }
+        })
         expect(level.playerSpeed).toBeUndefined()
     })
 

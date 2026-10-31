@@ -1,12 +1,14 @@
 import type { LevelData } from "../level"
 
 // Gauntlet: the final exam before the last boss, and the hardest dot stage.
-// Between them its maps have every enemy type: the large map a chaser, an
-// ambusher, a wanderer, a patroller and interceptors (Hard), and a
-// Splitter (Super Hard); the medium map a chaser, an ambusher and the
-// phantom, three different ones even at Easy, and an interceptor (Medium).
-// The interceptors leave Super Hard no room for the phantom. The chasers and
-// ambushers are a little faster here than anywhere else (2.25 cells per
+// Between its maps it has every enemy type but the wanderer: the medium map
+// a chaser, an ambusher and a breather (KDA-291), three different ones
+// even at Easy, and an interceptor (KDA-292); the large map two
+// interceptors, two breathers, the phantom and a patroller (Hard), then a
+// Splitter and a third interceptor (Super Hard). The interceptors leave no
+// room for all eight at one difficulty. The hunters (the chaser, the
+// ambusher and the large map's first two interceptors) are a little
+// faster here than anywhere else (2.25 cells per
 // second, against the default 2). The maze mixes open rooms (the top
 // corners, where the enemies start, and a pillared arena in the middle, where
 // a Splitter's halves have room to spread) with tight 1-wide corridors (the
@@ -39,12 +41,12 @@ export const stage9: LevelData = {
             "..........PQ.........",
             "#####################",
         ],
-        // Easy: a chaser, an ambusher and the phantom; Medium adds an
-        // interceptor.
+        // Easy: a chaser, an ambusher and a breather (KDA-291); Medium adds
+        // an interceptor (KDA-292).
         enemies: [
             { ai: "chase", speed: 2.25 },
             { ai: "ambusher", speed: 2.25 },
-            { ai: "phantom" },
+            { ai: "breather" },
             { ai: "interceptor" },
         ],
     },
@@ -73,14 +75,15 @@ export const stage9: LevelData = {
             "..............PQ.............",
             "#############################",
         ],
-        // Hard: a chaser, an ambusher, a wanderer, an interceptor, the
-        // patroller circling the arena and a second interceptor; Super Hard
-        // adds the Splitter and a third interceptor.
+        // Hard: the hunters (two interceptors, KDA-292), two breathers
+        // (KDA-291), the phantom and the patroller circling the arena;
+        // Super Hard adds the Splitter and a third interceptor, starting in
+        // the side passages.
         enemies: [
-            { ai: "chase", speed: 2.25 },
-            { ai: "ambusher", speed: 2.25 },
-            { ai: "random" },
-            { ai: "interceptor" },
+            { ai: "interceptor", speed: 2.25 },
+            { ai: "interceptor", speed: 2.25 },
+            { ai: "breather" },
+            { ai: "phantom" },
             {
                 ai: "patroller",
                 route: [
@@ -90,7 +93,7 @@ export const stage9: LevelData = {
                     [7, 15],
                 ],
             },
-            { ai: "interceptor" },
+            { ai: "breather" },
             { ai: "splitter" },
             { ai: "interceptor" },
         ],

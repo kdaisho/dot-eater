@@ -39,6 +39,7 @@ vi.mock("./ai", async (importOriginal) => {
         Ai.ambusher,
         Ai.splitter,
         Ai.phantom,
+        Ai.breather,
     ])
     return {
         ...ai,
@@ -301,6 +302,7 @@ const SPREADING = new Set<AiType>([
     AiType.ambusher,
     AiType.splitter,
     AiType.phantom,
+    AiType.breather,
     AiType.interceptor,
 ])
 
@@ -351,8 +353,11 @@ describe("same-kind enemies in a whole game", () => {
             `stage 6's phantoms at ${DIFFICULTY_LABELS[d]}`,
             stages[5][d],
         ]),
+        // Two breathers (KDA-291), which step away from the player between
+        // breaths, so two that meet would back off as one.
+        ["stage 1's breathers at Hard", stages[0].hard],
         // Interceptors (KDA-292): without the rule two of them went as one
-        // for 2.5-55 s of every run here. On stage 7 at Super Hard, three
+        // for seconds at a time on every run here. On stage 7 at Super Hard, three
         // piled onto a player standing still, one holding behind the
         // next, and two stacked for a move once the hold ran out, until
         // an interceptor took to going round another way instead.

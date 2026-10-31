@@ -22,6 +22,7 @@ import {
     TICK_RATE,
 } from "./constants"
 import { createCharacter } from "./character"
+import { ENEMY_BREATH } from "./enemyBreath"
 import {
     createGameState,
     HURT_INVULNERABLE_TICKS,
@@ -158,9 +159,9 @@ describe("createRenderer", () => {
         renderer.draw(
             makeState(
                 [
-                    [1, 1, 1, 1, 1, 1, 1, 1, 1],
-                    [1, 2, 2, 2, 2, 2, 2, 2, 1],
-                    [1, 0, 1, 1, 1, 1, 1, 1, 1],
+                    [1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+                    [1, 2, 2, 2, 2, 2, 2, 2, 2, 1],
+                    [1, 0, 1, 1, 1, 1, 1, 1, 1, 1],
                 ],
                 { x: 1, y: 2 },
                 enemies
@@ -1162,6 +1163,92 @@ describe("createRenderer", () => {
             const lit = setup()
             lit.renderer.draw(state, 0, {}, { fog: { radius: 2 } })
             expect(lit.texts()).toEqual([BOSS_SPRITE, "🐉"])
+        })
+    })
+
+    // KDA-291, see enemyBreath.ts.
+    describe("a breather", () => {
+        // A 9x5 room with the player at (1, 1) and a breather at (4, 1).
+        const room = textMap([
+            "#########",
+            "#       #",
+            "#       #",
+            "#       #",
+            "#########",
+        ]).map
+        // The breather winding up its breath at the player, to its left,
+        // unless `winding` is false.
+        function breatherState(winding = true) {
+            const enemy = makeEnemy(4, 1, AiType.breather)
+            if (winding) {
+                enemy.breath!.windingUp = 10
+                enemy.breath!.facing = vec2(-1, 0)
+            }
+            return makeState(room, { x: 1, y: 1 }, [enemy])
+        }
+        const cellOf = (canvas: HTMLCanvasElement) =>
+            parseFloat(canvas.style.width) / 9
+        // On the board in play, paused or ending (see Effects.bossBreath).
+        const IN_GAME = { bossBreath: true } as const
+        // The cells (as "x,y") filled in the warning colour.
+        const tinted = ({ calls, canvas }: ReturnType<typeof setup>) =>
+            calls
+                .filter(
+                    (c) =>
+                        c.name === "fillRect" &&
+                        c.fillStyle === ENEMY_BREATH.warning
+                )
+                .map((c) => {
+                    const cell = cellOf(canvas)
+                    const [x, y] = c.args as number[]
+                    return `${Math.round(x / cell)},${Math.round(y / cell)}`
+                })
+        // The first fill of its glow, or -1.
+        const glows = (calls: ReturnType<typeof setup>["calls"]) =>
+            calls.findIndex(
+                (c) =>
+                    c.name === "fill" &&
+                    String(c.fillStyle).startsWith(`rgba(${ENEMY_BREATH.glow},`)
+            )
+
+        it("tints the cells its breath will strike while it winds up", () => {
+            const calm = setup()
+            calm.renderer.draw(breatherState(false), 0, {}, {}, IN_GAME)
+            expect(tinted(calm)).toEqual([])
+            const warned = setup()
+            warned.renderer.draw(breatherState(), 0, {}, {}, IN_GAME)
+            // Up to the wall: three cells, the player's included.
+            expect(tinted(warned).sort()).toEqual(["1,1", "2,1", "3,1"])
+            expect(
+                warned.calls.some(
+                    (c) =>
+                        c.name === "stroke" &&
+                        c.strokeStyle === ENEMY_BREATH.warning
+                )
+            ).toBe(true)
+        })
+
+        it("glows behind its sprite while it winds up, drawn opaque", () => {
+            const calm = setup()
+            calm.renderer.draw(breatherState(false), 0, {}, {}, IN_GAME)
+            expect(glows(calm.calls)).toBe(-1)
+            const { calls, renderer } = setup()
+            renderer.draw(breatherState(), 0, {}, {}, IN_GAME)
+            const glow = glows(calls)
+            const sprite = calls.findIndex(
+                (c) => c.name === "fillText" && c.args[0] === "🐍"
+            )
+            expect(glow).toBeGreaterThanOrEqual(0)
+            expect(glow).toBeLessThan(sprite)
+            expect(calls[sprite].fillStyle).toBe("#000")
+        })
+
+        it("shows no wind-up on end screens", () => {
+            const end = setup()
+            end.renderer.draw(breatherState(), 0, {}, {}, {})
+            expect(tinted(end)).toEqual([])
+            expect(glows(end.calls)).toBe(-1)
+            expect(end.texts()).toContain("🐍")
         })
     })
 })
