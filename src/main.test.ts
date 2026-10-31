@@ -183,7 +183,7 @@ describe("main", () => {
         // Space: difficulty select, on Medium with nothing saved.
         pressAndTick("Space")
         expect(screen()).toBe("difficulty-select")
-        expect(selectedItem()).toBe("Medium 4 enemies, medium maze")
+        expect(selectedItem()).toBe("Medium 4 faster enemies, medium maze")
         expect(starts()).toBe(0)
 
         // Space: character select, on the Dragon with nothing saved.
@@ -445,7 +445,7 @@ describe("main", () => {
         const before = starts()
         pressAndTick("Escape")
         expect(screen()).toBe("difficulty-select")
-        expect(selectedItem()).toBe("Medium 4 enemies, medium maze")
+        expect(selectedItem()).toBe("Medium 4 faster enemies, medium maze")
         pressAndTick("Escape")
         expect(screen()).toBe("stage-select")
         expect(selectedItem()).toBe(levels[0].name)

@@ -161,8 +161,8 @@ export function breathEscapes(level: Level): {
 }
 
 // What a boss stage's dodges are played on and as (see dodgeHits): each map
-// (at the difficulty with the most enemies, though there are none about),
-// as the Dragon, at 4 cells/s like every character but the Boar, and as
+// at the difficulty with the most enemies (though there are none about;
+// the hardest, so Super Hard's boss, KDA-290), as the Dragon, at 4 cells/s like every character but the Boar, and as
 // the Boar, the slowest (3.5).
 export const DODGE_RUNS: readonly {
     size: MapSize
@@ -221,16 +221,18 @@ export function breathDodges(level: Level): BreathDodge[] {
     return dodges
 }
 
-// Play `dodge` out through the real step, as `animal`, with no enemies
-// about: the boss winds up (its level's wind-up, from its first tick) and
-// breathes, while the player, with no time to react, follows its path out
-// from the first tick and then stands still. Returns whether it was hurt.
+// Play `dodge` out through the real step, as `animal`, at `difficulty`
+// (none unless given), with no enemies about: the boss winds up (its
+// wind-up, from its first tick) and breathes, while the player, with no
+// time to react, follows its path out from the first tick and then stands
+// still. Returns whether it was hurt.
 export function dodgeHit(
     level: Level,
     animal: AnimalId,
-    dodge: BreathDodge
+    dodge: BreathDodge,
+    difficulty?: Difficulty
 ): boolean {
-    const state = createGameState(level, animal)
+    const state = createGameState(level, animal, "solo", difficulty)
     state.enemies = []
     state.spawns.enemies = []
     const boss = state.boss!
@@ -267,19 +269,21 @@ const ONE_MOVE_SAMPLE = 16
 
 const FACINGS = ["up", "left", "down", "right"] as const
 
-// The dodges on `level` the breath hits, played out as `animal` (see
-// dodgeHit), each as a line to read, and how many were played: every one
-// with two moves or more to go from its cell, where the wind-up is tight,
-// and every ONE_MOVE_SAMPLE-th of the rest, to keep it quick.
+// The dodges on `level` the breath hits, played out as `animal` at
+// `difficulty` (see dodgeHit), each as a line to read, and how many were
+// played: every one with two moves or more to go from its cell, where the
+// wind-up is tight, and every ONE_MOVE_SAMPLE-th of the rest, to keep it
+// quick.
 export function dodgeHits(
     level: Level,
-    animal: AnimalId
+    animal: AnimalId,
+    difficulty?: Difficulty
 ): { played: number; hits: string[] } {
     const played = breathDodges(level).filter(
         (dodge, i) => dodge.path.length > 2 || i % ONE_MOVE_SAMPLE === 0
     )
     const hits = played
-        .filter((dodge) => dodgeHit(level, animal, dodge))
+        .filter((dodge) => dodgeHit(level, animal, dodge, difficulty))
         .map(({ boss, facing, cell, from }) => {
             const on = from
                 ? `into ${cellKey(cell)} from ${cellKey(from)}`

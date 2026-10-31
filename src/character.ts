@@ -50,9 +50,9 @@ export type Character = {
     // their starting values.
     //
     // Landed punches counting towards the knockback's decay (see
-    // knockLevel), from 0 (a full cell) up to the last of KNOCK_STEPS, and
-    // the seconds since the latest of them. 0 and 0 to start with, and
-    // again once it is defeated.
+    // knockLevel), from 0 (a full cell) up to the last of the game's decay
+    // steps (GameState.knock), and the seconds since the latest of them. 0
+    // and 0 to start with, and again once it is defeated.
     knocks: number
     sinceKnock: number
     // While a short knock (less than a cell) glides it out, the move

@@ -1,6 +1,7 @@
 import {
     AiType,
     BLINK_RATE,
+    BOSS_BREATH_EVERY,
     BOSS_DAMAGE,
     CATCH_DISTANCE,
     Cell,
@@ -14,6 +15,7 @@ import {
     PLAYER_SPEED,
     RESPAWN_BLOCK_GRACE,
     RESPAWN_CLEAR_DISTANCE,
+    RESPAWN_DELAY,
     TICK_RATE,
 } from "./constants"
 import {
@@ -53,12 +55,28 @@ import {
 } from "./boss"
 import { tickBossBreath } from "./bossBreath"
 import { createCharacter, type Character } from "./character"
-import { GUARD, type Difficulty, type GuardOdds } from "./difficulty"
+import {
+    BOSS_BREATH_SCALE,
+    enemySpeed,
+    GUARD,
+    KNOCK_DECAY,
+    RESPAWN_SCALE,
+    USUAL_KNOCK,
+    type Difficulty,
+    type GuardOdds,
+    type KnockDecay,
+} from "./difficulty"
 import { emit, type GameEvent } from "./events"
 import { glidePos, wrapDelta, type Glider } from "./glide"
 import { rollGuards } from "./guard"
 import { slideStep, type IceMap } from "./ice"
-import { hasDots, loopPos, type Cells, type Level } from "./level"
+import {
+    hasDots,
+    loopPos,
+    type BossBreathData,
+    type Cells,
+    type Level,
+} from "./level"
 import { levels } from "./levels"
 import { distanceMap, openNeighbours } from "./path"
 import { DEFAULT_ANIMAL, type AnimalId } from "./roster"
@@ -120,6 +138,12 @@ export type GameState = {
     // from the game's difficulty, or null for no guard at all (no rolls,
     // no blocks).
     guard: GuardOdds | null
+    // How the punch's knockback decays (KDA-290, see knockLevel in
+    // punch.ts) and how long a defeated enemy stays gone, in seconds (see
+    // defeatEnemy in breath.ts), from the game's difficulty: USUAL_KNOCK
+    // and RESPAWN_DELAY in a game with none.
+    knock: KnockDecay
+    respawnDelay: number
 }
 
 // One player: its character on the board, plus everything else that is its
@@ -222,7 +246,11 @@ const EPSILON = 1e-9
 // its own for a 1-player game), whose breaths and stats come from BREATHS
 // (src/breaths/). Player i starts on the level's spawn i.
 // `mode` is the rules it is played by (see knockOut). `difficulty` sets how
-// well enemies guard against the punch (GUARD); left out, they don't.
+// well enemies guard against the punch (GUARD); left out, they don't. It
+// also sets (KDA-290) how fast enemies go (enemySpeed), how the knockback
+// decays (KNOCK_DECAY), how soon a defeated enemy is back (RESPAWN_SCALE)
+// and how often the boss breathes (BOSS_BREATH_SCALE); left out, all of
+// them are the level's and the defaults, as before.
 export function createGameState(
     level: Level = levels[0],
     animals: AnimalId | readonly AnimalId[] = DEFAULT_ANIMAL,
@@ -264,6 +292,7 @@ export function createGameState(
                       ),
                   ]
         for (const slot of slots) {
+            if (difficulty) speedUp(slot, difficulty)
             enemies.push(slot)
             enemySpawns.push(vec2(enemy.pos.x, enemy.pos.y))
         }
@@ -282,7 +311,9 @@ export function createGameState(
             ? createBoss(
                   level.boss.pos,
                   level.boss.speed,
-                  level.boss.breath,
+                  difficulty
+                      ? bossBreathAt(level.boss.breath, difficulty)
+                      : level.boss.breath,
                   level.boss.health
               )
             : null,
@@ -295,7 +326,31 @@ export function createGameState(
         regrow: createRegrow(level.rules.regrowDots, cells),
         splitterDrops: level.rules.splitterDrops ?? false,
         guard: difficulty ? GUARD[difficulty] : null,
+        knock: difficulty ? KNOCK_DECAY[difficulty] : USUAL_KNOCK,
+        respawnDelay:
+            RESPAWN_DELAY * (difficulty ? RESPAWN_SCALE[difficulty] : 1),
     }
+}
+
+// An enemy slot's speeds at `difficulty` (see enemySpeed): its own and, for
+// a Splitter's slot, the whole Splitter's and its halves'.
+function speedUp(enemy: Character, difficulty: Difficulty) {
+    enemy.speed = enemySpeed(enemy.speed, difficulty)
+    const { part } = enemy
+    if (!part) return
+    part.wholeSpeed = enemySpeed(part.wholeSpeed, difficulty)
+    part.halfSpeed = enemySpeed(part.halfSpeed, difficulty)
+}
+
+// The boss's breath tuning from its level (`data`) at `difficulty`: its
+// `every` (BOSS_BREATH_EVERY if the level leaves it out) times
+// BOSS_BREATH_SCALE. Its wind-up is the level's.
+function bossBreathAt(
+    data: BossBreathData = {},
+    difficulty: Difficulty
+): BossBreathData {
+    const every = data.every ?? BOSS_BREATH_EVERY
+    return { ...data, every: every * BOSS_BREATH_SCALE[difficulty] }
 }
 
 // A player of `level` as `animal`, on `spawn`. Speeds the level leaves out

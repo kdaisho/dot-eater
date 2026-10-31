@@ -4,7 +4,6 @@ import {
     DEFEAT_POINTS,
     DOT_ENERGY,
     RESPAWN_BLINK,
-    RESPAWN_DELAY,
 } from "./constants"
 import { bossDamage, damageBoss, inFootprint, tickBoss } from "./boss"
 import {
@@ -37,8 +36,8 @@ import { allDirections, directions, samePos, vec2, type Vec2 } from "./vec2"
 // decides what happens to them, using only the generic effects below:
 //
 // - defeat an enemy: it scores DEFEAT_POINTS and comes back alone at its
-//   spawn after RESPAWN_DELAY, blinking for the last RESPAWN_BLINK seconds
-//   (a whole Splitter splits in two instead; see splitter.ts);
+//   spawn after GameState.respawnDelay, blinking for the last RESPAWN_BLINK
+//   seconds (a whole Splitter splits in two instead; see splitter.ts);
 // - put a timed status on an enemy (EnemyStatus: e.g. frozen);
 // - put a timed effect on a cell (TileEffect: blocks enemies, ice, an opened
 //   wall);
@@ -559,7 +558,7 @@ export function addStatus(
 
 // Take `enemy` out of play: DEFEAT_POINTS for `by` (the player whose breath
 // did it, player 1 unless given), then back at its spawn after
-// RESPAWN_DELAY (see tickEffects). It waits at its spawn meanwhile, so the
+// state.respawnDelay (see tickEffects). It waits at its spawn meanwhile, so the
 // blink before it is back is drawn there. Statuses are dropped, a
 // patroller will start its route again, and the punches it took and its
 // guard roll are forgotten (see freshFromPunches). Defeating an enemy already out of
@@ -590,7 +589,7 @@ export function defeatEnemy(
         return
     }
     const spawn = state.spawns.enemies[i]
-    enemy.respawnIn = RESPAWN_DELAY
+    enemy.respawnIn = state.respawnDelay
     enemy.statuses = []
     enemy.pos = vec2(spawn.x, spawn.y)
     enemy.lastPos = vec2(spawn.x, spawn.y)
