@@ -5,6 +5,7 @@ import {
     sameBindings,
 } from "./bindings"
 import { browserAudioContext, createAudio } from "./audio"
+import { RECORDED_TRACKS } from "./recorded"
 import { playEventSounds, screenSound } from "./sound"
 import { energyHud } from "./breath"
 import { MAX_FRAME_MS, TICK_MS } from "./constants"
@@ -951,6 +952,7 @@ const audio = createAudio({
     createContext: browserAudioContext(globalThis),
     setTimer: (callback, ms) => window.setInterval(callback, ms),
     clearTimer: (handle) => window.clearInterval(handle),
+    recorded: RECORDED_TRACKS,
 })
 for (const type of ["keydown", "pointerdown", "touchend"])
     document.addEventListener(type, () => audio.unlock(), { capture: true })

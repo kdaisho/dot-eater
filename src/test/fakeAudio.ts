@@ -45,10 +45,13 @@ export class FakeGain extends FakeNode {
 
 export class FakeSource extends FakeNode {
     started: number | undefined
+    // The offset into the buffer a buffer source started at.
+    offset: number | undefined
     stopped: number | undefined
     onended: (() => void) | null = null
-    start(time: number) {
+    start(time: number, offset?: number) {
         this.started = time
+        this.offset = offset
     }
     stop(time: number) {
         this.stopped = time
@@ -63,6 +66,8 @@ export class FakeOscillator extends FakeSource {
 export class FakeBufferSource extends FakeSource {
     buffer: unknown = null
     loop = false
+    loopStart = 0
+    loopEnd = 0
 }
 
 export class FakeFilter extends FakeNode {
@@ -122,6 +127,10 @@ export function fakeContext() {
             const data = new Float32Array(length)
             return { length, getChannelData: () => data }
         },
+        // Decodes any bytes to a buffer naming them; swap it to fail.
+        decodeAudioData: vi.fn((bytes: ArrayBuffer) =>
+            Promise.resolve({ decodedFrom: bytes })
+        ),
         // Every source scheduled so far, oscillators and noise.
         get sources(): FakeSource[] {
             return [...fake.oscillators, ...fake.bufferSources]
