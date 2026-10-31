@@ -4,6 +4,12 @@
 // feeds the speakers through a limiter. The context and the timer that drives music
 // scheduling are injected, so tests run it on a fake without a browser.
 //
+// Recorded music: a tune with an entry in `options.recorded` (recorded.ts)
+// plays that file instead of its chip tune, looped between its loop points
+// by one AudioBufferSourceNode, so the jump back is gapless. The file is
+// fetched and decoded the first time the tune starts (it starts once
+// decoded) and kept. If loading fails, the chip tune plays instead.
+//
 // Pause: `pauseMusic` freezes the tune where it is (cutting the notes
 // already scheduled ahead) and `resumeMusic` carries on from that point in
 // the tune, not from its start.
@@ -27,6 +33,7 @@ import {
     type CompiledTrack,
     type MusicTrackId,
 } from "./music"
+import { loopOffset, type RecordedTrack, type RecordedTracks } from "./recorded"
 import { defaultSettings, VOLUME_MAX, type Settings } from "./settings"
 import { SFX, type SfxId } from "./sfx"
 import { DEFAULT_ATTACK, RELEASE, SILENT, type Tone } from "./tone"
@@ -45,6 +52,7 @@ export type AudioContextLike = Pick<
     | "createBiquadFilter"
     | "createBuffer"
     | "createDynamicsCompressor"
+    | "decodeAudioData"
 >
 
 // The volume settings (KDA-246's musicVolume, effectsVolume and muted):
@@ -77,6 +85,10 @@ export const MASTER_LEVEL = 0.5
 // under the effects, so the bus lifts them back up; at 0.5 the title melody
 // was too faint to hear on laptop speakers.
 export const MUSIC_LEVEL = 2
+// A recorded tune's gain into the music bus. The files are evened out to
+// about -16 LUFS when encoded, which is about as loud as the chip tunes
+// come out of the bus (measured on renders of them), so they pass as is.
+export const RECORDED_LEVEL = 1
 // The limiter between master and the speakers: with the music lifted, loud
 // music at full volume plus a loud effect or two can top full scale, which
 // the speakers would hard-clip into clicks. It squashes peaks over the
@@ -187,6 +199,17 @@ export type AudioOptions = {
     clearTimer: (handle: number) => void
     // For the noise buffer. Default Math.random.
     random?: () => number
+    // Tunes played from a recorded file instead of their chip tune.
+    // Default none.
+    recorded?: RecordedTracks
+    // Fetch a recorded file's bytes. Default fetch.
+    fetchAudio?: (url: string) => Promise<ArrayBuffer>
+}
+
+async function fetchAudio(url: string): Promise<ArrayBuffer> {
+    const response = await fetch(url)
+    if (!response.ok) throw new Error(`${url}: HTTP ${response.status}`)
+    return response.arrayBuffer()
 }
 
 export type Audio = {
@@ -218,16 +241,21 @@ export type Audio = {
 type Buses = { master: GainNode; music: GainNode; effects: GainNode }
 
 type Playing = {
-    track: CompiledTrack
     // Gain node this tune alone plays through, so stopping cuts the notes
     // already scheduled.
     bus: GainNode
     // AudioContext time of the tune's start.
     start: number
-    // Track time scheduled up to.
-    scheduled: number
-    timer: number
-}
+} & (
+    | {
+          kind: "chip"
+          track: CompiledTrack
+          // Track time scheduled up to.
+          scheduled: number
+          timer: number
+      }
+    | { kind: "recorded"; source: AudioBufferSourceNode }
+)
 
 export function createAudio(options: AudioOptions): Audio {
     const random = options.random ?? Math.random
@@ -246,6 +274,11 @@ export function createAudio(options: AudioOptions): Audio {
     // moment (several ticks run in one frame after a hitch) plays once.
     const lastSfx = new Map<SfxId, number>()
     const compiled = new Map<MusicTrackId, CompiledTrack>()
+    const fetchBytes = options.fetchAudio ?? fetchAudio
+    // Recorded files by URL: decoded, being loaded, or failed to load.
+    const decoded = new Map<string, AudioBuffer>()
+    const loading = new Set<string>()
+    const unloadable = new Set<string>()
 
     function compiledTrack(id: MusicTrackId): CompiledTrack {
         let track = compiled.get(id)
@@ -298,7 +331,7 @@ export function createAudio(options: AudioOptions): Audio {
     // lookahead runs out. Notes a late timer missed are skipped, not
     // played in a burst.
     function pump() {
-        if (!context || !buses || !noise || !playing) return
+        if (!context || !buses || !noise || playing?.kind !== "chip") return
         const now = context.currentTime - playing.start
         const from = Math.max(playing.scheduled, now)
         const to = Math.max(now, 0) + LOOKAHEAD
@@ -309,11 +342,54 @@ export function createAudio(options: AudioOptions): Audio {
         playing.scheduled = Math.max(playing.scheduled, to)
     }
 
+    // Fetch and decode a recorded file, then start the tune if it is still
+    // the one wanted.
+    function load(url: string) {
+        if (!context || loading.has(url)) return
+        const ctx = context
+        loading.add(url)
+        fetchBytes(url)
+            .then((bytes) => ctx.decodeAudioData(bytes))
+            .then((buffer) => decoded.set(url, buffer))
+            .catch((error: unknown) => {
+                console.error(error)
+                unloadable.add(url)
+            })
+            .finally(() => {
+                loading.delete(url)
+                startMusic()
+            })
+    }
+
+    function startRecorded(recorded: RecordedTrack, buffer: AudioBuffer) {
+        if (!context || !buses) return
+        const bus = context.createGain()
+        bus.gain.setValueAtTime(RECORDED_LEVEL, context.currentTime)
+        bus.connect(buses.music)
+        const source = context.createBufferSource()
+        source.buffer = buffer
+        source.loop = true
+        source.loopStart = recorded.loopStart
+        source.loopEnd = recorded.loopEnd
+        source.connect(bus)
+        const when = context.currentTime + MUSIC_START_DELAY
+        source.start(when, loopOffset(recorded, position))
+        playing = { kind: "recorded", bus, source, start: when - position }
+    }
+
     function startMusic() {
         if (!context || !buses || !noise || !music || playing || paused) return
+        const recorded = options.recorded?.[music]
+        if (recorded && !unloadable.has(recorded.url)) {
+            const buffer = decoded.get(recorded.url)
+            if (buffer) startRecorded(recorded, buffer)
+            else load(recorded.url)
+            return
+        }
         const bus = context.createGain()
         bus.connect(buses.music)
         playing = {
+            kind: "chip",
             track: compiledTrack(music),
             bus,
             start: context.currentTime + MUSIC_START_DELAY - position,
@@ -331,7 +407,8 @@ export function createAudio(options: AudioOptions): Audio {
 
     function haltMusic() {
         if (!playing) return
-        options.clearTimer(playing.timer)
+        if (playing.kind === "chip") options.clearTimer(playing.timer)
+        else if (context) playing.source.stop(context.currentTime)
         if (context) playing.bus.gain.setValueAtTime(0, context.currentTime)
         playing.bus.disconnect()
         playing = undefined

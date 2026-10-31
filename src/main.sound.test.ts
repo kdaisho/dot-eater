@@ -17,6 +17,12 @@ const AudioContext = vi.fn(function () {
     return context
 })
 vi.stubGlobal("AudioContext", AudioContext)
+// Stage music is recorded files; keep them loading rather than reaching
+// for a server, so stages stay silent and the tests see no fetch errors.
+vi.stubGlobal(
+    "fetch",
+    vi.fn(() => new Promise(() => undefined))
+)
 
 // Key presses go to the document, as the browser's do, and bubble on to
 // the window's keyboard source.
