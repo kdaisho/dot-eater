@@ -20,6 +20,7 @@ import {
 } from "./constants"
 import {
     blockedView,
+    breatherOn,
     enemyMove,
     mayHold,
     nearestTarget,
@@ -1059,13 +1060,21 @@ export function step(
         const slideTo =
             slide &&
             loopPos(cells, vec2(enemy.pos.x + slide.x, enemy.pos.y + slide.y))
+        // A breather never slides onto another breather (KDA-291, see
+        // breatherOn in ai.ts): it holds, as below, for a move's time at
+        // most; then it gives the slide up and moves as it chooses (see
+        // breatherStep), which never takes it onto one either.
+        const ontoBreather =
+            slideTo !== null && breatherOn(crowd, enemy, slideTo)
         // Whether it holds its move so as not to stack (see spreadChoice).
         let held = false
-        if (slideTo) {
+        if (slideTo && !(ontoBreather && !mayHold(enemy))) {
             // A slide is no choice, but it may still carry a chaser,
             // ambusher or Splitter onto one of its kind: then it holds, as
             // a choice would, and slides on a cell behind.
-            held = mayHold(enemy) && stacksOn(crowd, enemy, slideTo)
+            held =
+                mayHold(enemy) &&
+                (ontoBreather || stacksOn(crowd, enemy, slideTo))
             if (!held) {
                 // A patroller has reached its waypoint when it stands on
                 // it as the slide carries it off (patrolStep, which would

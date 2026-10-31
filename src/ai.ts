@@ -302,10 +302,7 @@ function breatherStep(
 ): Vec2 | typeof HOLD | null {
     const move = enemy.breath?.move ?? "chase"
     if (move === "hold") return null
-    const taken = (v: Vec2) =>
-        crowd.some(
-            (o) => o !== enemy && o.ai === AiType.breather && samePos(o.pos, v)
-        )
+    const taken = (v: Vec2) => breatherOn(crowd, enemy, v)
     const dist = sharedDistance(shared, ice, target, paths)
     const icy = hasIce(ice)
     // Every open neighbour (back the way it came included), scored by
@@ -361,6 +358,24 @@ function breatherStep(
     )
     if (scored.length === 0) return null
     return unlessStuck(spreadChoice(scored, taken, true), () => scored)
+}
+
+// Whether `enemy` is a breather and another breather in `crowd` is on
+// `cell` (standing there or gliding in, whatever cell it came from): a
+// breather never moves onto one, by its own choice (see breatherStep) or by
+// an ice slide (see step in game.ts).
+export function breatherOn(
+    crowd: readonly Character[],
+    enemy: Character,
+    cell: Vec2
+): boolean {
+    return (
+        enemy.ai === AiType.breather &&
+        crowd.some(
+            (o) =>
+                o !== enemy && o.ai === AiType.breather && samePos(o.pos, cell)
+        )
+    )
 }
 
 // Follow the shortest path (wrap-around included) to `target`, never

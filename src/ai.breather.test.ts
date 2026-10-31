@@ -336,6 +336,64 @@ describe("a breather in play", () => {
         expect(moved).toBeLessThanOrEqual(TICK_RATE / 2 + 2)
     })
 
+    // Regression (PR #103 re-review): a slide used the general twin rule,
+    // so a breather held for a move's time and then slid onto a breather
+    // standing below it, or slid straight on when the one below hadn't
+    // come from its cell.
+    it.each([
+        ["came from its cell", vec2(4, 3)],
+        ["came from beside it", vec2(3, 4)],
+    ])(
+        "doesn't slide onto another breather standing in the way (%s)",
+        (_, below) => {
+            // An open 7x7 room with ice at (4, 3).
+            const { map, ice } = textMap([
+                "#########",
+                "#       #",
+                "#       #",
+                "#   ~   #",
+                "#       #",
+                "#       #",
+                "#       #",
+                "#       #",
+                "#########",
+                "#.#######",
+            ])
+            // Sliding down off the ice onto (4, 4), where the other stands.
+            const sliding = makeEnemy(
+                4,
+                3,
+                AiType.breather,
+                vec2(4, 2),
+                ENEMY_IDS[0]
+            )
+            const standing = makeEnemy(
+                4,
+                4,
+                AiType.breather,
+                below,
+                ENEMY_IDS[1]
+            )
+            for (const e of [sliding, standing]) {
+                // Always cooling down, so both keep their distance: 3 and 4
+                // moves from the player, they hold their spots.
+                e.breath!.cooldown = Infinity
+                e.moveProgress = 1
+            }
+            const state = makeState(map, vec2(4, 7), [sliding, standing], {
+                health: MAX_HEALTH,
+                ice,
+            })
+            for (let i = 0; i < TICK_RATE * 2; i++) {
+                tick(state)
+                expect(sliding.pos, `tick ${i + 1}`).not.toEqual(standing.pos)
+            }
+            // It gave the slide up: still on the ice, holding its spot.
+            expect(sliding.pos).toEqual(vec2(4, 3))
+            expect(standing.pos).toEqual(vec2(4, 4))
+        }
+    )
+
     it("doesn't stand on one cell with another breather", () => {
         const one = makeEnemy(10, 5, AiType.breather, undefined, ENEMY_IDS[0])
         const two = makeEnemy(10, 4, AiType.breather, undefined, ENEMY_IDS[1])
@@ -409,6 +467,40 @@ describe("breathers on the stages", { timeout: 30_000 }, () => {
                     longestStuck(stage[d], d, 60, 1, true),
                     d
                 ).toBeLessThanOrEqual(LONGEST)
+            }
+        }
+    )
+
+    // Regression (PR #103 re-review): breathers slid onto each other on the
+    // ice stages, sharing a cell for up to 30 ticks (seeds that did).
+    it.each([
+        [3, "hard", 3, false],
+        [8, "hard", 3, false],
+        [3, "superHard", 2, true],
+        [8, "superHard", 1, true],
+    ] as const)(
+        "never puts two on one cell on stage %i at %s (seed %i, difficulty %s)",
+        (n, d, seed, atDifficulty) => {
+            const state = createGameState(
+                stages[n - 1][d],
+                "dragon",
+                "solo",
+                atDifficulty ? d : undefined
+            )
+            state.players[0].health = Infinity
+            const random = seededRandom(seed)
+            const turns = seededRandom(seed * 31)
+            const breathers = state.enemies.filter((e) => e.breath)
+            expect(breathers).toHaveLength(2)
+            let way = 0
+            for (let t = 0; t < 100 * TICK_RATE; t++) {
+                if (t % 25 === 0) way = Math.floor(turns() * WAYS.length)
+                const move = { held: [WAYS[way]], pressed: vec2(0, 0) }
+                if (step(state, 1 / TICK_RATE, move, random)) break
+                const [a, b] = breathers
+                if (inPlay(a) && inPlay(b)) {
+                    expect(a.pos, `tick ${t + 1}`).not.toEqual(b.pos)
+                }
             }
         }
     )
