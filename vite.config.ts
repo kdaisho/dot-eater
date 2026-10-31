@@ -14,6 +14,8 @@ export default defineConfig(({ command, isPreview }) => ({
         printWidth: 80,
     },
     test: {
+        // Main skips its opening in tests (see src/test/setup.ts).
+        setupFiles: ["src/test/setup.ts"],
         // Vitest leaves stylesheets empty by default; the touch controls'
         // tests read css/style.css (as `?raw`) to check what it shows.
         css: { include: [/css\/style\.css/] },

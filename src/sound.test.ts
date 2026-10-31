@@ -2,7 +2,12 @@ import { describe, expect, it, vi } from "vite-plus/test"
 import { type Audio } from "./audio"
 import { DEFAULT_BINDINGS, rebind } from "./bindings"
 import type { GameEvent } from "./events"
-import { initialScreen, STORY_CARD_SECONDS, type Screen } from "./flow"
+import {
+    initialScreen,
+    openingScreen,
+    STORY_CARD_SECONDS,
+    type Screen,
+} from "./flow"
 import type { GameState } from "./game"
 import { ANIMAL_IDS } from "./roster"
 import { defaultSettings } from "./settings"
@@ -317,6 +322,18 @@ describe("eventSounds", () => {
 })
 
 describe("musicForScreen", () => {
+    it("is quiet on the studio logo and plays the opening track on its title", () => {
+        const gate = openingScreen()
+        expect(musicForScreen(gate)).toBeUndefined()
+        expect(
+            musicForScreen({ ...gate, stage: "logo" } as Screen)
+        ).toBeUndefined()
+        expect(musicForScreen({ ...gate, stage: "title" } as Screen)).toEqual({
+            track: "opening",
+            paused: false,
+        })
+    })
+
     it("plays the title tune on the title and the menus before play", () => {
         for (const screen of [
             initialScreen(),
@@ -459,6 +476,7 @@ describe("screenSound", () => {
             unlocked: true,
             music: undefined,
             musicPaused: false,
+            musicPosition: () => undefined,
         } satisfies Audio
     }
 

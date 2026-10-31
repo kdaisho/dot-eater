@@ -213,6 +213,9 @@ export function heldTones(track: CompiledTrack, position: number): Tone[] {
 }
 
 export const MusicTrackId = {
+    // The opening before the title (see opening.ts): a recorded track
+    // (recorded.ts); its chip tune here is only the fallback.
+    opening: "opening",
     title: "title",
     stage1: "stage1",
     stage2: "stage2",
@@ -253,6 +256,10 @@ export function stageTrack(stage: number): MusicTrackId {
 const BACKBEAT = "k . h . s . h ."
 
 export const TRACKS: Readonly<Record<MusicTrackId, Track>> = {
+    // The opening plays a recorded track; if it can't load, the title's tune.
+    get opening() {
+        return this.title
+    },
     // Title: a calm, cheerful C major tune.
     title: {
         bpm: 112,

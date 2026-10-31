@@ -413,9 +413,10 @@ describe("main", () => {
             expect(lastStartedLevel()).toBe(levels[0])
             expect(screen()).toBe("playing")
         }
-        // The keyboard source's, the controls screen's capture, and the
-        // focus tracker (a key press means the window has focus).
-        expect(keydownListeners.size).toBe(3)
+        // The keyboard source's, the controls screen's capture, the focus
+        // tracker (a key press means the window has focus), and the
+        // opening's any key.
+        expect(keydownListeners.size).toBe(4)
     })
 
     it("does nothing on Space during play", () => {

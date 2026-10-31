@@ -143,4 +143,23 @@ describe("recorded music", () => {
         expect(resumed.started).toBe(context.currentTime + MUSIC_START_DELAY)
         expect(resumed.offset).toBeCloseTo(14, 9)
     })
+
+    it("tells how far into the tune it is, for visuals that follow it", async () => {
+        const { audio, context } = setup()
+        audio.playMusic("stage1")
+        // No sound yet: the caller keeps its own time.
+        expect(audio.musicPosition()).toBeUndefined()
+        audio.unlock()
+        // Waiting for its file: held at the start.
+        expect(audio.musicPosition()).toBe(0)
+        await settle()
+        expect(audio.musicPosition()).toBe(0)
+        context.currentTime = 10 + MUSIC_START_DELAY + 2.5
+        expect(audio.musicPosition()).toBeCloseTo(2.5, 9)
+        audio.pauseMusic()
+        context.currentTime += 5
+        expect(audio.musicPosition()).toBeCloseTo(2.5, 9)
+        audio.stopMusic()
+        expect(audio.musicPosition()).toBeUndefined()
+    })
 })

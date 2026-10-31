@@ -25,11 +25,13 @@ import { applyMotion, effectsForEvents } from "./eventEffects"
 import { takeEvents, type GameEvent } from "./events"
 import {
     baseScreen,
+    canContinue,
     END_CHOICES,
     endChoices,
     ROUND_CHOICES,
     gameOf,
     initialScreen,
+    openingScreen,
     pauseChoices,
     pauseIfPlaying,
     PLAY_CHOICES,
@@ -122,9 +124,16 @@ import {
     type EndScreenView,
 } from "./ui"
 import { isTouchDevice, isTouchFirst, TouchSource } from "./touch"
+import { OPENING_DRUM } from "./opening"
+import { createOpeningLayer, openingItemAt } from "./openingView"
 import { roundWins, stunned, tallyText } from "./versus"
 
-let screen: Screen = initialScreen()
+// The game opens on the opening (opening.ts) on every load. Tests of the
+// rest of the game start on the title instead: their setup file sets
+// skipOpening (src/test/setup.ts).
+const skipOpening = (globalThis as { skipOpening?: boolean }).skipOpening
+let screen: Screen = skipOpening ? initialScreen() : openingScreen()
+const openingLayer = createOpeningLayer(document)
 
 // Even reading window.localStorage can throw (e.g. when site data is
 // blocked); the game then runs with progress kept for this session only.
@@ -438,7 +447,14 @@ function flowDeps(dt: number): FlowDeps {
         settings,
         touch,
         focused,
+        ...(screen.kind === "opening" ? openingClock() : {}),
     }
+}
+
+// The opening's title follows the music, so its menu lands on the drum.
+function openingClock(): Pick<FlowDeps, "openingClock"> {
+    const seconds = audio.musicPosition()
+    return seconds === undefined ? {} : { openingClock: seconds }
 }
 
 // What happened in the tick's game step, if it stepped the game (see
@@ -456,7 +472,9 @@ function onGameEvents(events: readonly GameEvent[], game: GameState) {
 // Settings follow the screen they were opened over.
 function padAssignment(shown: Screen): PadAssignment {
     const screen = baseScreen(shown)
-    return screen.kind !== "title" && playerCount(screen.mode) > 1
+    return screen.kind !== "opening" &&
+        screen.kind !== "title" &&
+        playerCount(screen.mode) > 1
         ? "perPad"
         : "shared"
 }
@@ -567,6 +585,16 @@ function applyBindings(s: Settings) {
 let lastAlpha = 0
 
 function render(alpha: number) {
+    if (screen.kind === "opening") {
+        openingLayer.show({
+            stage: screen.stage,
+            seconds: screen.clock.seconds,
+            choice: screen.choice,
+            canContinue: canContinue(flowDeps(0)),
+        })
+        return renderer.clear()
+    }
+    openingLayer.hide()
     // Settings over a paused game show that game behind them.
     const shown = baseScreen(screen)
     const game = gameOf(shown)
@@ -657,6 +685,9 @@ function hudOf(game: GameState): Hud {
 
 function showOverlay(s: Screen) {
     switch (s.kind) {
+        // The opening draws on its own canvas (see render).
+        case "opening":
+            return hideOverlay()
         case "title": {
             const current: TitleChoice = s.onSettings ? "settings" : s.mode
             return showTitle(
@@ -921,6 +952,7 @@ for (const type of ["focus", "keydown", "pointerdown"]) {
 // While the controls screen waits for a key or button, any tap on the
 // overlay cancels, like Escape, so a phone isn't stuck on the prompt.
 document.addEventListener("click", (event) => {
+    if (screen.kind === "opening") return openingTap(event)
     const tap = overlayTap(event.target)
     if (tap && capturing()) {
         pendingCapture = { ...pendingCapture, cancel: true }
@@ -935,6 +967,31 @@ document.addEventListener("click", (event) => {
     }
     if (tap.kind === "step") tapAction(tap.delta < 0 ? "left" : "right")
     else tapAction("confirm")
+})
+
+// A tap on the opening is a press, as any key is; on the menu, a tap on
+// Start or Continue (when it can) puts the cursor there and confirms.
+function openingTap(event: MouseEvent) {
+    if (screen.kind !== "opening") return
+    const point = openingLayer.toScreen(event.clientX, event.clientY)
+    const item = point && openingItemAt(point.x, point.y)
+    const menu =
+        screen.stage === "title" && screen.clock.seconds >= OPENING_DRUM
+    if (menu && !item) return
+    if (menu && item && (item === "start" || canContinue(flowDeps(0)))) {
+        screen = { ...screen, choice: item }
+    }
+    tapAction("confirm")
+}
+
+// Any key moves the opening on while it waits (the studio logo, the logo
+// held, the title rising), not only the bound ones: what "press any
+// button" says.
+addEventListener("keydown", (event) => {
+    if (event.repeat || screen.kind !== "opening") return
+    const menu =
+        screen.stage === "title" && screen.clock.seconds >= OPENING_DRUM
+    if (!menu) tapAction("confirm")
 })
 
 function tapAction(action: Action) {
