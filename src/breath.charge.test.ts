@@ -182,6 +182,43 @@ describe("charging the breath", () => {
         expect(levels).toEqual([1])
     })
 
+    // Regression (PR #99 review): a let-go and re-press within one tick read
+    // as still held, so the charge ran on into one bigger breath later.
+    it("fires a charge let go and pressed again within one tick", () => {
+        const { state, levels, breather } = charging()
+        hold(state, LEVEL_TICKS * 2)
+        tick(state, { breath: true, breathHeld: true })
+        expect(levels).toEqual([3])
+        expect(breather.energy).toBe(100 - 3 * 10)
+        // The new press came during the cooldown, so it was dropped.
+        expect(breather.charge).toBeNull()
+        hold(state, LEVEL_TICKS * 2)
+        tick(state)
+        expect(levels).toEqual([3])
+    })
+
+    it("takes the re-press as a new charge when the let-go breath refused", () => {
+        let refuse = true
+        const levels: number[] = []
+        const breath = testBreath({
+            fire: (hit: BreathHit) => {
+                if (refuse) return false
+                levels.push(hit.level)
+            },
+        })
+        const state = makeState(hall, { x: 1, y: 1 }, [], { breath })
+        const { breather } = state.players[0]
+        breather.energy = 100
+        hold(state, LEVEL_TICKS * 2)
+        tick(state, { breath: true, breathHeld: true })
+        // Refused: nothing spent, no cooldown, and the press charges anew.
+        expect(breather.energy).toBe(100)
+        expect(breather.charge).toBe(0)
+        refuse = false
+        tick(state)
+        expect(levels).toEqual([1])
+    })
+
     it("needs a fresh press: a hold from before it could breathe charges nothing", () => {
         const { state, levels, breather } = charging(0)
         hold(state, 2)
@@ -280,8 +317,9 @@ describe("the energy HUD while charging", () => {
         expect(energyHud(state).charge).toBe(0)
         hold(state, 0)
         expect(energyHud(state).charge).toBe(1)
-        hold(state, LEVEL_TICKS * 2 - 1)
-        // The press above didn't restart it: 2 * LEVEL_TICKS held.
+        for (let i = 0; i < LEVEL_TICKS * 2; i++) {
+            tick(state, { breathHeld: true })
+        }
         expect(energyHud(state).charge).toBe(3)
         expect(energyHud(state).ready).toBe(true)
         tick(state)

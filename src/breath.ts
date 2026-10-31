@@ -300,8 +300,10 @@ export type BreathInput = {
 // breathe), so a tap fires level 1: on the tick of its press when it was
 // let go within that tick, else on the next. A hold that began while the
 // player couldn't breathe charges nothing, even once it can: only a fresh
-// press starts a charge. `dt` is the tick's length. Returns true if a
-// breath happened.
+// press starts a charge. A fresh press during a charge means it was let go
+// and pressed again within the tick: the charge fires at its level, then
+// the press is taken as any other (the cooldown usually drops it). `dt` is
+// the tick's length. Returns true if a breath happened.
 export function chargeTick(
     state: GameState,
     who: Player,
@@ -309,17 +311,21 @@ export function chargeTick(
     dt: number
 ): boolean {
     const { breather } = who
-    if (breather.charge === null) {
-        if (!input.breath || !canBreathe(breather)) return false
-        breather.charge = 0
-        if (input.breathHeld) return false
-    } else if (input.breathHeld) {
-        breather.charge += dt
-        return false
+    let fired = false
+    if (breather.charge !== null) {
+        if (input.breathHeld && !input.breath) {
+            breather.charge += dt
+            return false
+        }
+        const level = chargeLevel(breather)
+        breather.charge = null
+        fired = breathe(state, who, level)
     }
-    const level = chargeLevel(breather)
+    if (!input.breath || !canBreathe(breather)) return fired
+    breather.charge = 0
+    if (input.breathHeld) return fired
     breather.charge = null
-    return breathe(state, who, level)
+    return breathe(state, who, 1) || fired
 }
 
 // Drop the breath's charge, if any, without firing it.
