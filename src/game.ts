@@ -30,7 +30,8 @@ import {
     type Random,
 } from "./ai"
 import {
-    breathe,
+    cancelCharge,
+    chargeTick,
     createBreather,
     enemyBlocks,
     gainEnergy,
@@ -68,7 +69,7 @@ import {
 } from "./difficulty"
 import { emit, type GameEvent } from "./events"
 import { glidePos, wrapDelta, type Glider } from "./glide"
-import { rollGuards } from "./guard"
+import { inStance, rollGuards, tickStances } from "./guard"
 import { slideStep, type IceMap } from "./ice"
 import {
     hasDots,
@@ -227,9 +228,14 @@ export type MoveInput = {
     // The direction newly pressed this tick (zero for none), even if it was
     // already released again.
     pressed: Vec2
-    // Whether the breath key was newly pressed this tick. A press that can't
-    // breathe (too little energy, cooling down) is dropped, not kept.
+    // Whether the breath key was newly pressed this tick, even if it was
+    // already released again. A press that can't breathe (too little
+    // energy, cooling down) is dropped, not kept.
     breath?: boolean
+    // Whether the breath key is held now. Held after a press, the breath
+    // charges; it fires once let go (see chargeTick in breath.ts). Left
+    // out, a press is a tap and fires at once.
+    breathHeld?: boolean
     // Whether the punch key was newly pressed this tick (see punch.ts).
     // Every press punches, unless the player is out or stunned.
     punch?: boolean
@@ -887,16 +893,17 @@ function wait(character: Glider) {
 //
 // Breaths (see breath.ts): their timers count down first, so anything that
 // runs out (a status, a tile effect, a defeated enemy's wait) is over before
-// anyone moves. A breath press fires after the players' moves, from the cell
+// anyone moves. A breath is charged while held and fires when let go (a
+// tap at once; see chargeTick), after the players' moves, from the cell
 // the player is moving into and along its new facing, and before the
 // enemies move, so it hits them where they stood at the start of the tick.
 // Player 1's breath fires first. Breaths don't affect players, except in
 // versus, where a breath stuns the other player (see versus.ts): a stunned
 // player ignores its input, finishes its glide (and, on ice, its slide) and
-// doesn't move on or breathe, and its stun counts down with the breath
-// timers. Enemies out of play don't move or catch; held ones (e.g. frozen)
-// don't move; harmless ones don't catch; and enemies keep out of cells a
-// tile effect blocks.
+// doesn't move on or breathe (a charge it was holding is dropped), and its
+// stun counts down with the breath timers. Enemies out of play don't move
+// or catch; held ones (e.g. frozen) don't move; harmless ones don't catch;
+// and enemies keep out of cells a tile effect blocks.
 //
 // A boss (see boss.ts) moves with the enemies, after the breaths, and keeps
 // out of blocked cells too; a defeated one doesn't move or catch. Just
@@ -906,8 +913,9 @@ function wait(character: Glider) {
 // Punches (see punch.ts) come right after the breaths, from where each
 // player is drawn after its move, and knock enemies back like a breath's
 // push. They cost nothing and never stop or slow the player. Their timers
-// (see tickPunches) move on with the others; enemies just in play roll
-// their guard (see guard.ts) after them.
+// (see tickPunches) move on with the others, and so do the enemies' guard
+// stances (see tickStances in guard.ts): one in its stance holds still.
+// Enemies just in play roll their guard (see guard.ts) after them.
 //
 // On a level with rules.regrowDots, eaten dots due back grow back with the
 // timers, on cells no character is on (see regrow.ts), so a player moving
@@ -935,6 +943,7 @@ export function step(
     tickPlayersOut(state, dt)
     tickStuns(players, dt)
     tickPunches(state, dt)
+    tickStances(state, dt)
     for (const player of players) {
         if (player.invulnerableFor > 0) player.invulnerableFor--
     }
@@ -965,9 +974,9 @@ export function step(
     let breathed = false
     players.forEach((player, i) => {
         // A player stunned by an earlier player's breath on this same tick
-        // doesn't breathe either.
-        if (player.out || stunned(player)) return
-        if (inputs[i]?.breath && breathe(state, player)) breathed = true
+        // doesn't breathe either, and loses any charge.
+        if (player.out || stunned(player)) return cancelCharge(player.breather)
+        if (chargeTick(state, player, inputs[i] ?? IDLE, dt)) breathed = true
     })
     // Punches come after the breaths, player 1's first (see punch.ts).
     let punched = false
@@ -1022,10 +1031,11 @@ export function step(
         // Still gliding: not holding (a hold is always ready to move), so a
         // push, knock-back or split that cut a hold short leaves none to
         // count against the next. A short knock turns round as its
-        // progress moves on (see turnKnock in punch.ts).
+        // progress moves on (see turnKnock in punch.ts). One in its guard
+        // stance (see guard.ts) finishes its glide but makes no new move.
         advance(enemy, dt)
         turnKnock(enemy, crowd)
-        if (enemy.moveProgress < 1 - EPSILON) {
+        if (enemy.moveProgress < 1 - EPSILON || inStance(enemy)) {
             enemy.heldFor = 0
             return []
         }

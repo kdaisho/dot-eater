@@ -18,6 +18,8 @@ import type {
 // lifting, as on a stick. The pause, punch and breath buttons press on
 // touch and release on lift, so holding one presses it once (no
 // auto-repeat); a button looks pressed (the "pressed" class) while held.
+// Held, Breath charges the breath, which fires on the lift (or a lost
+// capture), as letting go of the key does (KDA-289).
 // Each finger is tracked on its own, so one can steer while another
 // presses. Which controls show is set on the body's data attributes
 // (setControls), which the CSS reads.

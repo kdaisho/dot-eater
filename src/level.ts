@@ -74,8 +74,9 @@ export type BossData = {
     // Cells per second. Omitted means BOSS_SPEED.
     speed?: number
     // The health it starts with, a whole number up to MAX_BOSS_HEALTH.
-    // Omitted means BOSS_HEALTH. A breath does cost / 25 damage (1, 2 or
-    // 3), so a multiple of 6 takes every character the same energy.
+    // Omitted means BOSS_HEALTH. A breath does the energy it spends / 25
+    // damage, and breaths are paid for in levels of 10, 20 or 30 (KDA-289),
+    // so a multiple of 12 takes every character the same energy.
     health?: number
     // Its breath attack's tuning (see bossBreath.ts). Omitted, or any part
     // of it, means the defaults.

@@ -1,7 +1,13 @@
 // @vitest-environment happy-dom
 import { afterEach, describe, expect, it, vi } from "vite-plus/test"
 import { BOSS_BREATH } from "./bossBreath"
-import { addStatus, addTileEffect, defeatEnemy, type BreathDef } from "./breath"
+import {
+    addStatus,
+    addTileEffect,
+    CHARGE_SECONDS,
+    defeatEnemy,
+    type BreathDef,
+} from "./breath"
 import { BREATHS } from "./breaths"
 import {
     AiType,
@@ -35,10 +41,18 @@ import {
     PLAYER_COLORS,
     IMMUNE_BADGE,
     STUN_BADGE,
+    createGuardSprites,
+    GUARD_SPRITES_KEPT,
+    stanceLook,
+    STANCE_OUTLINE,
+    STANCE_TINT,
     stunLabel,
     type Effects,
+    CROUCH_HEIGHT,
+    CROUCH_WIDTH,
 } from "./render"
-import { JAB_LUNGE, JAB_SECONDS } from "./jab"
+import { GUARD_STANCE } from "./guard"
+import { FIST_BOUNCE, FIST_BOUNCE_SECONDS, JAB_LUNGE, JAB_SECONDS } from "./jab"
 import type { Particle } from "./particles"
 import { createSplitter } from "./splitter"
 import { DEFAULT_ANIMAL } from "./roster"
@@ -62,8 +76,9 @@ vi.mock("canvas-confetti", () => ({ default: vi.fn() }))
 const HEALTH_COLOR = "#16a34a"
 
 // happy-dom has no 2D canvas, so record the calls on a stub context: every
-// method call is logged, with the fillStyle, strokeStyle and font set at
-// the time, and property writes are accepted.
+// method call is logged, with the fillStyle, strokeStyle, font and
+// globalCompositeOperation set at the time, and property writes are
+// accepted.
 function stubContext() {
     const calls: {
         name: string
@@ -71,10 +86,12 @@ function stubContext() {
         fillStyle?: unknown
         strokeStyle?: unknown
         font?: unknown
+        composite?: unknown
     }[] = []
     let fillStyle: unknown
     let strokeStyle: unknown
     let font: unknown
+    let composite: unknown
     const ctx = new Proxy(
         {},
         {
@@ -86,6 +103,7 @@ function stubContext() {
                         fillStyle,
                         strokeStyle,
                         font,
+                        composite,
                     })
                     if (name === "createRadialGradient") {
                         return { addColorStop() {} }
@@ -96,6 +114,7 @@ function stubContext() {
                 if (name === "fillStyle") fillStyle = value
                 if (name === "strokeStyle") strokeStyle = value
                 if (name === "font") font = value
+                if (name === "globalCompositeOperation") composite = value
                 return true
             },
         }
@@ -679,6 +698,39 @@ describe("createRenderer", () => {
                     c.args[2] === 1
             )
             expect(marks).toHaveLength(3)
+            // Not charging: nothing in the charge colour.
+            expect(
+                calls.some(
+                    (c) => c.name === "fillRect" && c.fillStyle === "#dc2626"
+                )
+            ).toBe(false)
+        })
+
+        it("fills a segment per charged level while the breath charges", () => {
+            const { renderer, calls } = setup()
+            renderer.draw(room(), 0, {
+                energy: {
+                    energy: 80,
+                    max: 100,
+                    cost: 20,
+                    ready: true,
+                    charge: 3,
+                },
+            })
+            const frame = calls.find((c) => c.name === "strokeRect")!
+            const charged = calls.filter(
+                (c) => c.name === "fillRect" && c.fillStyle === "#dc2626"
+            )
+            // Three levels of 20, over the 80 of energy: 60% of the meter,
+            // drawn after the energy's fill so it shows over it.
+            expect(charged).toHaveLength(1)
+            expect(charged[0].args[2]).toBeCloseTo(
+                (frame.args[2] as number) * 0.6
+            )
+            const fill = calls.findIndex(
+                (c) => c.name === "fillRect" && c.fillStyle === "#f59e0b"
+            )
+            expect(calls.indexOf(charged[0])).toBeGreaterThan(fill)
         })
 
         it("greys the meter while a breath isn't ready", () => {
@@ -1501,6 +1553,31 @@ describe("createRenderer with effects", () => {
         expect(fills.map((c) => c.fillStyle)).toEqual(["lime"])
     })
 
+    // KDA-293: the block's pale sparks are outlined.
+    it("outlines only a particle whose look has an outline", () => {
+        const strokes = (p: Particle) => {
+            const { calls, renderer } = setup()
+            renderer.draw(corridor(), 0, {}, {}, { particles: [p] })
+            return calls.filter(
+                (c) => c.name === "stroke" || c.name === "strokeRect"
+            )
+        }
+        const none = strokes(particle())
+        const disc = strokes(particle({ outline: "#a16207" }))
+        expect(disc).toHaveLength(none.length + 1)
+        expect(disc.at(-1)).toMatchObject({
+            name: "stroke",
+            strokeStyle: "#a16207",
+        })
+        const square = strokes(
+            particle({ outline: "#a16207", shape: "square" })
+        )
+        expect(square.at(-1)).toMatchObject({
+            name: "strokeRect",
+            strokeStyle: "#a16207",
+        })
+    })
+
     it("draws a square particle as a square", () => {
         const { calls, canvas, renderer } = setup()
         renderer.draw(
@@ -1690,41 +1767,140 @@ describe("createRenderer with effects", () => {
         })
     })
 
-    describe("a block's shield (KDA-288)", () => {
-        const at = (calls: ReturnType<typeof setup>["calls"], text: string) =>
-            calls.findIndex((c) => c.name === "fillText" && c.args[0] === text)
+    const sprite = (calls: ReturnType<typeof setup>["calls"], text: string) =>
+        calls.find((c) => c.name === "fillText" && c.args[0] === text)
 
-        it("shows over the enemy that blocked, over every character", () => {
+    it("bounces a blocked jab's fist back towards the player (KDA-293)", () => {
+        const fistAt = (blocked: boolean, age: number) => {
             const { calls, canvas, renderer } = setup()
+            const jab = {
+                player: 0,
+                facing: vec2(1, 0),
+                age,
+                lunge: 0,
+                blocked,
+            }
+            renderer.draw(corridor(), 0, {}, {}, { jabs: [jab] })
+            const fist = sprite(calls, "👊")
+            return (fist?.args[1] as number) / cellOf(canvas)
+        }
+        expect(fistAt(false, 0) - fistAt(true, 0)).toBeCloseTo(FIST_BOUNCE)
+        const half = FIST_BOUNCE_SECONDS / 2
+        expect(fistAt(false, half) - fistAt(true, half)).toBeCloseTo(
+            FIST_BOUNCE / 2
+        )
+        expect(fistAt(true, FIST_BOUNCE_SECONDS)).toBeCloseTo(fistAt(false, 0))
+    })
+
+    describe("an enemy in its guard stance (KDA-293)", () => {
+        // Each canvas the renderer makes for a guarding sprite shares one
+        // stub context.
+        function setupLayers() {
+            const drawn = setup()
+            const image = document.createElement("canvas")
+            const layer = stubContext()
+            vi.spyOn(image, "getContext").mockReturnValue(layer.ctx as never)
+            vi.spyOn(document, "createElement").mockReturnValue(image)
+            return { ...drawn, image, layer }
+        }
+        const guarding = (stance = GUARD_STANCE) => {
             const state = corridor()
-            state.enemies.push(makeEnemy(2, 1), makeEnemy(3, 1))
-            renderer.draw(
-                state,
-                0,
-                {},
-                {},
-                {
-                    shields: [{ enemy: 1, age: 0.1 }],
-                }
-            )
+            const enemy = makeEnemy(2, 1)
+            enemy.stance = stance
+            state.enemies.push(enemy)
+            return state
+        }
+
+        it("crouches, tinted, with its feet where they were", () => {
+            const { calls, canvas, image, layer, renderer } = setupLayers()
+            renderer.draw(guarding(), 0, {}, {}, {})
             const cell = cellOf(canvas)
-            const shield = calls[at(calls, "🛡")]
-            expect(shield?.args[1]).toBeCloseTo(3.5 * cell)
-            expect(shield?.args[2]).toBeCloseTo(1.5 * cell)
-            const enemies = calls.flatMap((c, i) =>
-                c.name === "fillText" && c.args[0] === "👺" ? [i] : []
+            const size = cell * SPRITE_SCALE
+            // Drawn from its tinted canvas, not as text.
+            expect(sprite(calls, "👺")).toBeUndefined()
+            const draws = calls.filter((c) => c.name === "drawImage")
+            expect(draws).toHaveLength(1)
+            const [source, left, top, width, height] = draws[0].args as [
+                unknown,
+                number,
+                number,
+                number,
+                number,
+            ]
+            expect(source).toBe(image)
+            expect(left + width / 2).toBeCloseTo(2.5 * cell)
+            const box = width / CROUCH_WIDTH
+            expect(height).toBeCloseTo(box * CROUCH_HEIGHT)
+            // Its box is the sprite and its outline on each side; the
+            // feet stay put.
+            const edge = (box - size) / 2
+            expect(edge).toBeGreaterThan(0)
+            expect(top + height - edge * CROUCH_HEIGHT).toBeCloseTo(
+                1.5 * cell + size / 2
             )
-            expect(enemies).toHaveLength(2)
-            expect(at(calls, "🛡")).toBeGreaterThan(Math.max(...enemies))
+            // Tinted steel-blue, outlined in pale blue.
+            const fills = layer.calls
+                .filter((c) => c.name === "fillRect")
+                .map((c) => c.fillStyle)
+            expect(fills).toContain(STANCE_TINT)
+            expect(fills).toContain(STANCE_OUTLINE)
+            expect(
+                layer.calls.some(
+                    (c) => c.name === "fillText" && c.args[0] === "👺"
+                )
+            ).toBe(true)
         })
 
-        it("shows nothing without one", () => {
-            const { calls, renderer } = setup()
-            const state = corridor()
-            state.enemies.push(makeEnemy(2, 1))
-            renderer.draw(state, 0, {}, {}, {})
-            expect(at(calls, "🛡")).toBe(-1)
+        it("doesn't crouch with reduced motion, but stays tinted", () => {
+            const { calls, renderer } = setupLayers()
+            renderer.draw(guarding(), 0, {}, {}, { reducedMotion: true })
+            const [draw] = calls.filter((c) => c.name === "drawImage")
+            const [, , , width, height] = draw.args as number[]
+            expect(width).toBeCloseTo(height)
         })
+
+        it("makes its tinted sprite once and keeps it", () => {
+            const { layer, renderer } = setupLayers()
+            renderer.draw(guarding(), 0, {}, {}, {})
+            const made = layer.calls.length
+            renderer.draw(guarding(), 0, {}, {}, {})
+            expect(layer.calls.length).toBe(made)
+        })
+
+        it("is drawn as usual without a stance", () => {
+            const { calls, layer, renderer } = setupLayers()
+            renderer.draw(guarding(0), 0, {}, {}, {})
+            expect(sprite(calls, "👺")?.args[1]).toBeDefined()
+            expect(calls.some((c) => c.name === "drawImage")).toBe(false)
+            expect(layer.calls).toEqual([])
+        })
+
+        it("still crouches, untinted, where a canvas has no 2D context", () => {
+            const { calls, renderer } = setup()
+            renderer.draw(guarding(), 0, {}, {}, {})
+            const scales = calls.filter((c) => c.name === "scale")
+            expect(scales.map((c) => c.args)).toEqual([
+                [CROUCH_WIDTH, CROUCH_HEIGHT],
+            ])
+            expect(sprite(calls, "👺")).toBeDefined()
+        })
+    })
+})
+
+describe("stanceLook (KDA-293)", () => {
+    it("crouches an enemy in its guard stance, and not without one", () => {
+        const enemy = makeEnemy(2, 1)
+        expect(stanceLook(enemy, false)).toBeNull()
+        expect(stanceLook(enemy, true)).toBeNull()
+        enemy.stance = GUARD_STANCE
+        expect(stanceLook(enemy, false)).toEqual({
+            width: CROUCH_WIDTH,
+            height: CROUCH_HEIGHT,
+        })
+        expect(CROUCH_HEIGHT).toBeCloseTo(0.85)
+        expect(CROUCH_WIDTH).toBeCloseTo(1.06)
+        // Reduced motion: no crouch, but still the stance's look.
+        expect(stanceLook(enemy, true)).toEqual({ width: 1, height: 1 })
     })
 })
 
@@ -1738,7 +1914,7 @@ describe("createRenderer with the facing guide", () => {
 
     // A dotted corridor 9 cells long: player 1 at (1, 1) and, with two
     // players, player 2 at (7, 1) facing it. Both breathe the Dragon's
-    // line, 5 cells.
+    // line, 3 cells for a tap (level 1).
     const corridor = [
         Array(9).fill(1),
         [1, ...Array(7).fill(2), 1],
@@ -1785,10 +1961,20 @@ describe("createRenderer with the facing guide", () => {
         const state = game()
         charge(state)
         renderer.draw(state, 0, {}, {}, AIM)
-        expect(tinted(calls, canvas)).toEqual([2, 3, 4, 5, 6])
+        expect(tinted(calls, canvas)).toEqual([2, 3, 4])
         // An edge round the line: its top and bottom along each cell, and
         // its two ends.
-        expect(edges(calls)).toBe(5 * 2 + 2)
+        expect(edges(calls)).toBe(3 * 2 + 2)
+    })
+
+    it("tints the cells of the level a held breath has charged to", () => {
+        const { calls, canvas, renderer } = setup()
+        const state = game()
+        charge(state)
+        // Held long enough for level 3: the Dragon's line is 5 cells.
+        state.players[0].breather.charge = CHARGE_SECONDS * 2
+        renderer.draw(state, 0, {}, {}, AIM)
+        expect(tinted(calls, canvas)).toEqual([2, 3, 4, 5, 6])
     })
 
     it("draws the tint under the dots and the characters", () => {
@@ -1836,8 +2022,8 @@ describe("createRenderer with the facing guide", () => {
         const state = game(2)
         charge(state)
         renderer.draw(state, 0, {}, {}, AIM)
-        expect(tinted(calls, canvas, 0)).toEqual([2, 3, 4, 5, 6])
-        expect(tinted(calls, canvas, 1)).toEqual([2, 3, 4, 5, 6])
+        expect(tinted(calls, canvas, 0)).toEqual([2, 3, 4])
+        expect(tinted(calls, canvas, 1)).toEqual([4, 5, 6])
     })
 
     it("draws no aim for a player out of play", () => {
@@ -1847,7 +2033,7 @@ describe("createRenderer with the facing guide", () => {
         takeOut(state.players[0], 3)
         renderer.draw(state, 0, {}, {}, AIM)
         expect(tinted(calls, canvas, 0)).toEqual([])
-        expect(tinted(calls, canvas, 1)).toEqual([2, 3, 4, 5, 6])
+        expect(tinted(calls, canvas, 1)).toEqual([4, 5, 6])
     })
 
     it("draws no aim for a stunned player", () => {
@@ -1856,7 +2042,7 @@ describe("createRenderer with the facing guide", () => {
         charge(state)
         stun(state.players[1])
         renderer.draw(state, 0, {}, {}, AIM)
-        expect(tinted(calls, canvas, 0)).toEqual([2, 3, 4, 5, 6])
+        expect(tinted(calls, canvas, 0)).toEqual([2, 3, 4])
         expect(tinted(calls, canvas, 1)).toEqual([])
     })
 
@@ -2307,6 +2493,85 @@ describe("createRenderer on a maze too big for the screen", () => {
                 1.5 * CELL,
                 3.5 * CELL,
             ])
+        })
+    })
+})
+
+describe("createGuardSprites (KDA-293)", () => {
+    // A document whose every canvas has a stub context of its own; `made`
+    // lists them, in the order made. A guarding sprite takes two.
+    function fakeDocument() {
+        const made: ReturnType<typeof stubContext>[] = []
+        const doc = {
+            createElement: () => {
+                const stub = stubContext()
+                made.push(stub)
+                return { width: 0, height: 0, getContext: () => stub.ctx }
+            },
+        }
+        return { doc: doc as never, made, builds: () => made.length / 2 }
+    }
+
+    // Regression (PR #101 review): keyed by the exact size, a view easing
+    // its cell size made a new sprite on nearly every frame.
+    it("makes one sprite for sizes within a pixel of each other", () => {
+        const { doc, builds } = fakeDocument()
+        const sprites = createGuardSprites(doc)
+        for (let i = 0; i < 40; i++) sprites("👺", 38 + i * 0.01, 2)
+        expect(builds()).toBe(1)
+        expect(sprites("👺", 38.3, 2)?.size).toBe(38)
+        sprites("👺", 39, 2)
+        expect(builds()).toBe(2)
+    })
+
+    it("makes one per sprite and per pixel ratio", () => {
+        const { doc, builds } = fakeDocument()
+        const sprites = createGuardSprites(doc)
+        sprites("👺", 38, 1)
+        sprites("👺", 38, 2)
+        sprites("👹", 38, 2)
+        expect(builds()).toBe(3)
+        sprites("👺", 38, 1)
+        sprites("👺", 38, 2)
+        expect(builds()).toBe(3)
+    })
+
+    it("drops them all once there are too many", () => {
+        const { doc, builds } = fakeDocument()
+        const sprites = createGuardSprites(doc)
+        for (let size = 1; size <= GUARD_SPRITES_KEPT; size++) {
+            sprites("👺", size, 1)
+        }
+        sprites("👺", 1, 1)
+        expect(builds()).toBe(GUARD_SPRITES_KEPT)
+        // One more: the rest go, so the first is made again.
+        sprites("👺", GUARD_SPRITES_KEPT + 1, 1)
+        sprites("👺", 1, 1)
+        expect(builds()).toBe(GUARD_SPRITES_KEPT + 2)
+    })
+
+    it("tints by colour, keeping the sprite's shape, then outlines it", () => {
+        const { doc, made } = fakeDocument()
+        createGuardSprites(doc)("👺", 38, 2)
+        const [tinted, outlined] = made
+        const tint = tinted.calls.find(
+            (c) => c.name === "fillRect" && c.fillStyle === STANCE_TINT
+        )
+        // "color" keeps the sprite's lightness, so its shading shows.
+        expect(tint?.composite).toBe("color")
+        // Then cut back to the sprite's own shape.
+        expect(tinted.calls.at(-1)).toMatchObject({
+            name: "fillText",
+            composite: "destination-in",
+        })
+        const outline = outlined.calls.find(
+            (c) => c.name === "fillRect" && c.fillStyle === STANCE_OUTLINE
+        )
+        expect(outline?.composite).toBe("source-in")
+        // The tinted sprite goes over its outline.
+        expect(outlined.calls.at(-1)).toMatchObject({
+            name: "drawImage",
+            composite: "source-over",
         })
     })
 })

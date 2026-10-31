@@ -93,12 +93,13 @@ describe("footprint", () => {
 })
 
 describe("damage", () => {
-    it("is the breath's cost over 25", () => {
-        expect(bossDamage(BREATHS.owl.cost)).toBe(1)
-        expect(bossDamage(BREATHS.dragon.cost)).toBe(2)
-        expect(bossDamage(BREATHS.penguin.cost)).toBe(2)
-        expect(bossDamage(BREATHS.skunk.cost)).toBe(2)
-        expect(bossDamage(BREATHS.boar.cost)).toBe(3)
+    // KDA-289: by energy, whatever the breath or its charge level.
+    it("is the energy a breath spends over 25", () => {
+        expect(bossDamage(BREATHS.owl.cost)).toBeCloseTo(0.4)
+        expect(bossDamage(BREATHS.dragon.cost)).toBeCloseTo(0.8)
+        expect(bossDamage(BREATHS.skunk.cost)).toBeCloseTo(1.2)
+        expect(bossDamage(BREATHS.dragon.cost * 5)).toBe(4)
+        expect(bossDamage(25)).toBe(1)
     })
 
     it("takes health off and flashes, then defeats it at 0 for points, once", () => {

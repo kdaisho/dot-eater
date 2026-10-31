@@ -95,7 +95,6 @@ import {
 } from "./settings"
 import { rowValue, settingsRows } from "./settingsMenu"
 import { createShake } from "./shake"
-import { createShields } from "./shield"
 import {
     burst,
     celebrate,
@@ -225,10 +224,10 @@ applyDpad()
 // shorter; the Screen shake setting, when set, overrides the shake part.
 const particles = createParticles({ random: Math.random })
 const shake = createShake()
-// The players' jab looks after a punch (KDA-258; see jab.ts), and the
-// enemies' shields after a block (KDA-288; see shield.ts).
+// The players' jab looks after a punch (KDA-258; see jab.ts). A guarding
+// enemy's look is drawn from the game (KDA-293; see stanceLook in
+// render.ts).
 const jabs = createJabs()
-const shields = createShields()
 const effects = {
     // Follow reduced motion and the Screen shake setting: on load, when the
     // settings change and when the system setting does.
@@ -238,19 +237,17 @@ const effects = {
     },
     // The bursts and shakes for a tick's game events (see eventEffects.ts).
     events(events: readonly GameEvent[], game: GameState) {
-        effectsForEvents(events, game, { particles, shake, jabs, shields })
+        effectsForEvents(events, game, { particles, shake, jabs })
     },
     tick(dt: number) {
         particles.update(dt)
         shake.update(dt)
         jabs.update(dt)
-        shields.update(dt)
     },
     reset() {
         particles.clear()
         shake.clear()
         jabs.clear()
-        shields.clear()
     },
     of(s: Screen): Effects {
         if (
@@ -264,7 +261,8 @@ const effects = {
         return {
             particles: particles.list,
             jabs: jabs.list,
-            shields: shields.list,
+            // A guarding enemy doesn't crouch with reduced motion.
+            reducedMotion: reducedMotion?.matches ?? false,
             ...(moving ? { shake: shake.offset(Math.random) } : {}),
             // The facing guide the settings pick (KDA-247). The arrow shows
             // with the rings, paused and ending too; the aim preview only
@@ -292,7 +290,10 @@ const tickInput: TickInput = {
         return {
             held: p.heldSteps(),
             pressed: p.pressedStep(),
+            // Held, the breath charges, and it fires once let go (KDA-289):
+            // keys, pads and the touch Breath button all hold it.
             breath: p.wasPressed("breath"),
+            breathHeld: p.isDown("breath"),
             punch: p.wasPressed("punch"),
         }
     },

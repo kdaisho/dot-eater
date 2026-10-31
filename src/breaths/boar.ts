@@ -1,7 +1,8 @@
 import type { BreathDef, TileEffect } from "../breath"
+import { Cell } from "../constants"
 import type { Cells } from "../level"
 import { AnimalId } from "../roster"
-import type { Vec2 } from "../vec2"
+import { vec2, type Vec2 } from "../vec2"
 
 // Seconds a broken wall stays open before it grows back.
 const OPEN_SECONDS = 10
@@ -26,19 +27,41 @@ export function isOuterWall(cells: Cells, pos: Vec2): boolean {
     )
 }
 
-// Whether the Boar's breath breaks `wall`: any wall but an outer one.
-function breaks(cells: Cells, wall: Vec2): boolean {
-    return !isOuterWall(cells, wall)
+// The walls the Boar's breath at charge `level` breaks, from `wall`, the
+// wall in front, on along `facing` (KDA-289, with the user): up to `level`
+// walls in a row, a tunnel. It stops at an outer wall, which never breaks,
+// and at open floor (an opened wall included), so open floor between walls
+// ends the tunnel too. None when `wall` itself is an outer wall.
+export function tunnel(
+    cells: Cells,
+    wall: Vec2,
+    facing: Vec2,
+    level: number
+): Vec2[] {
+    const walls: Vec2[] = []
+    let p = wall
+    // An inner wall is never on the border, so the next cell is on the map.
+    while (
+        walls.length < level &&
+        cells[p.y][p.x] === Cell.wall &&
+        !isOuterWall(cells, p)
+    ) {
+        walls.push(p)
+        p = vec2(p.x + facing.x, p.y + facing.y)
+    }
+    return walls
 }
 
 // Boar 🐗, wall-break breath (KDA-220): breaks the wall in front; it grows
-// back after 10 s, pushing out anything inside; outer walls hold. Refused
-// (nothing spent) when there is no wall in front or it is an outer wall.
-// Stat: costly breath, slower movement (3.5 cells/s at the default 4).
+// back after 10 s, pushing out anything inside; outer walls hold. Charging
+// it (KDA-289) bores on through the walls behind, one more a level, up to 5
+// (see tunnel), for 20 energy a level; every broken wall grows back on its
+// own 10 s. Refused (nothing spent) when there is no wall in front or it is
+// an outer wall. Stat: slower movement (3.5 cells/s at the default 4).
 export const boar: BreathDef = {
     animal: AnimalId.boar,
-    shape: { kind: "line", range: 1 },
-    cost: 75,
+    shape: () => ({ kind: "line", range: 1 }),
+    cost: 20,
     cooldown: 1,
     duration: OPEN_SECONDS,
     maxEnergy: 100,
@@ -55,10 +78,11 @@ export const boar: BreathDef = {
         gravity: 8,
         shape: "square",
     },
-    targetsWall: breaks,
+    wallsHit: tunnel,
     fire(hit) {
-        const { wall } = hit
-        if (!wall || !breaks(hit.state.cells, wall)) return false
-        hit.addTile(wall, BROKEN_WALL, OPEN_SECONDS)
+        if (hit.walls.length === 0) return false
+        for (const wall of hit.walls) {
+            hit.addTile(wall, BROKEN_WALL, OPEN_SECONDS)
+        }
     },
 }
