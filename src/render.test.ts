@@ -35,6 +35,8 @@ import {
     PLAYER_COLORS,
     IMMUNE_BADGE,
     STUN_BADGE,
+    createGuardSprites,
+    GUARD_SPRITES_KEPT,
     stanceLook,
     STANCE_OUTLINE,
     STANCE_TINT,
@@ -68,8 +70,9 @@ vi.mock("canvas-confetti", () => ({ default: vi.fn() }))
 const HEALTH_COLOR = "#16a34a"
 
 // happy-dom has no 2D canvas, so record the calls on a stub context: every
-// method call is logged, with the fillStyle, strokeStyle and font set at
-// the time, and property writes are accepted.
+// method call is logged, with the fillStyle, strokeStyle, font and
+// globalCompositeOperation set at the time, and property writes are
+// accepted.
 function stubContext() {
     const calls: {
         name: string
@@ -77,10 +80,12 @@ function stubContext() {
         fillStyle?: unknown
         strokeStyle?: unknown
         font?: unknown
+        composite?: unknown
     }[] = []
     let fillStyle: unknown
     let strokeStyle: unknown
     let font: unknown
+    let composite: unknown
     const ctx = new Proxy(
         {},
         {
@@ -92,6 +97,7 @@ function stubContext() {
                         fillStyle,
                         strokeStyle,
                         font,
+                        composite,
                     })
                     if (name === "createRadialGradient") {
                         return { addColorStop() {} }
@@ -102,6 +108,7 @@ function stubContext() {
                 if (name === "fillStyle") fillStyle = value
                 if (name === "strokeStyle") strokeStyle = value
                 if (name === "font") font = value
+                if (name === "globalCompositeOperation") composite = value
                 return true
             },
         }
@@ -1507,6 +1514,31 @@ describe("createRenderer with effects", () => {
         expect(fills.map((c) => c.fillStyle)).toEqual(["lime"])
     })
 
+    // KDA-293: the block's pale sparks are outlined.
+    it("outlines only a particle whose look has an outline", () => {
+        const strokes = (p: Particle) => {
+            const { calls, renderer } = setup()
+            renderer.draw(corridor(), 0, {}, {}, { particles: [p] })
+            return calls.filter(
+                (c) => c.name === "stroke" || c.name === "strokeRect"
+            )
+        }
+        const none = strokes(particle())
+        const disc = strokes(particle({ outline: "#a16207" }))
+        expect(disc).toHaveLength(none.length + 1)
+        expect(disc.at(-1)).toMatchObject({
+            name: "stroke",
+            strokeStyle: "#a16207",
+        })
+        const square = strokes(
+            particle({ outline: "#a16207", shape: "square" })
+        )
+        expect(square.at(-1)).toMatchObject({
+            name: "strokeRect",
+            strokeStyle: "#a16207",
+        })
+    })
+
     it("draws a square particle as a square", () => {
         const { calls, canvas, renderer } = setup()
         renderer.draw(
@@ -2412,6 +2444,85 @@ describe("createRenderer on a maze too big for the screen", () => {
                 1.5 * CELL,
                 3.5 * CELL,
             ])
+        })
+    })
+})
+
+describe("createGuardSprites (KDA-293)", () => {
+    // A document whose every canvas has a stub context of its own; `made`
+    // lists them, in the order made. A guarding sprite takes two.
+    function fakeDocument() {
+        const made: ReturnType<typeof stubContext>[] = []
+        const doc = {
+            createElement: () => {
+                const stub = stubContext()
+                made.push(stub)
+                return { width: 0, height: 0, getContext: () => stub.ctx }
+            },
+        }
+        return { doc: doc as never, made, builds: () => made.length / 2 }
+    }
+
+    // Regression (PR #101 review): keyed by the exact size, a view easing
+    // its cell size made a new sprite on nearly every frame.
+    it("makes one sprite for sizes within a pixel of each other", () => {
+        const { doc, builds } = fakeDocument()
+        const sprites = createGuardSprites(doc)
+        for (let i = 0; i < 40; i++) sprites("👺", 38 + i * 0.01, 2)
+        expect(builds()).toBe(1)
+        expect(sprites("👺", 38.3, 2)?.size).toBe(38)
+        sprites("👺", 39, 2)
+        expect(builds()).toBe(2)
+    })
+
+    it("makes one per sprite and per pixel ratio", () => {
+        const { doc, builds } = fakeDocument()
+        const sprites = createGuardSprites(doc)
+        sprites("👺", 38, 1)
+        sprites("👺", 38, 2)
+        sprites("👹", 38, 2)
+        expect(builds()).toBe(3)
+        sprites("👺", 38, 1)
+        sprites("👺", 38, 2)
+        expect(builds()).toBe(3)
+    })
+
+    it("drops them all once there are too many", () => {
+        const { doc, builds } = fakeDocument()
+        const sprites = createGuardSprites(doc)
+        for (let size = 1; size <= GUARD_SPRITES_KEPT; size++) {
+            sprites("👺", size, 1)
+        }
+        sprites("👺", 1, 1)
+        expect(builds()).toBe(GUARD_SPRITES_KEPT)
+        // One more: the rest go, so the first is made again.
+        sprites("👺", GUARD_SPRITES_KEPT + 1, 1)
+        sprites("👺", 1, 1)
+        expect(builds()).toBe(GUARD_SPRITES_KEPT + 2)
+    })
+
+    it("tints by colour, keeping the sprite's shape, then outlines it", () => {
+        const { doc, made } = fakeDocument()
+        createGuardSprites(doc)("👺", 38, 2)
+        const [tinted, outlined] = made
+        const tint = tinted.calls.find(
+            (c) => c.name === "fillRect" && c.fillStyle === STANCE_TINT
+        )
+        // "color" keeps the sprite's lightness, so its shading shows.
+        expect(tint?.composite).toBe("color")
+        // Then cut back to the sprite's own shape.
+        expect(tinted.calls.at(-1)).toMatchObject({
+            name: "fillText",
+            composite: "destination-in",
+        })
+        const outline = outlined.calls.find(
+            (c) => c.name === "fillRect" && c.fillStyle === STANCE_OUTLINE
+        )
+        expect(outline?.composite).toBe("source-in")
+        // The tinted sprite goes over its outline.
+        expect(outlined.calls.at(-1)).toMatchObject({
+            name: "drawImage",
+            composite: "source-over",
         })
     })
 })

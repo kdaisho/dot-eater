@@ -267,9 +267,6 @@ export type RendererOptions = {
     now?: () => number
 }
 
-// How many guarding enemies' sprites (see guardSprite) the renderer keeps.
-const GUARD_SPRITES_KEPT = 32
-
 export function createRenderer(
     canvas: HTMLCanvasElement,
     options: RendererOptions = {}
@@ -304,21 +301,7 @@ export function createRenderer(
         }
         return layer
     }
-    // Guarding enemies' sprites (see guardSprite), made when first needed
-    // for each sprite, size and pixel ratio and kept; dropped all at once
-    // if a resize leaves too many.
-    const guarding = new Map<string, GuardSprite | null>()
-    const guardSprites = (emoji: string, size: number, dpr: number) => {
-        const key = `${emoji} ${size} ${dpr}`
-        if (!guarding.has(key)) {
-            if (guarding.size >= GUARD_SPRITES_KEPT) guarding.clear()
-            guarding.set(
-                key,
-                guardSprite(canvas.ownerDocument, emoji, size, dpr)
-            )
-        }
-        return guarding.get(key) ?? null
-    }
+    const guardSprites = createGuardSprites(canvas.ownerDocument)
 
     function fit() {
         layout = computeLayout(
@@ -1055,16 +1038,48 @@ export function stanceLook(
 }
 
 // A guarding enemy's sprite, tinted and outlined (see STANCE_TINT), on a
-// canvas of its own: a square `box` CSS pixels wide round the sprite's
-// centre, the sprite's size plus the outline, `edge` wide, on each side.
-type GuardSprite = { image: HTMLCanvasElement; box: number; edge: number }
+// canvas of its own, made for a sprite `size` CSS pixels across: a square
+// `box` CSS pixels wide round the sprite's centre, the sprite's size plus
+// the outline, `edge` wide, on each side.
+export type GuardSprite = {
+    image: HTMLCanvasElement
+    size: number
+    box: number
+    edge: number
+}
+
+// How many guarding enemies' sprites (see createGuardSprites) a renderer
+// keeps.
+export const GUARD_SPRITES_KEPT = 32
+
+// A renderer's guarding enemies' sprites (see guardSprite): made when
+// first needed and kept, one per sprite, whole-pixel size (the font's) and
+// pixel ratio, so a view easing its cell size from frame to frame (see
+// camera.ts) reuses them, drawn scaled to the exact size (see
+// drawGuarding). All are dropped at once when there are too many (a
+// resize or zoom has left them behind). Each is null where a canvas has no
+// 2D context.
+export function createGuardSprites(
+    doc: Pick<Document, "createElement">
+): (emoji: string, size: number, dpr: number) => GuardSprite | null {
+    const kept = new Map<string, GuardSprite | null>()
+    return (emoji, size, dpr) => {
+        const whole = Math.max(1, Math.round(size))
+        const key = `${emoji} ${whole} ${dpr}`
+        if (!kept.has(key)) {
+            if (kept.size >= GUARD_SPRITES_KEPT) kept.clear()
+            kept.set(key, guardSprite(doc, emoji, whole, dpr))
+        }
+        return kept.get(key) ?? null
+    }
+}
 
 // Make `emoji`'s GuardSprite at `size` CSS pixels, for `dpr`: null if a
 // canvas has no 2D context. Colour emoji can't be tinted on the canvas
 // itself everywhere (CanvasRenderingContext2D.filter isn't), so it is
 // drawn on its own canvas and coloured there by compositing.
 function guardSprite(
-    doc: Document,
+    doc: Pick<Document, "createElement">,
     emoji: string,
     size: number,
     dpr: number
@@ -1112,13 +1127,14 @@ function guardSprite(
     ctx.fillRect(0, 0, box, box)
     ctx.globalCompositeOperation = "source-over"
     ctx.drawImage(tinted.image, 0, 0, box, box)
-    return { image: outlined.image, box, edge }
+    return { image: outlined.image, size, box, edge }
 }
 
 // A guarding enemy's sprite `emoji`, centred at (x, y) and `size` across
-// as usual: its GuardSprite stretched by `look`, its feet (the bottom of
-// its usual box) where they were. Without one (no 2D context to tint on),
-// the plain sprite, stretched the same way.
+// as usual: its GuardSprite scaled from the size it was made at to `size`
+// and stretched by `look`, its feet (the bottom of its usual box) where
+// they were. Without one (no 2D context to tint on), the plain sprite,
+// stretched the same way.
 function drawGuarding(
     ctx: CanvasRenderingContext2D,
     sprite: GuardSprite | null,
@@ -1137,11 +1153,13 @@ function drawGuarding(
         ctx.restore()
         return
     }
-    const { image, box, edge } = sprite
+    const scale = size / sprite.size
+    const box = sprite.box * scale
+    const edge = sprite.edge * scale
     const width = box * look.width
     const height = box * look.height
     const top = feet - (size + edge) * look.height
-    ctx.drawImage(image, x - width / 2, top, width, height)
+    ctx.drawImage(sprite.image, x - width / 2, top, width, height)
 }
 
 // Particles (see particles.ts), each a disc or a square of its colour,
