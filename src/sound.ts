@@ -109,6 +109,12 @@ export type MusicCue = { track: MusicTrackId; paused: boolean }
 
 export function musicForScreen(screen: Screen): MusicCue | undefined {
     switch (screen.kind) {
+        // The opening's own track once its title shows; quiet on the
+        // studio logo.
+        case "opening":
+            return screen.stage === "title"
+                ? { track: MusicTrackId.opening, paused: false }
+                : undefined
         case "title":
         case "playSelect":
         case "storyMenu":
@@ -157,6 +163,8 @@ function readyCount(ready: readonly boolean[]): number {
 
 // A change within one menu: the cursor moved or a value changed.
 function sameScreenSound(prev: Screen, next: Screen): SfxId | undefined {
+    if (prev.kind === "opening" && next.kind === "opening")
+        return prev.choice !== next.choice ? SfxId.menuMove : undefined
     if (prev.kind === "title" && next.kind === "title")
         return prev.mode !== next.mode || prev.onSettings !== next.onSettings
             ? SfxId.menuMove

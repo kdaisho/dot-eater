@@ -14,8 +14,14 @@ import {
 } from "./game"
 import { DEFAULT_DIFFICULTY, DIFFICULTIES, type Difficulty } from "./difficulty"
 import { endRollPress, SKIP_TO } from "./endRoll"
-import type { Action } from "./input"
+import { ACTIONS, type Action } from "./input"
 import type { Stage } from "./level"
+import {
+    LOGO_SECONDS,
+    OPENING_CHOICES,
+    OPENING_DRUM,
+    type OpeningChoice,
+} from "./opening"
 import {
     furthestStage,
     isPlayable,
@@ -34,6 +40,14 @@ import { rateClear, type ClearRating } from "./stars"
 import { matchWinner, roundResult, type RoundResult } from "./versus"
 
 // The game's screens and the transitions between them:
+//
+//   opening -> title          opening -> difficultySelect (Continue)
+//
+// The opening (opening.ts) comes first: the studio logo waits for any
+// press, holds, then the title rises to the opening track. From the drum
+// hit on, its menu takes up/down and confirm: Start goes to the title,
+// Continue to story mode's Continue for 1 player (its difficulty select).
+// A press before the drum skips the rise to the menu.
 //
 //   title <-> stageSelect <-> difficultySelect <-> characterSelect
 //                 ^                                       |
@@ -307,6 +321,20 @@ export type Match = readonly RoundResult[]
 
 export type Screen =
     | {
+          kind: "opening"
+          // The studio logo waiting for a press, the logo held, then the
+          // title rising to the music.
+          stage: "gate" | "logo" | "title"
+          // Seconds into the stage (on the title, into the music). A box, as
+          // ShownFor is, so time passing makes no new screen.
+          clock: { seconds: number }
+          // The menu's cursor.
+          choice: OpeningChoice
+          // A press skipped the title's rise: its clock runs on its own from
+          // the drum, no longer following the music.
+          skipped?: boolean
+      }
+    | {
           kind: "title"
           // The mode under the cursor, or the last one it was on while it
           // is on Settings.
@@ -500,8 +528,11 @@ export type Screen =
           kind: "endRoll"
           mode: Mode
           difficulty: Difficulty
-          // Seconds it has played (see endRollPhase), counted per tick.
+          // Seconds into it (see endRollPhase): the music's clock while
+          // there is one, else counted per tick.
           elapsed: ShownFor
+          // A press skipped to THE END: from there it keeps its own time.
+          skipped?: boolean
       }
 
 export type ScreenKind = Screen["kind"]
@@ -572,10 +603,35 @@ export type FlowDeps = {
     // starts (by a pad's confirm, say) starts paused, as auto-pause would
     // leave it.
     focused?: boolean
+    // Seconds into the opening's music (see Audio.musicPosition), which the
+    // opening's title follows so the menu lands on the drum. Left out (no
+    // sound), the opening keeps its own time.
+    openingClock?: number
+    // The same for the end roll's music, which the end roll follows.
+    endRollClock?: number
 }
 
 export function initialScreen(): Screen {
     return { kind: "title", mode: MODE_CHOICES[0] }
+}
+
+// The opening, waiting on the studio logo for a press.
+export function openingScreen(): Screen {
+    return {
+        kind: "opening",
+        stage: "gate",
+        clock: { seconds: 0 },
+        choice: OPENING_CHOICES[0],
+    }
+}
+
+// Whether the opening's Continue has a story run to pick up: one that got
+// past stage 1 and whose stage is built.
+export function canContinue(
+    deps: Pick<FlowDeps, "progress" | "levels">
+): boolean {
+    const level = storyStart("continue", deps.progress)
+    return level > 0 && level < deps.levels.length
 }
 
 // Start `level` at `difficulty` as `animals` (one per player of `mode`; a
@@ -637,6 +693,8 @@ function updateScreen(
     deps: FlowDeps
 ): Screen {
     switch (screen.kind) {
+        case "opening":
+            return updateOpening(screen, input, deps)
         case "title":
             return updateTitle(screen, input, deps)
         case "settings":
@@ -798,6 +856,63 @@ function anyPressed(mode: Mode, input: TickInput, action: Action): boolean {
         if (input.wasPressed(action, i)) return true
     }
     return false
+}
+
+type OpeningScreen = Extract<Screen, { kind: "opening" }>
+
+// Any press of player 1's (pads share player 1 here).
+function anyAction(input: TickInput): boolean {
+    return ACTIONS.some((action) => input.wasPressed(action))
+}
+
+// The studio logo waits for any press, then holds for LOGO_SECONDS (a
+// press cuts it short). The title follows the music's clock (or its own),
+// and a press before the drum skips to it; from the drum on, up/down move
+// between Start and Continue (Continue only when canContinue) and confirm
+// goes on.
+function updateOpening(
+    screen: OpeningScreen,
+    input: TickInput,
+    deps: FlowDeps
+): Screen {
+    const { clock } = screen
+    switch (screen.stage) {
+        case "gate":
+            return anyAction(input)
+                ? { ...screen, stage: "logo", clock: { seconds: 0 } }
+                : screen
+        case "logo":
+            clock.seconds += deps.dt
+            return anyAction(input) || clock.seconds >= LOGO_SECONDS
+                ? { ...screen, stage: "title", clock: { seconds: 0 } }
+                : screen
+        case "title":
+            break
+    }
+    if (screen.skipped || deps.openingClock === undefined) {
+        clock.seconds += deps.dt
+    } else {
+        clock.seconds = deps.openingClock
+    }
+    if (clock.seconds < OPENING_DRUM) {
+        return anyAction(input)
+            ? { ...screen, clock: { seconds: OPENING_DRUM }, skipped: true }
+            : screen
+    }
+    const choices: readonly OpeningChoice[] = canContinue(deps)
+        ? OPENING_CHOICES
+        : ["start"]
+    if (input.wasPressed("confirm")) {
+        if (screen.choice === "start" || choices.length === 1) {
+            return initialScreen()
+        }
+        const level = storyStart("continue", deps.progress)
+        const difficulty = deps.lastDifficulty ?? DEFAULT_DIFFICULTY
+        return storyDifficultySelect("solo", level, difficulty, "continue")
+    }
+    const index = Math.max(0, choices.indexOf(screen.choice))
+    const next = moveCursor(index, choices.length, input)
+    return next === index ? screen : { ...screen, choice: choices[next]! }
 }
 
 // Up/down move over TITLE_CHOICES; confirm on a mode goes on to the choice
@@ -1375,22 +1490,27 @@ function updateStoryEnd(
         : screen
 }
 
-// The end roll plays on by itself. Confirm or pause (any player's) skips
-// to THE END, and once that has shown a moment goes to the title (see
+// The end roll plays on by itself, on its music's clock (its own after a
+// skip, or with no sound). Confirm or pause (any player's) skips to THE
+// END, and once that has shown a moment goes to the title (see
 // endRollPress).
 function updateEndRoll(
     screen: Extract<Screen, { kind: "endRoll" }>,
     input: TickInput,
     deps: FlowDeps
 ): Screen {
-    screen.elapsed.seconds += deps.dt
+    if (screen.skipped || deps.endRollClock === undefined) {
+        screen.elapsed.seconds += deps.dt
+    } else {
+        screen.elapsed.seconds = deps.endRollClock
+    }
     const pressed =
         anyPressed(screen.mode, input, "confirm") ||
         anyPressed(screen.mode, input, "pause")
     if (!pressed) return screen
     switch (endRollPress(screen.elapsed.seconds)) {
         case "skip":
-            return { ...screen, elapsed: { seconds: SKIP_TO } }
+            return { ...screen, elapsed: { seconds: SKIP_TO }, skipped: true }
         case "leave":
             return { kind: "title", mode: screen.mode }
         case "none":

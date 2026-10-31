@@ -505,3 +505,20 @@ body[data-dpad="on"] .touch-breath {
 .touch-controls .touch-breath.ready:active {
     background: rgba(245, 158, 11, 0.45);
 }
+
+/* The opening (openingView.ts): the console-sized screen scaled up over
+   the whole window, letterboxed in black, with crisp pixels. Above the
+   toasts and touch controls. */
+#opening {
+    background: #000;
+    cursor: pointer;
+    height: 100vh;
+    height: 100dvh;
+    image-rendering: pixelated;
+    inset: 0;
+    object-fit: contain;
+    position: fixed;
+    touch-action: none;
+    width: 100vw;
+    z-index: 50;
+}

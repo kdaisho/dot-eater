@@ -213,6 +213,9 @@ export function heldTones(track: CompiledTrack, position: number): Tone[] {
 }
 
 export const MusicTrackId = {
+    // The opening before the title (see opening.ts): a recorded track
+    // (recorded.ts); its chip tune here is only the fallback.
+    opening: "opening",
     title: "title",
     stage1: "stage1",
     stage2: "stage2",
@@ -254,7 +257,15 @@ export function stageTrack(stage: number): MusicTrackId {
 
 const BACKBEAT = "k . h . s . h ."
 
-const CHIP_TRACKS = {
+export const TRACKS: Readonly<Record<MusicTrackId, Track>> = {
+    // The opening plays a recorded track; if it can't load, the title's tune.
+    get opening() {
+        return this.title
+    },
+    // So does the end roll's.
+    get endRoll() {
+        return this.title
+    },
     // Title: a calm, cheerful C major tune.
     title: {
         bpm: 112,
@@ -745,11 +756,4 @@ const CHIP_TRACKS = {
             },
         ],
     },
-} satisfies Record<Exclude<MusicTrackId, "endRoll">, Track>
-
-// Every tune's chip version. The end roll is a recorded track
-// (recorded.ts); should its file fail to load, the title's tune plays.
-export const TRACKS: Readonly<Record<MusicTrackId, Track>> = {
-    ...CHIP_TRACKS,
-    endRoll: CHIP_TRACKS.title,
 }

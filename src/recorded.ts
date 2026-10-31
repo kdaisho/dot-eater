@@ -5,9 +5,9 @@
 // out in loudness when they're encoded. No DOM access here.
 //
 // Loop points were found by matching the music on both sides of the jump,
-// then tuned by ear. Credits: djartmusic (stages 1–3), phantasticbeats
-// (stage 6), moodmode (stages 7 and 8), nocopyrightsound633 (stage 9),
-// djartmusic (the end roll).
+// then tuned by ear. Credits: djartmusic (the opening, stages 1–3, the end
+// roll), phantasticbeats (stage 6), moodmode (stages 7 and 8),
+// nocopyrightsound633 (stage 9).
 //
 // The end roll's track ends on its own (its last hit rings out by 86 s),
 // so it loops the whole file: a run left on THE END hears it again.
@@ -23,6 +23,7 @@ import frozenFog from "./assets/music/08-frozen-fog.mp3"
 import gauntlet from "./assets/music/09-gauntlet.mp3"
 import bossFinal from "./assets/music/10-boss-final.mp3"
 import endRoll from "./assets/music/11-end-roll.mp3"
+import opening from "./assets/music/opening.mp3"
 import { MusicTrackId } from "./music"
 
 export type RecordedTrack = {
@@ -36,6 +37,13 @@ export type RecordedTracks = Partial<Record<MusicTrackId, RecordedTrack>>
 
 // The title keeps its chip tune.
 export const RECORDED_TRACKS: RecordedTracks = {
+    // From 20.28 s on it loops; the opening's drum hit (OPENING_DRUM in
+    // opening.ts) comes before that, once.
+    [MusicTrackId.opening]: {
+        url: opening,
+        loopStart: 20.2832,
+        loopEnd: 106.5332,
+    },
     [MusicTrackId.stage1]: {
         url: classic,
         loopStart: 24.6212,

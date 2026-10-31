@@ -150,7 +150,7 @@ describe("the endRoll screen", () => {
         dt,
         random: () => 0,
     })
-    const roll = (seconds = 0): Screen => ({
+    const roll = (seconds = 0): Extract<Screen, { kind: "endRoll" }> => ({
         kind: "endRoll",
         mode: "solo",
         difficulty: "hard",
@@ -164,11 +164,25 @@ describe("the endRoll screen", () => {
         expect(screen).toMatchObject({ elapsed: { seconds: 1 } })
     })
 
+    it("follows the music's clock while there is one", () => {
+        const screen = roll(3)
+        const music = { ...deps(0.5), endRollClock: 20 }
+        expect(update(screen, input(), music)).toBe(screen)
+        expect(screen.elapsed.seconds).toBe(20)
+    })
+
+    it("keeps its own time after a skip, whatever the music says", () => {
+        const screen = { ...roll(SKIP_TO), skipped: true }
+        update(screen, input(), { ...deps(0.5), endRollClock: 20 })
+        expect(screen.elapsed.seconds).toBe(SKIP_TO + 0.5)
+    })
+
     it("skips to THE END on confirm or pause", () => {
         for (const action of ["confirm", "pause"] as const) {
             expect(update(roll(10), input([action]), deps(0))).toEqual({
                 ...roll(),
                 elapsed: { seconds: SKIP_TO },
+                skipped: true,
             })
         }
     })
