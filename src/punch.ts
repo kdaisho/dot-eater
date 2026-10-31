@@ -5,7 +5,7 @@ import { Cell, PUNCH_ACROSS, PUNCH_REACH } from "./constants"
 import { emit } from "./events"
 import { drawnPos, knockBack, type GameState, type Player } from "./game"
 import { wrapDelta } from "./glide"
-import { blockChance } from "./guard"
+import { blockChance, endStance, startStance } from "./guard"
 import { loopPos } from "./level"
 import { vec2, type Vec2 } from "./vec2"
 import { stunned } from "./versus"
@@ -34,7 +34,8 @@ import { stunned } from "./versus"
 //   one glides it out and back into the cell it was knocked from.
 // - An enemy with a guard skill may block the punch (see guard.ts): it
 //   isn't moved and the punch doesn't count towards its decay. A held one
-//   never blocks.
+//   never blocks. A block puts it in its guard stance, holding still, and
+//   a punch that lands ends the stance (KDA-293).
 // - The boss is hit on any part of its body (the square of its four cell
 //   centres) but isn't hurt or moved: the hit is reported, for its thud.
 // - The other player is never hit in co-op: the punch passes through.
@@ -92,10 +93,18 @@ export function punch(
         const held = hasStatus(enemy, "holds")
         const skill = enemy.guard ?? 0
         if (!held && skill > 0 && random() < blockChance(skill, interval)) {
-            emit(state, { type: "punchBlocked", player, at, enemy: i })
+            emit(state, {
+                type: "punchBlocked",
+                player,
+                at,
+                facing: step,
+                enemy: i,
+            })
+            startStance(enemy)
             continue
         }
         emit(state, { type: "punchHit", player, at, target: "enemy", enemy: i })
+        endStance(enemy)
         if (held) continue
         if (knockEnemy(state, enemy, step, landKnock(enemy))) {
             result.enemies = true

@@ -67,6 +67,9 @@ export type Character = {
     // Its guard skill, the chance it blocks a quick punch (see guard.ts):
     // 0 for none, null until it is rolled, as it comes into play.
     guard: number | null
+    // Seconds left of its guard stance after a block (KDA-293; see
+    // GUARD_STANCE in guard.ts), while it holds still; 0 for none.
+    stance: number
 }
 
 export function createCharacter(
@@ -98,6 +101,7 @@ export function createCharacter(
         knockTurn: null,
         turnsBack: false,
         guard: null,
+        stance: 0,
     }
 }
 
@@ -118,13 +122,15 @@ export function skipKnockTurn(character: Character) {
     character.turnsBack = true
 }
 
-// Forget the punches `character` has taken (see punch.ts) and its guard
-// roll, as when it is defeated: it comes back fresh and rolls again.
+// Forget the punches `character` has taken (see punch.ts), its guard roll
+// and any guard stance (see guard.ts), as when it is defeated: it comes
+// back fresh and rolls again.
 export function freshFromPunches(character: Character) {
     endKnock(character)
     character.knocks = 0
     character.sinceKnock = 0
     character.guard = null
+    character.stance = 0
 }
 
 function defaultSpeed(id: CharacterId, ai: AiType): number {

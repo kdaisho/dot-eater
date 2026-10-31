@@ -123,7 +123,13 @@ describe("soundForEvent", () => {
                 "punchHit.boss",
             ],
             [
-                { type: "punchBlocked", player: 0, at, enemy: 1 },
+                {
+                    type: "punchBlocked",
+                    player: 0,
+                    at,
+                    facing: vec2(1, 0),
+                    enemy: 1,
+                },
                 "punch.blocked",
             ],
             [{ type: "gameWon" }, "stageClear"],
@@ -247,7 +253,7 @@ describe("eventSounds", () => {
         ).toEqual(["punch", "punchHit"])
     })
 
-    it("plays a blocked punch as its tok, under a landed hit (KDA-288)", () => {
+    it("plays a blocked punch as its thock, under a landed hit (KDA-288)", () => {
         const punched = (player: number): GameEvent => ({
             type: "punched",
             player,
@@ -258,11 +264,12 @@ describe("eventSounds", () => {
             type: "punchBlocked",
             player,
             at,
+            facing: vec2(1, 0),
             enemy: 0,
         })
-        // A tok over the whiff.
+        // A thock over the whiff.
         expect(eventSounds([punched(0), blocked(0)])).toEqual(["punch.blocked"])
-        // A hit's thwack over the tok, whichever is nearer.
+        // A hit's thwack over the thock, whichever is nearer.
         expect(
             eventSounds([
                 punched(0),
