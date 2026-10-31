@@ -290,6 +290,56 @@ describe("main", () => {
         expect(breaths[0]).toBe(true)
     })
 
+    // KDA-289: the breath charges while held and fires once let go, so the
+    // game gets the hold as state on every tick, like a held arrow.
+    it("passes a held breath key as held on every tick until let go", () => {
+        keydown("ShiftRight")
+        const before = steps()
+        vi.advanceTimersByTime(FRAMES_MS)
+        const held = moves(before)
+        expect(held.length).toBeGreaterThan(1)
+        expect(held.map((m) => m.breath)).toEqual([
+            true,
+            ...held.slice(1).map(() => false),
+        ])
+        expect(held.every((m) => m.breathHeld)).toBe(true)
+        // Auto-repeat neither presses again nor lets go.
+        keydown("ShiftRight", true)
+        const repeat = steps()
+        vi.advanceTimersByTime(FRAMES_MS)
+        expect(moves(repeat).every((m) => m.breathHeld && !m.breath)).toBe(true)
+        keyup("ShiftRight")
+        const after = steps()
+        vi.advanceTimersByTime(FRAMES_MS)
+        expect(moves(after).every((m) => !m.breathHeld && !m.breath)).toBe(true)
+    })
+
+    it("drops a breath charge without firing when the window loses focus", () => {
+        const game = drawnGame()
+        const { breather } = game.players[0]
+        keydown("ShiftRight")
+        breather.charge = 0.5
+        dispatchEvent(new Event("blur"))
+        expect(screen()).toBe("pause")
+        expect(breather.charge).toBeNull()
+        keyup("ShiftRight")
+    })
+
+    it("drops a breath charge without firing when the tab is hidden", () => {
+        const game = drawnGame()
+        const { breather } = game.players[0]
+        breather.charge = 0.5
+        const hidden = vi.spyOn(document, "hidden", "get")
+        try {
+            hidden.mockReturnValue(true)
+            document.dispatchEvent(new Event("visibilitychange"))
+            expect(screen()).toBe("pause")
+            expect(breather.charge).toBeNull()
+        } finally {
+            hidden.mockRestore()
+        }
+    })
+
     it("passes a punch press (/) to the game on one tick, never on repeat", () => {
         press("Slash")
         const before = steps()
@@ -843,7 +893,7 @@ describe("main", () => {
         game.players[0].breather.energy = 60
         vi.advanceTimersByTime(FRAMES_MS)
         expect(drawn.last?.[2]).toMatchObject({
-            energy: { energy: 60, max: 100, cost: 50, ready: true },
+            energy: { energy: 60, max: 100, cost: 20, ready: true, charge: 0 },
         })
     })
 

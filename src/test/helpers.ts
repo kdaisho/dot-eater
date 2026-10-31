@@ -280,12 +280,13 @@ export function textMap(rows: readonly string[]): {
 }
 
 // A breath for testing the breath machinery (see breath.ts), not one of the
-// characters' (those are in src/breaths/): a 3-cell line costing 10 with a
-// 1 s cooldown that does nothing unless `overrides` gives it a `fire` hook.
+// characters' (those are in src/breaths/): a 3-cell line at every level,
+// costing 10 a level, with a 1 s cooldown, that does nothing unless
+// `overrides` gives it a `fire` hook.
 export function testBreath(overrides: Partial<BreathDef> = {}): BreathDef {
     return {
         animal: DEFAULT_ANIMAL,
-        shape: { kind: "line", range: 3 },
+        shape: () => ({ kind: "line", range: 3 }),
         cost: 10,
         cooldown: 1,
         duration: 1,

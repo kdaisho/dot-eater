@@ -233,6 +233,25 @@ describe("main on a touch screen", () => {
         }
     )
 
+    // KDA-289: the breath charges while held and fires on the lift.
+    it.each(["pointerup", "lostpointercapture"])(
+        "holds the breath while a finger is on Breath, letting go on %s",
+        (lift) => {
+            const button = el("#touch-controls [data-action=breath]")
+            const from = vi.mocked(step).mock.calls.length
+            pointer(button, "pointerdown", 0, 0, 3)
+            vi.advanceTimersByTime(FRAMES_MS)
+            const held = moves(from)
+            expect(held.length).toBeGreaterThan(1)
+            expect(held[0]?.breath).toBe(true)
+            expect(held.every((m) => m.breathHeld)).toBe(true)
+            pointer(button, lift, 0, 0, 3)
+            const after = vi.mocked(step).mock.calls.length
+            vi.advanceTimersByTime(FRAMES_MS)
+            expect(moves(after).every((m) => !m.breathHeld)).toBe(true)
+        }
+    )
+
     it("lights the breath button while player 1 can breathe", () => {
         const breath = el("#touch-controls [data-action=breath]")
         // The game being played: what the latest step was given.

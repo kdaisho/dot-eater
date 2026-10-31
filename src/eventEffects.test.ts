@@ -363,7 +363,8 @@ describe("effectsForEvent", () => {
         // Regression: the cells were worked out after the tick, with the
         // boss gone, so the fire ran on through where it stood.
         it("stops at the boss its killing blow defeats", () => {
-            const state = bossHall(1)
+            // A Dragon tap does 0.8.
+            const state = bossHall(0.8)
             const at = emitted(state, [breathe])
             expect(state.boss?.defeated).toBe(true)
             expect(at(BREATHS.dragon.particles)).toEqual([

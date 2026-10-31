@@ -58,7 +58,7 @@ const defeatFirst: BreathDef["fire"] = (hit) => {
 }
 
 const defeating = testBreath({
-    shape: { kind: "line", range: 8 },
+    shape: () => ({ kind: "line", range: 8 }),
     fire: defeatFirst,
 })
 
@@ -344,7 +344,7 @@ describe("a split next to the player", () => {
         // An area breath: the player steps left off (3, 2), where the
         // Splitter's sprite is gliding in, and the breath reaches it there.
         const area = (fire: BreathDef["fire"]) =>
-            testBreath({ shape: { kind: "area", radius: 1 }, fire })
+            testBreath({ shape: () => ({ kind: "area", radius: 1 }), fire })
         const control = near(
             vec2(3, 2),
             vec2(4, 2),

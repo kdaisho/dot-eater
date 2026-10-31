@@ -1,7 +1,13 @@
 // @vitest-environment happy-dom
 import { afterEach, describe, expect, it, vi } from "vite-plus/test"
 import { BOSS_BREATH } from "./bossBreath"
-import { addStatus, addTileEffect, defeatEnemy, type BreathDef } from "./breath"
+import {
+    addStatus,
+    addTileEffect,
+    CHARGE_SECONDS,
+    defeatEnemy,
+    type BreathDef,
+} from "./breath"
 import { BREATHS } from "./breaths"
 import {
     AiType,
@@ -692,6 +698,39 @@ describe("createRenderer", () => {
                     c.args[2] === 1
             )
             expect(marks).toHaveLength(3)
+            // Not charging: nothing in the charge colour.
+            expect(
+                calls.some(
+                    (c) => c.name === "fillRect" && c.fillStyle === "#dc2626"
+                )
+            ).toBe(false)
+        })
+
+        it("fills a segment per charged level while the breath charges", () => {
+            const { renderer, calls } = setup()
+            renderer.draw(room(), 0, {
+                energy: {
+                    energy: 80,
+                    max: 100,
+                    cost: 20,
+                    ready: true,
+                    charge: 3,
+                },
+            })
+            const frame = calls.find((c) => c.name === "strokeRect")!
+            const charged = calls.filter(
+                (c) => c.name === "fillRect" && c.fillStyle === "#dc2626"
+            )
+            // Three levels of 20, over the 80 of energy: 60% of the meter,
+            // drawn after the energy's fill so it shows over it.
+            expect(charged).toHaveLength(1)
+            expect(charged[0].args[2]).toBeCloseTo(
+                (frame.args[2] as number) * 0.6
+            )
+            const fill = calls.findIndex(
+                (c) => c.name === "fillRect" && c.fillStyle === "#f59e0b"
+            )
+            expect(calls.indexOf(charged[0])).toBeGreaterThan(fill)
         })
 
         it("greys the meter while a breath isn't ready", () => {
@@ -1875,7 +1914,7 @@ describe("createRenderer with the facing guide", () => {
 
     // A dotted corridor 9 cells long: player 1 at (1, 1) and, with two
     // players, player 2 at (7, 1) facing it. Both breathe the Dragon's
-    // line, 5 cells.
+    // line, 3 cells for a tap (level 1).
     const corridor = [
         Array(9).fill(1),
         [1, ...Array(7).fill(2), 1],
@@ -1922,10 +1961,20 @@ describe("createRenderer with the facing guide", () => {
         const state = game()
         charge(state)
         renderer.draw(state, 0, {}, {}, AIM)
-        expect(tinted(calls, canvas)).toEqual([2, 3, 4, 5, 6])
+        expect(tinted(calls, canvas)).toEqual([2, 3, 4])
         // An edge round the line: its top and bottom along each cell, and
         // its two ends.
-        expect(edges(calls)).toBe(5 * 2 + 2)
+        expect(edges(calls)).toBe(3 * 2 + 2)
+    })
+
+    it("tints the cells of the level a held breath has charged to", () => {
+        const { calls, canvas, renderer } = setup()
+        const state = game()
+        charge(state)
+        // Held long enough for level 3: the Dragon's line is 5 cells.
+        state.players[0].breather.charge = CHARGE_SECONDS * 2
+        renderer.draw(state, 0, {}, {}, AIM)
+        expect(tinted(calls, canvas)).toEqual([2, 3, 4, 5, 6])
     })
 
     it("draws the tint under the dots and the characters", () => {
@@ -1973,8 +2022,8 @@ describe("createRenderer with the facing guide", () => {
         const state = game(2)
         charge(state)
         renderer.draw(state, 0, {}, {}, AIM)
-        expect(tinted(calls, canvas, 0)).toEqual([2, 3, 4, 5, 6])
-        expect(tinted(calls, canvas, 1)).toEqual([2, 3, 4, 5, 6])
+        expect(tinted(calls, canvas, 0)).toEqual([2, 3, 4])
+        expect(tinted(calls, canvas, 1)).toEqual([4, 5, 6])
     })
 
     it("draws no aim for a player out of play", () => {
@@ -1984,7 +2033,7 @@ describe("createRenderer with the facing guide", () => {
         takeOut(state.players[0], 3)
         renderer.draw(state, 0, {}, {}, AIM)
         expect(tinted(calls, canvas, 0)).toEqual([])
-        expect(tinted(calls, canvas, 1)).toEqual([2, 3, 4, 5, 6])
+        expect(tinted(calls, canvas, 1)).toEqual([4, 5, 6])
     })
 
     it("draws no aim for a stunned player", () => {
@@ -1993,7 +2042,7 @@ describe("createRenderer with the facing guide", () => {
         charge(state)
         stun(state.players[1])
         renderer.draw(state, 0, {}, {}, AIM)
-        expect(tinted(calls, canvas, 0)).toEqual([2, 3, 4, 5, 6])
+        expect(tinted(calls, canvas, 0)).toEqual([2, 3, 4])
         expect(tinted(calls, canvas, 1)).toEqual([])
     })
 

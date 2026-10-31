@@ -148,10 +148,11 @@ const COLORS = {
     fog: "17, 17, 17",
     // The energy meter: its frame and cost marks, the fill while a breath
     // is ready, and the fill while it isn't (too little energy or cooling
-    // down).
+    // down); and the levels a held breath has charged (KDA-289).
     meter: "#000",
     meterReady: "#f59e0b",
     meterCharging: "#9ca3af",
+    meterCharge: "#dc2626",
     // The solo player's health gauge (with two players each one's is in
     // its marker colour).
     health: "#16a34a",
@@ -1519,9 +1520,12 @@ function drawGauge(
 }
 
 // The energy meter: a framed bar `w` by `h` from (`left`, `top`), filled up
-// to the energy, with a mark at every multiple of the breath's cost (so the
-// player sees how many breaths it holds). The fill is bright while a breath
-// is ready and grey otherwise. `frame` colours the frame (and the marks).
+// to the energy, with a mark at every multiple of the breath's cost per
+// level (so the player sees how many levels it holds). The fill is bright
+// while a breath is ready and grey otherwise. While the breath charges
+// (KDA-289), the energy the level reached would spend, one segment a
+// level, is filled in the charge colour over it. `frame` colours the frame
+// (and the marks).
 function drawMeter(
     ctx: CanvasRenderingContext2D,
     meter: EnergyHud,
@@ -1534,6 +1538,12 @@ function drawMeter(
     const fraction = meter.max > 0 ? Math.min(1, meter.energy / meter.max) : 0
     ctx.fillStyle = meter.ready ? COLORS.meterReady : COLORS.meterCharging
     ctx.fillRect(left, top, w * fraction, h)
+    const charged =
+        meter.max > 0 ? ((meter.charge ?? 0) * meter.cost) / meter.max : 0
+    if (charged > 0) {
+        ctx.fillStyle = COLORS.meterCharge
+        ctx.fillRect(left, top, w * Math.min(1, charged), h)
+    }
     ctx.strokeStyle = frame
     ctx.lineWidth = 1
     ctx.strokeRect(left, top, w, h)
