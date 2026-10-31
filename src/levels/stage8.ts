@@ -37,8 +37,8 @@ export const stage8: LevelData = {
             "#.........PQ........#",
             "#####################",
         ],
-        // Easy: a chaser, a wanderer and the phantom; Medium adds the
-        // ambusher.
+        // Easy: a chaser, a wanderer and the phantom; Medium adds an
+        // interceptor.
         enemies: [
             { ai: "chase" },
             { ai: "random" },
@@ -72,8 +72,8 @@ export const stage8: LevelData = {
             "#############################",
         ],
         // Hard: the medium map's four, a patroller circling the upper rooms
-        // and a second chaser; Super Hard adds a Splitter and a second
-        // wanderer.
+        // and a second interceptor; Super Hard adds a Splitter and a third
+        // interceptor.
         enemies: [
             { ai: "chase" },
             { ai: "random" },

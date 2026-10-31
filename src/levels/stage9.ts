@@ -39,8 +39,8 @@ export const stage9: LevelData = {
             "..........PQ.........",
             "#####################",
         ],
-        // Easy: a chaser, an ambusher and the phantom; Medium adds the
-        // Splitter.
+        // Easy: a chaser, an ambusher and the phantom; Medium adds an
+        // interceptor.
         enemies: [
             { ai: "chase", speed: 2.25 },
             { ai: "ambusher", speed: 2.25 },
@@ -73,9 +73,9 @@ export const stage9: LevelData = {
             "..............PQ.............",
             "#############################",
         ],
-        // Hard: one of each of the six types, the patroller circling the
-        // arena; Super Hard adds a second chaser and ambusher, starting in
-        // the side passages.
+        // Hard: a chaser, an ambusher, a wanderer, an interceptor, the
+        // patroller circling the arena and a second interceptor; Super Hard
+        // adds the Splitter and a third interceptor.
         enemies: [
             { ai: "chase", speed: 2.25 },
             { ai: "ambusher", speed: 2.25 },

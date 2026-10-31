@@ -161,7 +161,7 @@ export function enemyMove(
     crowd: readonly Character[] = [],
     targetSpeed: number = PLAYER_SPEED
 ): boolean {
-    const player = { targetLast, speed: targetSpeed }
+    const player = { targetLast, speed: targetSpeed, cells }
     const next =
         blocked === null
             ? nextPos(cells, ice, enemy, target, player, random, shared, crowd)
@@ -194,13 +194,18 @@ export function enemyMove(
     return false
 }
 
+// The player an enemy goes after, as nextPos needs it besides its cell
+// (see nextPos).
+type Hunted = { targetLast: Vec2; speed: number; cells: Cells }
+
 // What a chaser, ambusher or Splitter chooses in place of a cell when it
 // holds its move so as not to stack (see spreadChoice).
 const HOLD = "hold"
 
 // The cell the enemy moves to this time, or null to stay put (HOLD when
 // that is to keep from stacking). `player` is where the target came from
-// on its latest move, and its speed. `cells` are
+// on its latest move, its speed, and the cells as players see them (with
+// nothing blocked). `cells` are
 // the cells it may move through; `paths(goal)` the ones distances to `goal`
 // are measured over (see goalView), the same unless cells are blocked.
 function nextPos(
@@ -208,7 +213,7 @@ function nextPos(
     ice: IceMap,
     enemy: Character,
     target: Vec2,
-    player: { targetLast: Vec2; speed: number },
+    player: Hunted,
     random: Random,
     shared: ChaseDistances,
     crowd: readonly Character[],
@@ -343,7 +348,8 @@ function chaseStep(
 // there: from the cells it may step to, never back through its own cell,
 // as chaseStep scores them), or when the player is in a blocked patch, it
 // goes for the player as a chaser does. Otherwise it guesses the player's
-// route (predictRoute, leading away from the other enemies) and aims at
+// route (predictRoute, leading away from the other enemies, and through
+// blocked cells, which players walk into) and aims at
 // the first cell of it it can reach no later than the player, else the
 // farthest it can reach (interceptAim), else the player. Standing on that
 // cell, it goes for the player, as an ambusher does.
@@ -359,7 +365,11 @@ function chaseStep(
 // down the corridor behind the player it goes round to close another way
 // out. Then the spread rule, as spreadChoice: one that would stack on
 // another interceptor gives way to the next in that order within
-// SPREAD_SLACK of the best, else it holds (mayHold).
+// SPREAD_SLACK of the best, else it holds (mayHold). Once the hold has run
+// out it takes any other way that doesn't stack, however much longer,
+// and stacks only when there is none: where a chaser would stack for a
+// moment, an interceptor goes round another way (three of them piling
+// onto a player that stands still, say, one holding behind the next).
 //
 // Searches per move: its own reach, and the other enemies' distances when
 // the route comes to a junction (none when close), plus the aim's
@@ -372,7 +382,7 @@ function interceptStep(
     ice: IceMap,
     enemy: Character,
     target: Vec2,
-    player: { targetLast: Vec2; speed: number },
+    player: Hunted,
     paths: (goal: Vec2) => Cells,
     shared: ChaseDistances,
     crowd: readonly Character[]
@@ -399,7 +409,14 @@ function interceptStep(
             ).dist
             return away(v)
         }
-        const route = predictRoute(cells, target, player.targetLast, awayFrom)
+        // Players walk into blocked cells (a stink cloud), so the route is
+        // read on the cells as they see them.
+        const route = predictRoute(
+            player.cells,
+            target,
+            player.targetLast,
+            awayFrom
+        )
         const cut = interceptAim(route, reach, enemy.speed, player.speed)
         if (cut && !samePos(cut, enemy.pos)) aim = cut
     }
@@ -462,7 +479,11 @@ function interceptStep(
     const other = ranked.find(
         (c) => c !== first && c.d <= best + SPREAD_SLACK && !stacks(c.v)
     )
-    return other?.v ?? (mayHold(enemy) ? HOLD : first.v)
+    if (other) return other.v
+    if (mayHold(enemy)) return HOLD
+    // The hold has run out: any way that doesn't stack, however long,
+    // before stacking.
+    return ranked.find((c) => c.d < Infinity && !stacks(c.v))?.v ?? first.v
 }
 
 // Two enemies of one kind (AI type) that stand on the same cell, having

@@ -259,16 +259,18 @@ describe("the interceptor", () => {
         expect(caughtAfter(AiType.interceptor)).toBeLessThan(4)
     })
 
-    it("times its cut-off by the player's speed", () => {
+    it("times its cut-off by the player's speed and its own", () => {
         // The ring again, the player 4 cells ahead and heading away. A fast
         // player can't be caught up with, so it goes round the other way to
-        // meet it; a slow one it can head off by following.
-        const firstMove = (speed: number) => {
+        // meet it; a slow one it can head off by following, and so can a
+        // fast interceptor (a difficulty scales its speed, KDA-290).
+        const firstMove = (speed: number, enemySpeed = 2) => {
             const enemy = interceptor(1, 1)
             const state = makeState(RING_MAP, { x: 5, y: 1 }, [enemy])
             const player = state.players[0].character
             player.lastPos = vec2(4, 1)
             player.speed = speed
+            enemy.speed = enemySpeed
             enemy.moveProgress = 1
             step(
                 state,
@@ -280,6 +282,7 @@ describe("the interceptor", () => {
         }
         expect(firstMove(PLAYER_SPEED)).toEqual(vec2(1, 2))
         expect(firstMove(1)).toEqual(vec2(2, 1))
+        expect(firstMove(PLAYER_SPEED, 8)).toEqual(vec2(2, 1))
     })
 
     it("heads for where the player is going, not where it is", () => {
@@ -383,6 +386,39 @@ describe("the interceptor", () => {
             expect(stacksOn([ahead], enemy, vec2(4, 5))).toBe(true)
             expect(
                 moveOnce(cells, enemy, player, player, [enemy, ahead])
+            ).toEqual(vec2(6, 5))
+        })
+
+        it("goes round another way rather than stack once its hold runs out", () => {
+            // A twin ahead at (8, 5), come from (7, 5): the other way round
+            // is 6 moves longer, too far to spread to, so it holds.
+            const ahead = interceptor(8, 5, { x: 7, y: 5 }, 1)
+            const enemy = interceptor(7, 5, undefined, 0)
+            const crowd = [enemy, ahead]
+            expect(moveOnce(cells, enemy, player, player, crowd)).toEqual(
+                vec2(7, 5)
+            )
+            // A whole move's hold later it goes the long way round.
+            enemy.heldFor = 1 / enemy.speed
+            expect(moveOnce(cells, enemy, player, player, crowd)).toEqual(
+                vec2(6, 5)
+            )
+        })
+
+        it("reads the player's route through blocked cells, which players walk into", () => {
+            // A stink cloud at (7, 1), ahead of the player heading right
+            // from (5, 1). The player can go on through it and down the
+            // right side, where the interceptor, below, heads it off;
+            // read on the cells as enemies see them, the route would end
+            // at the cloud and it would go round the left for (6, 1).
+            const blocked: BlockMap = cells.map((row, y) =>
+                row.map((_, x) => x === 7 && y === 1)
+            )
+            const enemy = interceptor(5, 5)
+            expect(
+                moveOnce(cells, enemy, player, vec2(4, 1), [enemy], {
+                    blocked,
+                })
             ).toEqual(vec2(6, 5))
         })
 
