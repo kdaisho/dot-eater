@@ -26,6 +26,9 @@ export const AiType = {
     // splitter.ts). Takes two enemy slots but counts as one enemy toward
     // MAX_ENEMIES.
     splitter: 5,
+    // Reads the player's moves and cuts it off, coming at it from a side
+    // the other enemies don't (see intercept.ts).
+    interceptor: 6,
 } as const
 export type AiType = (typeof AiType)[keyof typeof AiType]
 

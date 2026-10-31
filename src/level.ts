@@ -41,6 +41,7 @@ export type AiName =
     | "patroller"
     | "phantom"
     | "splitter"
+    | "interceptor"
 
 // A cell as written in level data: [x, y], counted from the top-left corner
 // of the map (0, 0).
@@ -198,6 +199,7 @@ const AI_TYPES: Record<AiName, AiType> = {
     patroller: AiType.patroller,
     phantom: AiType.phantom,
     splitter: AiType.splitter,
+    interceptor: AiType.interceptor,
 }
 
 // ---- Parsed level: what the game builds its state from ----

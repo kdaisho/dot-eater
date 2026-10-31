@@ -38,6 +38,7 @@ import {
     stunLabel,
     type Effects,
 } from "./render"
+import { SNEAK_ALPHA, SNEAK_FAR, SNEAK_NEAR, sneakAlpha } from "./intercept"
 import { JAB_LUNGE, JAB_SECONDS } from "./jab"
 import type { Particle } from "./particles"
 import { createSplitter } from "./splitter"
@@ -62,8 +63,8 @@ vi.mock("canvas-confetti", () => ({ default: vi.fn() }))
 const HEALTH_COLOR = "#16a34a"
 
 // happy-dom has no 2D canvas, so record the calls on a stub context: every
-// method call is logged, with the fillStyle, strokeStyle and font set at
-// the time, and property writes are accepted.
+// method call is logged, with the fillStyle, strokeStyle, font and
+// globalAlpha set at the time, and property writes are accepted.
 function stubContext() {
     const calls: {
         name: string
@@ -71,10 +72,12 @@ function stubContext() {
         fillStyle?: unknown
         strokeStyle?: unknown
         font?: unknown
+        globalAlpha?: unknown
     }[] = []
     let fillStyle: unknown
     let strokeStyle: unknown
     let font: unknown
+    let globalAlpha: unknown = 1
     const ctx = new Proxy(
         {},
         {
@@ -86,6 +89,7 @@ function stubContext() {
                         fillStyle,
                         strokeStyle,
                         font,
+                        globalAlpha,
                     })
                     if (name === "createRadialGradient") {
                         return { addColorStop() {} }
@@ -96,6 +100,7 @@ function stubContext() {
                 if (name === "fillStyle") fillStyle = value
                 if (name === "strokeStyle") strokeStyle = value
                 if (name === "font") font = value
+                if (name === "globalAlpha") globalAlpha = value
                 return true
             },
         }
@@ -134,9 +139,9 @@ describe("createRenderer", () => {
         renderer.draw(
             makeState(
                 [
-                    [1, 1, 1, 1, 1, 1, 1],
-                    [1, 2, 2, 2, 2, 2, 1],
-                    [1, 0, 1, 1, 1, 1, 1],
+                    [1, 1, 1, 1, 1, 1, 1, 1, 1],
+                    [1, 2, 2, 2, 2, 2, 2, 2, 1],
+                    [1, 0, 1, 1, 1, 1, 1, 1, 1],
                 ],
                 { x: 1, y: 2 },
                 enemies
@@ -192,6 +197,45 @@ describe("createRenderer", () => {
             Math.round(full * HALF_SCALE),
             Math.round(full * HALF_SCALE),
         ])
+    })
+
+    // KDA-292: an interceptor sneaks up, faint until it is near.
+    it("draws an interceptor faint far from the player, fading in as it closes in", () => {
+        const alphaAt = (x: number) => {
+            const { renderer, calls } = setup()
+            const state = makeState(
+                [
+                    [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+                    [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
+                    [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+                ],
+                { x: 1, y: 1 },
+                [
+                    makeEnemy(
+                        x,
+                        1,
+                        AiType.interceptor,
+                        undefined,
+                        ENEMY_IDS[0]
+                    ),
+                    makeEnemy(10, 1, AiType.chase, undefined, ENEMY_IDS[1]),
+                ]
+            )
+            renderer.draw(state, 0)
+            const sprite = (text: string) =>
+                calls.find((c) => c.name === "fillText" && c.args[0] === text)
+            // Everything else is drawn as usual.
+            expect(sprite("👹")?.globalAlpha).toBe(1)
+            expect(sprite("🐉")?.globalAlpha).toBe(1)
+            return sprite("🐺")?.globalAlpha
+        }
+        expect(alphaAt(10)).toBeCloseTo(SNEAK_ALPHA)
+        expect(alphaAt(1 + SNEAK_FAR)).toBeCloseTo(SNEAK_ALPHA)
+        expect(alphaAt(1 + SNEAK_FAR - 1)).toBeCloseTo(
+            sneakAlpha(SNEAK_FAR - 1)
+        )
+        expect(alphaAt(1 + SNEAK_NEAR)).toBe(1)
+        expect(alphaAt(2)).toBe(1)
     })
 
     it("draws enemies of one AI type with the same sprite", () => {

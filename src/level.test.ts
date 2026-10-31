@@ -386,7 +386,7 @@ describe("parseLevel", () => {
                 enemies: [{ ai: "smart" }],
             } as unknown as FlatLevelData
             expect(problemsOf(data)).toEqual([
-                'enemies[0].ai must be one of random, chase, ambusher, patroller, phantom, splitter, got "smart"',
+                'enemies[0].ai must be one of random, chase, ambusher, patroller, phantom, splitter, interceptor, got "smart"',
             ])
         })
 
