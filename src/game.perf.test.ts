@@ -38,21 +38,23 @@ function moves(tick: number): MoveInput[] {
     }))
 }
 
+// Where the enemies start: spread round the map, away from the players.
+const SPAWNS = [
+    [27, 19],
+    [1, 19],
+    [27, 1],
+    [13, 19],
+    [27, 11],
+    [15, 1],
+    [1, 11],
+    [21, 15],
+] as const
+
 describe("step performance", () => {
     it("takes well under 2 ms a tick with MAX_ENEMIES chasers on a big icy map", () => {
         const { map, ice } = bigMap()
         expect(hasIce(ice)).toBe(true)
-        const spawns = [
-            [27, 19],
-            [1, 19],
-            [27, 1],
-            [13, 19],
-            [27, 11],
-            [15, 1],
-            [1, 11],
-            [21, 15],
-        ] as const
-        const enemies = spawns.map(([x, y], i) =>
+        const enemies = SPAWNS.map(([x, y], i) =>
             makeEnemy(
                 x,
                 y,
@@ -82,6 +84,39 @@ describe("step performance", () => {
         // Measured on a laptop (KDA-263): about 0.07 ms a tick on average,
         // and about 1 ms on a tick where all eight choose a way (1.9 ms
         // before chasers shared their distances). Generous, for slow CI.
+        expect(average).toBeLessThan(2)
+    })
+
+    // KDA-292: an interceptor makes a few more searches a move than a
+    // chaser (see interceptStep in ai.ts). Levels bring out 3 at most;
+    // here all eight are interceptors.
+    it("takes well under 2 ms a tick with MAX_ENEMIES interceptors on a big icy map", () => {
+        const { map, ice } = bigMap()
+        const enemies = SPAWNS.map(([x, y], i) =>
+            makeEnemy(x, y, AiType.interceptor, undefined, ENEMY_IDS[i])
+        )
+        const state = makeState(
+            map,
+            [
+                { x: 1, y: 1 },
+                { x: 3, y: 1 },
+            ],
+            enemies,
+            { health: 1_000_000, ice }
+        )
+        const ticks = TICK_RATE * 10
+        const start = performance.now()
+        for (let t = 0; t < ticks; t++) {
+            step(state, 1 / TICK_RATE, moves(t), fixedRandom(0))
+        }
+        const average = (performance.now() - start) / ticks
+        expect(state.players.some((p) => p.health < 1_000_000)).toBe(true)
+        // Measured on a laptop, as above: about 0.13 ms a tick on average,
+        // and about 4 ms on a tick where all eight choose a way (each up to
+        // two searches of its own and two slide-aware ones; the chasers
+        // above take about 2 ms there by the same measure). With a level's
+        // 3 interceptors and 5 chasers and ambushers: 0.09 ms and about
+        // 2.7 ms. Generous, for slow CI.
         expect(average).toBeLessThan(2)
     })
 })

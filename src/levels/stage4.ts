@@ -10,12 +10,13 @@ import type { LevelData } from "../level"
 //
 // The medium map (21x17) is the old maze grown a little. Its enemies are
 // the phantom in a top corner, a chaser and a breather (KDA-291) along the
-// top, and (from Medium) an ambusher just below them. The large map (29x21)
-// is wider and taller in the same style, with eight enemies: the medium
-// map's four, then a patroller circling the middle of the maze (a route the
-// player can learn but not see) and a second breather (Hard), then a
-// wanderer and a second phantom on the right edge, across the map from the
-// first in the top left (Super Hard).
+// top, and (from Medium) an interceptor (KDA-292) just below them. The
+// large map (29x21) is wider and taller in the same style, with eight
+// enemies: the phantom, an interceptor and the breather, a second
+// interceptor, then a patroller circling the middle of the maze (a route
+// the player can learn but not see) and a second breather (Hard), then a
+// third interceptor and a second phantom on the right edge, across the map
+// from the first in the top left (Super Hard).
 //
 // The light's radius is 4 cells on both maps (the rules are shared): half a
 // cell more than the old one-map stage had, so with more enemies coming
@@ -48,7 +49,7 @@ export const stage4: LevelData = {
             { ai: "phantom" },
             { ai: "chase" },
             { ai: "breather" },
-            { ai: "ambusher" },
+            { ai: "interceptor" },
         ],
     },
     large: {
@@ -78,9 +79,9 @@ export const stage4: LevelData = {
         ],
         enemies: [
             { ai: "phantom" },
-            { ai: "chase" },
+            { ai: "interceptor" },
             { ai: "breather" },
-            { ai: "ambusher" },
+            { ai: "interceptor" },
             {
                 ai: "patroller",
                 route: [
@@ -91,7 +92,7 @@ export const stage4: LevelData = {
                 ],
             },
             { ai: "breather" },
-            { ai: "random" },
+            { ai: "interceptor" },
             { ai: "phantom" },
         ],
     },

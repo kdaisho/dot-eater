@@ -52,7 +52,7 @@ const MAPS = {
             AiType.splitter,
             AiType.splitter,
             AiType.breather,
-            AiType.phantom,
+            AiType.interceptor,
         ],
     },
     large: {
@@ -62,13 +62,13 @@ const MAPS = {
         doors: 8,
         enemies: [
             AiType.splitter,
-            AiType.chase,
+            AiType.interceptor,
             AiType.breather,
             AiType.splitter,
             AiType.breather,
-            AiType.phantom,
+            AiType.interceptor,
             AiType.splitter,
-            AiType.chase,
+            AiType.interceptor,
         ],
     },
 }

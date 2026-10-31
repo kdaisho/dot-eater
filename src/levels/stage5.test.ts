@@ -31,7 +31,7 @@ const MAPS = {
             AiType.splitter,
             AiType.splitter,
             AiType.breather,
-            AiType.ambusher,
+            AiType.interceptor,
         ],
     },
     large: {
@@ -42,12 +42,12 @@ const MAPS = {
         enemies: [
             AiType.splitter,
             AiType.breather,
-            AiType.ambusher,
+            AiType.interceptor,
             AiType.splitter,
             AiType.breather,
+            AiType.interceptor,
             AiType.splitter,
-            AiType.chase,
-            AiType.ambusher,
+            AiType.interceptor,
         ],
     },
 }

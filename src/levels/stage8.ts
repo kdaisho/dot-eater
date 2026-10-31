@@ -38,12 +38,12 @@ export const stage8: LevelData = {
             "#####################",
         ],
         // Easy: a chaser, a breather (KDA-291) and the phantom; Medium adds
-        // the ambusher.
+        // an interceptor (KDA-292).
         enemies: [
             { ai: "chase" },
             { ai: "breather" },
             { ai: "phantom" },
-            { ai: "ambusher" },
+            { ai: "interceptor" },
         ],
     },
     large: {
@@ -71,14 +71,15 @@ export const stage8: LevelData = {
             "#.............PQ............#",
             "#############################",
         ],
-        // Hard: the medium map's four, a patroller circling the upper rooms
-        // and a second breather (KDA-291); Super Hard adds a Splitter and a
-        // wanderer.
+        // Hard: an interceptor (KDA-292), a breather (KDA-291), the phantom,
+        // a second interceptor, a patroller circling the upper rooms and a
+        // second breather; Super Hard adds a Splitter and a third
+        // interceptor.
         enemies: [
-            { ai: "chase" },
+            { ai: "interceptor" },
             { ai: "breather" },
             { ai: "phantom" },
-            { ai: "ambusher" },
+            { ai: "interceptor" },
             {
                 ai: "patroller",
                 route: [
@@ -90,7 +91,7 @@ export const stage8: LevelData = {
             },
             { ai: "breather" },
             { ai: "splitter" },
-            { ai: "random" },
+            { ai: "interceptor" },
         ],
     },
     rules: { fog: { radius: 4 } },

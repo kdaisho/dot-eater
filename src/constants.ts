@@ -30,6 +30,9 @@ export const AiType = {
     // cells off, and keeps its distance between breaths (KDA-291, see
     // enemyBreath.ts).
     breather: 6,
+    // Reads the player's moves and cuts it off, coming at it from a side
+    // the other enemies don't (see intercept.ts).
+    interceptor: 7,
 } as const
 export type AiType = (typeof AiType)[keyof typeof AiType]
 

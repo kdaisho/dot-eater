@@ -133,9 +133,10 @@ describe("createGameState at a difficulty", () => {
         const level = stage9.superHard
         const game = createGameState(level)
         const speeds = game.enemies.map((e) => e.speed)
-        // The chaser and ambusher at the level's 2.25, the rest at their
-        // defaults: a breather, a phantom, a patroller, a second breather
-        // (KDA-291), a Splitter and its spare slot, and a random.
+        // The hunters (two interceptors, KDA-292) at the level's 2.25, the
+        // rest at their defaults: a breather, a phantom, a patroller, a
+        // second breather (KDA-291), a Splitter and its spare slot, and an
+        // interceptor.
         expect(speeds).toEqual([
             2.25,
             2.25,

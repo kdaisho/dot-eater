@@ -5,6 +5,7 @@ import {
     BREATHER_KEEP_FAR,
     BREATHER_KEEP_NEAR,
     Cell,
+    PLAYER_SPEED,
     SPREAD_SLACK,
 } from "./constants"
 import type { Character } from "./character"
@@ -20,6 +21,17 @@ import {
     type MoveState,
     type SlideDistance,
 } from "./ice"
+import {
+    approachSides,
+    FLANK_SLACK,
+    INTERCEPT_CLOSE,
+    interceptAim,
+    NONE,
+    PLAYER_SIDE,
+    predictRoute,
+    searchFrom,
+    type CellValue,
+} from "./intercept"
 import { distanceMap, openNeighbours, type DistanceMap } from "./path"
 import { allDirections, directions, samePos, vec2, type Vec2 } from "./vec2"
 
@@ -134,8 +146,10 @@ function nearestBy<T>(targets: readonly T[], away: (t: T) => number) {
 // chaseStep); a caller moving several enemies in one tick can share it
 // between them. `crowd` is the other enemies in play (the enemy itself may
 // be among them), where they are now, so a chaser, ambusher or Splitter
-// keeps from stacking on one of its kind (see spreadChoice). Returns whether
-// it held its move for that; the caller counts how long (heldFor).
+// keeps from stacking on one of its kind (see spreadChoice). `targetSpeed`
+// is the player's speed, which an interceptor times its cut-off by (see
+// interceptStep). Returns whether it held its move for that; the caller
+// counts how long (heldFor).
 export function enemyMove(
     cells: Cells,
     enemy: Character,
@@ -146,20 +160,13 @@ export function enemyMove(
     blocked: BlockMap | null = null,
     view: Cells = blocked === null ? cells : blockedView(cells, blocked),
     shared: ChaseDistances = new Map(),
-    crowd: readonly Character[] = []
+    crowd: readonly Character[] = [],
+    targetSpeed: number = PLAYER_SPEED
 ): boolean {
+    const player = { targetLast, speed: targetSpeed, cells }
     const next =
         blocked === null
-            ? nextPos(
-                  cells,
-                  ice,
-                  enemy,
-                  target,
-                  targetLast,
-                  random,
-                  shared,
-                  crowd
-              )
+            ? nextPos(cells, ice, enemy, target, player, random, shared, crowd)
             : blocked[enemy.pos.y][enemy.pos.x]
               ? escapeStep(cells, enemy, blocked)
               : enemy.ai === AiType.phantom
@@ -169,7 +176,7 @@ export function enemyMove(
                       ice,
                       enemy,
                       target,
-                      targetLast,
+                      player,
                       random,
                       shared,
                       crowd,
@@ -189,12 +196,18 @@ export function enemyMove(
     return false
 }
 
+// The player an enemy goes after, as nextPos needs it besides its cell
+// (see nextPos).
+type Hunted = { targetLast: Vec2; speed: number; cells: Cells }
+
 // What a chaser, ambusher or Splitter chooses in place of a cell when it
 // holds its move so as not to stack (see spreadChoice).
 const HOLD = "hold"
 
 // The cell the enemy moves to this time, or null to stay put (HOLD when
-// that is to keep from stacking). `cells` are
+// that is to keep from stacking). `player` is where the target came from
+// on its latest move, its speed, and the cells as players see them (with
+// nothing blocked). `cells` are
 // the cells it may move through; `paths(goal)` the ones distances to `goal`
 // are measured over (see goalView), the same unless cells are blocked.
 function nextPos(
@@ -202,12 +215,13 @@ function nextPos(
     ice: IceMap,
     enemy: Character,
     target: Vec2,
-    targetLast: Vec2,
+    player: Hunted,
     random: Random,
     shared: ChaseDistances,
     crowd: readonly Character[],
     paths: (goal: Vec2) => Cells = () => cells
 ): Vec2 | typeof HOLD | null {
+    const { targetLast } = player
     switch (enemy.ai) {
         case AiType.random: {
             const pos = candidateMoves(cells, enemy)
@@ -250,6 +264,17 @@ function nextPos(
                     : target
             return breatherStep(cells, ice, enemy, aim, paths, shared, crowd)
         }
+        case AiType.interceptor:
+            return interceptStep(
+                cells,
+                ice,
+                enemy,
+                target,
+                player,
+                paths,
+                shared,
+                crowd
+            )
         case AiType.patroller:
             return patrolStep(cells, ice, enemy, paths)
         case AiType.phantom:
@@ -447,6 +472,162 @@ function chaseStep(
     return spreadChoice(scored, stacks, hold)
 }
 
+// The interceptor (KDA-292; see intercept.ts) reads the player's moves.
+// Within INTERCEPT_CLOSE moves of the player (by `reach`, its own way
+// there: from the cells it may step to, never back through its own cell,
+// as chaseStep scores them), or when the player is in a blocked patch, it
+// goes for the player as a chaser does. Otherwise it guesses the player's
+// route (predictRoute, leading away from the other enemies, and through
+// blocked cells, which players walk into) and aims at
+// the first cell of it it can reach no later than the player, else the
+// farthest it can reach (interceptAim), else the player. Standing on that
+// cell, it goes for the player, as an ambusher does.
+//
+// It scores its ways by moves to the aim as chaseStep does (slide-aware,
+// with the shared distances when they are exact), then flanks: among the
+// ways at most FLANK_SLACK longer than the best, it takes the one coming
+// at the player from the side the fewest other hunting enemies (every kind
+// but random and patroller) are on (approachSides: through which of the
+// player's neighbours a shortest way enters its cell), then the shorter,
+// then direction order. A way onto the player's cell is on no side, so it
+// is always taken when it is that close. So instead of trailing a chaser
+// down the corridor behind the player it goes round to close another way
+// out. Then the spread rule, as spreadChoice: one that would stack on
+// another interceptor gives way to the next in that order within
+// SPREAD_SLACK of the best, else it holds (mayHold). Once the hold has run
+// out it takes any other way that doesn't stack, however much longer,
+// and stacks only when there is none: where a chaser would stack for a
+// moment, an interceptor goes round another way (three of them piling
+// onto a player that stands still, say, one holding behind the next).
+//
+// Searches per move: its own reach, and the other enemies' distances when
+// the route comes to a junction (none when close), plus the aim's
+// distances and the player's sides, both shared in the tick (`shared`)
+// between enemies aiming at one cell or going after one player, and one
+// with its own cell blocked when a way near the best may double back
+// through it.
+function interceptStep(
+    cells: Cells,
+    ice: IceMap,
+    enemy: Character,
+    target: Vec2,
+    player: Hunted,
+    paths: (goal: Vec2) => Cells,
+    shared: ChaseDistances,
+    crowd: readonly Character[]
+): Vec2 | typeof HOLD | null {
+    const pos = candidateMoves(cells, enemy)
+    if (pos.length === 0) return null
+    const others = crowd.filter((other) => other !== enemy)
+    const reach = searchFrom(cells, pos, 1, enemy.pos).dist
+    const close =
+        samePos(target, enemy.pos) ||
+        cells[target.y][target.x] === Cell.wall ||
+        reach(target) <= INTERCEPT_CLOSE
+    let aim = target
+    if (close) {
+        // As a chaser does (see nextPos).
+        if (samePos(target, enemy.pos)) aim = player.targetLast
+    } else {
+        // Searched only if the route comes to a junction.
+        let away: CellValue | null = null
+        const awayFrom = (v: Vec2) => {
+            away ??= searchFrom(
+                cells,
+                others.map((other) => other.pos)
+            ).dist
+            return away(v)
+        }
+        // Players walk into blocked cells (a stink cloud), so the route is
+        // read on the cells as they see them.
+        const route = predictRoute(
+            player.cells,
+            target,
+            player.targetLast,
+            awayFrom
+        )
+        const cut = interceptAim(route, reach, enemy.speed, player.speed)
+        if (cut && !samePos(cut, enemy.pos)) aim = cut
+    }
+
+    const icy = hasIce(ice)
+    const states = pos.map((v) =>
+        icy ? arrival(cells, ice, enemy.pos, v) : { pos: v, heading: FREE }
+    )
+    const score = (dist: SlideDistance) =>
+        states.map((state) => (state === null ? Infinity : dist(state)))
+    const open = sharedDistance(shared, ice, aim, paths)
+    const here = open({ pos: enemy.pos, heading: FREE })
+    const slack = Math.max(FLANK_SLACK, SPREAD_SLACK)
+    let d = score(open)
+    // A way whose shared distance is more than the enemy's own may go back
+    // through the enemy's cell (see chaseStep): then search with it
+    // blocked. Without ice, one just a move more than the enemy's own with
+    // a neighbour (not the enemy's cell) a move nearer has a way that
+    // doesn't: from there on every cell is nearer than the enemy's.
+    const cutsBack = (v: Vec2, dist: number) =>
+        dist > here &&
+        (icy ||
+            dist !== here + 1 ||
+            !openNeighbours(cells, v).some(
+                (n) =>
+                    !samePos(n, enemy.pos) &&
+                    open({ pos: n, heading: FREE }) === here
+            ))
+    const own = () =>
+        score(
+            icy
+                ? slideDistances(paths(aim), ice, aim, enemy.pos)
+                : cellDistance(distanceMap(paths(aim), aim, enemy.pos))
+        )
+    const near = Math.min(...d) + slack
+    // Whether `d` is the enemy's own (exact for every way), not only for
+    // the ways near the best.
+    let exact = false
+    if (d.some((v, i) => v <= near && cutsBack(pos[i], v))) {
+        d = own()
+        exact = true
+    }
+    const best = Math.min(...d)
+
+    const sideOf = sharedSides(shared, cells, target)
+    const hunters = others
+        .filter((o) => o.ai !== AiType.random && o.ai !== AiType.patroller)
+        .map((o) => sideOf(o.pos))
+    const crowding = (v: Vec2) => {
+        const side = sideOf(v)
+        if (side === PLAYER_SIDE || side === NONE) return 0
+        return hunters.filter((s) => s === side).length
+    }
+    const rank = (scores: readonly number[]) =>
+        pos
+            .map((v, i) => ({
+                v,
+                i,
+                d: scores[i],
+                n: scores[i] <= best + FLANK_SLACK ? crowding(v) : Infinity,
+            }))
+            // Infinity - Infinity is NaN, which falls through to the next
+            // key.
+            .sort((a, b) => a.n - b.n || a.d - b.d || a.i - b.i)
+    const ranked = rank(d)
+    const [first] = ranked
+    const stacks = (v: Vec2) => stacksOn(crowd, enemy, v)
+    if (!stacks(first.v)) return first.v
+    const other = ranked.find(
+        (c) => c !== first && c.d <= best + SPREAD_SLACK && !stacks(c.v)
+    )
+    if (other) return other.v
+    if (mayHold(enemy)) return HOLD
+    // The hold has run out: any way that doesn't stack, however long,
+    // before stacking. The shared distances are exact only near the best
+    // (see above), and a way far from it may reach the aim only back
+    // through the enemy's cell, so score them all its own way first (the
+    // ways near the best, and so the best, score the same).
+    const ways = exact ? ranked : rank(own())
+    return ways.find((c) => c.d < Infinity && !stacks(c.v))?.v ?? first.v
+}
+
 // Two enemies of one kind (AI type) that stand on the same cell, having
 // come from the same cell, move as one from then on: chasers, ambushers and
 // phantoms choose without chance and never block each other, so the player
@@ -489,7 +670,8 @@ function spreadChoice(
 // One still to take its turn this tick counts where it is, so it had
 // better not be about to leave that cell: turnOrder gives it its turn
 // first (but on a loop of waits).
-// Only chasers, ambushers, Splitters, phantoms and breathers keep from
+// Only chasers, ambushers, Splitters, phantoms, breathers and
+// interceptors keep from
 // stacking: random enemies part by chance and patrollers keep to their
 // routes.
 export function stacksOn(
@@ -515,6 +697,7 @@ const SPREADS: ReadonlySet<AiType> = new Set([
     AiType.splitter,
     AiType.phantom,
     AiType.breather,
+    AiType.interceptor,
 ])
 
 // The order the `ready` enemies (indexes into `enemies`, in slot order)
@@ -612,6 +795,29 @@ function sharedDistance(
         shared.set(key, dist)
     }
     return dist
+}
+
+// The sides each cell comes at the player at `target` from (approachSides),
+// for interceptStep, kept with `shared` so every interceptor going after
+// that player in one tick shares one search.
+const sidesShared = new WeakMap<ChaseDistances, Map<string, CellValue>>()
+function sharedSides(
+    shared: ChaseDistances,
+    cells: Cells,
+    target: Vec2
+): CellValue {
+    let byTarget = sidesShared.get(shared)
+    if (byTarget === undefined) {
+        byTarget = new Map()
+        sidesShared.set(shared, byTarget)
+    }
+    const key = `${target.x},${target.y}`
+    let sides = byTarget.get(key)
+    if (sides === undefined) {
+        sides = approachSides(cells, target)
+        byTarget.set(key, sides)
+    }
+    return sides
 }
 
 // A distance map read as a SlideDistance, for a map without ice (every

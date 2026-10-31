@@ -27,13 +27,15 @@ describe("stage 6", () => {
     })
 
     // Every difficulty gets phantoms and a breather from the start (a
-    // phantom first, KDA-291), and a chaser from Medium; the large map adds
-    // a second breather, and Super Hard an ambusher and a second chaser.
+    // phantom first, KDA-291), and an interceptor from Medium (KDA-292);
+    // the large map adds a second breather and a chaser at Hard (one
+    // interceptor: no room for two, PM call), and Super Hard two more
+    // interceptors.
     const MIX = {
-        easy: { phantom: 2, chase: 0, ambusher: 0, breather: 1 },
-        medium: { phantom: 2, chase: 1, ambusher: 0, breather: 1 },
-        hard: { phantom: 3, chase: 1, ambusher: 0, breather: 2 },
-        superHard: { phantom: 3, chase: 2, ambusher: 1, breather: 2 },
+        easy: { phantom: 2, chase: 0, breather: 1, interceptor: 0 },
+        medium: { phantom: 2, chase: 0, breather: 1, interceptor: 1 },
+        hard: { phantom: 2, chase: 1, breather: 2, interceptor: 1 },
+        superHard: { phantom: 2, chase: 1, breather: 2, interceptor: 3 },
     }
     it.each(DIFFICULTIES)("brings out phantoms and breathers at %s", (d) => {
         const ais = parseLevel(stage6, d).enemies.map((e) => e.ai)
@@ -43,8 +45,8 @@ describe("stage 6", () => {
         expect({
             phantom: count(AiType.phantom),
             chase: count(AiType.chase),
-            ambusher: count(AiType.ambusher),
             breather: count(AiType.breather),
+            interceptor: count(AiType.interceptor),
         }).toEqual(MIX[d])
     })
 })

@@ -5,8 +5,8 @@ import type { LevelData } from "../level"
 // least 3 cells wide (the bar splits the middle one), so beside the 2-wide
 // boss there is always a cell its breath misses. A 1-wide corridor runs
 // all round the arena, where the boss doesn't fit, so its touch never
-// reaches there; the minions (chasers, ambushers, breathers (KDA-291)
-// and dot-dropping Splitters) start there and hunt the player everywhere. Single-cell
+// reaches there; the minions (dot-dropping Splitters, breathers, KDA-291,
+// and from Medium interceptors, KDA-292) start there and hunt the player everywhere. Single-cell
 // doors through the arena's 1-thick wall lead in, with the corridor
 // running straight past each, so a player in a door gets out of a breath
 // in two moves (out and to the side), and one in the corridor in one.
@@ -61,7 +61,7 @@ export const stage5: LevelData = {
             { ai: "splitter" },
             { ai: "splitter" },
             { ai: "breather" },
-            { ai: "ambusher" },
+            { ai: "interceptor" },
         ],
     },
     large: {
@@ -92,12 +92,12 @@ export const stage5: LevelData = {
         enemies: [
             { ai: "splitter" },
             { ai: "breather" },
-            { ai: "ambusher" },
+            { ai: "interceptor" },
             { ai: "splitter" },
             { ai: "breather" },
+            { ai: "interceptor" },
             { ai: "splitter" },
-            { ai: "chase" },
-            { ai: "ambusher" },
+            { ai: "interceptor" },
         ],
     },
     boss: {},

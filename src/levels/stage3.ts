@@ -15,12 +15,13 @@ import type { LevelData } from "../level"
 // The medium map (21x17) is the old rink grown a little: a 13x9 rink, the
 // ring, and a corridor above and below. Its enemies are a patroller going
 // clockwise round the ring, a chaser, a breather (KDA-291) and (from
-// Medium) a patroller sweeping straight down the rink's centre column and
-// back. The large map (29x21) has a 17x13 rink and, either side of the
-// ring, a pair of side corridors with crossings, room to dodge eight
-// enemies: the ring patroller, the chaser and the breather, a second ring
-// patroller going anticlockwise, an ambusher and a second breather (Hard),
-// then the centre sweeper and a wanderer (Super Hard).
+// Medium) an interceptor (KDA-292). The large map (29x21) has a 17x13 rink
+// and, either side of the ring, a pair of side corridors with crossings,
+// room to dodge eight enemies: the ring patroller, an interceptor and the
+// breather, a second ring patroller going anticlockwise, a second
+// interceptor and a second breather (Hard), then a patroller sweeping
+// straight down the rink's centre column and back, and a third interceptor
+// (Super Hard).
 //
 // The Penguin walks the rink like floor: the dots others can only pass over
 // mid-slide are easy pickings for it, and the enemies that follow it onto
@@ -62,13 +63,7 @@ export const stage3: LevelData = {
             },
             { ai: "chase" },
             { ai: "breather" },
-            {
-                ai: "patroller",
-                route: [
-                    [10, 3],
-                    [10, 13],
-                ],
-            },
+            { ai: "interceptor" },
         ],
     },
     large: {
@@ -106,7 +101,7 @@ export const stage3: LevelData = {
                     [5, 17],
                 ],
             },
-            { ai: "chase" },
+            { ai: "interceptor" },
             { ai: "breather" },
             {
                 ai: "patroller",
@@ -117,7 +112,7 @@ export const stage3: LevelData = {
                     [23, 17],
                 ],
             },
-            { ai: "ambusher" },
+            { ai: "interceptor" },
             { ai: "breather" },
             {
                 ai: "patroller",
@@ -126,7 +121,7 @@ export const stage3: LevelData = {
                     [14, 17],
                 ],
             },
-            { ai: "random" },
+            { ai: "interceptor" },
         ],
     },
 }

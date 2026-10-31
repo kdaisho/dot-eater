@@ -1117,7 +1117,8 @@ export function step(
                 blocked,
                 enemyCells,
                 aims,
-                crowd
+                crowd,
+                players[aimed[target]].character.speed
             )
         }
         enemy.heldFor = held ? enemy.heldFor + dt : 0

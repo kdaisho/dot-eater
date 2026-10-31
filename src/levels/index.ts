@@ -13,6 +13,13 @@ import { stage10 } from "./stage10"
 
 // Every stage at every difficulty. Parsed once on load, so a broken level
 // file fails immediately.
+//
+// Every stage sprinkles interceptors (see intercept.ts) into its lists
+// (KDA-292): none at Easy, then one more at each difficulty, so 1 at
+// Medium (the medium map's fourth), 2 at Hard and 3 at Super Hard (on the
+// large map, mostly the fifth, sixth and eighth). Each took the place of
+// one of the stage's own enemies, so the stage notes below give its own
+// mix.
 export const stages: readonly Stage[] = [
     stage1,
     stage2,

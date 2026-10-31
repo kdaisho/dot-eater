@@ -36,6 +36,7 @@ import {
 } from "./game"
 import { eatenDotVisible, glidePos, wrapCopies } from "./glide"
 import { inStance } from "./guard"
+import { sneakAlpha } from "./intercept"
 import { fistBounce, jabLunge, type Jab } from "./jab"
 import { computeLayout, type Layout } from "./layout"
 import type { LevelRules } from "./level"
@@ -236,6 +237,7 @@ const ENEMY_SPRITES: Record<AiType, string> = {
     [AiType.phantom]: "👻",
     [AiType.splitter]: "🦠",
     [AiType.breather]: "🐍",
+    [AiType.interceptor]: "🐺",
 }
 
 // A Splitter's half (see splitter.ts) is drawn at this fraction of the usual
@@ -917,8 +919,21 @@ function drawCharacters(
     // it, with a fist just ahead (see drawFist), and an enemy in its guard
     // stance (see guard.ts) crouches, tinted (see stanceLook). With `windUp`
     // (Effects.bossBreath), a breather winding up its breath glows, a disc
-    // like a status's colour (see enemyBreathLooks, KDA-291).
+    // like a status's colour (see enemyBreathLooks, KDA-291). An
+    // interceptor (KDA-292) sneaks: it is drawn faint away from the players
+    // and fades in as it closes in on the nearest one in play (sneakAlpha),
+    // its disc and badges with it; fog hides it as it does any enemy.
     const marked = state.players.length > 1
+    const wrap = fogWrap(state.cells)
+    const hunted = state.players.flatMap((p) =>
+        p.out ? [] : [glidePos(p.character, alpha, cols, rows, p.rate)]
+    )
+    const sneak = (pos: Vec2) =>
+        sneakAlpha(
+            Math.min(
+                ...hunted.map((p) => fogDistance(pos, p, cols, rows, wrap))
+            )
+        )
     const enemySprite = (enemy: Character) => ({
         character: enemy,
         sprite: ENEMY_SPRITES[enemy.ai],
@@ -986,6 +1001,8 @@ function drawCharacters(
             cell *
             SPRITE_SCALE *
             (!isPlayer && isSplitterHalf(character) ? HALF_SCALE : 1)
+        const faint = character.ai === AiType.interceptor && !isPlayer
+        if (faint) ctx.globalAlpha = sneak(pos)
         for (const p of wrapCopies(pos, cols, rows)) {
             ctx.font = `${Math.round(size)}px sans-serif`
             const x = (p.x + 0.5) * cell
@@ -1025,6 +1042,7 @@ function drawCharacters(
                 )
             })
         }
+        if (faint) ctx.globalAlpha = 1
         // The arrow stays with the glide, not the jab's lunge.
         if (!arrow) continue
         for (const p of wrapCopies(glide, cols, rows)) {
