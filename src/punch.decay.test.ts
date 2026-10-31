@@ -1,17 +1,10 @@
 import { describe, expect, it } from "vite-plus/test"
 import { defeatEnemy } from "./breath"
 import { AiType, Cell, ENEMY_IDS, RESPAWN_DELAY, TICK_RATE } from "./constants"
-import { GUARD } from "./difficulty"
+import { GUARD, KNOCK_DECAY, USUAL_KNOCK } from "./difficulty"
 import type { GameEvent } from "./events"
 import { drawnPos, IDLE, step, type GameState, type MoveInput } from "./game"
-import {
-    KNOCK_LULL,
-    KNOCK_RECOVER,
-    KNOCK_STEPS,
-    knockLevel,
-    punch,
-    tickPunches,
-} from "./punch"
+import { knockLevel, punch, tickPunches } from "./punch"
 import {
     fixedRandom,
     makeEnemy,
@@ -69,7 +62,7 @@ describe("the knockback's decay", () => {
         const enemy = makeEnemy(3, 1)
         const state = makeState(room, { x: 2, y: 1 }, [enemy])
         const player = state.players[0]
-        expect(KNOCK_STEPS).toEqual([1, 0.7, 0.5, 0.3, 0])
+        expect(USUAL_KNOCK.steps).toEqual([1, 0.7, 0.5, 0.3, 0])
         // How far each punch in a row sends it from rest on (3, 1): to
         // (4, 1) for a full cell, else turning round that far out.
         const knocks = [1, 2, 3, 4, 5, 6].map(() => {
@@ -84,7 +77,7 @@ describe("the knockback's decay", () => {
     it("still reports a knock of nothing as a hit, without moving", () => {
         const enemy = makeEnemy(3, 1)
         const state = makeState(room, { x: 2, y: 1 }, [enemy])
-        enemy.knocks = KNOCK_STEPS.length - 1
+        enemy.knocks = USUAL_KNOCK.steps.length - 1
         rest(enemy)
         // Not about to move off on its own.
         enemy.moveProgress = 0
@@ -158,13 +151,13 @@ describe("the knockback's decay", () => {
     it("recovers a step after the lull, then one every half second", () => {
         const enemy = makeEnemy(3, 1)
         const state = makeState(room, { x: 2, y: 1 }, [enemy])
-        enemy.knocks = KNOCK_STEPS.length - 1
-        expect(KNOCK_LULL).toBe(2)
-        expect(KNOCK_RECOVER).toBe(0.5)
+        enemy.knocks = USUAL_KNOCK.steps.length - 1
+        expect(USUAL_KNOCK.lull).toBe(2)
+        expect(USUAL_KNOCK.recover).toBe(0.5)
         const at = (seconds: number) => {
             enemy.sinceKnock = 0
             tickPunches(state, seconds)
-            return KNOCK_STEPS[knockLevel(enemy)]
+            return USUAL_KNOCK.steps[knockLevel(enemy)]
         }
         expect(at(1.99)).toBe(0)
         expect(at(2)).toBe(0.3)
@@ -200,7 +193,7 @@ describe("the knockback's decay", () => {
         punch(state, player)
         expect(enemy.knockTurn).toBeCloseTo(0.3)
         expect(enemy.sinceKnock).toBe(0)
-        expect(KNOCK_STEPS[knockLevel(enemy)]).toBe(0)
+        expect(USUAL_KNOCK.steps[knockLevel(enemy)]).toBe(0)
     })
 
     it("keeps knocking a full cell when the punches are spaced out", () => {
@@ -251,7 +244,64 @@ describe("the knockback's decay", () => {
         }
         expect(enemy.respawnIn).toBe(0)
         expect(enemy.guard).not.toBeNull()
-        expect(KNOCK_STEPS[knockLevel(enemy)]).toBe(1)
+        expect(USUAL_KNOCK.steps[knockLevel(enemy)]).toBe(1)
+    })
+})
+
+// KDA-290: Super Hard's decay (KNOCK_DECAY.superHard) is quicker and
+// recovers slower.
+describe("the knockback's decay on Super Hard", () => {
+    const superHard = KNOCK_DECAY.superHard
+
+    it("knocks a full cell, then 0.5, 0.2 and none, then none again", () => {
+        const enemy = makeEnemy(3, 1)
+        const state = makeState(room, { x: 2, y: 1 }, [enemy])
+        state.knock = superHard
+        const player = state.players[0]
+        const knocks = [1, 2, 3, 4, 5].map(() => {
+            rest(enemy)
+            punch(state, player)
+            if (samePos(enemy.pos, vec2(3, 1))) return 0
+            return enemy.knockTurn ?? 1
+        })
+        expect(knocks).toEqual([1, 0.5, 0.2, 0, 0])
+        expect(enemy.knocks).toBe(superHard.steps.length - 1)
+    })
+
+    it("recovers a step after 3 s, then one every 0.75 s", () => {
+        const enemy = makeEnemy(3, 1)
+        const state = makeState(room, { x: 2, y: 1 }, [enemy])
+        state.knock = superHard
+        enemy.knocks = superHard.steps.length - 1
+        const at = (seconds: number) => {
+            enemy.sinceKnock = 0
+            tickPunches(state, seconds)
+            return superHard.steps[knockLevel(enemy, superHard)]
+        }
+        expect(at(2.99)).toBe(0)
+        expect(at(3)).toBe(0.2)
+        expect(at(3.74)).toBe(0.2)
+        expect(at(3.75)).toBe(0.5)
+        expect(at(4.5)).toBe(1)
+        expect(at(10)).toBe(1)
+        // The usual decay would have it most of the way back by now.
+        enemy.sinceKnock = 2.5
+        expect(knockLevel(enemy)).toBe(1)
+        expect(knockLevel(enemy, superHard)).toBe(3)
+    })
+
+    it("counts the lull in game ticks, by the game's decay", () => {
+        const enemy = makeEnemy(3, 1)
+        const state = makeState(room, { x: 2, y: 1 }, [enemy], {
+            health: 100,
+        })
+        state.knock = superHard
+        enemy.knocks = superHard.steps.length - 1
+        for (let i = 0; i < 2 * TICK_RATE; i++) tick(state, IDLE)
+        // None back yet, where the usual lull would be over.
+        expect(knockLevel(enemy, state.knock)).toBe(3)
+        for (let i = 0; i < TICK_RATE; i++) tick(state, IDLE)
+        expect(knockLevel(enemy, state.knock)).toBe(2)
     })
 })
 

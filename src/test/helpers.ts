@@ -1,7 +1,14 @@
 import { createBoss, type Boss } from "../boss"
 import type { BreathDef } from "../breath"
 import { BREATHS } from "../breaths"
-import { AiType, Cell, CharacterId, ENEMY_IDS, TICK_RATE } from "../constants"
+import {
+    AiType,
+    Cell,
+    CharacterId,
+    ENEMY_IDS,
+    RESPAWN_DELAY,
+    TICK_RATE,
+} from "../constants"
 import { DEFAULT_ANIMAL } from "../roster"
 import { createCharacter, type Character } from "../character"
 import {
@@ -20,6 +27,7 @@ import {
     ENEMY_COUNT,
     MAP_SIZE,
     MAP_SIZES,
+    USUAL_KNOCK,
     type Difficulty,
     type MapSize,
 } from "../difficulty"
@@ -238,6 +246,8 @@ export function makeState(
         regrow: null,
         splitterDrops: false,
         guard: null,
+        knock: USUAL_KNOCK,
+        respawnDelay: RESPAWN_DELAY,
     }
 }
 

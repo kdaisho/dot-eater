@@ -61,10 +61,10 @@ const room = textMap([
 describe("the guard's odds", () => {
     it("are a chance of a guarder and a skill range per difficulty", () => {
         expect(GUARD).toEqual({
-            easy: { chance: 0.25, min: 0.2, max: 0.5 },
-            medium: { chance: 0.4, min: 0.3, max: 0.7 },
-            hard: { chance: 0.6, min: 0.4, max: 0.85 },
-            superHard: { chance: 0.75, min: 0.5, max: 0.85 },
+            easy: { chance: 0.35, min: 0.25, max: 0.55 },
+            medium: { chance: 0.55, min: 0.4, max: 0.75 },
+            hard: { chance: 0.75, min: 0.55, max: 0.85 },
+            superHard: { chance: 0.95, min: 0.7, max: 0.85 },
         })
         expect(GUARD_CAP).toBe(0.85)
         for (const d of DIFFICULTIES) {
@@ -102,12 +102,12 @@ describe("rollGuard", () => {
     })
 
     it("draws once, scaling the draw under the chance into the range", () => {
-        const random = counting(0.1)
-        // 0.1 is 0.4 of the way to easy's 0.25: 0.2 + 0.4 * 0.3.
-        expect(rollGuard(GUARD.easy, random)).toBeCloseTo(0.32)
+        const random = counting(0.14)
+        // 0.14 is 0.4 of the way to easy's 0.35: 0.25 + 0.4 * 0.3.
+        expect(rollGuard(GUARD.easy, random)).toBeCloseTo(0.37)
         expect(random.draws).toBe(1)
-        expect(rollGuard(GUARD.easy, () => 0.25)).toBe(0)
-        expect(rollGuard(GUARD.easy, () => 0)).toBeCloseTo(0.2)
+        expect(rollGuard(GUARD.easy, () => 0.35)).toBe(0)
+        expect(rollGuard(GUARD.easy, () => 0)).toBeCloseTo(0.25)
     })
 
     it("never goes over the cap", () => {
@@ -122,7 +122,7 @@ describe("rollGuards", () => {
         const state = makeState(room, { x: 5, y: 1 }, enemies)
         state.guard = GUARD.superHard
         enemies[1].respawnIn = 1
-        const values = [0.1, 0.9]
+        const values = [0.1, 0.97]
         rollGuards(state, () => values.shift()!)
         expect(enemies[0].guard).toBeGreaterThan(0)
         expect(enemies[1].guard).toBeNull()
