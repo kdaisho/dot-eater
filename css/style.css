@@ -75,6 +75,30 @@ body[data-dpad="on"][data-touch="on"] #play {
     z-index: 10;
 }
 
+.end-roll {
+    align-items: center;
+    background: #08001c;
+    cursor: pointer;
+    display: flex;
+    height: 100vh;
+    height: 100dvh;
+    justify-content: center;
+    left: 0;
+    position: fixed;
+    top: 0;
+    width: 100%;
+    z-index: 30;
+}
+
+/* As big as the window allows, in whole pixels' look. */
+.end-roll canvas {
+    aspect-ratio: 256 / 224;
+    image-rendering: pixelated;
+    max-height: 100%;
+    max-width: 100%;
+    width: min(100%, calc(100dvh * 256 / 224));
+}
+
 .overlay {
     color: #fff;
     left: 50%;

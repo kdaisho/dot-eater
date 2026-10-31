@@ -227,6 +227,8 @@ export const MusicTrackId = {
     stage8: "stage8",
     stage9: "stage9",
     stage10: "stage10",
+    // The end roll's (endRoll.ts); recorded only, see TRACKS.
+    endRoll: "endRoll",
 } as const
 export type MusicTrackId = (typeof MusicTrackId)[keyof typeof MusicTrackId]
 
@@ -258,6 +260,10 @@ const BACKBEAT = "k . h . s . h ."
 export const TRACKS: Readonly<Record<MusicTrackId, Track>> = {
     // The opening plays a recorded track; if it can't load, the title's tune.
     get opening() {
+        return this.title
+    },
+    // So does the end roll's.
+    get endRoll() {
         return this.title
     },
     // Title: a calm, cheerful C major tune.

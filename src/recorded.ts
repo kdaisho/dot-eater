@@ -5,8 +5,12 @@
 // out in loudness when they're encoded. No DOM access here.
 //
 // Loop points were found by matching the music on both sides of the jump,
-// then tuned by ear. Credits: djartmusic (the opening, stages 1–3), phantasticbeats
-// (stage 6), moodmode (stages 7 and 8), nocopyrightsound633 (stage 9).
+// then tuned by ear. Credits: djartmusic (the opening, stages 1–3, the end
+// roll), phantasticbeats (stage 6), moodmode (stages 7 and 8),
+// nocopyrightsound633 (stage 9).
+//
+// The end roll's track ends on its own (its last hit rings out by 86 s),
+// so it loops the whole file: a run left on THE END hears it again.
 
 import classic from "./assets/music/01-classic.mp3"
 import wrapMaze from "./assets/music/02-wrap-maze.mp3"
@@ -18,6 +22,7 @@ import patrolBase from "./assets/music/07-patrol-base.mp3"
 import frozenFog from "./assets/music/08-frozen-fog.mp3"
 import gauntlet from "./assets/music/09-gauntlet.mp3"
 import bossFinal from "./assets/music/10-boss-final.mp3"
+import endRoll from "./assets/music/11-end-roll.mp3"
 import opening from "./assets/music/opening.mp3"
 import { MusicTrackId } from "./music"
 
@@ -77,6 +82,7 @@ export const RECORDED_TRACKS: RecordedTracks = {
         loopStart: 9.3956,
         loopEnd: 169.3663,
     },
+    [MusicTrackId.endRoll]: { url: endRoll, loopStart: 0, loopEnd: 86.1 },
 }
 
 // Where in the file a recorded track is after `position` seconds of play:

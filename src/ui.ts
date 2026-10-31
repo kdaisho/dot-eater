@@ -554,6 +554,27 @@ function dotCount(n: number): string {
 export function hideOverlay() {
     document.getElementById("backdrop")?.remove()
     document.getElementById("overlay")?.remove()
+    document.getElementById("end-roll")?.remove()
+}
+
+// The end roll's screen: a black page with one pixel canvas of
+// END_ROLL_WIDTH x END_ROLL_HEIGHT, scaled up to fit. It stays up while
+// the end roll's screen changes (a skip), so main draws on the same
+// canvas each frame. Returns that canvas.
+export function showEndRoll(width: number, height: number): HTMLCanvasElement {
+    const shown = document.querySelector<HTMLCanvasElement>("#end-roll canvas")
+    if (shown) return shown
+    hideOverlay()
+    const page = document.createElement("div")
+    page.id = "end-roll"
+    page.className = "end-roll"
+    const canvas = document.createElement("canvas")
+    canvas.width = width
+    canvas.height = height
+    canvas.setAttribute("aria-label", "End roll")
+    page.appendChild(canvas)
+    document.body.appendChild(page)
+    return canvas
 }
 
 function show({
@@ -696,6 +717,8 @@ export type OverlayTap =
 
 export function overlayTap(target: EventTarget | null): OverlayTap | undefined {
     if (!(target instanceof Element)) return undefined
+    // A tap on the end roll is a press, as on a one-item menu.
+    if (target.closest("#end-roll")) return { kind: "item", index: 0 }
     if (!target.closest("#overlay, #backdrop")) return undefined
     if (target.closest("[data-back]")) return { kind: "back" }
     const item = target.closest<HTMLElement>("#overlay [data-index]")

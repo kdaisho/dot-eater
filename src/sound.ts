@@ -103,7 +103,8 @@ export function playEventSounds(
 // story menus too), the stage's while playing, frozen while paused
 // (settings opened from pause included). None from the ending outro on, so
 // the stage clear and game over jingles play alone; the result screens,
-// story mode's clear card and ending included, stay quiet.
+// story mode's clear card and ending included, stay quiet. The end roll
+// plays its own track (endRoll.ts).
 export type MusicCue = { track: MusicTrackId; paused: boolean }
 
 export function musicForScreen(screen: Screen): MusicCue | undefined {
@@ -136,6 +137,8 @@ export function musicForScreen(screen: Screen): MusicCue | undefined {
         case "storyClear":
         case "storyEnd":
             return undefined
+        case "endRoll":
+            return { track: MusicTrackId.endRoll, paused: false }
     }
 }
 
