@@ -1,6 +1,6 @@
 # Handover
 
-Last updated: 2026-10-30. Read `CLAUDE.md` first for project conventions.
+Last updated: 2026-10-31. Read `CLAUDE.md` first for project conventions.
 
 ## Where things stand
 
@@ -10,116 +10,134 @@ Last updated: 2026-10-30. Read `CLAUDE.md` first for project conventions.
     - Characters & breaths (#37–#43)
     - Stages (#23–#34, #44, #46)
     - Controllers & local 2-player (#49–#52)
-    - Polish (#55–#59)
-- **"Harder and more exciting" upgrade: done and live** (planned with the user on 2026-10-29). Six milestones, PRs #67–#95, Linear KDA-257 to KDA-286:
-    - **Health & punch** (#71, #73): a 100-health gauge replaces lives; a spammable punch knocks enemies back.
-    - **Rule & control tweaks** (#67, #68, #69, #79):
-        - 2P Bump setting.
-        - The Penguin walks normally on ice.
-        - Frozen enemies are walkable.
-        - Touch is drag-to-move, with Punch and Breath buttons.
-    - **Difficulty & bigger mazes** (#70, #72, #75, #86):
-        - Easy, Medium, Hard and Super Hard, with 3/4/6/8 enemies.
-        - Every stage has a medium (~21×17) and a large (~29×21) map.
-        - The view follows the player on big mazes.
-        - The enemy cap is 8.
-    - **Boss fight** (#74, #76, #77, #78): a boss stage is won by defeating the boss. The boss breathes, dots regrow, and Splitters drop dots.
-    - **Story & stage modes** (#88, #90): stages unlock only through story mode.
-    - **Ten stages:**
-        - Stages 1–4 remade (#84, #85, #80, #81).
-        - Stage 5 remade (#89, #94).
-        - New stages 6–9 (#82, #83, #91, #92).
-        - Stage 10, the final boss (#93).
-        - Same-type enemies no longer merge into one sprite (#87, #95).
-- `main` is at `5107f7b`. CI is green, with about 2770 tests passing.
-- **Backlog:**
-    - KDA-287 (polish on the spread rule)
-    - the idea backlog (KDA-223–227)
-    - the Promo video milestone (another session)
-- **Open PRs from other sessions:**
-    - #60 rewrites this handover for Polish and is now superseded; ask the user to close it.
-    - #61 and #62, Polish follow-ups.
-    - #63 → #64 → #66, the promo video stack.
-    - #65, a music volume fix.
+    - Polish (#55–#59, plus follow-ups #61, #62, #65)
+    - The "harder and more exciting" upgrade (#67–#97, KDA-257 to KDA-287). It brought health and punch, difficulties, two map sizes, the boss fight, story mode and ten stages.
+- **Tougher enemies: done and live** (2026-10-30 to 31). These came from user feedback after playing the upgrade. KDA-288 to KDA-293, no milestone:
+    - **Press on and guard** ([#98](https://github.com/kdaisho/dot-eater/pull/98), KDA-288):
+        - A punched enemy comes straight back.
+        - Knockback shrinks with repeated hits and recovers after a lull.
+        - Enemies roll a guard skill, and mashing gets blocked.
+    - **Charged breath** ([#99](https://github.com/kdaisho/dot-eater/pull/99), KDA-289): hold to charge (levels 1–5), release to fire. Every breath grows with the level: the Skunk floods corridors, and the Boar bores up to 5 walls.
+    - **Stronger enemies** ([#100](https://github.com/kdaisho/dot-eater/pull/100), KDA-290):
+        - Faster enemies (`ENEMY_SPEED_SCALE`) and better guards.
+        - Super Hard is much harder: 3 s respawn, faster boss breath.
+    - **Guard stance** ([#101](https://github.com/kdaisho/dot-eater/pull/101), KDA-293): a blocking enemy stops for 0.4 s. The user picked the look (a hunch, a steel tint and sparks) and the sound (a wooden thock).
+    - **Breather 🐍** ([#103](https://github.com/kdaisho/dot-eater/pull/103), KDA-291): an enemy with a small boss-like breath. It keeps its distance, and every stage list has at least one.
+    - **Interceptor 🐺** ([#102](https://github.com/kdaisho/dot-eater/pull/102), KDA-292): an enemy that predicts the player's route, heads it off, and fades when far away. Every stage has some.
+    - **Music volume** ([#65](https://github.com/kdaisho/dot-eater/pull/65)): `MUSIC_LEVEL` 2, plus a master limiter (`LIMITER` in `audio.ts`).
+- **State:** `main` is at `337108d` and the Pages deploy is green. Its test count, 3124 tests in 113 files, comes from a run on a detached copy of `337108d`.
+- **Open PRs:** only #63 → #64 → #66, the promo video stack. It belongs to another session; see "How we work".
+- **Backlog:** the idea backlog (KDA-223–227) and the Promo video milestone (KDA-250, owned by the other session).
 
 ### Start here (new session)
 
-1. Ask the user to play the preview and give feedback on the tuning list under "Open questions". Preview: `pnpm dev --port 5199 --strictPort` from a detached worktree of `main`.
-2. Turn their feedback into Linear issues (milestone "Ten stages", or a new "Tuning" milestone), then run them as a batch (see "How we work").
-3. Ask whether the promo video (KDA-250 and the #63–#66 stack) should show the new game. Its recorded runs predate health and punch, so `src/replay.ts` (PR #63) needs its checksum (`lives` → health) and the punch letter added, and the scenes need re-recording.
+1. Ask the user the three open questions under "Open questions" (each has a recommendation).
+2. Offer a preview of `main` and collect tuning feedback on the list below: `git worktree add --detach .claude/worktrees/preview-main origin/main`, `pnpm install`, then `pnpm dev --port 5199 --strictPort`.
+3. File the answers and the feedback as Linear issues in project Dot Eater, then run them as a batch (see "How we work").
 
 ## Code map
 
-The older modules are listed in `CLAUDE.md`. These are the ones the upgrade added or reshaped:
+The older modules are listed in `CLAUDE.md`. These are the ones the last two rounds of work added or reshaped:
 
-| Module                             | What it does                                                                                                                               |
-| ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
-| `difficulty.ts`                    | `Difficulty`, `ENEMY_COUNT` (3/4/6/8), `MAP_SIZE`, labels                                                                                  |
-| `level.ts`                         | `LevelData` with `medium`/`large` variants, `parseStage`, `sameForBoth`. Rejects sealed and trapped areas. A boss level needs `regrowDots` |
-| `game.ts`                          | `hurtPlayer`, `knockBack`, `checkEnd`/`cleared`, `playerBlocks` (Bump), and `playerTurn`/`defersMove`                                      |
-| `punch.ts`, `jab.ts`               | The punch and `knockEnemy`; the jab look                                                                                                   |
-| `ai.ts`                            | `ChaseDistances` (shared per tick), and the spread rule (`stacksOn`, `spreadChoice`, `mayHold`) for chase, ambusher, Splitter and phantom  |
-| `bossBreath.ts`, `boss.ts`         | The boss breath (wind-up, 2-wide line) and `boss.health`                                                                                   |
-| `regrow.ts`, `splitter.ts`         | Regrowing dots; Splitter drops                                                                                                             |
-| `camera.ts`, `layout.ts`           | The follow view (`MIN_CELL_PX` 20, `MIN_FIT_CELL_PX` 16)                                                                                   |
-| `touch.ts`, `dpad.ts`              | Drag to move (with a fallback), and the Punch/Breath buttons                                                                               |
-| `flow.ts`                          | The difficulty select, story mode (`Run`, `storyClear`, `storyEnd`) and stage mode                                                         |
-| `progress.ts`                      | `byDifficulty` bests, `storyBests`, `recordClear(..., { unlocks })`, `STAGE_COUNT` 10                                                      |
-| `src/test/bossArena.ts`, `maze.ts` | Arena escape and dodge sweeps (`dodgeHits`), and maze chokepoint checks                                                                    |
+| Module                     | What it does                                                                                                                              |
+| -------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| `difficulty.ts`            | `ENEMY_COUNT` (3/4/6/8), `MAP_SIZE`, `GUARD` odds per difficulty (`GUARD_CAP` 0.85), `ENEMY_SPEED_SCALE` and `enemySpeed()` (cap 3.4)     |
+| `game.ts`                  | `step`, `hurtPlayer`, `knockBack`, `checkEnd`; the knock state (`GameState.knock`, `USUAL_KNOCK`, `KNOCK_DECAY`) and the ice-slide branch |
+| `punch.ts`, `guard.ts`     | The punch and `knockEnemy`; guard rolls, `blockChance` (interval-based), and the 0.4 s stance (`GUARD_STANCE`, `tickStances`)             |
+| `breath.ts`, `breaths/`    | Breath engine; `chargeTick`, `CHARGE_SECONDS` 0.25, `MAX_CHARGE` 5; `BreathDef.shape(level)` and cost per level; two-pass wall regrowth   |
+| `ai.ts`                    | Enemy AI, the spread rule (`stacksOn`, `spreadChoice`, `mayHold`), `breatherStep`, `breatherOn`, `interceptStep`                          |
+| `enemyBreath.ts`           | The breather's breath (wind-up, line, damage) and its warning looks                                                                       |
+| `intercept.ts`             | Route prediction (`predictRoute`, `INTERCEPT_AHEAD` 10), `interceptAim`, and the fade (`sneakAlpha`)                                      |
+| `bossBreath.ts`, `boss.ts` | The boss breath and `boss.health` (breath damage is energy/25)                                                                            |
+| `render.ts`                | `ENEMY_SPRITES` (👺 👹 🦊 🤖 👻 🦠 🐍 🐺), cached steel-tinted guard sprites (`createGuardSprites`)                                       |
+| `audio.ts`                 | Music and effects, `MUSIC_LEVEL`, the master `LIMITER`                                                                                    |
+| `flow.ts`, `progress.ts`   | Difficulty select, story and stage modes; bests by difficulty, `STAGE_COUNT` 10                                                           |
+| `camera.ts`, `touch.ts`    | The follow view (`MIN_CELL_PX` 20, `MIN_FIT_CELL_PX` 16); drag to move and the Punch/Breath buttons                                       |
 
 ## Open questions and follow-ups
 
-- **Tuning to judge at preview.** Every number below is a PM placeholder:
-    - **Damage:** enemy touch 25, boss touch 40, boss breath 30 (stage 10: 35), invulnerability 1.5 s.
-    - **Punch:** a reach of about 1.07 cells, and whether `/` is a good P1 key.
-    - **Touch:** whether a 24 px drag, 72 px buttons and the fallback feel right on a real phone.
-    - **Pars:** stages 3, 4 and 8 have long pars (110–220 s).
-    - **Stage 9:** enemy speed 2.25.
-    - **Boss stages:** the Boar is weak at Hard and above.
-    - **Stage 8:** blind slides into fog.
-    - **View:** `MIN_CELL_PX` and `MIN_FIT_CELL_PX`.
+- **Questions for the user (asked, no answer yet):**
+    - **Boar charge cost:** a full charge facing a single wall still spends all 100 energy. Recommend paying only for the walls actually broken.
+    - **Touch Breath button:** should it show the charge level while held? No recommendation was given; PM view: yes.
+    - **Boar breaking the outer wall:** the user asked whether it's possible.
+        - Option A (easy) leaves a dead-end notch.
+        - Option B (medium effort) bores through the edge and wraps to the other side.
+        - Recommend B, as its own PR.
+- **Tuning to judge at preview.** Every number is a PM placeholder:
+    - **Earlier:**
+        - Damage: enemy touch 25, boss touch 40, boss breath 30 (35 on stage 10).
+        - Touch: 24 px drag, 72 px buttons.
+        - Long pars on stages 3, 4 and 8, and speed 2.25 on stage 9.
+        - Blind slides into fog on stage 8.
+        - The view settings `MIN_CELL_PX` and `MIN_FIT_CELL_PX`.
+        - The punch itself: the user said "punch is good" after KDA-288.
+    - **Knockback:** 1 → 0.7 → 0.5 → 0.3 → 0 cells, recovering after about 2 s.
+    - **Guards:** odds of 0.35/0.55/0.75/0.95 of being a guarder, by difficulty; the stance lasts 0.4 s.
+    - **Charge:** 0.25 s per level, and the cost per level of each breath.
+    - **Enemy speed scale:** 1.1/1.25/1.4/1.65, capped at 3.4.
+    - **Breather:** its breath interval and damage.
+    - **Interceptor:** its look-ahead and its fade.
+- **Things to watch when playing:**
+    - Stage 9 at Hard and Super Hard has no plain chaser or ambusher.
+    - On six large maps, an interceptor is among the first three enemies to come out.
 - **Known gaps:**
-    - During a deploy, a tab still open on the old 5-stage build can cut stage 6+ progress from the save.
+    - During a deploy, a tab still open on an old build can cut stage 6+ progress from the save.
     - Stage 7's middle patroller crosses the spawn corridor.
-    - A thawing enemy catches a player standing on it, but it blinks first.
-- **Filed:** KDA-287. The README is still out of date.
+    - `README.md` is out of date.
 
 ## Decisions already made
 
-All of these are in `docs/decisions.md`, by topic. The ones made with the user on 2026-10-29:
+All of these are in `docs/decisions.md`, by topic. See the Breaths section (Energy, Charge) and the Enemies section (Punch, Spread rule, Interceptor, Breather). The ones made with the user this round:
 
-- **Health:** health is the only life bar, with no lives. At 0 the stage is failed. In story mode you retry that stage.
-- **Maze sizes:** two map sizes per stage.
-- **Touch:** drag to move plus two buttons.
-- **Unlocks:** shared across difficulties, with bests kept per difficulty. Stages unlock only through story mode, in order.
-- **PM calls the user delegated** ("I trust your judgement"):
-    - Co-op plays story mode but saves nothing.
-    - Versus is stage-only.
-    - Stage themes 6–10.
-    - The spread rule: slack 2, hold for at most one move.
-    - The `RESPAWN_BLOCK_GRACE` spawn-camping cap.
+- **Punch** (KDA-288):
+    - A knocked enemy comes back.
+    - Knockback recovers after a lull.
+    - The guard skill is random per enemy, and better on harder difficulties.
+    - Faster spam gets more blocks.
+    - A blocked punch doesn't push the enemy.
+- **Guard stance** (KDA-293):
+    - A short 0.4 s stance that stops the enemy.
+    - The look is B+C (a hunch, a steel tint and sparks), and the sound is a wooden thock. The user chose them from the mock-up at https://claude.ai/artifact/7CfPTfdwLThuUs6Eup6Qyj.
+- **Charge** (KDA-289):
+    - Hold to charge and release to fire, for all five animals.
+    - The Boar bores straight ahead, one wall per level.
+    - The Skunk flows along corridors.
+- **Breather** (KDA-291):
+    - Damage like a small boss breath.
+    - Keeps its distance.
+    - Added to every stage list, and defeated like any enemy.
+- **PM calls the user delegated:**
+    - The interceptor's design and numbers.
+    - How the stage lists combine breathers, interceptors and a chaser at Hard.
+    - Super Hard's 3 s respawn and faster boss breath.
 
 ## How we work
 
-- **PM role:** the main session plans in Linear and delegates each issue to an agent in its own worktree (`isolation: "worktree"`). Agents push their branches; the main session opens the PRs, gets them reviewed, merges them and comments on the issues. Product calls go to the user with a recommendation.
+- **PM role:** the main session plans in Linear and delegates each issue to an agent in its own worktree (`isolation: "worktree"`, preview on its own port). The main session then:
+    - opens the PR and gets it reviewed by a separate agent
+    - sends fixes back to the author with SendMessage
+    - merges, cleans up and sets the issue to Done
+- **Product calls** go to the user with a recommendation (`AskUserQuestion`).
+    - For a visual or sound choice, publish a mock-up artifact with each option playable (as with the guard looks). The user picked from it quickly.
 - **Merging:**
-    - Only when the user's own message authorizes it, once per session. In this session it was "merge PRs once CI is green and the review is clean".
-    - Use merge commits only: `gh api -X PUT repos/kdaisho/dot-eater/pulls/N/merge -f merge_method=merge`.
-    - For a stack, retarget the next PR (`gh api -X PATCH .../pulls/N -f base=main`) before deleting the merged branch.
-- **Reviews:** one subagent per PR, at high effort, report only. Real bugs are fixed with regression tests that fail without the fix, then re-reviewed when the fix is sizeable.
-    - Tell reviewers to work only in their own `git worktree add --detach` copy. The `code-review` skill once ran `git checkout` in the main checkout.
-    - Treat a reviewer's numbers as claims. Fuzzes and differential runs against `main` were the strongest evidence.
-- **Merge order and conflicts:**
-    - Many branches hit the same `docs/decisions.md` lines (the par line, Stages, Progress), so expect a conflict on every merge.
-    - Resolving them in the finished agent's worktree with a small Python edit plus `pnpm fmt` was faster than asking agents.
-    - GitHub's `mergeable_state: clean` can be stale. Test the merged result locally before trusting it.
-- **CI:** the tests that sweep every stage's maps need `describe(..., { timeout: 30_000 }, ...)`. Some hit 5 s on CI as stages were added.
-- **Previews:** run `pnpm dev --port 5199 --strictPort` from a detached worktree (`.claude/worktrees/preview-*`). Never commit preview edits.
+    - Only with the user's own go-ahead. This session it was "merge PRs once CI is green and the review is clean", and "merge the ready ones" for the gameplay PRs after the preview.
+    - Merge commits only: `gh api -X PUT repos/kdaisho/dot-eater/pulls/N/merge -f merge_method=merge`.
+    - For a stack, retarget first (`pulls?state=open&base=<branch>`), then delete with `gh api -X DELETE .../git/refs/heads/<branch>`.
+- **Overlapping PRs:** merge one at a time. Before the next merge, merge `main` into the next PR (in a detached worktree, then `git push origin HEAD:<branch>`) and wait for CI.
+    - A PR in conflict with `main` (`mergeable_state: dirty`) gets **no CI run**, so a wait loop on its checks never ends. Check `mergeable_state` first.
+    - `docs/decisions.md` and the stage lists in `src/levels/` conflict on most merges.
+- **Reviews:** one subagent per PR, high effort, report only, in its own `git worktree add --detach` copy.
+    - Seeded simulations and mutation checks were the strongest evidence.
+    - Re-review after a sizeable fix.
+- **Previews:** keep `.claude/worktrees/preview-upgrade` (detached) at the top of the batch, on port 5199. After each merge, move it to `origin/main`. Never commit preview edits.
+- **Cleanup after a merge:**
+    - Stop the agent's preview.
+    - Check that its head is an ancestor of `origin/main`, then `git worktree remove -f -f` it (it's locked while the agent lives).
+    - Delete its local branches.
+- **Other session's work:** the promo stack (#63/#64/#66, KDA-248–256) and its worktrees `.claude/worktrees/agent-a1679…`, `a2a56…`, `a4a2d…`, `a52ee…`, `a6f05…` and `aeabe…` belong to another session. Don't touch, merge or remove them.
 - **Gotchas:**
     - The local `gh` is 2.3.0, so use `gh api`.
-    - `gh run view --log-failed` needs `--allow-escape-sequences` or a grep.
-    - The GitHub API sometimes resets connections, so check whether a PR was created before retrying.
-    - The Linear workspace has a free-plan issue cap; the user clears old issues when it's hit.
-    - The auto-mode check sometimes returns no verdict; just retry once.
+    - Plain `sleep` is blocked. Use a background `until` loop on `commits/<sha>/check-runs`.
     - In Linear, write full GitHub PR URLs.
-    - Disk is tight: remove worktrees when done (`git worktree remove --force --force` if an agent holds the lock).
+    - Disk is tight, so remove worktrees when done.
+    - The sprite 🦊 is the ambusher; the interceptor is 🐺.
