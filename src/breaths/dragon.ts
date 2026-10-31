@@ -12,9 +12,16 @@ export const BURNING: TileEffect = {
     look: { color: "rgba(255, 110, 20, 0.45)", emoji: "🔥" },
 }
 
+// The fire's range at charge `level`: 3 cells for a tap, one more a level,
+// 7 at the top (KDA-289; placeholders to tune at preview).
+export function fireRange(level: number): number {
+    return level + 2
+}
+
 // Dragon 🐉, fire breath (KDA-216): a line that defeats the first enemy it
-// hits; the cells it passed burn for 2 s and block enemies. Stat: balanced,
-// the default character.
+// hits; the cells it passed burn for 2 s and block enemies. Charging it
+// (KDA-289) makes the line longer (fireRange), for 20 energy a level.
+// Stat: balanced, the default character.
 //
 // The fire stops at the enemy it defeats: it burns the cells up to and
 // including that enemy's, and enemies further along are untouched. An enemy
@@ -24,8 +31,8 @@ export const BURNING: TileEffect = {
 // so the breath refuses and costs nothing.
 export const dragon: BreathDef = {
     animal: AnimalId.dragon,
-    shape: { kind: "line", range: 5 },
-    cost: 50,
+    shape: (level) => ({ kind: "line", range: fireRange(level) }),
+    cost: 20,
     cooldown: 1,
     duration: BURN_SECONDS,
     maxEnergy: 100,

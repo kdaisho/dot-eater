@@ -160,17 +160,27 @@ describe("main's particles and shake", () => {
         expect(seen.effects?.bossBreath).toBe(true)
     })
 
-    it("draws a blocked punch's shield (KDA-288) and ages it with the steps", () => {
+    // KDA-293: the sparks, and the fist bouncing back.
+    it("draws a blocked punch's sparks and bounces its fist back", () => {
         nextEvents = [
-            { type: "punchBlocked", player: 0, at: vec2(2, 1), enemy: 0 },
+            { type: "punched", player: 0, at: vec2(1, 1), facing: vec2(1, 0) },
+            {
+                type: "punchBlocked",
+                player: 0,
+                at: vec2(2, 1),
+                facing: vec2(1, 0),
+                enemy: 0,
+            },
         ]
         vi.advanceTimersByTime(20)
         nextEvents = []
-        expect(seen.effects?.shields).toEqual([
-            { enemy: 0, age: expect.any(Number) },
+        expect(seen.effects?.jabs).toEqual([
+            expect.objectContaining({ player: 0, blocked: true }),
         ])
-        vi.advanceTimersByTime(1000)
-        expect(seen.effects?.shields).toEqual([])
+        expect(seen.particles!.list.length).toBeGreaterThan(0)
+        // The system asks for reduced motion here: a guarding enemy
+        // doesn't crouch.
+        expect(seen.effects?.reducedMotion).toBe(true)
     })
 
     // Regression (the resume tick): effects moved on once more than the

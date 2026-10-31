@@ -22,9 +22,11 @@ import { allDirections, directions, samePos, vec2, type Vec2 } from "./vec2"
 // in one go, and it takes no enemy slot. Instead:
 //
 // - Breaths: any breath whose cells touch its footprint damages it once by
-//   its cost times BOSS_DAMAGE_PER_ENERGY (see breathe in breath.ts, which
-//   also stops lines and cones at its body). At 0 health it is defeated for
-//   good: BOSS_DEFEAT_POINTS, and it is no longer drawn, moved or caught by.
+//   the energy it spends times BOSS_DAMAGE_PER_ENERGY (see breathe in
+//   breath.ts, which also stops lines and cones at its body), so a charged
+//   breath does no more for its energy than taps do (KDA-289). At 0 health
+//   it is defeated for good: BOSS_DEFEAT_POINTS, and it is no longer
+//   drawn, moved or caught by.
 // - Moving: it chases the player it can get nearest (bossTarget) at its
 //   own speed, but only where all four of its cells fit (see bossMove), so
 //   1-wide corridors are safe from it.
@@ -102,9 +104,9 @@ export function inFootprint(pos: Vec2, cell: Vec2): boolean {
     return (dx === 0 || dx === 1) && (dy === 0 || dy === 1)
 }
 
-// The damage a breath costing `cost` energy does to the boss.
-export function bossDamage(cost: number): number {
-    return cost * BOSS_DAMAGE_PER_ENERGY
+// The damage a breath spending `energy` does to the boss.
+export function bossDamage(energy: number): number {
+    return energy * BOSS_DAMAGE_PER_ENERGY
 }
 
 // Take `damage` off the boss's health and flash it. At 0 it is defeated:

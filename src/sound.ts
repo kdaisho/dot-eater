@@ -63,8 +63,8 @@ export function soundForEvent(event: GameEvent): SfxId | undefined {
 // are one blip), in the order they first happened. The game over jingle
 // replaces the catch that lost the game. Each punch is one sound: its
 // first hit's if it landed (a punch reports enemies first, so an enemy's
-// thwack wins over the boss's thud), else a block's tok if an enemy blocked
-// it (KDA-288), else its whiff. A player punches once a tick at most, so
+// thwack wins over the boss's thud), else a block's thock if an enemy
+// blocked it (KDA-288, KDA-293), else its whiff. A player punches once a tick at most, so
 // one player's punch never silences the other's.
 export function eventSounds(events: readonly GameEvent[]): SfxId[] {
     const by = (type: "punchHit" | "punchBlocked") =>

@@ -1,5 +1,6 @@
 // @vitest-environment happy-dom
 import { beforeAll, describe, expect, it, vi } from "vite-plus/test"
+import type { MoveInput } from "./game"
 import type { Pad } from "./gamepad"
 
 // main with a gamepad: the pad drives the menus and play, a toast reports
@@ -246,6 +247,28 @@ describe("main with a gamepad", () => {
         tap(START)
         expect(screen()).toBe("pause")
         tap(START)
+        expect(screen()).toBe("playing")
+    })
+
+    // KDA-289: the breath charges while held and fires once let go.
+    it("holds the breath while A is held in play, letting go with it", async () => {
+        const { step } = await import("./game")
+        const moves = (from: number): MoveInput[] =>
+            vi
+                .mocked(step)
+                .mock.calls.slice(from)
+                .map(([, , m]) => ("held" in m ? m : m[0]))
+        const from = vi.mocked(step).mock.calls.length
+        pads = [pad([A])]
+        vi.advanceTimersByTime(100)
+        const held = moves(from)
+        expect(held.length).toBeGreaterThan(1)
+        expect(held[0]?.breath).toBe(true)
+        expect(held.every((m) => m.breathHeld)).toBe(true)
+        const after = vi.mocked(step).mock.calls.length
+        pads = [pad()]
+        vi.advanceTimersByTime(100)
+        expect(moves(after).every((m) => !m.breathHeld)).toBe(true)
         expect(screen()).toBe("playing")
     })
 

@@ -392,6 +392,22 @@ describe("playing", () => {
         expect(stepper).not.toHaveBeenCalled()
     })
 
+    // KDA-289: letting go of the breath while paused isn't the player
+    // choosing a level, so the charge goes, unfired.
+    it("drops every breath charge, unfired, on pause", () => {
+        const screen = playing()
+        const { breather } = screen.game.players[0]
+        breather.energy = breather.breath.maxEnergy
+        breather.charge = 0.6
+        const next = update(screen, tickInput(["pause"]), deps())
+        expect(next.kind).toBe("paused")
+        expect(breather.charge).toBeNull()
+        // Resumed with the breath let go: nothing fires.
+        const resumed = update(next, tickInput(["pause"]), deps())
+        update(resumed, tickInput([]), deps())
+        expect(breather.energy).toBe(breather.breath.maxEnergy)
+    })
+
     it("ignores confirm", () => {
         const screen = playing()
         const next = update(
@@ -603,6 +619,14 @@ describe("pauseIfPlaying", () => {
         const next = pauseIfPlaying(screen)
         expect(next).toEqual({ ...screen, kind: "paused" })
         expect(gameOf(next)).toBe(gameOf(screen))
+    })
+
+    // KDA-289: a blur or a hidden tab drops a breath charge unfired.
+    it("drops every breath charge, unfired", () => {
+        const screen = playing()
+        screen.game.players[0].breather.charge = 0.3
+        pauseIfPlaying(screen)
+        expect(screen.game.players[0].breather.charge).toBeNull()
     })
 
     it("leaves every other screen as it is", () => {

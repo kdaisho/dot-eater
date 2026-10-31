@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vite-plus/test"
-import { inFootprint } from "./boss"
-import type { BreathDef, BreathHit, TileEffect } from "./breath"
+import { bossDamage, inFootprint } from "./boss"
+import {
+    MAX_CHARGE,
+    type BreathDef,
+    type BreathHit,
+    type TileEffect,
+} from "./breath"
 import { BREATHS } from "./breaths"
 import { BURNING } from "./breaths/dragon"
 import {
@@ -48,13 +53,22 @@ const TICK = 1 / TICK_RATE
 const none = vec2(0, 0)
 const east = vec2(1, 0)
 
-type Press = { held?: Vec2; pressed?: Vec2; breath?: boolean }
+type Press = {
+    held?: Vec2
+    pressed?: Vec2
+    breath?: boolean
+    breathHeld?: boolean
+}
 
-function tick(state: GameState, { held, pressed, breath }: Press = {}) {
+function tick(
+    state: GameState,
+    { held, pressed, breath, breathHeld }: Press = {}
+) {
     const move: MoveInput = {
         held: held ? [held] : [],
         pressed: pressed ?? none,
         breath: breath ?? false,
+        breathHeld: breathHeld ?? false,
     }
     return step(state, TICK, move, fixedRandom(0))
 }
@@ -110,6 +124,10 @@ function bossGame(
     if (!ready) state.boss!.moveProgress = 0
     return state
 }
+
+// The damage a tap (level 1) of `breath` does: its cost over 25, the Owl
+// 0.4, the Dragon, Penguin and Boar 0.8, the Skunk 1.2.
+const tap = (breath: BreathDef) => bossDamage(breath.cost)
 
 // How far the player's drawn position is from the square the boss's cell
 // centres span, as collisions measure it.
@@ -168,14 +186,12 @@ describe("createGameState", () => {
 describe("breathing at the boss", () => {
     // Every real breath, from (1, 2) facing right, with the boss's
     // footprint (2-3, 1-2) right in front.
-    const damage = { owl: 1, dragon: 2, penguin: 2, skunk: 2, boar: 3 }
-
-    it.each(ANIMAL_IDS)("damages it by cost / 25: %s", (animal) => {
+    it.each(ANIMAL_IDS)("damages it by a tap's cost / 25: %s", (animal) => {
         const breath = BREATHS[animal]
         const state = bossGame(vec2(1, 2), vec2(2, 1), { breath })
         expect(tick(state, { breath: true })).toBeNull()
         const boss = state.boss!
-        expect(boss.health).toBe(BOSS_HEALTH - damage[animal])
+        expect(boss.health).toBeCloseTo(BOSS_HEALTH - tap(breath))
         expect(boss.flash).toBeGreaterThan(0)
         // Paid for, like any breath that fires.
         expect(state.players[0].breather.energy).toBe(
@@ -186,10 +202,36 @@ describe("breathing at the boss", () => {
         expect(boss.pos).toEqual(vec2(2, 1))
     })
 
+    // KDA-289: damage goes by the energy spent, so a charge does what the
+    // taps its energy pays for would, and the boss's health stays an
+    // energy budget: 300 for BOSS_HEALTH, whatever the character.
+    it.each(ANIMAL_IDS)(
+        "damages it by the energy a charged breath spends: %s",
+        (animal) => {
+            const breath = BREATHS[animal]
+            // A boss too slow to come round meanwhile.
+            const state = bossGame(vec2(1, 2), vec2(2, 1), {
+                breath,
+                speed: 0.01,
+            })
+            // Held for a full charge, then let go.
+            tick(state, { breath: true, breathHeld: true })
+            for (let i = 0; i < TICK_RATE; i++)
+                tick(state, { breathHeld: true })
+            tick(state)
+            const spent = breath.cost * MAX_CHARGE
+            expect(state.players[0].breather.energy).toBe(
+                breath.maxEnergy - spent
+            )
+            expect(state.boss!.health).toBeCloseTo(BOSS_HEALTH - spent / 25)
+            expect(bossDamage(300)).toBe(BOSS_HEALTH)
+        }
+    )
+
     it("lets the Boar's breath hit it with no wall to break", () => {
         const state = bossGame(vec2(1, 2), vec2(2, 1), { breath: BREATHS.boar })
         tick(state, { breath: true })
-        expect(state.boss!.health).toBe(BOSS_HEALTH - 3)
+        expect(state.boss!.health).toBeCloseTo(BOSS_HEALTH - tap(BREATHS.boar))
         expect(state.tiles).toEqual([])
         // With the boss elsewhere, the same breath refuses for free.
         const missed = bossGame(vec2(1, 2), vec2(5, 1), {
@@ -201,12 +243,13 @@ describe("breathing at the boss", () => {
     })
 
     it("damages it once however many of its cells a breath covers", () => {
-        // The Skunk's 3x3 cloud covers two of its cells, (2, 1) and (2, 2).
+        // A tap of the Skunk's cloud covers three of its cells, (2, 2),
+        // (2, 1) and (3, 2).
         const state = bossGame(vec2(1, 2), vec2(2, 1), {
             breath: BREATHS.skunk,
         })
         tick(state, { breath: true })
-        expect(state.boss!.health).toBe(BOSS_HEALTH - 2)
+        expect(state.boss!.health).toBeCloseTo(BOSS_HEALTH - tap(BREATHS.skunk))
     })
 
     it("hits it from the player's own cell", () => {
@@ -217,13 +260,13 @@ describe("breathing at the boss", () => {
             health: MAX_HEALTH,
         })
         tick(state, { breath: true })
-        expect(state.boss!.health).toBe(BOSS_HEALTH - 1)
+        expect(state.boss!.health).toBeCloseTo(BOSS_HEALTH - tap(BREATHS.owl))
     })
 
     it("stops a line at its body", () => {
         const hits: BreathHit[] = []
         const breath = testBreath({
-            shape: { kind: "line", range: 8 },
+            shape: () => ({ kind: "line", range: 8 }),
             fire(hit) {
                 hits.push(hit)
             },
@@ -247,7 +290,9 @@ describe("breathing at the boss", () => {
             ready: true,
         })
         tick(state, { breath: true })
-        expect(state.boss!.health).toBe(BOSS_HEALTH - 2)
+        expect(state.boss!.health).toBeCloseTo(
+            BOSS_HEALTH - tap(BREATHS.penguin)
+        )
         // No ice under it, as under any character.
         expect(state.ice[2][2]).toBe(false)
         // It came straight on for the player and caught it.
@@ -256,7 +301,7 @@ describe("breathing at the boss", () => {
 
     it("defeats it at 0 health: +500, gone for good, harmless", () => {
         const state = bossGame(vec2(1, 2), vec2(2, 1), { ready: true })
-        state.boss!.health = 2
+        state.boss!.health = tap(BREATHS.dragon)
         // Defeating it clears the stage (see "winning a boss level").
         expect(tick(state, { breath: true })).toBe("won")
         const boss = state.boss!
@@ -431,7 +476,9 @@ describe("the boss catching", () => {
     it("costs BOSS_DAMAGE and stays where it is, keeping its damage", () => {
         const state = bossGame(vec2(1, 2), vec2(2, 1), { health: MAX_HEALTH })
         tick(state, { breath: true })
-        expect(state.boss!.health).toBe(BOSS_HEALTH - 2)
+        expect(state.boss!.health).toBeCloseTo(
+            BOSS_HEALTH - tap(BREATHS.dragon)
+        )
         state.boss!.pos = vec2(5, 2)
         state.boss!.lastPos = vec2(5, 2)
         state.players[0].character.pos = vec2(6, 3)
@@ -439,7 +486,9 @@ describe("the boss catching", () => {
         expect(tick(state)).toBeNull()
         expect(state.players[0].health).toBe(MAX_HEALTH - BOSS_DAMAGE)
         expect(state.boss!.pos).toEqual(vec2(5, 2))
-        expect(state.boss!.health).toBe(BOSS_HEALTH - 2)
+        expect(state.boss!.health).toBeCloseTo(
+            BOSS_HEALTH - tap(BREATHS.dragon)
+        )
         // Knocked away from its footprint's centre, (5.5, 2.5): level on
         // both axes, so along x.
         expect(state.players[0].character.pos).toEqual(vec2(7, 3))
@@ -489,7 +538,7 @@ describe("winning a boss level", () => {
 
     it("is won the moment the boss is defeated, with dots left", () => {
         const state = bossGame(vec2(1, 2), vec2(2, 1), { breath: BREATHS.owl })
-        state.boss!.health = 1
+        state.boss!.health = tap(BREATHS.owl)
         expect(tick(state, { breath: true })).toBe("won")
         expect(state.boss!.defeated).toBe(true)
         // The pocket's dot is still there: dots don't matter.
@@ -500,7 +549,7 @@ describe("winning a boss level", () => {
         const state = bossGame(vec2(3, 2), vec2(2, 1), {
             breath: BREATHS.owl,
         })
-        state.boss!.health = 1
+        state.boss!.health = tap(BREATHS.owl)
         expect(tick(state, { breath: true })).toBe("won")
         expect(state.players[0].health).toBe(1)
     })

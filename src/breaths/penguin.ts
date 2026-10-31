@@ -1,12 +1,30 @@
 import type { BreathDef, EnemyStatus, TileEffect } from "../breath"
 import { AnimalId } from "../roster"
 
-// Penguin 🐧, ice breath (KDA-217): a cone that freezes enemies for 3 s and
-// turns the floor to ice for 5 s. Stat: walks on ice (KDA-259): it moves and
-// stops on ice as on normal floor, where everyone else slides.
+// Penguin 🐧, ice breath (KDA-217): a cone that freezes enemies for a few
+// seconds and turns the floor to ice for 5 s. Charging it (KDA-289) widens
+// the cone and makes the freeze last longer (coneRange, freezeSeconds), for
+// 20 energy a level. Stat: walks on ice (KDA-259): it moves and stops on ice
+// as on normal floor, where everyone else slides.
 
 // Seconds the floor stays ice.
 export const ICE_SECONDS = 5
+
+// The cone's range at charge `level`: 2 for levels 1 and 2, 3 for 3 and 4,
+// 4 at the top (KDA-289; placeholders to tune at preview). Range 3, the
+// breath before charging, reaches the next junction in most corridors and
+// makes a slide of up to 3 cells; at 4 one breath ices a good stretch of a
+// stage's corridor, which is what the full charge pays for.
+export function coneRange(level: number): number {
+    return 2 + Math.floor((level - 1) / 2)
+}
+
+// Seconds enemies stay frozen at charge `level`: 3 for a tap (the breath
+// before charging), half a second more a level, 5 at the top (KDA-289;
+// placeholders to tune at preview).
+export function freezeSeconds(level: number): number {
+    return 2.5 + level / 2
+}
 
 // A frozen enemy is an ice block: it doesn't move or catch. Players walk
 // through it, as through any enemy (KDA-260). It blinks for the last second
@@ -32,13 +50,10 @@ export const BREATH_ICE: TileEffect = {
 
 export const penguin: BreathDef = {
     animal: AnimalId.penguin,
-    // Range 3 reaches the next junction in most corridors and makes a
-    // slide of up to 3 cells; any longer and one breath would ice half a
-    // stage's corridor.
-    shape: { kind: "cone", range: 3 },
-    cost: 50,
+    shape: (level) => ({ kind: "cone", range: coneRange(level) }),
+    cost: 20,
     cooldown: 1,
-    duration: 3,
+    duration: freezeSeconds(1),
     maxEnergy: 100,
     speedScale: 1,
     walksOnIce: true,
@@ -59,7 +74,7 @@ export const penguin: BreathDef = {
         // cell, there is nothing to freeze or ice: keep the energy.
         if (hit.cells.length === 0 && hit.enemies.length === 0) return false
         for (const enemy of hit.enemies) {
-            hit.addStatus(enemy, FROZEN, penguin.duration)
+            hit.addStatus(enemy, FROZEN, freezeSeconds(hit.level))
         }
         for (const cell of hit.cells) {
             hit.addTile(cell, BREATH_ICE, ICE_SECONDS)

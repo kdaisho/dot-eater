@@ -5,6 +5,7 @@ import { BREATHS } from "./breaths"
 import { TICK_RATE } from "./constants"
 import {
     applyMotion,
+    BLOCK_IMPACT,
     effectsForEvent,
     effectsForEvents,
     type EffectTargets,
@@ -215,6 +216,7 @@ describe("effectsForEvent", () => {
         const jabs: { player: number; facing: Vec2 }[] = []
         r.targets.jabs = {
             add: (player, facing) => jabs.push({ player, facing }),
+            block: () => {},
         }
         effectsForEvent(
             { type: "punched", player: 1, at: vec2(2, 2), facing: vec2(0, -1) },
@@ -226,27 +228,71 @@ describe("effectsForEvent", () => {
         expect(r.shakes).toEqual([])
     })
 
-    it("a shield over the enemy, nothing else, for a blocked punch", () => {
+    // KDA-293, with the user.
+    it("sparks at the impact and a fist bounce, no shake, for a block", () => {
         const r = recorder()
-        const shields: number[] = []
-        r.targets.shields = { add: (enemy) => shields.push(enemy) }
+        const directions: (Vec2 | undefined)[] = []
+        const burst = r.targets.particles.burst
+        r.targets.particles.burst = (kind, at, options) => {
+            directions.push(options?.direction)
+            burst(kind, at, options)
+        }
+        const blocked: number[] = []
+        r.targets.jabs = {
+            add: () => {},
+            block: (player) => blocked.push(player),
+        }
+        // Punched from the left: the enemy's left side faces the puncher.
         effectsForEvent(
-            { type: "punchBlocked", player: 0, at: vec2(2.4, 2), enemy: 3 },
+            {
+                type: "punchBlocked",
+                player: 1,
+                at: vec2(3, 2),
+                facing: vec2(1, 0),
+                enemy: 3,
+            },
             room(),
             r.targets
         )
-        expect(shields).toEqual([3])
-        expect(r.bursts).toEqual([])
+        expect(r.bursts).toEqual([
+            { kind: "block", at: vec2(3 - BLOCK_IMPACT, 2) },
+        ])
+        // Thrown back at the puncher.
+        // (+ 0 turns a -0 into 0.)
+        expect(directions.map((d) => vec2(d!.x + 0, d!.y + 0))).toEqual([
+            vec2(-1, 0),
+        ])
+        expect(blocked).toEqual([1])
         expect(r.shakes).toEqual([])
-        // Without shields to show, nothing at all.
-        const plain = run({
+        // Punched upwards: the impact is on its bottom side.
+        const up = run({
             type: "punchBlocked",
             player: 0,
-            at: vec2(2.4, 2),
+            at: vec2(3, 2),
+            facing: vec2(0, -1),
             enemy: 3,
         })
-        expect(plain.bursts).toEqual([])
-        expect(plain.shakes).toEqual([])
+        expect(up.bursts).toEqual([
+            { kind: "block", at: vec2(3, 2 + BLOCK_IMPACT) },
+        ])
+        expect(up.shakes).toEqual([])
+    })
+
+    it("throws white and yellow sparks for a block, fewer with reduced motion", () => {
+        const look = BURSTS.block
+        expect(look.colors).toEqual(["#fff7cc", "#facc15"])
+        const sparks = (reduced: boolean) => {
+            const particles = createParticles({ random: () => 0.5, reduced })
+            particles.burst("block", vec2(2, 2), { direction: vec2(-1, 0) })
+            return particles.list
+        }
+        expect(sparks(false)).toHaveLength(look.count)
+        expect(sparks(true).length).toBeLessThan(look.count)
+        expect(sparks(true).length).toBeGreaterThan(0)
+        // Outlined, so the pale ones show on the white floor.
+        expect(sparks(false)[0].outline).toBe(look.outline)
+        // Flying back along the direction they were given.
+        expect(sparks(false)[0].vx).toBeLessThan(0)
     })
 
     it("a tiny burst and a very small shake where a punch lands", () => {
@@ -355,7 +401,8 @@ describe("effectsForEvent", () => {
         // Regression: the cells were worked out after the tick, with the
         // boss gone, so the fire ran on through where it stood.
         it("stops at the boss its killing blow defeats", () => {
-            const state = bossHall(1)
+            // A Dragon tap does 0.8.
+            const state = bossHall(0.8)
             const at = emitted(state, [breathe])
             expect(state.boss?.defeated).toBe(true)
             expect(at(BREATHS.dragon.particles)).toEqual([
@@ -472,11 +519,15 @@ describe("effectsForEvents", () => {
 
     it("shakes for a punch's hit, not for a block before it (KDA-288)", () => {
         const r = recorder()
-        const shields: number[] = []
-        r.targets.shields = { add: (enemy) => shields.push(enemy) }
         effectsForEvents(
             [
-                { type: "punchBlocked", player: 0, at: vec2(3, 2), enemy: 0 },
+                {
+                    type: "punchBlocked",
+                    player: 0,
+                    at: vec2(3, 2),
+                    facing: vec2(1, 0),
+                    enemy: 0,
+                },
                 {
                     type: "punchHit",
                     player: 0,
@@ -488,8 +539,7 @@ describe("effectsForEvents", () => {
             room(),
             r.targets
         )
-        expect(shields).toEqual([0])
-        expect(r.bursts.map((b) => b.kind)).toEqual(["punch"])
+        expect(r.bursts.map((b) => b.kind)).toEqual(["block", "punch"])
         expect(r.shakes).toEqual([SHAKES.punch])
     })
 })

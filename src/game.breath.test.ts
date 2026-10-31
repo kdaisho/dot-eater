@@ -262,7 +262,7 @@ describe("breathing", () => {
             const ahead = makeEnemy(2, 1)
             const hits: BreathHit[] = []
             const breath = testBreath({
-                shape,
+                shape: () => shape,
                 fire: (hit) => void hits.push(hit),
             })
             const state = makeState(
@@ -502,7 +502,7 @@ describe("tile effects", () => {
         enemy.moveProgress = 1
         const state = makeState(map, { x: 1, y: 1 }, [enemy], {
             breath: testBreath({
-                shape: { kind: "line", range: 2 },
+                shape: () => ({ kind: "line", range: 2 }),
                 fire(hit) {
                     for (const c of hit.cells) hit.addTile(c, block, 2)
                 },
@@ -540,7 +540,7 @@ describe("tile effects", () => {
         const ice: TileEffect = { name: "test.ice", ice: true }
         const state = makeState(corridor, { x: 1, y: 1 }, [], {
             breath: testBreath({
-                shape: { kind: "line", range: 2 },
+                shape: () => ({ kind: "line", range: 2 }),
                 fire(hit) {
                     for (const c of hit.cells) hit.addTile(c, ice, 5)
                 },

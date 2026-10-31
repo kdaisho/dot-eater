@@ -112,8 +112,15 @@ export type GameEvent =
       }
     // Enemy `enemy` (its index in GameState.enemies) blocked a player's
     // punch with its guard (KDA-288, see guard.ts), in place of a
-    // punchHit: it wasn't moved. `at` is where it was drawn.
-    | { type: "punchBlocked"; player: number; at: Vec2; enemy: number }
+    // punchHit: it wasn't moved. `at` is where it was drawn and `facing`
+    // the unit step the punch came along, as in punched.
+    | {
+          type: "punchBlocked"
+          player: number
+          at: Vec2
+          facing: Vec2
+          enemy: number
+      }
     // The stage is cleared: the game is won. In versus this is the end of
     // a round; whether it also ends the match is up to flow.ts (the next
     // screen is roundResult or matchResult).

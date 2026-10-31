@@ -135,13 +135,15 @@ describe.each(EACH_MAP)("stage 5 (%s)", (difficulty) => {
         expect(ends).toEqual([])
     })
 
-    // Every character needs 300 energy for 12 health at cost / 25 a hit;
-    // the dots alone must cover that twice over, for misses (dots growing
-    // back are the backstop, not the plan).
+    // Every character needs 300 energy for 12 health at the energy spent /
+    // 25 a hit (taps or charges alike: KDA-289); the dots alone must cover
+    // that twice over, for misses (dots growing back are the backstop, not
+    // the plan).
     it("has dots enough for every character to bring the boss down", () => {
         for (const animal of ANIMAL_IDS) {
             const { cost } = BREATHS[animal]
-            const needed = Math.ceil(BOSS_HEALTH / bossDamage(cost)) * cost
+            const taps = Math.ceil(BOSS_HEALTH / bossDamage(cost) - 1e-9)
+            const needed = taps * cost
             expect(needed).toBe(300)
             expect(dots.length * DOT_ENERGY).toBeGreaterThanOrEqual(needed * 2)
         }
