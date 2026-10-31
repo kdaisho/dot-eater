@@ -133,12 +133,14 @@ export const BLINK_RATE = 4
 // ---- The boss (see boss.ts) ----
 
 // Hit points a boss starts with. A breath that reaches it does
-// BOSS_DAMAGE_PER_ENERGY of its cost in damage, so it takes 12 Owl breaths,
-// 6 Dragon, Penguin or Skunk breaths, or 4 Boar breaths.
+// BOSS_DAMAGE_PER_ENERGY of the energy it spends in damage, so it takes 300
+// energy whatever the character or charge: 30 Owl taps, 15 Dragon,
+// Penguin or Boar taps, 10 Skunk taps, or 3 full Dragon charges.
 export const BOSS_HEALTH = 12
-// Damage per energy a breath costs: the Owl's 25 does 1, a 50 does 2, the
-// Boar's 75 does 3. Pricier breaths hit harder, so every character needs
-// about the same energy (300) to bring a boss down.
+// Damage per energy a breath spends: 25 energy does 1, so a level-1 Owl
+// breath (10) does 0.4 and a full Dragon charge (100) does 4. Damage goes by
+// energy, not by breath or level (KDA-289), so every character needs the
+// same energy to bring a boss down, and charging doesn't make it easier.
 export const BOSS_DAMAGE_PER_ENERGY = 1 / 25
 // The boss's default speed in cells per second: slower than a normal enemy,
 // since it is big and catches on any touch.

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vite-plus/test"
-import { breathe, type BreathDef } from "./breath"
+import { breathe, MAX_CHARGE, type BreathDef } from "./breath"
 import { BREATHS } from "./breaths"
 import { damageBoss } from "./boss"
 import {
@@ -93,11 +93,12 @@ function run(state: GameState, moves: readonly MoveInput[], ticks: number) {
 }
 
 describe("a breath on the other player in versus", () => {
+    // The furthest cell a tap (level 1) reaches along the hall.
     const cases: [AnimalId, Vec2][] = [
-        [AnimalId.dragon, vec2(6, 1)],
-        [AnimalId.penguin, vec2(4, 1)],
-        [AnimalId.owl, vec2(6, 1)],
-        [AnimalId.skunk, vec2(2, 1)],
+        [AnimalId.dragon, vec2(4, 1)],
+        [AnimalId.penguin, vec2(3, 1)],
+        [AnimalId.owl, vec2(5, 1)],
+        [AnimalId.skunk, vec2(3, 1)],
         [AnimalId.boar, vec2(2, 1)],
     ]
     for (const [animal, at] of cases) {
@@ -123,6 +124,23 @@ describe("a breath on the other player in versus", () => {
             expect(stunned(state.players[1])).toBe(false)
         })
     }
+
+    // KDA-289: a charged breath reaches further, but still stuns once, for
+    // the usual time.
+    it("stuns it once, for the usual time, with a full charge", () => {
+        const def = BREATHS[AnimalId.dragon]
+        // Out of a tap's reach (3 cells), within a full charge's (7).
+        const state = duel(def, vec2(8, 1))
+        expect(breathe(state, state.players[0], MAX_CHARGE)).toBe(true)
+        const p2 = state.players[1]
+        expect(p2.stunnedFor).toBe(STUN_SECONDS)
+        expect(
+            state.events.filter((e) => e.type === "playerStunned")
+        ).toHaveLength(1)
+        expect(state.players[0].breather.energy).toBe(
+            def.maxEnergy - def.cost * MAX_CHARGE
+        )
+    })
 
     it("stuns it on the breather's own cell", () => {
         const state = duel(BREATHS[AnimalId.dragon], vec2(1, 1))

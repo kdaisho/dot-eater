@@ -1,11 +1,25 @@
 import type { BreathDef, TileEffect } from "../breath"
 import { AnimalId } from "../roster"
 
-// Owl 🦉, wind breath (KDA-218): blows every enemy in a line back 3 cells,
-// through tunnels; it doesn't defeat. Stat: cheap breath, short cooldown.
+// Owl 🦉, wind breath (KDA-218): blows every enemy in a line back a few
+// cells, through tunnels; it doesn't defeat. Charging it (KDA-289) makes
+// the line longer and the push further (windRange, windPush), for 10
+// energy a level. Stat: cheap breath, short cooldown.
 
-// Cells each enemy in the line is blown back.
-export const WIND_PUSH = 3
+// The line's range at charge `level`: 4 cells for a tap, one more a level,
+// 8 at the top (KDA-289; placeholders to tune at preview). Level 2 is the
+// breath before charging (5 cells), a corridor's worth ahead, so a chaser
+// closing in is in reach well before it is adjacent.
+export function windRange(level: number): number {
+    return level + 3
+}
+
+// Cells each enemy in the line is blown back at charge `level`: 2 for a
+// tap, one more a level, 6 at the top (KDA-289; placeholders to tune at
+// preview). Level 2 is the breath before charging (3).
+export function windPush(level: number): number {
+    return level + 1
+}
 
 // Seconds the gust shows on the line's cells.
 export const GUST_SECONDS = 0.25
@@ -19,10 +33,8 @@ export const GUST: TileEffect = {
 
 export const owl: BreathDef = {
     animal: AnimalId.owl,
-    // 5 cells: a corridor's worth ahead, so a chaser closing in is in reach
-    // well before it is adjacent, without blowing away the whole maze.
-    shape: { kind: "line", range: 5 },
-    cost: 25,
+    shape: (level) => ({ kind: "line", range: windRange(level) }),
+    cost: 10,
     cooldown: 0.5,
     duration: 0,
     maxEnergy: 100,
@@ -47,7 +59,7 @@ export const owl: BreathDef = {
         if (hit.cells.length === 0 && hit.enemies.length === 0) return false
         for (const cell of hit.cells) hit.addTile(cell, GUST, GUST_SECONDS)
         for (const enemy of hit.enemies) {
-            hit.push(enemy, hit.facing, WIND_PUSH)
+            hit.push(enemy, hit.facing, windPush(hit.level))
         }
     },
 }

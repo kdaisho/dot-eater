@@ -154,8 +154,8 @@ describe("breathed", () => {
                 animal: AnimalId.penguin,
                 at: vec2(1, 1),
                 facing: east,
-                // The cone, in a corridor one cell high.
-                cells: [vec2(2, 1), vec2(3, 1), vec2(4, 1)],
+                // A tap's cone (range 2), in a corridor one cell high.
+                cells: [vec2(2, 1), vec2(3, 1)],
             },
         ])
     })
@@ -430,8 +430,8 @@ describe("playerStunned", () => {
                 animal: AnimalId.dragon,
                 at: vec2(1, 1),
                 facing: east,
-                // The whole line: players don't stop it.
-                cells: [2, 3, 4, 5, 6].map((x) => vec2(x, 1)),
+                // A tap's whole line: players don't stop it.
+                cells: [2, 3, 4].map((x) => vec2(x, 1)),
             },
             { type: "playerStunned", player: 1, by: 0, at: vec2(3, 1) },
         ])

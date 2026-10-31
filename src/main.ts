@@ -292,7 +292,10 @@ const tickInput: TickInput = {
         return {
             held: p.heldSteps(),
             pressed: p.pressedStep(),
+            // Held, the breath charges, and it fires once let go (KDA-289):
+            // keys, pads and the touch Breath button all hold it.
             breath: p.wasPressed("breath"),
+            breathHeld: p.isDown("breath"),
             punch: p.wasPressed("punch"),
         }
     },
