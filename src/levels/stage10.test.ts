@@ -239,11 +239,7 @@ describe(
         it.each(DODGE_RUNS)(
             "on the $size map as the $animal",
             ({ difficulty, animal }) => {
-                const { played, hits } = dodgeHits(
-                    stage[difficulty],
-                    animal,
-                    difficulty
-                )
+                const { played, hits } = dodgeHits(stage[difficulty], animal)
                 expect(played).toBeGreaterThan(1000)
                 expect(hits).toEqual([])
             }

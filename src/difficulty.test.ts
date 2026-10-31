@@ -148,13 +148,13 @@ describe("difficulty names and descriptions", () => {
     it("describes each by its enemies and maze, from the tables", () => {
         expect(DIFFICULTIES.map(difficultyDescription)).toEqual([
             "3 enemies, medium maze",
-            "4 faster enemies, medium maze",
-            "6 faster enemies, large maze",
-            "8 faster enemies, large maze",
+            "4 enemies, medium maze",
+            "6 enemies, large maze",
+            "8 enemies, large maze",
         ])
         for (const d of DIFFICULTIES) {
-            expect(difficultyDescription(d)).toMatch(
-                new RegExp(`^${ENEMY_COUNT[d]} .*, ${MAP_SIZE[d]} maze$`)
+            expect(difficultyDescription(d)).toBe(
+                `${ENEMY_COUNT[d]} enemies, ${MAP_SIZE[d]} maze`
             )
         }
     })

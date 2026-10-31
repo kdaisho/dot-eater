@@ -143,15 +143,10 @@ export const DIFFICULTY_LABELS: Readonly<Record<Difficulty, string>> = {
 }
 
 // What a difficulty plays like, from the tables above, so it never
-// disagrees with them: e.g. "3 enemies, medium maze", or "4 faster
-// enemies, medium maze" where they are faster than the difficulty's before
-// (as difficulty select lists them, easiest first). At most this many come
-// out; a map that lists fewer brings out all of its own.
+// disagrees with them: e.g. "3 enemies, medium maze". At most this many
+// come out; a map that lists fewer brings out all of its own. It leaves the
+// enemies' speed out (KDA-290): "4 faster enemies, medium maze" wraps on a
+// phone.
 export function difficultyDescription(difficulty: Difficulty): string {
-    const before = DIFFICULTIES[DIFFICULTIES.indexOf(difficulty) - 1]
-    const faster =
-        before !== undefined &&
-        ENEMY_SPEED_SCALE[difficulty] > ENEMY_SPEED_SCALE[before]
-    const enemies = faster ? "faster enemies" : "enemies"
-    return `${ENEMY_COUNT[difficulty]} ${enemies}, ${MAP_SIZE[difficulty]} maze`
+    return `${ENEMY_COUNT[difficulty]} enemies, ${MAP_SIZE[difficulty]} maze`
 }

@@ -227,7 +227,7 @@ describe(
             "on the $size map as the $animal",
             ({ difficulty, animal }) => {
                 const level = parseLevel(stage5, difficulty)
-                const { played, hits } = dodgeHits(level, animal, difficulty)
+                const { played, hits } = dodgeHits(level, animal)
                 expect(played).toBeGreaterThan(1000)
                 expect(hits).toEqual([])
             }

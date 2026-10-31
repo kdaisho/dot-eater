@@ -106,11 +106,11 @@ describe("main with a saved difficulty", () => {
         expect(screen()).toBe("difficulty-select")
         expect(items()).toEqual([
             "Easy 3 enemies, medium maze",
-            "Medium 4 faster enemies, medium maze",
-            "Hard 6 faster enemies, large maze",
-            "Super Hard 8 faster enemies, large maze",
+            "Medium 4 enemies, medium maze",
+            "Hard 6 enemies, large maze",
+            "Super Hard 8 enemies, large maze",
         ])
-        expect(selectedItem()).toBe("Hard 6 faster enemies, large maze")
+        expect(selectedItem()).toBe("Hard 6 enemies, large maze")
 
         // Moving and going back picks nothing.
         pressAndTick("ArrowUp")
