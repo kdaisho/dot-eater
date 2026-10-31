@@ -37,6 +37,7 @@ vi.mock("./ai", async (importOriginal) => {
         Ai.ambusher,
         Ai.splitter,
         Ai.phantom,
+        Ai.breather,
     ])
     return {
         ...ai,
@@ -185,6 +186,7 @@ const SPREADING = new Set<AiType>([
     AiType.ambusher,
     AiType.splitter,
     AiType.phantom,
+    AiType.breather,
 ])
 
 // The longest run of ticks, over every pair of enemies, that the two were
@@ -234,6 +236,9 @@ describe("same-kind enemies in a whole game", () => {
             `stage 6's phantoms at ${DIFFICULTY_LABELS[d]}`,
             stages[5][d],
         ]),
+        // Two breathers (KDA-291), which step away from the player between
+        // breaths, so two that meet would back off as one.
+        ["stage 1's breathers at Hard", stages[0].hard],
     ] satisfies [string, Level][])(
         "keeps %s from going as one",
         (_, level) => {
@@ -259,7 +264,6 @@ describe("same-kind enemies in a whole game", () => {
                 : [[`stage ${i + 1} at Easy`, stage.easy]]
         ),
         ["stage 1 at Medium", stages[0].medium],
-        ["stage 1 at Hard", stages[0].hard],
         // One phantom among the others.
         ["stage 4 at Medium", stages[3].medium],
     ]

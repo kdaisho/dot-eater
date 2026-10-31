@@ -22,6 +22,8 @@ import type { LevelData } from "../level"
 // in the corridor (KDA-270), and eaten dots grow back after 8 s (KDA-269),
 // sooner than stage 5's, as the fight takes more of them. A phantom joins
 // from Medium: it drifts through walls, so the corridor is no hiding place.
+// A breather (KDA-291) comes out at every difficulty, and a second from
+// Hard.
 // The players start at the bottom, between two doors and out of every line
 // the boss breathes along, far from the boss and the minions. No tunnels
 // and no ice (the boss uses neither), no dead ends, left-right symmetric
@@ -55,7 +57,7 @@ export const stage10: LevelData = {
         enemies: [
             { ai: "splitter" },
             { ai: "splitter" },
-            { ai: "chase" },
+            { ai: "breather" },
             { ai: "phantom" },
         ],
     },
@@ -88,9 +90,9 @@ export const stage10: LevelData = {
         enemies: [
             { ai: "splitter" },
             { ai: "chase" },
-            { ai: "chase" },
+            { ai: "breather" },
             { ai: "splitter" },
-            { ai: "ambusher" },
+            { ai: "breather" },
             { ai: "phantom" },
             { ai: "splitter" },
             { ai: "chase" },

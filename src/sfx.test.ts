@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test"
 import { BREATHS } from "./breaths"
-import { BOSS_BREATH_WIND_UP } from "./constants"
+import { BOSS_BREATH_WIND_UP, ENEMY_BREATH_WIND_UP } from "./constants"
 import { ANIMAL_IDS } from "./roster"
 import { BREATH_SFX, breathSfx, SFX, SFX_IDS, SfxId } from "./sfx"
 import { soundLength, type Tone } from "./tone"
@@ -90,6 +90,28 @@ describe("the boss's breath sounds", () => {
             expect(lowest, id).toBeLessThan(200)
         }
         expect(SfxId.bossWindUp).not.toBe(SfxId.bossBreath)
+    })
+})
+
+describe("the breather's breath sounds", () => {
+    // KDA-291: a charge through about the wind-up, then a hiss, both
+    // softer than the boss's.
+    it("charge through about the wind-up, then hiss, softer than the boss's", () => {
+        expect(soundLength(SFX[SfxId.enemyWindUp])).toBeCloseTo(
+            ENEMY_BREATH_WIND_UP,
+            1
+        )
+        const loudest = (id: SfxId) =>
+            Math.max(...SFX[id].map((tone) => tone.volume))
+        expect(loudest(SfxId.enemyWindUp)).toBeLessThan(
+            loudest(SfxId.bossWindUp)
+        )
+        expect(loudest(SfxId.enemyBreath)).toBeLessThan(
+            loudest(SfxId.bossBreath)
+        )
+        expect(soundLength(SFX[SfxId.enemyBreath])).toBeLessThan(
+            soundLength(SFX[SfxId.bossBreath])
+        )
     })
 })
 

@@ -1,5 +1,12 @@
 import type { BlockMap } from "./breath"
-import { AiType, AMBUSH_AHEAD, Cell, SPREAD_SLACK } from "./constants"
+import {
+    AiType,
+    AMBUSH_AHEAD,
+    BREATHER_KEEP_FAR,
+    BREATHER_KEEP_NEAR,
+    Cell,
+    SPREAD_SLACK,
+} from "./constants"
 import type { Character } from "./character"
 import { moveStep } from "./glide"
 import type { Cells } from "./level"
@@ -235,6 +242,14 @@ function nextPos(
                 crowd
             )
         }
+        case AiType.breather: {
+            // It aims as a chaser does (see above).
+            const aim =
+                samePos(target, enemy.pos) && !samePos(targetLast, enemy.pos)
+                    ? targetLast
+                    : target
+            return breatherStep(cells, ice, enemy, aim, paths, shared, crowd)
+        }
         case AiType.patroller:
             return patrolStep(cells, ice, enemy, paths)
         case AiType.phantom:
@@ -245,6 +260,122 @@ function nextPos(
             throw new Error(`Unknown AI type: ${String(unhandled)}`)
         }
     }
+}
+
+// A breather (KDA-291; its breath is in enemyBreath.ts, which sets
+// Character.breath.move before the enemies move each tick):
+//
+// - "chase" (its breath is ready, or nobody is in play): it chases like a
+//   chaser (see chaseStep) until a player is in line, which turns it to
+//   "hold".
+// - "hold" (winding up, or ready with a player in line): it stays put.
+// - "keep" (cooling down): it keeps its distance by path from `target`,
+//   BREATHER_KEEP_NEAR to BREATHER_KEEP_FAR moves, and doesn't go for
+//   contact. Farther, it comes closer as a chaser would; nearer, it steps to
+//   the open neighbour farthest from the target (back the way it came
+//   too), ties in direction order, and stays put when none is farther than
+//   where it stands (cornered); in between, it holds its spot.
+// - "part" (it shares its cell with another breather; see
+//   tickEnemyBreaths): it steps to the open neighbour farthest from the
+//   target that no other breather is on, and stays put if there is none.
+//
+// The spread rule (see spreadChoice) keeps it off other breathers more
+// strictly than it keeps other twins apart, since a breather stands still
+// so much (holding, winding up, keeping its distance) that two on one cell
+// would stay as one: it never steps onto a cell another breather is on
+// (standing there or gliding in, whatever cell it came from). When its best
+// way and every way within SPREAD_SLACK of it are taken it holds, for one
+// move's time at most (see mayHold), as other twins do; then, rather than
+// stack, it takes the best way that is free, by the same scoring, back the
+// way it came included, and stays put only if every way is taken. Without
+// the limit two breathers head-on in a corridor, each the other's only way
+// forward, waited on each other for good. Distances are slide-aware on
+// ice, as a chaser's are.
+function breatherStep(
+    cells: Cells,
+    ice: IceMap,
+    enemy: Character,
+    target: Vec2,
+    paths: (goal: Vec2) => Cells,
+    shared: ChaseDistances,
+    crowd: readonly Character[]
+): Vec2 | typeof HOLD | null {
+    const move = enemy.breath?.move ?? "chase"
+    if (move === "hold") return null
+    const taken = (v: Vec2) => breatherOn(crowd, enemy, v)
+    const dist = sharedDistance(shared, ice, target, paths)
+    const icy = hasIce(ice)
+    // Every open neighbour (back the way it came included), scored by
+    // `score` of its distance to the target.
+    const ways = (score: (d: number) => number) =>
+        openNeighbours(cells, enemy.pos).map((v) => {
+            const state = icy
+                ? arrival(cells, ice, enemy.pos, v)
+                : { pos: v, heading: FREE }
+            return { v, d: score(state === null ? Infinity : dist(state)) }
+        })
+    // `choice`, unless it is a hold that has run out (see mayHold): then
+    // the first of `scored` with the smallest score that no breather is
+    // on, or null to stay put if there is none.
+    const patient = mayHold(enemy)
+    const unlessStuck = (
+        choice: Vec2 | typeof HOLD | null,
+        scored: () => readonly { v: Vec2; d: number }[]
+    ) => {
+        if (choice !== HOLD || patient) return choice
+        const free = scored().filter((c) => !taken(c.v))
+        return (
+            free.reduce<{ v: Vec2; d: number } | null>(
+                (a, c) => (a === null || c.d < a.d ? c : a),
+                null
+            )?.v ?? null
+        )
+    }
+    const chase = () =>
+        unlessStuck(
+            chaseStep(
+                cells,
+                ice,
+                enemy,
+                target,
+                paths,
+                shared,
+                crowd,
+                taken,
+                true
+            ),
+            () => ways((d) => d)
+        )
+    if (move === "chase") return chase()
+    const here = dist({ pos: enemy.pos, heading: FREE })
+    if (move === "keep" && here > BREATHER_KEEP_FAR) return chase()
+    if (move === "keep" && here >= BREATHER_KEEP_NEAR) return null
+    // Farther from the target is better: scored by the distance it gives
+    // up, so spreadChoice's smallest is the farthest. Stepping away, only a
+    // step that is farther than here will do; parting, any free one.
+    const scored = ways((d) => -d).filter(({ v, d }) =>
+        move === "part" ? !taken(v) : -d > here && d > -Infinity
+    )
+    if (scored.length === 0) return null
+    return unlessStuck(spreadChoice(scored, taken, true), () => scored)
+}
+
+// Whether `enemy` is a breather and another breather in `crowd` is on
+// `cell` (standing there or gliding in, whatever cell it came from): a
+// breather never moves onto one, by its own choice (see breatherStep) or by
+// an ice slide (see step in game.ts).
+export function breatherOn(
+    crowd: readonly Character[],
+    enemy: Character,
+    cell: Vec2
+): boolean {
+    return (
+        enemy.ai === AiType.breather &&
+        crowd.some(
+            (o) =>
+                o !== enemy && o.ai === AiType.breather && samePos(o.pos, cell)
+        )
+    )
 }
 
 // Follow the shortest path (wrap-around included) to `target`, never
@@ -277,7 +408,9 @@ function nextPos(
 // spreadChoice). The shared distances give the best candidate exactly, as
 // above, but not the others, so when the best would stack it searches with
 // its own cell blocked after all and chooses on that. The choice (or the
-// hold) is then always the one that search alone would give.
+// hold) is then always the one that search alone would give. `stacks` and
+// `hold` are what spreadChoice is given; a breather keeps off its twins by
+// its own rule (see breatherStep).
 function chaseStep(
     cells: Cells,
     ice: IceMap,
@@ -285,7 +418,9 @@ function chaseStep(
     target: Vec2,
     paths: (goal: Vec2) => Cells,
     shared: ChaseDistances,
-    crowd: readonly Character[]
+    crowd: readonly Character[],
+    stacks: (v: Vec2) => boolean = (v) => stacksOn(crowd, enemy, v),
+    hold: boolean = mayHold(enemy)
 ): Vec2 | typeof HOLD | null {
     const pos = candidateMoves(cells, enemy)
     if (pos.length === 0) return null
@@ -296,7 +431,6 @@ function chaseStep(
     )
     const open = sharedDistance(shared, ice, target, paths)
     const best = nearestState(states, open)
-    const stacks = (v: Vec2) => stacksOn(crowd, enemy, v)
     if (
         best.dist <= open({ pos: enemy.pos, heading: FREE }) &&
         !stacks(pos[best.index])
@@ -310,7 +444,7 @@ function chaseStep(
         const state = states[i]
         return { v, d: state === null ? Infinity : own(state) }
     })
-    return spreadChoice(scored, stacks, mayHold(enemy))
+    return spreadChoice(scored, stacks, hold)
 }
 
 // Two enemies of one kind (AI type) that stand on the same cell, having
@@ -355,8 +489,9 @@ function spreadChoice(
 // One still to take its turn this tick counts where it is, so it had
 // better not be about to leave that cell: turnOrder gives it its turn
 // first (but on a loop of waits).
-// Only chasers, ambushers, Splitters and phantoms keep from stacking:
-// random enemies part by chance and patrollers keep to their routes.
+// Only chasers, ambushers, Splitters, phantoms and breathers keep from
+// stacking: random enemies part by chance and patrollers keep to their
+// routes.
 export function stacksOn(
     crowd: readonly Character[],
     enemy: Character,
@@ -379,6 +514,7 @@ const SPREADS: ReadonlySet<AiType> = new Set([
     AiType.ambusher,
     AiType.splitter,
     AiType.phantom,
+    AiType.breather,
 ])
 
 // The order the `ready` enemies (indexes into `enemies`, in slot order)

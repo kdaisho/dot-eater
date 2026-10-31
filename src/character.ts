@@ -6,6 +6,7 @@ import {
     PLAYER_SPEED,
 } from "./constants"
 import type { ActiveStatus } from "./breath"
+import { createEnemyBreath, type EnemyBreath } from "./enemyBreath"
 import type { SplitterPart } from "./splitter"
 import { vec2, type Vec2 } from "./vec2"
 
@@ -46,6 +47,9 @@ export type Character = {
     // Splitters only: which of the Splitter's two enemy slots this is, and
     // whether it is whole or a half (see splitter.ts).
     part?: SplitterPart
+    // Breathers only (KDA-291): its breath's cooldown, wind-up and facing,
+    // and how its AI moves this tick (see enemyBreath.ts).
+    breath?: EnemyBreath
     // The punch (KDA-288; see punch.ts). Enemies only: a player's stay at
     // their starting values.
     //
@@ -93,6 +97,7 @@ export function createCharacter(
             ? {}
             : { route: route.map((p) => vec2(p.x, p.y)) }),
         routeIndex: 0,
+        ...(ai === AiType.breather ? { breath: createEnemyBreath() } : {}),
         statuses: [],
         respawnIn: 0,
         heldFor: 0,

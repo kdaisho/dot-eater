@@ -51,7 +51,7 @@ const MAPS = {
         enemies: [
             AiType.splitter,
             AiType.splitter,
-            AiType.chase,
+            AiType.breather,
             AiType.phantom,
         ],
     },
@@ -63,9 +63,9 @@ const MAPS = {
         enemies: [
             AiType.splitter,
             AiType.chase,
-            AiType.chase,
+            AiType.breather,
             AiType.splitter,
-            AiType.ambusher,
+            AiType.breather,
             AiType.phantom,
             AiType.splitter,
             AiType.chase,

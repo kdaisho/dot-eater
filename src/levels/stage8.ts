@@ -37,11 +37,11 @@ export const stage8: LevelData = {
             "#.........PQ........#",
             "#####################",
         ],
-        // Easy: a chaser, a wanderer and the phantom; Medium adds the
-        // ambusher.
+        // Easy: a chaser, a breather (KDA-291) and the phantom; Medium adds
+        // the ambusher.
         enemies: [
             { ai: "chase" },
-            { ai: "random" },
+            { ai: "breather" },
             { ai: "phantom" },
             { ai: "ambusher" },
         ],
@@ -72,11 +72,11 @@ export const stage8: LevelData = {
             "#############################",
         ],
         // Hard: the medium map's four, a patroller circling the upper rooms
-        // and a second chaser; Super Hard adds a Splitter and a second
+        // and a second breather (KDA-291); Super Hard adds a Splitter and a
         // wanderer.
         enemies: [
             { ai: "chase" },
-            { ai: "random" },
+            { ai: "breather" },
             { ai: "phantom" },
             { ai: "ambusher" },
             {
@@ -88,7 +88,7 @@ export const stage8: LevelData = {
                     [6, 9],
                 ],
             },
-            { ai: "chase" },
+            { ai: "breather" },
             { ai: "splitter" },
             { ai: "random" },
         ],

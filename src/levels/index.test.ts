@@ -230,18 +230,24 @@ describe.each(EACH_MAP)("stage 1 (%s)", (difficulty) => {
         expect(level.name).toBe("Classic")
     })
 
-    // Wanderers and a chaser first, so Easy's three are the gentlest mix;
-    // the ambusher only from the fourth enemy on.
-    it("brings out wanderers and a chaser first, ambushers later, at the default speed", () => {
+    // A wanderer, a chaser and a breather first (KDA-291), so Easy's three
+    // are the gentlest mix with a breather; the ambusher only from the
+    // fourth enemy on.
+    it("brings out a wanderer, a chaser and a breather first, ambushers later, at the default speed", () => {
         const ais = level.enemies.map((e) => e.ai)
         expect(ais.slice(0, 3)).toEqual([
             AiType.random,
             AiType.chase,
-            AiType.random,
+            AiType.breather,
         ])
         expect(ais[3]).toBe(AiType.ambusher)
         for (const ai of ais) {
-            expect([AiType.random, AiType.chase, AiType.ambusher]).toContain(ai)
+            expect([
+                AiType.random,
+                AiType.chase,
+                AiType.ambusher,
+                AiType.breather,
+            ]).toContain(ai)
         }
         for (const enemy of level.enemies) {
             expect(enemy.speed).toBeUndefined()
@@ -301,19 +307,24 @@ describe.each(EACH_MAP)("stage 2 (%s)", (difficulty) => {
         expect(level.name).toBe("Wrap maze")
     })
 
-    // Easy's three are the ambusher with a chaser and a wanderer; the
-    // fourth is a second ambusher, and there is one at every difficulty
-    // above that.
-    it("introduces the ambusher, with a chaser and a random enemy", () => {
+    // Easy's three are the ambusher with a chaser and a breather
+    // (KDA-291); the fourth is a second ambusher, and there is one at every
+    // difficulty above that.
+    it("introduces the ambusher, with a chaser and a breather", () => {
         const ais = level.enemies.map((e) => e.ai)
         expect(ais.slice(0, 4)).toEqual([
             AiType.ambusher,
             AiType.chase,
-            AiType.random,
+            AiType.breather,
             AiType.ambusher,
         ])
         for (const ai of ais) {
-            expect([AiType.random, AiType.chase, AiType.ambusher]).toContain(ai)
+            expect([
+                AiType.random,
+                AiType.chase,
+                AiType.ambusher,
+                AiType.breather,
+            ]).toContain(ai)
         }
         for (const enemy of level.enemies) {
             expect(enemy.speed).toBeUndefined()
