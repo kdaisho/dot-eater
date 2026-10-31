@@ -10,7 +10,7 @@ import {
     type MoveInput,
 } from "./game"
 import { DIFFICULTIES, DIFFICULTY_LABELS } from "./difficulty"
-import type { Level } from "./level"
+import { levelFor, type Level } from "./level"
 import { stages } from "./levels"
 import {
     makeEnemy,
@@ -24,9 +24,11 @@ import { samePos, vec2 } from "./vec2"
 // Same-kind enemies kept from stacking (KDA-284, see spreadChoice in
 // ai.ts), played out in whole games.
 
-// Every move of a chaser, ambusher or Splitter is also worked out without
-// the crowd, as it was before the spread rule, on a copy of the enemy; the
-// moves that came out differently are counted.
+// Every move of a chaser, ambusher, Splitter or phantom is also worked out
+// without the crowd, as it was before the spread rule, on a copy of the
+// enemy; the moves that came out differently are counted. Not an
+// interceptor's: it reads the crowd for more than stacking (the route and
+// flanking, see interceptStep), so its moves differ without it anyway.
 const spread = vi.hoisted(() => ({ moves: 0, changed: 0 }))
 vi.mock("./ai", async (importOriginal) => {
     const ai = await importOriginal<typeof import("./ai")>()
@@ -142,6 +144,119 @@ const wrapMazeMedium = parseFlat({
     ],
 })
 
+// Stage 3's large map, with its enemies before the interceptors came in
+// (KDA-292): at Hard and Super Hard its chasers went as one for 30 s or
+// more on most seeds, and two that met slid up an ice column as one.
+const iceRinkLarge = parseFlat({
+    name: "Ice rink (large)",
+    parTime: 200,
+    map: [
+        "#############################",
+        "#E............E............E#",
+        "#.###.#####.#####.#####.###.#",
+        "#.....E.......E.......E.....#",
+        "#.#.#.~~::~~~~:~~~~::~~.#.#.#",
+        "#.#.#.~:#::~~~:~~~::#:~.#.#.#",
+        "#.#.#.::~~~~#~:~#~~~~::.#.#.#",
+        "#E....~~~~#:::~:::#~~~~....E#",
+        "###.#.~#~~:::~~~:::~~#~.#.###",
+        "###.#.::::::~#:#~::::::.#.###",
+        "::::::::::::::.::::::::::::::",
+        "###.#.::::::~#:#~::::::.#.###",
+        "###.#.~#~~:::~~~:::~~#~.#.###",
+        "#.....~~~~#:::~:::#~~~~.....#",
+        "#.#.#.::~~~~#~:~#~~~~::.#.#.#",
+        "#.#.#.~:#::~~~:~~~::#:~.#.#.#",
+        "#.#.#.~~::~~~~:~~~~::~~.#.#.#",
+        "#...........................#",
+        "#.###.#####.#####.#####.###.#",
+        "#.............PQ............#",
+        "#############################",
+    ],
+    enemies: [
+        {
+            ai: "patroller",
+            route: [
+                [5, 3],
+                [23, 3],
+                [23, 17],
+                [5, 17],
+            ],
+        },
+        { ai: "chase" },
+        { ai: "random" },
+        {
+            ai: "patroller",
+            route: [
+                [23, 3],
+                [5, 3],
+                [5, 17],
+                [23, 17],
+            ],
+        },
+        { ai: "ambusher" },
+        { ai: "chase" },
+        {
+            ai: "patroller",
+            route: [
+                [14, 3],
+                [14, 17],
+            ],
+        },
+        { ai: "random" },
+    ],
+})
+
+// Stage 8's large map, with its enemies before the interceptors came in
+// (KDA-292): at Hard and Super Hard its chasers went as one for 30 s or
+// more on most seeds.
+const frozenFogLarge = parseFlat({
+    name: "Frozen fog (large)",
+    parTime: 220,
+    map: [
+        "#############################",
+        "#E....E....E.....E....E....E#",
+        "#.##.####.####.####.####.##.#",
+        "#........E.........E........#",
+        "#.####.####.#####.####.####.#",
+        "#...........................#",
+        "#.:~:~.~:~:.:~:~:.:~:~.~:~:.#",
+        "#.~#~:.:~#~.~#~#~.~#~:.:~#~.#",
+        "#.:~~:.~:~:.:~:~:.:~:~.:~~:.#",
+        "#...........................#",
+        "#~:~:#:~:~:#:~:~:#:~:~:#:~:~#",
+        "#:#:~:~:#:~:~:#:~:~:#:~:~:#:#",
+        "#~:~#~:~:~#~:~#~:~#~:~:~#~:~#",
+        "#...........................#",
+        "#.~:~:.:~:~.~:~:~.~:~:.:~:~.#",
+        "#.:~~#.~#~:.:~#~:.:~#~.#~~:.#",
+        "#.~:~:.:~:~.~:~:~.~:~:.:~:~.#",
+        "#...........................#",
+        "#.##.###.###.#.#.###.###.##.#",
+        "#.............PQ............#",
+        "#############################",
+    ],
+    enemies: [
+        { ai: "chase" },
+        { ai: "random" },
+        { ai: "phantom" },
+        { ai: "ambusher" },
+        {
+            ai: "patroller",
+            route: [
+                [6, 5],
+                [22, 5],
+                [22, 9],
+                [6, 9],
+            ],
+        },
+        { ai: "chase" },
+        { ai: "splitter" },
+        { ai: "random" },
+    ],
+    rules: { fog: { radius: 4 } },
+})
+
 const WAYS = [vec2(1, 0), vec2(0, 1), vec2(-1, 0), vec2(0, -1)]
 
 // Play `level` for `ticks` ticks with player 1 (who can't be knocked out)
@@ -168,8 +283,9 @@ function play(
     }
 }
 
-// Whether `a` and `b`, chasers, ambushers or Splitters of one kind, stand
-// on one cell having come from one cell.
+// Whether `a` and `b`, of one kind that keeps from stacking (chasers,
+// ambushers, Splitters, phantoms or interceptors), stand on one cell
+// having come from one cell.
 function stacked(a: Character, b: Character): boolean {
     return (
         a.ai === b.ai &&
@@ -185,6 +301,7 @@ const SPREADING = new Set<AiType>([
     AiType.ambusher,
     AiType.splitter,
     AiType.phantom,
+    AiType.interceptor,
 ])
 
 // The longest run of ticks, over every pair of enemies, that the two were
@@ -222,10 +339,10 @@ describe("same-kind enemies in a whole game", () => {
     it.each([
         ["stage 1's large map's chasers and ambushers", classicLarge],
         ["stage 2's medium map's ambushers", wrapMazeMedium],
-        ["stage 3 at Hard", stages[2].hard],
-        ["stage 3 at Super Hard", stages[2].superHard],
-        ["stage 8 at Hard", stages[7].hard],
-        ["stage 8 at Super Hard", stages[7].superHard],
+        ["stage 3's large map at Hard", levelFor(iceRinkLarge, "hard")],
+        ["stage 3's large map at Super Hard", iceRinkLarge],
+        ["stage 8's large map at Hard", levelFor(frozenFogLarge, "hard")],
+        ["stage 8's large map at Super Hard", frozenFogLarge],
         ["stage 5 at Easy", stages[4].easy],
         ["stage 10 at Easy", stages[9].easy],
         // Two phantoms (KDA-285): 17-85 s on every seed.
@@ -234,6 +351,15 @@ describe("same-kind enemies in a whole game", () => {
             `stage 6's phantoms at ${DIFFICULTY_LABELS[d]}`,
             stages[5][d],
         ]),
+        // Interceptors (KDA-292): without the rule two of them went as one
+        // for 2.5-55 s of every run here. On stage 7 at Super Hard, three
+        // piled onto a player standing still, one holding behind the
+        // next, and two stacked for a move once the hold ran out, until
+        // an interceptor took to going round another way instead.
+        ["stage 1's interceptors at Super Hard", stages[0].superHard],
+        ["stage 4's interceptors at Hard", stages[3].hard],
+        ["stage 10's interceptors at Hard", stages[9].hard],
+        ["stage 7's interceptors at Super Hard", stages[6].superHard],
     ] satisfies [string, Level][])(
         "keeps %s from going as one",
         (_, level) => {
@@ -259,7 +385,9 @@ describe("same-kind enemies in a whole game", () => {
                 : [[`stage ${i + 1} at Easy`, stage.easy]]
         ),
         ["stage 1 at Medium", stages[0].medium],
-        ["stage 1 at Hard", stages[0].hard],
+        // The large map's first six, before the interceptors (KDA-292):
+        // two chasers and an ambusher that never stack.
+        ["stage 1's large map at Hard", levelFor(classicLarge, "hard")],
         // One phantom among the others.
         ["stage 4 at Medium", stages[3].medium],
     ]
@@ -278,9 +406,9 @@ describe("same-kind enemies in a whole game", () => {
     // An ice slide is no choice, but it still keeps from stacking: on this
     // run two chasers that met slid up an ice column as one for 6 s.
     it("keeps chasers from sliding as one up stage 3's ice", () => {
-        expect(
-            longestStack(stages[2].superHard, 7, 6000, 7 * 31 + 7)
-        ).toBeLessThan(TICK_RATE / 4)
+        expect(longestStack(iceRinkLarge, 7, 6000, 7 * 31 + 7)).toBeLessThan(
+            TICK_RATE / 4
+        )
     })
 
     it("changes moves where two of a kind would stack", () => {
