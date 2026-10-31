@@ -188,6 +188,29 @@ describe("effectsForEvent", () => {
         expect(r.shakes).toEqual([])
     })
 
+    it("a shield over the enemy, nothing else, for a blocked punch", () => {
+        const r = recorder()
+        const shields: number[] = []
+        r.targets.shields = { add: (enemy) => shields.push(enemy) }
+        effectsForEvent(
+            { type: "punchBlocked", player: 0, at: vec2(2.4, 2), enemy: 3 },
+            room(),
+            r.targets
+        )
+        expect(shields).toEqual([3])
+        expect(r.bursts).toEqual([])
+        expect(r.shakes).toEqual([])
+        // Without shields to show, nothing at all.
+        const plain = run({
+            type: "punchBlocked",
+            player: 0,
+            at: vec2(2.4, 2),
+            enemy: 3,
+        })
+        expect(plain.bursts).toEqual([])
+        expect(plain.shakes).toEqual([])
+    })
+
     it("a tiny burst and a very small shake where a punch lands", () => {
         for (const target of ["enemy", "boss", "player"] as const) {
             const at = vec2(2.4, 2)
@@ -407,6 +430,29 @@ describe("effectsForEvents", () => {
             "punch",
         ])
         expect(r.shakes).toEqual([SHAKES.punch, SHAKES.punch])
+    })
+
+    it("shakes for a punch's hit, not for a block before it (KDA-288)", () => {
+        const r = recorder()
+        const shields: number[] = []
+        r.targets.shields = { add: (enemy) => shields.push(enemy) }
+        effectsForEvents(
+            [
+                { type: "punchBlocked", player: 0, at: vec2(3, 2), enemy: 0 },
+                {
+                    type: "punchHit",
+                    player: 0,
+                    at: vec2(3, 2),
+                    target: "enemy",
+                    enemy: 1,
+                },
+            ],
+            room(),
+            r.targets
+        )
+        expect(shields).toEqual([0])
+        expect(r.bursts.map((b) => b.kind)).toEqual(["punch"])
+        expect(r.shakes).toEqual([SHAKES.punch])
     })
 })
 

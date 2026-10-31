@@ -391,9 +391,10 @@ describe("punching", () => {
         const enemy = makeEnemy(3, 1)
         const state = makeState(room, { x: 2, y: 1 }, [enemy])
         // A knocked-back enemy glides on from where it was drawn, so on the
-        // next tick it is still in reach and hit again. It is knocked a cell
-        // on from the cell it is drawn nearest, still (3, 1), so it keeps
-        // going to (4, 1) rather than being thrown further.
+        // next tick it is still in reach and hit again. It is knocked on
+        // from the cell it is drawn nearest, still (3, 1), so it keeps
+        // going towards (4, 1) rather than being thrown further (and less
+        // far than the first, as the knock decays: KDA-288).
         tick(state)
         expect(ofType(state, "punched")).toHaveLength(1)
         tick(state)

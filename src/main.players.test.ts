@@ -124,6 +124,7 @@ describe("main with two players", () => {
             stages[0].hard,
             ["dragon", "owl"],
             "coop",
+            "hard",
         ])
         // The saved 1-player picks are left alone, player 1's included,
         // and so is the difficulty.

@@ -20,9 +20,13 @@ export type Random = () => number
 
 // Neighbouring cells the enemy may step into: not a wall, and not where it
 // just came from. In a dead end, turning back is the only way out, so the
-// previous cell is allowed after all. Empty only when boxed in on every side.
+// previous cell is allowed after all, and so it is for an enemy a punch
+// just knocked a full cell back (Character.turnsBack, KDA-288), which came
+// from the punch's side and may now come straight back at the player.
+// Empty only when boxed in on every side.
 export function candidateMoves(cells: Cells, enemy: Character): Vec2[] {
     const open = openNeighbours(cells, enemy.pos)
+    if (enemy.turnsBack) return open
     const forward = open.filter((v) => !samePos(v, enemy.lastPos))
     return forward.length > 0 ? forward : open
 }
@@ -172,6 +176,9 @@ export function enemyMove(
 
     enemy.lastPos = vec2(enemy.pos.x, enemy.pos.y)
     enemy.pos = next
+    // A move of its own: a punch's turning back is used up (see
+    // candidateMoves).
+    enemy.turnsBack = false
     return false
 }
 
@@ -387,15 +394,18 @@ const SPREADS: ReadonlySet<AiType> = new Set([
 // Any order keeps twins apart as well: of two that would end a tick
 // stacked, at least one moved, and the later of them to move saw the other
 // already where it ended the tick (moved before, or staying put all tick)
-// and kept off (unless its hold had run out, see mayHold). So the order
-// only decides which of two counts the other,
-// and this one keeps a twin's turn from coming before the turn of the twin
+// and kept off (unless its hold had run out, see mayHold). A short punch
+// knock turning round (turnKnock in punch.ts) is a move too, made before
+// any turn, and it keeps off a twin the same way, so this holds with it.
+// So the order only decides which of two counts the other, and this one
+// keeps a twin's turn from coming before the turn of the twin
 // it may follow, which is the one way a twin counts one that leaves. If
 // every enemy still to go waits on another, some wait on each other round
 // a loop (twins going round a loop of cells, or two that just passed each
 // other): the first in slot order on that loop goes, not one merely
-// waiting on it. Enemies only move on their own turns, so the order is the
-// same worked out from where they stand at the start of the tick. No
+// waiting on it. Enemies only move on their own turns (knock turns all
+// come before them), so the order is the same worked out from where they
+// stand once those are done. No
 // randomness: random enemies, the only ones that draw on it, never wait.
 export function turnOrder(
     enemies: readonly Character[],
