@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vite-plus/test"
-import { addStatus, enemyVisible, type BreathDef } from "../breath"
+import { addStatus, breathe, enemyVisible, type BreathDef } from "../breath"
 import type { Character } from "../character"
 import { AiType, PLAYER_SPEED, TICK_RATE } from "../constants"
 import { step, type GameState, type MoveInput } from "../game"
@@ -15,7 +15,14 @@ import {
 import { ANIMALS } from "../roster"
 import { vec2, type Vec2 } from "../vec2"
 import { dragon } from "./dragon"
-import { BREATH_ICE, FROZEN, ICE_SECONDS, penguin } from "./penguin"
+import {
+    BREATH_ICE,
+    coneRange,
+    freezeSeconds,
+    FROZEN,
+    ICE_SECONDS,
+    penguin,
+} from "./penguin"
 
 // The Penguin's ice breath and its stat, end to end through step().
 
@@ -40,6 +47,10 @@ function tick(state: GameState, press: Press = {}) {
 function run(state: GameState, n: number, press: Press = {}) {
     for (let i = 0; i < n; i++) tick(state, press)
 }
+
+// Player 1 breathes charged to level 3 (KDA-289), the cone's range before
+// charging: 3.
+const breathe3 = (state: GameState) => breathe(state, state.players[0], 3)
 
 // A corridor along row 1, walled at both ends, with a dot shut away in a
 // wall pocket (bottom row) so the game isn't won by clearing every dot.
@@ -73,8 +84,13 @@ function penguinState(
 
 describe("penguin's ice breath", () => {
     it("has the issue's numbers", () => {
-        expect(penguin.shape).toEqual({ kind: "cone", range: 3 })
-        expect(penguin.cost).toBe(50)
+        // KDA-289: a range of 2 for a tap, 4 at the top; 20 a level.
+        const levels = [1, 2, 3, 4, 5]
+        expect(levels.map((l) => penguin.shape(l))).toEqual(
+            [2, 2, 3, 3, 4].map((range) => ({ kind: "cone", range }))
+        )
+        expect(levels.map(freezeSeconds)).toEqual([3, 3.5, 4, 4.5, 5])
+        expect(penguin.cost).toBe(20)
         expect(penguin.cooldown).toBe(1)
         expect(penguin.duration).toBe(3)
         expect(penguin.maxEnergy).toBe(100)
@@ -91,7 +107,7 @@ describe("penguin's ice breath", () => {
         enemy.moveProgress = 1
         const state = penguinState(corridor, [enemy])
         tick(state, { breath: true })
-        expect(state.players[0].breather.energy).toBe(50)
+        expect(state.players[0].breather.energy).toBe(80)
         expect(enemy.statuses).toEqual([{ status: FROZEN, left: 3 }])
         // Walking east over the new ice at x 2 onto the frozen enemy's
         // cell (floor, not iced under it), and stopping there, uncaught.
@@ -174,8 +190,8 @@ describe("penguin's ice breath", () => {
     })
 
     it("lets walls cast the cone's shadow", () => {
-        // From (1, 3) facing east the cone covers x 2 (1 cell), x 3 (3) and
-        // x 4 (5). The wall at (3, 4) shades (4, 5) behind it.
+        // From (1, 3) facing east the level-3 cone covers x 2 (1 cell), x 3
+        // (3) and x 4 (5). The wall at (3, 4) shades (4, 5) behind it.
         const { map } = textMap([
             "#######",
             "#     #",
@@ -192,7 +208,7 @@ describe("penguin's ice breath", () => {
             breath: penguin,
         })
         state.players[0].breather.energy = 100
-        tick(state, { breath: true })
+        breathe3(state)
         expect(lit.statuses.map((s) => s.status)).toEqual([FROZEN])
         expect(shaded.statuses).toEqual([])
         // Ice on every covered cell but the frozen enemy's.
@@ -211,7 +227,7 @@ describe("penguin's ice breath", () => {
     it("turns the covered floor to ice for 5 s, not under anyone", () => {
         const enemy = makeEnemy(3, 1)
         const state = penguinState(corridor, [enemy])
-        tick(state, { breath: true })
+        breathe3(state)
         expect(iceAt(state)).toEqual([vec2(2, 1), vec2(4, 1)])
         expect(state.ice[1].slice(0, 6)).toEqual([
             false,
@@ -231,7 +247,7 @@ describe("penguin's ice breath", () => {
 
     it("makes ice that other animals slide on", () => {
         const state = penguinState()
-        tick(state, { breath: true })
+        breathe3(state)
         expect(iceAt(state)).toEqual([vec2(2, 1), vec2(3, 1), vec2(4, 1)])
         // A Dragon in the Penguin's place: onto the ice at x 2, then on over
         // x 3 and 4 to the floor at x 5, with nothing held.
@@ -255,8 +271,8 @@ describe("penguin's ice breath", () => {
         const enemy = makeEnemy(4, 1, AiType.chase, { x: 3, y: 1 })
         enemy.moveProgress = 1
         const state = penguinState(map, [enemy], ice)
-        tick(state, { breath: true })
-        run(state, TICK_RATE * 3 - 1)
+        breathe3(state)
+        run(state, TICK_RATE * freezeSeconds(3) - 1)
         expect(enemy.pos).toEqual(vec2(4, 1))
         // Thawed, it slides on east, away from the player it chases, over
         // x 5 to the floor at x 6.
@@ -269,9 +285,9 @@ describe("penguin's ice breath", () => {
     it("does nothing without enough energy", () => {
         const enemy = makeEnemy(3, 1)
         const state = penguinState(corridor, [enemy])
-        state.players[0].breather.energy = 49
+        state.players[0].breather.energy = 19
         tick(state, { breath: true })
-        expect(state.players[0].breather.energy).toBe(49)
+        expect(state.players[0].breather.energy).toBe(19)
         expect(enemy.statuses).toEqual([])
         expect(state.tiles).toEqual([])
     })
@@ -283,6 +299,43 @@ describe("penguin's ice breath", () => {
         expect(state.players[0].breather.energy).toBe(100)
         expect(state.players[0].breather.cooldown).toBe(0)
     })
+})
+
+describe("the Penguin's charged breath (KDA-289)", () => {
+    // An open room, the Penguin at (1, 3) facing east.
+    const { map: room } = textMap([
+        "#######",
+        "#     #",
+        "#     #",
+        "#     #",
+        "#     #",
+        "#     #",
+        "#######",
+        "#.#####",
+    ])
+
+    it.each([1, 2, 3, 4, 5])(
+        "widens the cone and freezes longer at level %i, for 20 a level",
+        (level) => {
+            // On the cone's centre line, at its far end.
+            const range = coneRange(level)
+            const enemy = makeEnemy(1 + range, 3)
+            const state = makeState(room, { x: 1, y: 3 }, [enemy], {
+                breath: penguin,
+            })
+            state.players[0].breather.energy = 100
+            expect(breathe(state, state.players[0], level)).toBe(true)
+            expect(enemy.statuses).toEqual([
+                { status: FROZEN, left: freezeSeconds(level) },
+            ])
+            // Rows of 1, 3, 5 ... cells across, cut by the room's walls at
+            // y 1 and 5; the frozen enemy's cell gets no ice.
+            const rows = [1, 3, 5, 5].slice(0, range)
+            const covered = rows.reduce((a, b) => a + b, 0)
+            expect(iceAt(state)).toHaveLength(covered - 1)
+            expect(state.players[0].breather.energy).toBe(100 - 20 * level)
+        }
+    )
 })
 
 describe("penguin's stat: walks on ice", () => {
@@ -369,7 +422,7 @@ describe("penguin's stat: walks on ice", () => {
 
     it("on its own breath's ice too", () => {
         const state = penguinState()
-        tick(state, { breath: true })
+        breathe3(state)
         expect(iceAt(state)).toEqual([vec2(2, 1), vec2(3, 1), vec2(4, 1)])
         tick(state, { held: east })
         run(state, TICK_RATE)
@@ -404,13 +457,13 @@ describe("penguin's stat: walks on ice", () => {
         return state
     }
 
-    // Player 1's breath east from (1, 1) covers (2, 1), then x 3 and 4 on
-    // both rows.
+    // Player 1's level-3 breath east from (1, 1) covers (2, 1), then x 3
+    // and 4 on both rows.
     const hallIce = [vec2(2, 1), vec2(3, 1), vec2(3, 2), vec2(4, 1), vec2(4, 2)]
 
     it("in 2P, a Penguin walks and a Dragon slides, each by its own rule", () => {
         const state = hallState([penguin, dragon])
-        tick2(state, { breath: true })
+        breathe3(state)
         expect(iceAt(state)).toEqual(hallIce)
         // Both head east and let go once on the ice. The Penguin stops on
         // the ice at x 2; the Dragon steps onto the floor at x 2, then the
@@ -424,7 +477,7 @@ describe("penguin's stat: walks on ice", () => {
 
     it("on another Penguin's breath ice too", () => {
         const state = hallState([penguin, penguin])
-        tick2(state, { breath: true })
+        breathe3(state)
         expect(iceAt(state)).toEqual(hallIce)
         // Player 2 walks over the floor at x 2 onto player 1's ice at x 3
         // and stops there.

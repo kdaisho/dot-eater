@@ -158,14 +158,16 @@ describe.each(EACH_MAP)("stage 10 (%s)", (difficulty) => {
         expect(ends).toEqual([])
     })
 
-    // 18 health is a multiple of 6, so every character needs the same 450
-    // energy (cost / 25 damage a breath: 1, 2 or 3); the dots alone cover
-    // that twice over.
+    // 18 health is 450 energy at the energy spent / 25 a hit (taps or
+    // charges alike: KDA-289). Breaths are paid for in whole levels, so the
+    // Owl (10 a level) and the Skunk (30) spend just that, and the Dragon,
+    // Penguin and Boar (20) 460. The dots alone cover that twice over.
     it("has dots enough for every character to bring the boss down", () => {
         for (const animal of ANIMAL_IDS) {
             const { cost } = BREATHS[animal]
-            const needed = Math.ceil(18 / bossDamage(cost)) * cost
-            expect(needed).toBe(450)
+            const taps = Math.ceil(18 / bossDamage(cost) - 1e-9)
+            const needed = taps * cost
+            expect(needed).toBe(cost === 20 ? 460 : 450)
             expect(dots.length * DOT_ENERGY).toBeGreaterThanOrEqual(needed * 2)
         }
     })

@@ -2,7 +2,6 @@ import { hasStatus, inPlay } from "./breath"
 import {
     AiType,
     Cell,
-    RESPAWN_DELAY,
     SPLITTER_DROP_SECONDS,
     SPLITTER_HALF_SPEED,
     type CharacterId,
@@ -28,12 +27,13 @@ import { samePos, vec2, type Vec2 } from "./vec2"
 //   the spare is GONE.
 // - Split: a breath's defeat (defeatEnemy in breath.ts) on the whole
 //   Splitter scores DEFEAT_POINTS and turns both slots into halves, in play
-//   at SPLITTER_HALF_SPEED, spreading out from the Splitter's cell (see
+//   at SPLITTER_HALF_SPEED (scaled by the difficulty like every enemy's
+//   speed, see enemySpeed), spreading out from the Splitter's cell (see
 //   spread). Halves chase too, are drawn smaller, and don't split again.
 // - A half defeated: DEFEAT_POINTS, and it is GONE (at its spawn), with no
 //   respawn of its own. Once both halves are gone, the main slot is whole
-//   again and waits out RESPAWN_DELAY at the spawn like any defeated enemy,
-//   blinking before it is back.
+//   again and waits out the game's respawnDelay at the spawn like any
+//   defeated enemy, blinking before it is back.
 //
 // Everything else (statuses, pushes, tile effects, collisions) treats each
 // slot in play like any other enemy.
@@ -47,8 +47,10 @@ export type SplitterPart = {
     // play.
     half: boolean
     // The whole Splitter's speed (the level's, or the default), for when it
-    // is whole again.
+    // is whole again, and its halves' (SPLITTER_HALF_SPEED), for when it
+    // splits. Both are scaled by the difficulty (see createGameState).
     wholeSpeed: number
+    halfSpeed: number
     // Seconds until this slot drops its next dot (see dropDot); 0 once due.
     dropIn: number
 }
@@ -80,12 +82,14 @@ export function createSplitter(
         slot: "main",
         half: false,
         wholeSpeed: main.speed,
+        halfSpeed: spare.speed,
         dropIn: SPLITTER_DROP_SECONDS,
     }
     spare.part = {
         slot: "spare",
         half: true,
         wholeSpeed: main.speed,
+        halfSpeed: spare.speed,
         dropIn: SPLITTER_DROP_SECONDS,
     }
     spare.respawnIn = GONE
@@ -120,7 +124,7 @@ export function splitSplitter(state: GameState, i: number) {
     for (const half of [main, spare]) {
         half.part!.half = true
         half.part!.dropIn = SPLITTER_DROP_SECONDS
-        half.speed = SPLITTER_HALF_SPEED
+        half.speed = half.part!.halfSpeed
         half.statuses = []
         half.respawnIn = 0
         // Each half is new to the punch: no decay, and its own guard roll.
@@ -212,13 +216,13 @@ function freeCells(
 
 // The half at `i` was defeated (defeatEnemy has scored it and sent it to
 // its spawn): it is GONE. Once both halves are, the Splitter is whole again
-// in its main slot and back after RESPAWN_DELAY.
+// in its main slot and back after GameState.respawnDelay.
 export function halfDefeated(state: GameState, i: number) {
     state.enemies[i].respawnIn = GONE
     const [main, spare] = slots(state, i)
     if (main.respawnIn > 0 && spare.respawnIn > 0) {
         makeWhole(main)
-        main.respawnIn = RESPAWN_DELAY
+        main.respawnIn = state.respawnDelay
     }
 }
 

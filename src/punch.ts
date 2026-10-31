@@ -2,10 +2,11 @@ import { stacksOn, type Random } from "./ai"
 import { addStatus, hasStatus, inPlay, type EnemyStatus } from "./breath"
 import { skipKnockTurn, type Character } from "./character"
 import { Cell, PUNCH_ACROSS, PUNCH_REACH } from "./constants"
+import { USUAL_KNOCK, type KnockDecay } from "./difficulty"
 import { emit } from "./events"
 import { drawnPos, knockBack, type GameState, type Player } from "./game"
 import { wrapDelta } from "./glide"
-import { blockChance } from "./guard"
+import { blockChance, endStance, startStance } from "./guard"
 import { loopPos } from "./level"
 import { vec2, type Vec2 } from "./vec2"
 import { stunned } from "./versus"
@@ -28,13 +29,15 @@ import { stunned } from "./versus"
 //   tick. It is never defeated (a Splitter doesn't split), and a held one
 //   (e.g. frozen) is hit but not moved. Harmless ones are knocked too.
 // - The knock decays (KDA-288): each landed punch knocks an enemy back
-//   less than the last, by KNOCK_STEPS, until it has had a lull (see
+//   less than the last, by the game's decay (GameState.knock, from
+//   KNOCK_DECAY in difficulty.ts), until it has had a lull (see
 //   knockLevel). Then it comes straight back at the player: a full knock
 //   lets it turn back on its next move (Character.turnsBack), and a short
 //   one glides it out and back into the cell it was knocked from.
 // - An enemy with a guard skill may block the punch (see guard.ts): it
 //   isn't moved and the punch doesn't count towards its decay. A held one
-//   never blocks.
+//   never blocks. A block puts it in its guard stance, holding still, and
+//   a punch that lands ends the stance (KDA-293).
 // - The boss is hit on any part of its body (the square of its four cell
 //   centres) but isn't hurt or moved: the hit is reported, for its thud.
 // - The other player is never hit in co-op: the punch passes through.
@@ -92,12 +95,20 @@ export function punch(
         const held = hasStatus(enemy, "holds")
         const skill = enemy.guard ?? 0
         if (!held && skill > 0 && random() < blockChance(skill, interval)) {
-            emit(state, { type: "punchBlocked", player, at, enemy: i })
+            emit(state, {
+                type: "punchBlocked",
+                player,
+                at,
+                facing: step,
+                enemy: i,
+            })
+            startStance(enemy)
             continue
         }
         emit(state, { type: "punchHit", player, at, target: "enemy", enemy: i })
+        endStance(enemy)
         if (held) continue
-        if (knockEnemy(state, enemy, step, landKnock(enemy))) {
+        if (knockEnemy(state, enemy, step, landKnock(enemy, state.knock))) {
             result.enemies = true
         }
     }
@@ -119,36 +130,31 @@ export function punch(
 // A random source that never blocks (every chance is below 1).
 const NEVER: Random = () => 1
 
-// How far each landed punch in a row knocks an enemy back, in cells: the
-// first a full cell, then less each time, then none (KDA-288, with the user;
-// placeholders to tune at preview). After a lull of KNOCK_LULL seconds with
-// no landed punch it recovers a step, and another every KNOCK_RECOVER
-// seconds after that, back to a full cell.
-export const KNOCK_STEPS: readonly number[] = [1, 0.7, 0.5, 0.3, 0]
-export const KNOCK_LULL = 2
-export const KNOCK_RECOVER = 0.5
-
 // Tolerance for the decay's timing.
 const TIME_EPSILON = 1e-9
 
-// Which of KNOCK_STEPS the next landed punch on `enemy` knocks it back by:
-// its knocks, less the steps it has recovered since the latest (see
-// KNOCK_LULL).
-export function knockLevel(enemy: Character): number {
+// Which of `decay`'s steps (see KnockDecay in difficulty.ts; the usual
+// one unless given) the next landed punch on `enemy` knocks it back by:
+// its knocks, less the steps it has recovered since the latest.
+export function knockLevel(
+    enemy: Character,
+    decay: KnockDecay = USUAL_KNOCK
+): number {
     const { knocks, sinceKnock } = enemy
-    if (knocks === 0 || sinceKnock < KNOCK_LULL - TIME_EPSILON) return knocks
-    const back =
-        Math.floor((sinceKnock - KNOCK_LULL) / KNOCK_RECOVER + TIME_EPSILON) + 1
+    const { lull, recover } = decay
+    if (knocks === 0 || sinceKnock < lull - TIME_EPSILON) return knocks
+    const back = Math.floor((sinceKnock - lull) / recover + TIME_EPSILON) + 1
     return Math.max(0, knocks - back)
 }
 
 // A punch has landed on `enemy` (not blocked, not held): how far it knocks
-// it back, in cells (see knockLevel), counting it towards the decay.
-function landKnock(enemy: Character): number {
-    const level = knockLevel(enemy)
-    enemy.knocks = Math.min(level + 1, KNOCK_STEPS.length - 1)
+// it back by `decay`, in cells (see knockLevel), counting it towards the
+// decay.
+function landKnock(enemy: Character, decay: KnockDecay): number {
+    const level = knockLevel(enemy, decay)
+    enemy.knocks = Math.min(level + 1, decay.steps.length - 1)
     enemy.sinceKnock = 0
-    return KNOCK_STEPS[level]
+    return decay.steps[level]
 }
 
 // Move every player's and enemy's punch timers on by `dt` seconds, at the

@@ -1,6 +1,7 @@
 import {
     AiType,
     BLINK_RATE,
+    BOSS_BREATH_EVERY,
     BOSS_DAMAGE,
     CATCH_DISTANCE,
     Cell,
@@ -14,6 +15,7 @@ import {
     PLAYER_SPEED,
     RESPAWN_BLOCK_GRACE,
     RESPAWN_CLEAR_DISTANCE,
+    RESPAWN_DELAY,
     TICK_RATE,
 } from "./constants"
 import {
@@ -28,7 +30,8 @@ import {
     type Random,
 } from "./ai"
 import {
-    breathe,
+    cancelCharge,
+    chargeTick,
     createBreather,
     enemyBlocks,
     gainEnergy,
@@ -53,12 +56,28 @@ import {
 } from "./boss"
 import { tickBossBreath } from "./bossBreath"
 import { createCharacter, type Character } from "./character"
-import { GUARD, type Difficulty, type GuardOdds } from "./difficulty"
+import {
+    BOSS_BREATH_SCALE,
+    enemySpeed,
+    GUARD,
+    KNOCK_DECAY,
+    RESPAWN_SCALE,
+    USUAL_KNOCK,
+    type Difficulty,
+    type GuardOdds,
+    type KnockDecay,
+} from "./difficulty"
 import { emit, type GameEvent } from "./events"
 import { glidePos, wrapDelta, type Glider } from "./glide"
-import { rollGuards } from "./guard"
+import { inStance, rollGuards, tickStances } from "./guard"
 import { slideStep, type IceMap } from "./ice"
-import { hasDots, loopPos, type Cells, type Level } from "./level"
+import {
+    hasDots,
+    loopPos,
+    type BossBreathData,
+    type Cells,
+    type Level,
+} from "./level"
 import { levels } from "./levels"
 import { distanceMap, openNeighbours } from "./path"
 import { DEFAULT_ANIMAL, type AnimalId } from "./roster"
@@ -120,6 +139,12 @@ export type GameState = {
     // from the game's difficulty, or null for no guard at all (no rolls,
     // no blocks).
     guard: GuardOdds | null
+    // How the punch's knockback decays (KDA-290, see knockLevel in
+    // punch.ts) and how long a defeated enemy stays gone, in seconds (see
+    // defeatEnemy in breath.ts), from the game's difficulty: USUAL_KNOCK
+    // and RESPAWN_DELAY in a game with none.
+    knock: KnockDecay
+    respawnDelay: number
 }
 
 // One player: its character on the board, plus everything else that is its
@@ -203,9 +228,14 @@ export type MoveInput = {
     // The direction newly pressed this tick (zero for none), even if it was
     // already released again.
     pressed: Vec2
-    // Whether the breath key was newly pressed this tick. A press that can't
-    // breathe (too little energy, cooling down) is dropped, not kept.
+    // Whether the breath key was newly pressed this tick, even if it was
+    // already released again. A press that can't breathe (too little
+    // energy, cooling down) is dropped, not kept.
     breath?: boolean
+    // Whether the breath key is held now. Held after a press, the breath
+    // charges; it fires once let go (see chargeTick in breath.ts). Left
+    // out, a press is a tap and fires at once.
+    breathHeld?: boolean
     // Whether the punch key was newly pressed this tick (see punch.ts).
     // Every press punches, unless the player is out or stunned.
     punch?: boolean
@@ -222,7 +252,11 @@ const EPSILON = 1e-9
 // its own for a 1-player game), whose breaths and stats come from BREATHS
 // (src/breaths/). Player i starts on the level's spawn i.
 // `mode` is the rules it is played by (see knockOut). `difficulty` sets how
-// well enemies guard against the punch (GUARD); left out, they don't.
+// well enemies guard against the punch (GUARD); left out, they don't. It
+// also sets (KDA-290) how fast enemies go (enemySpeed), how the knockback
+// decays (KNOCK_DECAY), how soon a defeated enemy is back (RESPAWN_SCALE)
+// and how often the boss breathes (BOSS_BREATH_SCALE); left out, all of
+// them are the level's and the defaults, as before.
 export function createGameState(
     level: Level = levels[0],
     animals: AnimalId | readonly AnimalId[] = DEFAULT_ANIMAL,
@@ -264,6 +298,7 @@ export function createGameState(
                       ),
                   ]
         for (const slot of slots) {
+            if (difficulty) speedUp(slot, difficulty)
             enemies.push(slot)
             enemySpawns.push(vec2(enemy.pos.x, enemy.pos.y))
         }
@@ -282,7 +317,9 @@ export function createGameState(
             ? createBoss(
                   level.boss.pos,
                   level.boss.speed,
-                  level.boss.breath,
+                  difficulty
+                      ? bossBreathAt(level.boss.breath, difficulty)
+                      : level.boss.breath,
                   level.boss.health
               )
             : null,
@@ -295,7 +332,31 @@ export function createGameState(
         regrow: createRegrow(level.rules.regrowDots, cells),
         splitterDrops: level.rules.splitterDrops ?? false,
         guard: difficulty ? GUARD[difficulty] : null,
+        knock: difficulty ? KNOCK_DECAY[difficulty] : USUAL_KNOCK,
+        respawnDelay:
+            RESPAWN_DELAY * (difficulty ? RESPAWN_SCALE[difficulty] : 1),
     }
+}
+
+// An enemy slot's speeds at `difficulty` (see enemySpeed): its own and, for
+// a Splitter's slot, the whole Splitter's and its halves'.
+function speedUp(enemy: Character, difficulty: Difficulty) {
+    enemy.speed = enemySpeed(enemy.speed, difficulty)
+    const { part } = enemy
+    if (!part) return
+    part.wholeSpeed = enemySpeed(part.wholeSpeed, difficulty)
+    part.halfSpeed = enemySpeed(part.halfSpeed, difficulty)
+}
+
+// The boss's breath tuning from its level (`data`) at `difficulty`: its
+// `every` (BOSS_BREATH_EVERY if the level leaves it out) times
+// BOSS_BREATH_SCALE. Its wind-up is the level's.
+function bossBreathAt(
+    data: BossBreathData = {},
+    difficulty: Difficulty
+): BossBreathData {
+    const every = data.every ?? BOSS_BREATH_EVERY
+    return { ...data, every: every * BOSS_BREATH_SCALE[difficulty] }
 }
 
 // A player of `level` as `animal`, on `spawn`. Speeds the level leaves out
@@ -832,16 +893,17 @@ function wait(character: Glider) {
 //
 // Breaths (see breath.ts): their timers count down first, so anything that
 // runs out (a status, a tile effect, a defeated enemy's wait) is over before
-// anyone moves. A breath press fires after the players' moves, from the cell
+// anyone moves. A breath is charged while held and fires when let go (a
+// tap at once; see chargeTick), after the players' moves, from the cell
 // the player is moving into and along its new facing, and before the
 // enemies move, so it hits them where they stood at the start of the tick.
 // Player 1's breath fires first. Breaths don't affect players, except in
 // versus, where a breath stuns the other player (see versus.ts): a stunned
 // player ignores its input, finishes its glide (and, on ice, its slide) and
-// doesn't move on or breathe, and its stun counts down with the breath
-// timers. Enemies out of play don't move or catch; held ones (e.g. frozen)
-// don't move; harmless ones don't catch; and enemies keep out of cells a
-// tile effect blocks.
+// doesn't move on or breathe (a charge it was holding is dropped), and its
+// stun counts down with the breath timers. Enemies out of play don't move
+// or catch; held ones (e.g. frozen) don't move; harmless ones don't catch;
+// and enemies keep out of cells a tile effect blocks.
 //
 // A boss (see boss.ts) moves with the enemies, after the breaths, and keeps
 // out of blocked cells too; a defeated one doesn't move or catch. Just
@@ -851,8 +913,9 @@ function wait(character: Glider) {
 // Punches (see punch.ts) come right after the breaths, from where each
 // player is drawn after its move, and knock enemies back like a breath's
 // push. They cost nothing and never stop or slow the player. Their timers
-// (see tickPunches) move on with the others; enemies just in play roll
-// their guard (see guard.ts) after them.
+// (see tickPunches) move on with the others, and so do the enemies' guard
+// stances (see tickStances in guard.ts): one in its stance holds still.
+// Enemies just in play roll their guard (see guard.ts) after them.
 //
 // On a level with rules.regrowDots, eaten dots due back grow back with the
 // timers, on cells no character is on (see regrow.ts), so a player moving
@@ -880,6 +943,7 @@ export function step(
     tickPlayersOut(state, dt)
     tickStuns(players, dt)
     tickPunches(state, dt)
+    tickStances(state, dt)
     for (const player of players) {
         if (player.invulnerableFor > 0) player.invulnerableFor--
     }
@@ -910,9 +974,9 @@ export function step(
     let breathed = false
     players.forEach((player, i) => {
         // A player stunned by an earlier player's breath on this same tick
-        // doesn't breathe either.
-        if (player.out || stunned(player)) return
-        if (inputs[i]?.breath && breathe(state, player)) breathed = true
+        // doesn't breathe either, and loses any charge.
+        if (player.out || stunned(player)) return cancelCharge(player.breather)
+        if (chargeTick(state, player, inputs[i] ?? IDLE, dt)) breathed = true
     })
     // Punches come after the breaths, player 1's first (see punch.ts).
     let punched = false
@@ -967,10 +1031,11 @@ export function step(
         // Still gliding: not holding (a hold is always ready to move), so a
         // push, knock-back or split that cut a hold short leaves none to
         // count against the next. A short knock turns round as its
-        // progress moves on (see turnKnock in punch.ts).
+        // progress moves on (see turnKnock in punch.ts). One in its guard
+        // stance (see guard.ts) finishes its glide but makes no new move.
         advance(enemy, dt)
         turnKnock(enemy, crowd)
-        if (enemy.moveProgress < 1 - EPSILON) {
+        if (enemy.moveProgress < 1 - EPSILON || inStance(enemy)) {
             enemy.heldFor = 0
             return []
         }

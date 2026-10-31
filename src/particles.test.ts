@@ -361,10 +361,14 @@ describe("particle colours", () => {
     })
 
     it.each(looks)("%s shows on the white floor", (_name, look) => {
+        // A pale particle may show by its outline instead (KDA-293's
+        // white sparks).
+        const outline = look?.outline
+        if (outline) expect(outline).toMatch(/^#([0-9a-f]{3}|[0-9a-f]{6})$/i)
         for (const color of look?.colors ?? []) {
             expect(color).toMatch(/^#([0-9a-f]{3}|[0-9a-f]{6})$/i)
             // Below 0.7: #fff is 1, the pale blue #bae6fd about 0.74.
-            expect(luminance(color), color).toBeLessThan(0.7)
+            expect(luminance(outline ?? color), color).toBeLessThan(0.7)
         }
     })
 })

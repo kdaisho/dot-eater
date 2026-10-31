@@ -34,7 +34,8 @@ export const SfxId = {
     punch: "punch",
     punchHit: "punchHit",
     punchHitBoss: "punchHit.boss",
-    // A punch an enemy blocked with its guard (KDA-288): a dull short tok.
+    // A punch an enemy blocked with its guard (KDA-288): a wooden thock
+    // (KDA-293).
     punchBlocked: "punch.blocked",
     // Results: also fit a won or lost versus round.
     stageClear: "stageClear",
@@ -381,22 +382,26 @@ export const SFX: Readonly<Record<SfxId, readonly Tone[]>> = {
             volume: 0.25,
         },
     ],
-    // A dull, short tok: a block, wooden rather than a hit's crack.
+    // A hollow wooden thock, like a fist on a buckler (KDA-293, with the
+    // user; placeholders to tune at preview): a low falling knock with a
+    // short mid click.
     "punch.blocked": [
         {
-            wave: "triangle",
+            wave: "sine",
             at: 0,
-            duration: 0.05,
-            freq: 520,
-            freqEnd: 380,
+            duration: 0.12,
+            freq: 320,
+            freqEnd: 140,
             volume: 0.4,
+            attack: 0.003,
         },
         {
             wave: "noise",
             at: 0,
-            duration: 0.02,
+            duration: 0.04,
             freq: 900,
-            volume: 0.12,
+            volume: 0.17,
+            attack: 0.003,
         },
     ],
     // A short rising jingle on a major chord.

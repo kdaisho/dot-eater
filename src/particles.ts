@@ -37,6 +37,9 @@ export type ParticleLook = {
     drag?: number
     // Drawn as discs, or as squares (chunks).
     shape?: "circle" | "square"
+    // A "#rrggbb" colour for a thin edge round each particle, so pale ones
+    // show on the white floor. Leave it out for none.
+    outline?: string
 }
 
 export type Particle = {
@@ -54,6 +57,8 @@ export type Particle = {
     shape: "circle" | "square"
     gravity: number
     drag: number
+    // Its look's outline, if it has one.
+    outline?: string
 }
 
 // The bursts that aren't a breath's (breaths carry their own look). A
@@ -66,6 +71,7 @@ export type BurstKind =
     | "bossHit"
     | "bossDefeat"
     | "punch"
+    | "block"
     | "regrow"
     | "drop"
 
@@ -133,6 +139,19 @@ export const BURSTS: Readonly<Record<BurstKind, ParticleLook>> = {
         spread: Math.PI * 2,
         size: 0.09,
         drag: 3,
+    },
+    // White and yellow sparks where an enemy blocks a punch (KDA-293, with
+    // the user; placeholders to tune at preview): thrown back towards the
+    // puncher from the impact point, fast, and slowing quickly.
+    block: {
+        colors: ["#fff7cc", "#facc15"],
+        count: 14,
+        life: 0.55,
+        speed: 7,
+        spread: 1.6,
+        size: 0.1,
+        drag: 6,
+        outline: "#a16207",
     },
     // A faint green sparkle where an eaten dot grows back (KDA-269): a few
     // specks, short and slow, since many dots regrow.
@@ -249,6 +268,7 @@ export function createParticles(options: ParticlesOptions): Particles {
                 shape: look.shape ?? "circle",
                 gravity: look.gravity ?? 0,
                 drag: look.drag ?? 0,
+                ...(look.outline ? { outline: look.outline } : {}),
             })
         }
         if (list.length > max) list = list.slice(list.length - max)

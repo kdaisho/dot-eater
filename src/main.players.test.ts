@@ -141,12 +141,14 @@ describe("main with two players", () => {
                 held: [vec2(-1, 0)],
                 pressed: vec2(0, 0),
                 breath: false,
+                breathHeld: false,
                 punch: false,
             },
             {
                 held: [vec2(0, 1)],
                 pressed: vec2(0, 0),
                 breath: false,
+                breathHeld: false,
                 punch: false,
             },
         ])

@@ -3,8 +3,9 @@ import type { LevelData } from "../level"
 // Final boss, the last stage of story mode: stage 5's boss fight, harder.
 // The boss (🐙, see boss.ts) has 18 health, not 12, and breathes every
 // 2.5 s, not 4, out to 9 cells, not 6, for 35, not 30; its wind-up is a
-// little shorter (0.8 s, not 0.9). 18 is a multiple of 6, so every
-// character needs the same 450 energy (90 dots) to bring it down.
+// little shorter (0.8 s, not 0.9). 18 health is 450 energy (90 dots) to
+// bring it down; the Dragon, Penguin and Boar, paying 20 a level, spend
+// 460 (KDA-289).
 //
 // Its arena is bigger than stage 5's and more open: four 2x2 pillars on the
 // medium map and six on the large, every lane at least 3 cells wide. The
