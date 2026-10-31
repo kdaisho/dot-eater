@@ -1,9 +1,11 @@
 import type { LevelData } from "../level"
 
 // Gauntlet: the final exam before the last boss, and the hardest dot stage.
-// The large map has every enemy type (a chaser, an ambusher, a wanderer, the
-// phantom, a patroller and a Splitter), all six from Hard on; the medium map
-// has four of them, three different ones even at Easy. The chasers and
+// Between them its maps have every enemy type: the large map a chaser, an
+// ambusher, a wanderer, a patroller and interceptors (Hard), and a
+// Splitter (Super Hard); the medium map a chaser, an ambusher and the
+// phantom, three different ones even at Easy, and an interceptor (Medium).
+// The interceptors leave Super Hard no room for the phantom. The chasers and
 // ambushers are a little faster here than anywhere else (2.25 cells per
 // second, against the default 2). The maze mixes open rooms (the top
 // corners, where the enemies start, and a pillared arena in the middle, where
@@ -43,7 +45,7 @@ export const stage9: LevelData = {
             { ai: "chase", speed: 2.25 },
             { ai: "ambusher", speed: 2.25 },
             { ai: "phantom" },
-            { ai: "splitter" },
+            { ai: "interceptor" },
         ],
     },
     large: {
@@ -78,7 +80,7 @@ export const stage9: LevelData = {
             { ai: "chase", speed: 2.25 },
             { ai: "ambusher", speed: 2.25 },
             { ai: "random" },
-            { ai: "phantom" },
+            { ai: "interceptor" },
             {
                 ai: "patroller",
                 route: [
@@ -88,9 +90,9 @@ export const stage9: LevelData = {
                     [7, 15],
                 ],
             },
+            { ai: "interceptor" },
             { ai: "splitter" },
-            { ai: "chase", speed: 2.25 },
-            { ai: "ambusher", speed: 2.25 },
+            { ai: "interceptor" },
         ],
     },
 }

@@ -35,7 +35,7 @@ export const stage6: LevelData = {
             { ai: "phantom" },
             { ai: "chase" },
             { ai: "phantom" },
-            { ai: "chase" },
+            { ai: "interceptor" },
         ],
     },
     large: {
@@ -67,11 +67,11 @@ export const stage6: LevelData = {
             { ai: "phantom" },
             { ai: "chase" },
             { ai: "phantom" },
-            { ai: "chase" },
-            { ai: "ambusher" },
+            { ai: "interceptor" },
+            { ai: "interceptor" },
             { ai: "phantom" },
             { ai: "chase" },
-            { ai: "chase" },
+            { ai: "interceptor" },
         ],
     },
 }

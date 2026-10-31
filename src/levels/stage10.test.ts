@@ -52,7 +52,7 @@ const MAPS = {
             AiType.splitter,
             AiType.splitter,
             AiType.chase,
-            AiType.phantom,
+            AiType.interceptor,
         ],
     },
     large: {
@@ -65,10 +65,10 @@ const MAPS = {
             AiType.chase,
             AiType.chase,
             AiType.splitter,
-            AiType.ambusher,
-            AiType.phantom,
+            AiType.interceptor,
+            AiType.interceptor,
             AiType.splitter,
-            AiType.chase,
+            AiType.interceptor,
         ],
     },
 }

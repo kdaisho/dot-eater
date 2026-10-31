@@ -52,7 +52,7 @@ export const stage7: LevelData = {
                     [17, 4],
                 ],
             },
-            { ai: "chase" },
+            { ai: "interceptor" },
         ],
     },
     large: {
@@ -120,8 +120,8 @@ export const stage7: LevelData = {
                     [11, 3],
                 ],
             },
-            { ai: "chase" },
-            { ai: "ambusher" },
+            { ai: "interceptor" },
+            { ai: "interceptor" },
             // Back and forth through the third row of rooms.
             {
                 ai: "patroller",
@@ -130,7 +130,7 @@ export const stage7: LevelData = {
                     [3, 12],
                 ],
             },
-            { ai: "chase" },
+            { ai: "interceptor" },
         ],
     },
 }

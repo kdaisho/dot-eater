@@ -105,6 +105,20 @@ describe("levels", () => {
         }
     )
 
+    // KDA-292 (PM call): every stage sprinkles interceptors in, none on
+    // Easy and one more at each difficulty above it, never among the first
+    // three of a list (so never at Easy's count).
+    const INTERCEPTORS = { easy: 0, medium: 1, hard: 2, superHard: 3 }
+    it.each(everyLevel)(
+        "stage %i (%s) brings out its difficulty's interceptors",
+        (_n, difficulty, level) => {
+            const ais = level.enemies.map((e) => e.ai)
+            const count = ais.filter((ai) => ai === AiType.interceptor).length
+            expect(count).toBe(INTERCEPTORS[difficulty])
+            expect(ais.slice(0, 3)).not.toContain(AiType.interceptor)
+        }
+    )
+
     it.each(everyLevel)(
         "stage %i (%s) has a name and a valid map",
         (_n, _difficulty, level) => {
@@ -231,7 +245,8 @@ describe.each(EACH_MAP)("stage 1 (%s)", (difficulty) => {
     })
 
     // Wanderers and a chaser first, so Easy's three are the gentlest mix;
-    // the ambusher only from the fourth enemy on.
+    // the ambusher only from the fourth enemy on, on the large map (the
+    // medium map's fourth is an interceptor, KDA-292).
     it("brings out wanderers and a chaser first, ambushers later, at the default speed", () => {
         const ais = level.enemies.map((e) => e.ai)
         expect(ais.slice(0, 3)).toEqual([
@@ -239,9 +254,18 @@ describe.each(EACH_MAP)("stage 1 (%s)", (difficulty) => {
             AiType.chase,
             AiType.random,
         ])
-        expect(ais[3]).toBe(AiType.ambusher)
+        expect(ais[3]).toBe(
+            MAP_SIZE[difficulty] === "medium"
+                ? AiType.interceptor
+                : AiType.ambusher
+        )
         for (const ai of ais) {
-            expect([AiType.random, AiType.chase, AiType.ambusher]).toContain(ai)
+            expect([
+                AiType.random,
+                AiType.chase,
+                AiType.ambusher,
+                AiType.interceptor,
+            ]).toContain(ai)
         }
         for (const enemy of level.enemies) {
             expect(enemy.speed).toBeUndefined()
@@ -302,18 +326,25 @@ describe.each(EACH_MAP)("stage 2 (%s)", (difficulty) => {
     })
 
     // Easy's three are the ambusher with a chaser and a wanderer; the
-    // fourth is a second ambusher, and there is one at every difficulty
-    // above that.
+    // fourth is an interceptor on the medium map (KDA-292) and a second
+    // ambusher on the large one.
     it("introduces the ambusher, with a chaser and a random enemy", () => {
         const ais = level.enemies.map((e) => e.ai)
         expect(ais.slice(0, 4)).toEqual([
             AiType.ambusher,
             AiType.chase,
             AiType.random,
-            AiType.ambusher,
+            MAP_SIZE[difficulty] === "medium"
+                ? AiType.interceptor
+                : AiType.ambusher,
         ])
         for (const ai of ais) {
-            expect([AiType.random, AiType.chase, AiType.ambusher]).toContain(ai)
+            expect([
+                AiType.random,
+                AiType.chase,
+                AiType.ambusher,
+                AiType.interceptor,
+            ]).toContain(ai)
         }
         for (const enemy of level.enemies) {
             expect(enemy.speed).toBeUndefined()

@@ -43,7 +43,7 @@ export const stage8: LevelData = {
             { ai: "chase" },
             { ai: "random" },
             { ai: "phantom" },
-            { ai: "ambusher" },
+            { ai: "interceptor" },
         ],
     },
     large: {
@@ -78,7 +78,7 @@ export const stage8: LevelData = {
             { ai: "chase" },
             { ai: "random" },
             { ai: "phantom" },
-            { ai: "ambusher" },
+            { ai: "interceptor" },
             {
                 ai: "patroller",
                 route: [
@@ -88,9 +88,9 @@ export const stage8: LevelData = {
                     [6, 9],
                 ],
             },
-            { ai: "chase" },
+            { ai: "interceptor" },
             { ai: "splitter" },
-            { ai: "random" },
+            { ai: "interceptor" },
         ],
     },
     rules: { fog: { radius: 4 } },

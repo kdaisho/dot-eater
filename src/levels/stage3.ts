@@ -14,13 +14,13 @@ import type { LevelData } from "../level"
 //
 // The medium map (21x17) is the old rink grown a little: a 13x9 rink, the
 // ring, and a corridor above and below. Its enemies are a patroller going
-// clockwise round the ring, a chaser, a wanderer and (from Medium) a
-// patroller sweeping straight down the rink's centre column and back.
+// clockwise round the ring, a chaser, a wanderer and (from Medium) an
+// interceptor.
 // The large map (29x21) has a 17x13 rink and, either side of the ring, a
 // pair of side corridors with crossings, room to dodge eight enemies: the
-// medium map's four, a second ring patroller going anticlockwise, an
-// ambusher and a second chaser (Hard), then the centre sweeper and a second
-// wanderer (Super Hard).
+// medium map's first three, a second ring patroller going anticlockwise,
+// two interceptors (Hard), then a patroller sweeping straight down the
+// rink's centre column and back, and a third interceptor (Super Hard).
 //
 // The Penguin walks the rink like floor: the dots others can only pass over
 // mid-slide are easy pickings for it, and the enemies that follow it onto
@@ -62,13 +62,7 @@ export const stage3: LevelData = {
             },
             { ai: "chase" },
             { ai: "random" },
-            {
-                ai: "patroller",
-                route: [
-                    [10, 3],
-                    [10, 13],
-                ],
-            },
+            { ai: "interceptor" },
         ],
     },
     large: {
@@ -117,8 +111,8 @@ export const stage3: LevelData = {
                     [23, 17],
                 ],
             },
-            { ai: "ambusher" },
-            { ai: "chase" },
+            { ai: "interceptor" },
+            { ai: "interceptor" },
             {
                 ai: "patroller",
                 route: [
@@ -126,7 +120,7 @@ export const stage3: LevelData = {
                     [14, 17],
                 ],
             },
-            { ai: "random" },
+            { ai: "interceptor" },
         ],
     },
 }

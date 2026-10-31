@@ -19,8 +19,8 @@ import type { LevelData } from "../level"
 // map's edge), and the doors at the top corners open right where the boss
 // starts. Every dot is in the arena; Splitters among the minions drop more
 // in the corridor (KDA-270), and eaten dots grow back after 8 s (KDA-269),
-// sooner than stage 5's, as the fight takes more of them. A phantom joins
-// from Medium: it drifts through walls, so the corridor is no hiding place.
+// sooner than stage 5's, as the fight takes more of them. Interceptors
+// join from Medium, so the corridor is no place to run round in.
 // The players start at the bottom, between two doors and out of every line
 // the boss breathes along, far from the boss and the minions. No tunnels
 // and no ice (the boss uses neither), no dead ends, left-right symmetric
@@ -55,7 +55,7 @@ export const stage10: LevelData = {
             { ai: "splitter" },
             { ai: "splitter" },
             { ai: "chase" },
-            { ai: "phantom" },
+            { ai: "interceptor" },
         ],
     },
     large: {
@@ -89,10 +89,10 @@ export const stage10: LevelData = {
             { ai: "chase" },
             { ai: "chase" },
             { ai: "splitter" },
-            { ai: "ambusher" },
-            { ai: "phantom" },
+            { ai: "interceptor" },
+            { ai: "interceptor" },
             { ai: "splitter" },
-            { ai: "chase" },
+            { ai: "interceptor" },
         ],
     },
     // The same boss on both maps: the large map is harder by its arena and

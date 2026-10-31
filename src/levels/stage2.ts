@@ -7,7 +7,8 @@ import type { LevelData } from "../level"
 // of the player along their heading; with tunnels on every side, that cell is
 // often across the map from where the ambusher waits, so it has to be
 // outrun. The ambusher comes in first, then a chaser and a wanderer; the
-// fourth is a second ambusher, and the large map adds a third. Left-right
+// fourth is an interceptor on the medium map and a second ambusher on the
+// large one, which adds interceptors and a third ambusher. Left-right
 // symmetric, with no dead ends: rows of small blocks with a corridor right
 // across the map between each band. The enemies start in a pen in the middle
 // that opens upwards, away from the player at the bottom, and move at the
@@ -39,7 +40,7 @@ export const stage2: LevelData = {
             { ai: "ambusher" },
             { ai: "chase" },
             { ai: "random" },
-            { ai: "ambusher" },
+            { ai: "interceptor" },
         ],
     },
     large: {
@@ -72,10 +73,10 @@ export const stage2: LevelData = {
             { ai: "chase" },
             { ai: "random" },
             { ai: "ambusher" },
-            { ai: "random" },
-            { ai: "chase" },
+            { ai: "interceptor" },
+            { ai: "interceptor" },
             { ai: "ambusher" },
-            { ai: "random" },
+            { ai: "interceptor" },
         ],
     },
 }

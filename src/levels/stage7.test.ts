@@ -29,12 +29,12 @@ describe("stage 7", () => {
     })
 
     // Patrollers lead every list, with an ambusher from the start; the
-    // higher difficulties add more of both, and chasers.
+    // higher difficulties add more patrollers, and interceptors (KDA-292).
     const MIX = {
-        easy: { patroller: 2, ambusher: 1, chase: 0 },
-        medium: { patroller: 2, ambusher: 1, chase: 1 },
-        hard: { patroller: 3, ambusher: 2, chase: 1 },
-        superHard: { patroller: 4, ambusher: 2, chase: 2 },
+        easy: { patroller: 2, ambusher: 1, interceptor: 0 },
+        medium: { patroller: 2, ambusher: 1, interceptor: 1 },
+        hard: { patroller: 3, ambusher: 1, interceptor: 2 },
+        superHard: { patroller: 4, ambusher: 1, interceptor: 3 },
     }
     it.each(DIFFICULTIES)("brings out a guard mix at %s", (d) => {
         const ais = parseLevel(stage7, d).enemies.map((e) => e.ai)
@@ -44,7 +44,7 @@ describe("stage 7", () => {
         expect({
             patroller: count(AiType.patroller),
             ambusher: count(AiType.ambusher),
-            chase: count(AiType.chase),
+            interceptor: count(AiType.interceptor),
         }).toEqual(MIX[d])
     })
 })
