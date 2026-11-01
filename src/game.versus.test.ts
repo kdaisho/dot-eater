@@ -1,12 +1,15 @@
 import { describe, expect, it } from "vite-plus/test"
-import { breathe, type BreathDef } from "./breath"
+import { breathe, MAX_CHARGE, type BreathDef } from "./breath"
 import { BREATHS } from "./breaths"
 import { damageBoss } from "./boss"
 import {
     BOSS_DEFEAT_POINTS,
     BOSS_HEALTH,
+    Cell,
+    DOT_POINTS,
     PLAYER_RESPAWN_DELAY,
-    START_LIVES,
+    ENEMY_DAMAGE,
+    MAX_HEALTH,
     TICK_RATE,
 } from "./constants"
 import {
@@ -30,6 +33,7 @@ import {
 import { vec2, type Vec2 } from "./vec2"
 import {
     CATCH_DOTS,
+    roundWinner,
     STUN_IMMUNITY_SECONDS,
     STUN_SECONDS,
     stunImmune,
@@ -37,7 +41,8 @@ import {
 } from "./versus"
 
 // Versus (KDA-222) in the game itself: breaths stun the other player, a
-// catch costs dots instead of a life, and the game is never lost.
+// knockout (health gone) costs dots and a wait, and the game is never
+// lost.
 
 const TICK = 1 / TICK_RATE
 const none = vec2(0, 0)
@@ -71,7 +76,7 @@ function duel(
     { mode = "versus" }: { mode?: Mode } = {}
 ): GameState {
     const state = makeState(hall, [vec2(1, 1), p2At], [], {
-        lives: START_LIVES,
+        health: MAX_HEALTH,
         mode,
         breath: [p1, BREATHS[AnimalId.dragon]],
     })
@@ -88,11 +93,12 @@ function run(state: GameState, moves: readonly MoveInput[], ticks: number) {
 }
 
 describe("a breath on the other player in versus", () => {
+    // The furthest cell a tap (level 1) reaches along the hall.
     const cases: [AnimalId, Vec2][] = [
-        [AnimalId.dragon, vec2(6, 1)],
-        [AnimalId.penguin, vec2(4, 1)],
-        [AnimalId.owl, vec2(6, 1)],
-        [AnimalId.skunk, vec2(2, 1)],
+        [AnimalId.dragon, vec2(4, 1)],
+        [AnimalId.penguin, vec2(3, 1)],
+        [AnimalId.owl, vec2(5, 1)],
+        [AnimalId.skunk, vec2(3, 1)],
         [AnimalId.boar, vec2(2, 1)],
     ]
     for (const [animal, at] of cases) {
@@ -118,6 +124,23 @@ describe("a breath on the other player in versus", () => {
             expect(stunned(state.players[1])).toBe(false)
         })
     }
+
+    // KDA-289: a charged breath reaches further, but still stuns once, for
+    // the usual time.
+    it("stuns it once, for the usual time, with a full charge", () => {
+        const def = BREATHS[AnimalId.dragon]
+        // Out of a tap's reach (3 cells), within a full charge's (7).
+        const state = duel(def, vec2(8, 1))
+        expect(breathe(state, state.players[0], MAX_CHARGE)).toBe(true)
+        const p2 = state.players[1]
+        expect(p2.stunnedFor).toBe(STUN_SECONDS)
+        expect(
+            state.events.filter((e) => e.type === "playerStunned")
+        ).toHaveLength(1)
+        expect(state.players[0].breather.energy).toBe(
+            def.maxEnergy - def.cost * MAX_CHARGE
+        )
+    })
 
     it("stuns it on the breather's own cell", () => {
         const state = duel(BREATHS[AnimalId.dragon], vec2(1, 1))
@@ -301,6 +324,28 @@ describe("a stunned player", () => {
         expect(p2.character.pos).toEqual(vec2(7, 1))
     })
 
+    it("stays on its cell if it is a Penguin, which walks on ice", () => {
+        // The same ice. The Penguin has just stepped east onto (4, 1), so a
+        // sliding animal would slide on; the stunned path must not slide it.
+        const { map, ice } = textMap([
+            "############",
+            "#  ~~~~    #",
+            "############",
+            "#.##########",
+        ])
+        const state = makeState(map, [vec2(10, 1), vec2(4, 1)], [], {
+            mode: "versus",
+            ice,
+            breath: [BREATHS[AnimalId.dragon], BREATHS[AnimalId.penguin]],
+        })
+        const p2 = state.players[1]
+        p2.character.lastPos = vec2(3, 1)
+        p2.stunnedFor = STUN_SECONDS
+        run(state, [IDLE, hold(east)], STUN_TICKS - 1)
+        expect(stunned(p2)).toBe(true)
+        expect(p2.character.pos).toEqual(vec2(4, 1))
+    })
+
     it("can't breathe", () => {
         const state = stunnedP2()
         const p2 = state.players[1]
@@ -323,13 +368,14 @@ describe("a stunned player", () => {
     })
 })
 
-describe("a versus catch", () => {
-    // An enemy that never moves, on player 1's spawn.
-    function caughtP1(dots: number) {
+describe("a versus knockout", () => {
+    // An enemy that never moves, on player 1's spawn, taking its last
+    // health (unless it has more).
+    function caughtP1(dots: number, health = 1) {
         const enemy = makeEnemy(1, 1)
         enemy.speed = 0
         const state = makeState(hall, [vec2(1, 1), vec2(11, 1)], [enemy], {
-            lives: 1,
+            health,
             mode: "versus",
         })
         state.players[0].dots = dots
@@ -337,15 +383,23 @@ describe("a versus catch", () => {
         return { state, enemy, outcome }
     }
 
-    it(`costs ${CATCH_DOTS} dots and takes the player out, not a life`, () => {
+    it(`costs ${CATCH_DOTS} dots and takes the player out for a while`, () => {
         const { state, outcome } = caughtP1(12)
         expect(outcome).toBeNull()
         const [p1, p2] = state.players
+        expect(p1.health).toBe(0)
         expect(p1.dots).toBe(12 - CATCH_DOTS)
         expect(p1.out).toBe(true)
         expect(p1.respawnIn).toBe(PLAYER_RESPAWN_DELAY)
         expect(p2.out).toBe(false)
-        expect(state.lives).toBe(1)
+    })
+
+    it("with health left only hurts, costing no dots", () => {
+        const { state } = caughtP1(12, MAX_HEALTH)
+        const p1 = state.players[0]
+        expect(p1.health).toBe(MAX_HEALTH - ENEMY_DAMAGE)
+        expect(p1.dots).toBe(12)
+        expect(p1.out).toBe(false)
     })
 
     it("doesn't take the dots below 0", () => {
@@ -372,6 +426,29 @@ describe("a versus catch", () => {
         run(state, [IDLE, IDLE], 1)
         expect(state.players[0].out).toBe(false)
         expect(state.players[0].character.pos).toEqual(vec2(1, 1))
+        // With full health, and not invulnerable.
+        expect(state.players[0].health).toBe(MAX_HEALTH)
+        expect(state.players[0].invulnerableFor).toBe(0)
+    })
+
+    // Regression (KDA-270): a player eats only by moving onto a cell, so a
+    // dot on the cell it came back on was stuck under it for good.
+    it("eats a dot on the cell it comes back on", () => {
+        const { state, enemy } = caughtP1(0)
+        enemy.pos = vec2(6, 1)
+        enemy.lastPos = vec2(6, 1)
+        state.cells[1][1] = Cell.dot
+        const p1 = state.players[0]
+        const { score, dots } = p1
+        run(state, [IDLE, IDLE], RESPAWN_TICKS)
+        expect(p1.out).toBe(false)
+        expect(state.cells[1][1]).toBe(Cell.none)
+        expect(p1.score).toBe(score + DOT_POINTS)
+        expect(p1.dots).toBe(dots + 1)
+        expect(state.events.map((e) => e.type)).toEqual([
+            "playerRespawned",
+            "dotEaten",
+        ])
     })
 
     it("never loses the game, even with both caught over and over", () => {
@@ -380,7 +457,6 @@ describe("a versus catch", () => {
         a.speed = 0
         b.speed = 0
         const state = makeState(hall, [vec2(1, 1), vec2(11, 1)], [a, b], {
-            lives: 0,
             mode: "versus",
         })
         // Both spawns stay occupied: they wait to come back, the game goes
@@ -407,7 +483,7 @@ describe("a versus round's end", () => {
 
     // Regression: the last dot was checked first, so a catch on that tick
     // cost nothing and the round was scored without it.
-    it(`still costs a player caught on the last dot's tick ${CATCH_DOTS} dots`, () => {
+    it(`still costs a player knocked out on the last dot's tick ${CATCH_DOTS} dots`, () => {
         const map = textMap(["#######", "#.    #", "#######"]).map
         const enemy = makeEnemy(5, 1)
         enemy.speed = 0
@@ -427,12 +503,11 @@ describe("a versus round's end", () => {
             const enemy = makeEnemy(5, 1)
             enemy.speed = 0
             const state = makeState(map, [vec2(2, 1), vec2(5, 1)], [enemy], {
-                lives: START_LIVES,
                 mode,
             })
             movePlayer(state, west, state.players[0])
             expect(checkEnd(state)).toBe("won")
-            expect(state.lives).toBe(START_LIVES)
+            expect(state.players[1].health).toBe(1)
             expect(state.players[1].out).toBe(false)
         }
     })
@@ -454,5 +529,51 @@ describe("a versus round's end", () => {
         expect(checkEnd(state)).toBe("won")
         expect(state.players[1].score).toBe(BOSS_DEFEAT_POINTS)
         expect(state.players[1].dots).toBe(0)
+    })
+
+    // KDA-267: the boss is the goal there, so dots left don't hold the
+    // round up; dots still decide who wins it.
+    it("comes when the boss is defeated, with dots left, and dots pick the winner", () => {
+        const arena = textMap([
+            "#######",
+            "#.    #",
+            "#     #",
+            "#    .#",
+            "#######",
+        ]).map
+        const state = makeState(arena, [vec2(1, 2), vec2(5, 2)], [], {
+            mode: "versus",
+            boss: makeBoss(3, 1, 0),
+        })
+        state.players[0].dots = 3
+        damageBoss(state, BOSS_HEALTH, state.players[1])
+        expect(checkEnd(state)).toBe("won")
+        expect(state.cells[1][1]).toBe(Cell.dot)
+        const dots = state.players.map((p) => p.dots)
+        const scores = state.players.map((p) => p.score)
+        expect(scores).toEqual([0, BOSS_DEFEAT_POINTS])
+        // Player 2 got the +500, but player 1 ate more dots.
+        expect(roundWinner(dots, scores)).toBe(0)
+    })
+
+    it(`still costs a player knocked out on the boss's last tick ${CATCH_DOTS} dots`, () => {
+        const arena = textMap([
+            "#######",
+            "#.    #",
+            "#     #",
+            "#     #",
+            "#######",
+        ]).map
+        const enemy = makeEnemy(5, 3)
+        enemy.speed = 0
+        const state = makeState(arena, [vec2(1, 3), vec2(5, 3)], [enemy], {
+            mode: "versus",
+            boss: makeBoss(2, 1, 0),
+        })
+        state.players[1].dots = 7
+        damageBoss(state, BOSS_HEALTH, state.players[0])
+        expect(checkEnd(state)).toBe("won")
+        expect(state.players[1].dots).toBe(7 - CATCH_DOTS)
+        expect(state.players[1].out).toBe(true)
     })
 })

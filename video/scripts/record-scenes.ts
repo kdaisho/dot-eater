@@ -9,7 +9,7 @@
 // given) for each scene (all unless named) and prints the best, to pick a
 // scene's seed in director.ts.
 import { mkdirSync, writeFileSync } from "node:fs"
-import { levels } from "../../src/levels/index.ts"
+import { stages as levels } from "../../src/levels/index.ts"
 import { tickCount, verify } from "../../src/replay.ts"
 import { heroMoment } from "../src/highlights.ts"
 import { SCENE_NAMES, type SceneName } from "../src/scenes.ts"

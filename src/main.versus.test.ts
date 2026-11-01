@@ -1,7 +1,9 @@
 // @vitest-environment happy-dom
 import { describe, expect, it, vi } from "vite-plus/test"
 import { createGameState, type GameState, type Outcome } from "./game"
-import { LAST_PICK_KEY } from "./lastPick"
+import { MAX_HEALTH } from "./constants"
+import { LAST_DIFFICULTY_KEY, LAST_PICK_KEY } from "./lastPick"
+import { stages } from "./levels"
 import { emptyProgress, PROGRESS_KEY, serializeProgress } from "./progress"
 
 // main through a versus match, end to end through the keyboard: versus on
@@ -60,6 +62,8 @@ const screen = () => overlay()?.dataset.screen ?? "playing"
 const heading = () => overlay()?.querySelector("h1")?.textContent
 const menu = () =>
     [...(overlay()?.querySelectorAll("li") ?? [])].map((li) => li.textContent)
+const lines = () =>
+    [...(overlay()?.querySelectorAll("p") ?? [])].map((p) => p.textContent)
 const game = () => drawn.last?.[0] as GameState
 const hud = () => drawn.last?.[2]
 
@@ -92,19 +96,31 @@ describe("main in versus", () => {
         pressAndTick("Space")
         expect(screen()).toBe("stage-select")
         pressAndTick("Space")
+        // Super Hard.
+        expect(screen()).toBe("difficulty-select")
+        pressAndTick("ArrowDown")
+        pressAndTick("ArrowDown")
+        pressAndTick("Space")
         expect(screen()).toBe("character-select")
         pressAndTick("KeyD")
         pressAndTick("Space")
         pressAndTick("KeyE")
         expect(screen()).toBe("playing")
         expect(vi.mocked(createGameState).mock.lastCall?.[2]).toBe("versus")
+        expect(vi.mocked(createGameState).mock.lastCall?.[0]).toBe(
+            stages[0].superHard
+        )
 
-        // The HUD: dots per player and the round tally, no lives.
+        // The HUD: dots and health per player, the round tally and the
+        // difficulty.
         expect(hud()).toMatchObject({
             round: "Round 1 · 0–0",
-            players: [{ dots: 0 }, { dots: 0 }],
+            difficulty: "Super Hard",
+            players: [
+                { dots: 0, health: { health: MAX_HEALTH } },
+                { dots: 0, health: { health: MAX_HEALTH } },
+            ],
         })
-        expect(hud()).not.toHaveProperty("lives")
         expect(hud()).not.toHaveProperty("players.1.stunned")
         // A stun shows in its player's slot.
         game().players[1].stunnedFor = 1.5
@@ -118,6 +134,7 @@ describe("main in versus", () => {
         expect(screen()).toBe("round-result")
         expect(heading()).toBe("Round 1: 1P wins!")
         expect(menu()).toEqual(["Next round", "Quit"])
+        expect(lines()[0]).toBe("Difficulty Super Hard")
         // The HUD under it still shows the round as it was played.
         expect(hud()).toMatchObject({ round: "Round 1 · 0–0" })
         pressAndTick("Space")
@@ -134,11 +151,13 @@ describe("main in versus", () => {
         expect(screen()).toBe("match-result")
         expect(heading()).toBe("🏆 1P wins the match!")
         expect(menu()).toEqual(["Rematch", "Stage select"])
+        expect(lines()[0]).toBe("Difficulty Super Hard")
 
         // Nothing saved: no progress, no last pick.
         expect(setItem).not.toHaveBeenCalled()
         expect(localStorage.getItem(PROGRESS_KEY)).toBe(saved)
         expect(localStorage.getItem(LAST_PICK_KEY)).toBeNull()
+        expect(localStorage.getItem(LAST_DIFFICULTY_KEY)).toBeNull()
         // And no recording of the rounds.
         expect(createObjectURL).not.toHaveBeenCalled()
 
@@ -146,5 +165,8 @@ describe("main in versus", () => {
         pressAndTick("Space")
         expect(screen()).toBe("playing")
         expect(hud()).toMatchObject({ round: "Round 1 · 0–0" })
+        expect(vi.mocked(createGameState).mock.lastCall?.[0]).toBe(
+            stages[0].superHard
+        )
     })
 })

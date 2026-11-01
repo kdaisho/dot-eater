@@ -2,6 +2,7 @@ import { BREATHS } from "../../src/breaths"
 import { TICK_MS } from "../../src/constants"
 import { effectsForEvents } from "../../src/eventEffects"
 import type { GameState } from "../../src/game"
+import { createJabs, type Jab } from "../../src/jab"
 import { BURSTS, createParticles, type Particle } from "../../src/particles"
 import { seededRandom } from "../../src/replay"
 import { SHAKE_DECAY, createShake } from "../../src/shake"
@@ -44,6 +45,8 @@ export function longestEffect(): number {
 
 export type FrameEffects = {
     particles: readonly Particle[]
+    // The punches being thrown (see jab.ts).
+    jabs: readonly Jab[]
     shake: Vec2
 }
 
@@ -61,14 +64,16 @@ export function effectsAt(
     let random = seededRandom(0)
     const particles = createParticles({ random: () => random() })
     const shake = createShake()
+    const jabs = createJabs()
     const end = Math.min(tick, ticks.length - 1)
     for (let k = Math.max(1, end - EFFECT_WINDOW + 1); k <= end; k++) {
         const { events, moved } = ticks[k]
         random = seededRandom(mix(seed, k))
-        effectsForEvents(events, game, { particles, shake })
+        effectsForEvents(events, game, { particles, shake, jabs })
         if (moved) {
             particles.update(DT)
             shake.update(DT)
+            jabs.update(DT)
         }
     }
     // Part way to the next tick, if it moves the effects on, so slow
@@ -76,10 +81,12 @@ export function effectsAt(
     if (alpha > 0 && ticks[end + 1]?.moved) {
         particles.update(alpha * DT)
         shake.update(alpha * DT)
+        jabs.update(alpha * DT)
     }
     const jolt = seededRandom(mix(seed ^ 0x5eed, end))
     return {
         particles: particles.list,
+        jabs: jabs.list,
         shake: shake.trauma > 0 ? shake.offset(jolt) : vec2(0, 0),
     }
 }

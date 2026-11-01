@@ -10,6 +10,8 @@ import {
     AiType,
     DEFEAT_POINTS,
     DOT_ENERGY,
+    ENEMY_DAMAGE,
+    MAX_HEALTH,
     PLAYER_SPEED,
     RESPAWN_DELAY,
     TICK_RATE,
@@ -135,17 +137,17 @@ describe("facing", () => {
         expect(hits[0].origin).toEqual(vec2(4, 1))
     })
 
-    it("faces right again after a lost life", () => {
+    it("keeps its facing when hurt and knocked back", () => {
         const enemy = makeEnemy(4, 1, AiType.chase)
         const state = makeState(corridor, { x: 2, y: 1 }, [enemy], {
-            lives: 2,
+            health: MAX_HEALTH,
         })
         state.players[0].breather.facing = west
         state.players[0].character.pos = vec2(4, 1)
         state.players[0].character.lastPos = vec2(4, 1)
         tick(state)
-        expect(state.lives).toBe(1)
-        expect(state.players[0].breather.facing).toEqual(east)
+        expect(state.players[0].health).toBe(MAX_HEALTH - ENEMY_DAMAGE)
+        expect(state.players[0].breather.facing).toEqual(west)
     })
 })
 
@@ -165,18 +167,18 @@ describe("energy", () => {
         expect(state.players[0].breather.energy).toBe(12)
     })
 
-    it("starts empty in a new game and is kept when a life is lost", () => {
+    it("starts empty in a new game and is kept when hurt", () => {
         const game = createGameState(levels[0])
         expect(game.players[0].breather.energy).toBe(0)
         const enemy = makeEnemy(4, 1, AiType.chase)
         const state = makeState(corridor, { x: 2, y: 1 }, [enemy], {
-            lives: 2,
+            health: MAX_HEALTH,
         })
         state.players[0].breather.energy = 40
         state.players[0].character.pos = vec2(4, 1)
         state.players[0].character.lastPos = vec2(4, 1)
         tick(state)
-        expect(state.lives).toBe(1)
+        expect(state.players[0].health).toBe(MAX_HEALTH - ENEMY_DAMAGE)
         expect(state.players[0].breather.energy).toBe(40)
     })
 })
@@ -260,7 +262,7 @@ describe("breathing", () => {
             const ahead = makeEnemy(2, 1)
             const hits: BreathHit[] = []
             const breath = testBreath({
-                shape,
+                shape: () => shape,
                 fire: (hit) => void hits.push(hit),
             })
             const state = makeState(
@@ -301,13 +303,10 @@ describe("pushed enemies", () => {
 })
 
 describe("defeated enemies", () => {
-    function defeatedSetup(lives = 1) {
+    function defeatedSetup() {
         const enemy = makeEnemy(3, 1, AiType.chase)
         const { breath } = defeating()
-        const state = makeState(corridor, { x: 1, y: 1 }, [enemy], {
-            breath,
-            lives,
-        })
+        const state = makeState(corridor, { x: 1, y: 1 }, [enemy], { breath })
         state.spawns.enemies = [vec2(6, 1)]
         state.players[0].breather.energy = 100
         tick(state, { breath: true })
@@ -353,23 +352,26 @@ describe("defeated enemies", () => {
         expect(tick(state)).toBe("dead")
     })
 
-    it("are all back in play when the player loses a life", () => {
+    it("stay gone when the player is hurt", () => {
         const catcher = makeEnemy(8, 1, AiType.chase)
         const victim = makeEnemy(3, 1, AiType.chase)
         const { breath } = defeating()
         const state = makeState(corridor, { x: 1, y: 1 }, [victim, catcher], {
             breath,
-            lives: 2,
+            health: MAX_HEALTH,
         })
+        state.spawns.enemies = [vec2(6, 1), vec2(8, 1)]
         state.players[0].breather.energy = 100
         tick(state, { breath: true })
         expect(inPlay(victim)).toBe(false)
+        const wait = victim.respawnIn
         state.players[0].character.pos = vec2(8, 1)
         state.players[0].character.lastPos = vec2(8, 1)
         tick(state)
-        expect(state.lives).toBe(1)
-        expect(inPlay(victim)).toBe(true)
-        expect(victim.pos).toEqual(vec2(3, 1))
+        expect(state.players[0].health).toBe(MAX_HEALTH - ENEMY_DAMAGE)
+        expect(inPlay(victim)).toBe(false)
+        expect(victim.respawnIn).toBeCloseTo(wait - 1 / TICK_RATE)
+        expect(victim.pos).toEqual(vec2(6, 1))
     })
 })
 
@@ -378,7 +380,6 @@ describe("enemy statuses", () => {
         name: "test.frozen",
         holds: true,
         harmless: true,
-        solid: true,
     }
     function freezing(seconds: number) {
         return testBreath({
@@ -388,40 +389,48 @@ describe("enemy statuses", () => {
         })
     }
 
-    it("freeze an enemy: it doesn't move or catch, but blocks", () => {
+    it("freeze an enemy: it doesn't move or catch, and the player walks over it", () => {
         const enemy = makeEnemy(3, 1, AiType.chase)
         enemy.moveProgress = 1
         const state = makeState(corridor, { x: 1, y: 1 }, [enemy], {
             breath: freezing(1),
         })
         state.players[0].breather.energy = 100
+        state.players[0].character.moveProgress = 1
         tick(state, { breath: true })
-        // Walk east into it: the player stops next to it, uncaught.
-        for (let i = 0; i < TICK_RATE / 2; i++) {
+        // Walk east onto its cell and on past it, uncaught.
+        const xs: number[] = []
+        for (let i = 0; i < 1 + MOVE * 2; i++) {
             expect(tick(state, { held: east })).toBeNull()
+            const { x } = state.players[0].character.pos
+            if (xs.at(-1) !== x) xs.push(x)
+            expect(enemy.pos).toEqual(vec2(3, 1))
         }
-        expect(enemy.pos).toEqual(vec2(3, 1))
-        expect(state.players[0].character.pos).toEqual(vec2(2, 1))
+        expect(xs).toEqual([2, 3, 4])
     })
 
-    it("end a slide into a solid enemy as a wall would", () => {
-        // Ice at x 2 to 4, a frozen enemy at x 5: the player slides to x 4
-        // and stops there, free to walk back west.
+    it("let a slide pass over a frozen enemy", () => {
+        // Ice at x 2 to 4, a frozen enemy at x 3: the player slides over it
+        // to the floor at x 5, uncaught, and the enemy stays put.
         const { map, ice } = textMap([
             "##########",
             "# ~~~    #",
             "##########",
             "#.########",
         ])
-        const enemy = makeEnemy(5, 1, AiType.chase)
+        const enemy = makeEnemy(3, 1, AiType.chase)
+        enemy.moveProgress = 1
         const state = makeState(map, { x: 1, y: 1 }, [enemy], { ice })
         addStatus(enemy, frozen, 10)
         state.players[0].character.moveProgress = 1
         tick(state, { held: east })
-        run(state, MOVE * 3)
-        expect(state.players[0].character.pos).toEqual(vec2(4, 1))
-        run(state, MOVE, { held: west })
-        expect(state.players[0].character.pos.x).toBeLessThan(4)
+        for (let i = 0; i < MOVE * 3; i++) {
+            expect(tick(state)).toBeNull()
+        }
+        expect(state.players[0].character.pos).toEqual(vec2(5, 1))
+        run(state, MOVE * 2)
+        expect(state.players[0].character.pos).toEqual(vec2(5, 1))
+        expect(enemy.pos).toEqual(vec2(3, 1))
     })
 
     it("wear off, and the enemy moves again", () => {
@@ -493,7 +502,7 @@ describe("tile effects", () => {
         enemy.moveProgress = 1
         const state = makeState(map, { x: 1, y: 1 }, [enemy], {
             breath: testBreath({
-                shape: { kind: "line", range: 2 },
+                shape: () => ({ kind: "line", range: 2 }),
                 fire(hit) {
                     for (const c of hit.cells) hit.addTile(c, block, 2)
                 },
@@ -531,7 +540,7 @@ describe("tile effects", () => {
         const ice: TileEffect = { name: "test.ice", ice: true }
         const state = makeState(corridor, { x: 1, y: 1 }, [], {
             breath: testBreath({
-                shape: { kind: "line", range: 2 },
+                shape: () => ({ kind: "line", range: 2 }),
                 fire(hit) {
                     for (const c of hit.cells) hit.addTile(c, ice, 5)
                 },

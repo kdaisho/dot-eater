@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs"
 import { describe, expect, it } from "vite-plus/test"
-import { levels } from "../../src/levels"
+import { stages as levels } from "../../src/levels"
 import {
     seededRandom,
     createRng,

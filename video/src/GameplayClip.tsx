@@ -1,7 +1,7 @@
 import { useLayoutEffect, useMemo, useRef } from "react"
 import { AbsoluteFill, useCurrentFrame, useVideoConfig } from "remotion"
 import { gameOf } from "../../src/flow"
-import { levels } from "../../src/levels"
+import { stages as levels } from "../../src/levels"
 import type { Recording } from "../../src/replay"
 import { hudOf, rulesOf, screenEffects } from "../../src/scene"
 import { defaultSettings } from "../../src/settings"
@@ -93,6 +93,8 @@ export function GameplayClip({
                 rulesOf(screen, levels),
                 screenEffects(screen, {
                     particles: effects.particles,
+                    jabs: effects.jabs,
+                    reducedMotion: false,
                     shake: () => effects.shake,
                     guide: GUIDE,
                 })

@@ -3,6 +3,8 @@ import {
     aimCells,
     aimPreviews,
     breathe,
+    CHARGE_SECONDS,
+    chargeTick,
     type BreathDef,
     type Breather,
 } from "./breath"
@@ -39,6 +41,12 @@ function charge(b: Breather) {
     b.energy = b.breath.maxEnergy
 }
 
+// A full meter, and the breath held long enough to charge to `level`.
+function chargeTo(b: Breather, level: number) {
+    charge(b)
+    b.charge = (level - 1) * CHARGE_SECONDS
+}
+
 // A one-player game with `animal`'s breath at `at`, facing `facing`.
 function aimer(
     animal: AnimalId,
@@ -68,12 +76,14 @@ describe("aimCells", () => {
             [3, 4],
             [4, 4],
             [5, 4],
-            [6, 4],
         ])
     })
 
     it("widens the Penguin's cone, with walls casting shadows", () => {
-        expect(sorted(aimCells(aimer("penguin", { x: 1, y: 3 })))).toEqual([
+        // Charged to level 3, for a range of 3.
+        const state = aimer("penguin", { x: 1, y: 3 })
+        chargeTo(state.players[0].breather, 3)
+        expect(sorted(aimCells(state))).toEqual([
             [2, 3],
             [3, 2],
             [3, 3],
@@ -83,12 +93,15 @@ describe("aimCells", () => {
         ])
     })
 
-    it("covers the Skunk's 3x3 through open cells, its own cell included", () => {
+    it("fills the Skunk's cloud by walking distance, its own cell included", () => {
+        // A tap's cloud: 2 steps, round the corner but not through walls.
         expect(sorted(aimCells(aimer("skunk", { x: 1, y: 4 })))).toEqual([
+            [1, 2],
             [1, 3],
             [1, 4],
             [2, 3],
             [2, 4],
+            [3, 4],
         ])
     })
 
@@ -100,8 +113,8 @@ describe("aimCells", () => {
         expect(aimCells(aimer("boar", { x: 1, y: 3 }, west))).toEqual([])
     })
 
-    it("marks the open cell ahead of the Boar, which its headbutt strikes", () => {
-        expect(xy(aimCells(aimer("boar", { x: 1, y: 4 })))).toEqual([[2, 4]])
+    it("marks nothing for the Boar facing open floor, with no wall to break", () => {
+        expect(aimCells(aimer("boar", { x: 1, y: 4 }))).toEqual([])
     })
 
     it("goes through a wrap tunnel", () => {
@@ -109,8 +122,6 @@ describe("aimCells", () => {
             [0, 1],
             [8, 1],
             [7, 1],
-            [6, 1],
-            [5, 1],
         ])
     })
 
@@ -120,9 +131,40 @@ describe("aimCells", () => {
             [2, 4],
             [3, 4],
             [4, 4],
-            [5, 4],
-            [6, 4],
         ])
+    })
+
+    // KDA-289: a tap's cells until the breath is held, then the level the
+    // charge has reached.
+    it("shows the cells of the level the charge has reached", () => {
+        const state = aimer("dragon", { x: 1, y: 4 })
+        const { breather } = state.players[0]
+        charge(breather)
+        const lengths = [1, 2, 3, 4, 5].map((level) => {
+            breather.charge = (level - 1) * CHARGE_SECONDS
+            return aimCells(state).length
+        })
+        // Ranges 3 to 7; the row has 6 open cells ahead.
+        expect(lengths).toEqual([3, 4, 5, 6, 6])
+        // Not charging: a tap's.
+        breather.charge = null
+        expect(aimCells(state)).toHaveLength(3)
+    })
+
+    it("shows no more than the level the meter pays for", () => {
+        const state = aimer("dragon", { x: 1, y: 4 })
+        const { breather } = state.players[0]
+        // Enough for level 2 (40), held long enough for 5.
+        breather.energy = 45
+        breather.charge = 10
+        expect(aimCells(state)).toHaveLength(4)
+    })
+
+    it("marks the Boar's tunnel only up to open floor, however charged", () => {
+        // (4, 3) is a lone wall with floor behind it.
+        const state = aimer("boar", { x: 3, y: 3 })
+        chargeTo(state.players[0].breather, 5)
+        expect(xy(aimCells(state))).toEqual([[4, 3]])
     })
 
     describe("with a boss", () => {
@@ -134,10 +176,12 @@ describe("aimCells", () => {
             "#########",
         ])
 
+        // The Dragon charged to level 3, for a 5-cell line.
         it("ends a line at the live boss's body, its cells there included", () => {
             const state = makeState(arena, { x: 1, y: 2 }, [], {
                 boss: makeBoss(4, 1),
             })
+            chargeTo(state.players[0].breather, 3)
             expect(xy(aimCells(state))).toEqual([
                 [2, 2],
                 [3, 2],
@@ -149,6 +193,7 @@ describe("aimCells", () => {
             const boss = makeBoss(4, 1)
             boss.defeated = true
             const state = makeState(arena, { x: 1, y: 2 }, [], { boss })
+            chargeTo(state.players[0].breather, 3)
             expect(aimCells(state)).toHaveLength(5)
         })
     })
@@ -169,7 +214,6 @@ describe("aimCells", () => {
             [5, 4],
             [4, 4],
             [3, 4],
-            [2, 4],
         ])
     })
 
@@ -203,6 +247,26 @@ describe("aimCells", () => {
             const event = state.events.find((e) => e.type === "breathed")
             expect(event?.type === "breathed" && xy(event.cells)).toEqual(
                 xy(aimed)
+            )
+        })
+
+        // At every charge level (KDA-289), released as the player would.
+        const levels = ANIMAL_IDS.flatMap((a) =>
+            [1, 2, 3, 4, 5].map((level): [AnimalId, number] => [a, level])
+        )
+        it.each(levels)("%s at level %i", (animal, level) => {
+            const at = animal === "boar" ? { x: 3, y: 3 } : { x: 1, y: 4 }
+            const state = aimer(animal, at)
+            const { breather } = state.players[0]
+            chargeTo(breather, level)
+            const aimed = aimCells(state)
+            expect(chargeTick(state, state.players[0], {}, 1 / 60)).toBe(true)
+            const event = state.events.find((e) => e.type === "breathed")
+            expect(event?.type === "breathed" && xy(event.cells)).toEqual(
+                xy(aimed)
+            )
+            expect(breather.energy).toBe(
+                breather.breath.maxEnergy - breather.breath.cost * level
             )
         })
     })
@@ -267,5 +331,11 @@ describe("aimPreviews", () => {
         for (const p of state.players) charge(p.breather)
         stun(state.players[1])
         expect(aimPreviews(state).map((a) => a.player)).toEqual([0])
+    })
+
+    it("shows a charging player's aim at the level reached", () => {
+        const state = aimer("dragon", { x: 1, y: 4 })
+        chargeTo(state.players[0].breather, 2)
+        expect(xy(aimPreviews(state)[0].cells)).toHaveLength(4)
     })
 })

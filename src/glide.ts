@@ -10,7 +10,8 @@ import { vec2, type Vec2 } from "./vec2"
 export type Glider = Pick<
     Character,
     "pos" | "lastPos" | "moveProgress" | "speed"
->
+> &
+    Partial<Pick<Character, "knockTurn">>
 
 // How far through its latest move (lastPos -> pos) a character should be
 // drawn, from 0 (at lastPos) to 1 (at pos).
@@ -22,12 +23,18 @@ export type Glider = Pick<
 // part of the next tick that has already passed, for smooth frames between
 // ticks. A resting character (progress 1: idle, blocked or waiting to move)
 // is drawn at pos. `rate` is a factor on its speed for this glide, as the
-// game applies it (the player's Player.rate, e.g. a faster slide),
-// so frames between ticks keep up with the ticks.
+// game applies it (the player's Player.rate), so frames between ticks keep
+// up with the ticks. An enemy a short punch knocks out (KDA-288) is drawn no
+// further than where it turns round (Character.knockTurn), which the next
+// tick turns it at.
 export function glideT(character: Glider, alpha: number, rate = 1): number {
     const { moveProgress, speed } = character
     if (moveProgress >= 1) return 1
-    return Math.min(1, moveProgress + (alpha * speed * rate * TICK_MS) / 1000)
+    const most = character.knockTurn ?? 1
+    return Math.min(
+        most,
+        moveProgress + (alpha * speed * rate * TICK_MS) / 1000
+    )
 }
 
 // How far through its glide the player must be for the dot it just ate to

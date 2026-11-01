@@ -1,18 +1,38 @@
 // @vitest-environment happy-dom
 import { afterEach, describe, expect, it, vi } from "vite-plus/test"
-import { addStatus, addTileEffect, defeatEnemy, type BreathDef } from "./breath"
+import { BOSS_BREATH } from "./bossBreath"
+import {
+    addStatus,
+    addTileEffect,
+    CHARGE_SECONDS,
+    defeatEnemy,
+    type BreathDef,
+} from "./breath"
 import { BREATHS } from "./breaths"
 import {
     AiType,
+    BLINK_RATE,
     Cell,
     CharacterId,
+    ENEMY_IDS,
     PLAYER_RESPAWN_DELAY,
     RESPAWN_BLINK,
     RESPAWN_DELAY,
     SPRITE_SCALE,
+    TICK_RATE,
 } from "./constants"
 import { createCharacter } from "./character"
-import { createGameState, movePlayer, takeOut } from "./game"
+import { ENEMY_BREATH } from "./enemyBreath"
+import {
+    createGameState,
+    HURT_INVULNERABLE_TICKS,
+    movePlayer,
+    takeOut,
+    type GameState,
+    type Player,
+} from "./game"
+import { MIN_CELL_PX } from "./layout"
+import type { LevelRules } from "./level"
 import {
     BOSS_SCALE,
     BOSS_SPRITE,
@@ -22,15 +42,29 @@ import {
     PLAYER_COLORS,
     IMMUNE_BADGE,
     STUN_BADGE,
+    createGuardSprites,
+    GUARD_SPRITES_KEPT,
+    stanceLook,
+    STANCE_OUTLINE,
+    STANCE_TINT,
     stunLabel,
+    type Effects,
+    CROUCH_HEIGHT,
+    CROUCH_WIDTH,
 } from "./render"
+import { GUARD_STANCE } from "./guard"
+import { SNEAK_ALPHA, SNEAK_FAR, SNEAK_NEAR, sneakAlpha } from "./intercept"
+import { FIST_BOUNCE, FIST_BOUNCE_SECONDS, JAB_LUNGE, JAB_SECONDS } from "./jab"
 import type { Particle } from "./particles"
 import { createSplitter } from "./splitter"
+import { DEFAULT_ANIMAL } from "./roster"
 import {
+    BIG_LEVEL,
     makeBoss,
     makeEnemy,
     makeState,
     OLD_LEVEL,
+    parseFlat,
     textMap,
 } from "./test/helpers"
 import { vec2 } from "./vec2"
@@ -40,24 +74,42 @@ import { stun } from "./versus"
 // imported here pulls it in.
 vi.mock("canvas-confetti", () => ({ default: vi.fn() }))
 
+// The solo health gauge's colour.
+const HEALTH_COLOR = "#16a34a"
+
 // happy-dom has no 2D canvas, so record the calls on a stub context: every
-// method call is logged, with the fillStyle and font set at the time, and
-// property writes are accepted.
+// method call is logged, with the fillStyle, strokeStyle, font,
+// globalAlpha and globalCompositeOperation set at the time, and property
+// writes are accepted.
 function stubContext() {
     const calls: {
         name: string
         args: unknown[]
         fillStyle?: unknown
+        strokeStyle?: unknown
         font?: unknown
+        globalAlpha?: unknown
+        composite?: unknown
     }[] = []
     let fillStyle: unknown
+    let strokeStyle: unknown
     let font: unknown
+    let globalAlpha: unknown = 1
+    let composite: unknown
     const ctx = new Proxy(
         {},
         {
             get(_target, name) {
                 return (...args: unknown[]) => {
-                    calls.push({ name: String(name), args, fillStyle, font })
+                    calls.push({
+                        name: String(name),
+                        args,
+                        fillStyle,
+                        strokeStyle,
+                        font,
+                        globalAlpha,
+                        composite,
+                    })
                     if (name === "createRadialGradient") {
                         return { addColorStop() {} }
                     }
@@ -65,7 +117,10 @@ function stubContext() {
             },
             set(_target, name, value) {
                 if (name === "fillStyle") fillStyle = value
+                if (name === "strokeStyle") strokeStyle = value
                 if (name === "font") font = value
+                if (name === "globalAlpha") globalAlpha = value
+                if (name === "globalCompositeOperation") composite = value
                 return true
             },
         }
@@ -104,9 +159,9 @@ describe("createRenderer", () => {
         renderer.draw(
             makeState(
                 [
-                    [1, 1, 1, 1, 1, 1, 1],
-                    [1, 2, 2, 2, 2, 2, 1],
-                    [1, 0, 1, 1, 1, 1, 1],
+                    [1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+                    [1, 2, 2, 2, 2, 2, 2, 2, 2, 1],
+                    [1, 0, 1, 1, 1, 1, 1, 1, 1, 1],
                 ],
                 { x: 1, y: 2 },
                 enemies
@@ -117,12 +172,7 @@ describe("createRenderer", () => {
     }
 
     it("draws each enemy by its AI type, not its slot", () => {
-        const ids = [
-            CharacterId.enemy1,
-            CharacterId.enemy2,
-            CharacterId.enemy3,
-            CharacterId.enemy4,
-        ]
+        const ids = [ENEMY_IDS[0], ENEMY_IDS[1], ENEMY_IDS[2], ENEMY_IDS[3]]
         const types = [
             AiType.phantom,
             AiType.patroller,
@@ -133,19 +183,14 @@ describe("createRenderer", () => {
             makeEnemy(i + 1, 1, types[i], undefined, id)
         )
         expect(drawEnemies(enemies)).toEqual(["🐉", "👻", "🤖", "🦊", "👹"])
-        enemies.push(
-            makeEnemy(5, 1, AiType.random, undefined, CharacterId.enemy1)
-        )
+        enemies.push(makeEnemy(5, 1, AiType.random, undefined, ENEMY_IDS[0]))
         expect(drawEnemies(enemies).at(-1)).toBe("👺")
     })
 
     it("draws a Splitter's halves smaller than the whole one", () => {
-        const [whole] = createSplitter(
-            [CharacterId.enemy1, CharacterId.enemy2],
-            vec2(1, 1)
-        )
+        const [whole] = createSplitter([ENEMY_IDS[0], ENEMY_IDS[1]], vec2(1, 1))
         const [main, spare] = createSplitter(
-            [CharacterId.enemy3, CharacterId.enemy4],
+            [ENEMY_IDS[2], ENEMY_IDS[3]],
             vec2(3, 1)
         )
         const state = makeState(
@@ -174,10 +219,49 @@ describe("createRenderer", () => {
         ])
     })
 
+    // KDA-292: an interceptor sneaks up, faint until it is near.
+    it("draws an interceptor faint far from the player, fading in as it closes in", () => {
+        const alphaAt = (x: number) => {
+            const { renderer, calls } = setup()
+            const state = makeState(
+                [
+                    [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+                    [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
+                    [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+                ],
+                { x: 1, y: 1 },
+                [
+                    makeEnemy(
+                        x,
+                        1,
+                        AiType.interceptor,
+                        undefined,
+                        ENEMY_IDS[0]
+                    ),
+                    makeEnemy(10, 1, AiType.chase, undefined, ENEMY_IDS[1]),
+                ]
+            )
+            renderer.draw(state, 0)
+            const sprite = (text: string) =>
+                calls.find((c) => c.name === "fillText" && c.args[0] === text)
+            // Everything else is drawn as usual.
+            expect(sprite("👹")?.globalAlpha).toBe(1)
+            expect(sprite("🐉")?.globalAlpha).toBe(1)
+            return sprite("🐺")?.globalAlpha
+        }
+        expect(alphaAt(10)).toBeCloseTo(SNEAK_ALPHA)
+        expect(alphaAt(1 + SNEAK_FAR)).toBeCloseTo(SNEAK_ALPHA)
+        expect(alphaAt(1 + SNEAK_FAR - 1)).toBeCloseTo(
+            sneakAlpha(SNEAK_FAR - 1)
+        )
+        expect(alphaAt(1 + SNEAK_NEAR)).toBe(1)
+        expect(alphaAt(2)).toBe(1)
+    })
+
     it("draws enemies of one AI type with the same sprite", () => {
         const enemies = [
-            makeEnemy(1, 1, AiType.chase, undefined, CharacterId.enemy1),
-            makeEnemy(2, 1, AiType.chase, undefined, CharacterId.enemy3),
+            makeEnemy(1, 1, AiType.chase, undefined, ENEMY_IDS[0]),
+            makeEnemy(2, 1, AiType.chase, undefined, ENEMY_IDS[2]),
         ]
         expect(drawEnemies(enemies)).toEqual(["🐉", "👹", "👹"])
     })
@@ -222,13 +306,13 @@ describe("createRenderer", () => {
     it("refits and redraws the last frame on resize", () => {
         const { canvas, calls, renderer, view } = setup()
         renderer.draw(createGameState(OLD_LEVEL), 0)
-        view.innerHeight = 200
+        view.innerHeight = 280
         view.devicePixelRatio = 1
         const before = calls.length
         renderer.resize()
-        // (200 - 32) / 10 rows: 16 px cells.
-        expect(canvas.style.width).toBe(`${16 * 9}px`)
-        expect(canvas.width).toBe(16 * 9)
+        // (280 - 32) / 10 rows: 24 px cells.
+        expect(canvas.style.width).toBe(`${24 * 9}px`)
+        expect(canvas.width).toBe(24 * 9)
         expect(calls.length).toBeGreaterThan(before)
     })
 
@@ -248,11 +332,11 @@ describe("createRenderer", () => {
         const { calls, canvas, renderer, texts, view } = setup()
         renderer.draw(createGameState(OLD_LEVEL), 0)
         renderer.clear()
-        view.innerHeight = 200
+        view.innerHeight = 280
         view.devicePixelRatio = 1
         calls.length = 0
         renderer.resize()
-        expect(canvas.width).toBe(16 * 9)
+        expect(canvas.width).toBe(24 * 9)
         expect(texts()).toEqual([])
         expect(calls.filter((c) => c.name === "fillRect")).toHaveLength(1)
     })
@@ -278,8 +362,73 @@ describe("createRenderer", () => {
         expect(empty.texts()).toEqual(["🐉"])
 
         const full = setup()
-        full.renderer.draw(state, 0, { score: 120, lives: 2 })
-        expect(full.texts()).toEqual(["Score 120", "🐉🐉", "🐉"])
+        full.renderer.draw(state, 0, {
+            score: 120,
+            health: { health: 50, max: 100 },
+        })
+        expect(full.texts()).toEqual(["Score 120", "🐉"])
+        expect(full.calls.some((c) => c.name === "strokeRect")).toBe(true)
+    })
+
+    it("draws the health gauge on the right, filled up to the health", () => {
+        const state = createGameState(OLD_LEVEL)
+        state.enemies = []
+        const { calls, canvas, renderer } = setup()
+        renderer.draw(state, 0, { health: { health: 75, max: 100 } })
+        const width = parseFloat(canvas.style.width)
+        const frame = calls.find((c) => c.name === "strokeRect")!
+        expect(frame.strokeStyle).toBe(HEALTH_COLOR)
+        const [left, , w] = frame.args as number[]
+        expect(left + w).toBeGreaterThan(width * 0.9)
+        const fill = calls.find(
+            (c) => c.name === "fillRect" && c.fillStyle === HEALTH_COLOR
+        )!
+        expect(fill.args[0]).toBe(left)
+        expect(fill.args[2]).toBeCloseTo(w * 0.75)
+    })
+
+    it("draws the boss's band along the bottom of the HUD, filled to its health", () => {
+        const state = createGameState(OLD_LEVEL)
+        state.enemies = []
+        const band = (calls: ReturnType<typeof setup>["calls"]) =>
+            calls.filter(
+                (c) =>
+                    c.name === "fillRect" &&
+                    (c.fillStyle === "#dc2626" || c.fillStyle === "#fecaca")
+            )
+        const none = setup()
+        none.renderer.draw(state, 0, { score: 0 })
+        expect(band(none.calls)).toHaveLength(0)
+
+        const { calls, canvas, renderer } = setup()
+        renderer.draw(state, 0, { score: 0, boss: { health: 3, max: 12 } })
+        const [track, fill] = band(calls)
+        expect(track.fillStyle).toBe("#fecaca")
+        expect(fill.fillStyle).toBe("#dc2626")
+        const width = parseFloat(canvas.style.width)
+        const [left, top, w, h] = track.args as number[]
+        // Nearly the strip's whole width, at the strip's bottom (the maze
+        // starts a cell down: the HUD strip is a cell high).
+        expect(w).toBeGreaterThan(width * 0.9)
+        const hudHeight = width / OLD_LEVEL.cells[0].length
+        expect(top + h).toBeCloseTo(hudHeight)
+        expect(fill.args[0]).toBe(left)
+        expect(fill.args[2]).toBeCloseTo(w / 4)
+    })
+
+    it("blinks a player invulnerable after a hit", () => {
+        const state = createGameState(OLD_LEVEL)
+        state.enemies = []
+        const player = state.players[0]
+        player.invulnerableFor = HURT_INVULNERABLE_TICKS
+        const on = setup()
+        on.renderer.draw(state, 0)
+        expect(on.texts()).toEqual(["🐉"])
+        // A blink later it is hidden.
+        player.invulnerableFor -= TICK_RATE / (BLINK_RATE * 2)
+        const off = setup()
+        off.renderer.draw(state, 0)
+        expect(off.texts()).toEqual([])
     })
 
     // Regression: the dot the player eats is gone from the cells at once, but
@@ -369,8 +518,8 @@ describe("createRenderer", () => {
         }
 
         const enemies = () => [
-            makeEnemy(4, 1, AiType.random, undefined, CharacterId.enemy1),
-            makeEnemy(9, 1, AiType.chase, undefined, CharacterId.enemy2),
+            makeEnemy(4, 1, AiType.random, undefined, ENEMY_IDS[0]),
+            makeEnemy(9, 1, AiType.chase, undefined, ENEMY_IDS[1]),
         ]
 
         it("hides dots, walls and enemies outside the radius", () => {
@@ -392,7 +541,7 @@ describe("createRenderer", () => {
         it("draws what reaches into the light, so it fades in", () => {
             const { calls, canvas, renderer, texts } = setup()
             const state = makeState(corridor(), { x: 2, y: 1 }, [
-                makeEnemy(5, 1, AiType.random, undefined, CharacterId.enemy1),
+                makeEnemy(5, 1, AiType.random, undefined, ENEMY_IDS[0]),
             ])
             renderer.draw(state, 0, {}, { fog: { radius: 2.5 } })
             // The enemy's centre is 3 cells away, the wall at (4, 0) 2.24 and
@@ -439,8 +588,8 @@ describe("createRenderer", () => {
         it("sees through a wrap tunnel onto the opposite edge", () => {
             const { calls, canvas, renderer, texts } = setup()
             const state = makeState(corridor(true), { x: 1, y: 1 }, [
-                makeEnemy(11, 1, AiType.random, undefined, CharacterId.enemy1),
-                makeEnemy(8, 1, AiType.chase, undefined, CharacterId.enemy2),
+                makeEnemy(11, 1, AiType.random, undefined, ENEMY_IDS[0]),
+                makeEnemy(8, 1, AiType.chase, undefined, ENEMY_IDS[1]),
             ])
             renderer.draw(state, 0, {}, { fog: { radius: 3 } })
             expect(texts()).toEqual(["🐉", "👺"])
@@ -458,13 +607,8 @@ describe("createRenderer", () => {
         it("keeps the HUD visible", () => {
             const { renderer, texts } = setup()
             const state = makeState(corridor(), { x: 2, y: 1 }, enemies())
-            renderer.draw(
-                state,
-                0,
-                { score: 10, lives: 1 },
-                { fog: { radius: 1 } }
-            )
-            expect(texts()).toEqual(["Score 10", "🐉", "🐉"])
+            renderer.draw(state, 0, { score: 10 }, { fog: { radius: 1 } })
+            expect(texts()).toEqual(["Score 10", "🐉"])
         })
 
         it("keeps the fog when redrawing on resize", () => {
@@ -564,12 +708,12 @@ describe("createRenderer", () => {
                 { x: 1, y: 1 }
             )
 
-        it("draws the player and its lives as the playing character", () => {
+        it("draws the player as the playing character", () => {
             const { renderer, texts } = setup()
             const state = createGameState(OLD_LEVEL, "penguin")
             state.enemies = []
-            renderer.draw(state, 0, { lives: 2 })
-            expect(texts()).toEqual(["🐧🐧", "🐧"])
+            renderer.draw(state, 0, {})
+            expect(texts()).toEqual(["🐧"])
         })
 
         it("draws the energy meter only when the HUD has it", () => {
@@ -599,6 +743,39 @@ describe("createRenderer", () => {
                     c.args[2] === 1
             )
             expect(marks).toHaveLength(3)
+            // Not charging: nothing in the charge colour.
+            expect(
+                calls.some(
+                    (c) => c.name === "fillRect" && c.fillStyle === "#dc2626"
+                )
+            ).toBe(false)
+        })
+
+        it("fills a segment per charged level while the breath charges", () => {
+            const { renderer, calls } = setup()
+            renderer.draw(room(), 0, {
+                energy: {
+                    energy: 80,
+                    max: 100,
+                    cost: 20,
+                    ready: true,
+                    charge: 3,
+                },
+            })
+            const frame = calls.find((c) => c.name === "strokeRect")!
+            const charged = calls.filter(
+                (c) => c.name === "fillRect" && c.fillStyle === "#dc2626"
+            )
+            // Three levels of 20, over the 80 of energy: 60% of the meter,
+            // drawn after the energy's fill so it shows over it.
+            expect(charged).toHaveLength(1)
+            expect(charged[0].args[2]).toBeCloseTo(
+                (frame.args[2] as number) * 0.6
+            )
+            const fill = calls.findIndex(
+                (c) => c.name === "fillRect" && c.fillStyle === "#f59e0b"
+            )
+            expect(calls.indexOf(charged[0])).toBeGreaterThan(fill)
         })
 
         it("greys the meter while a breath isn't ready", () => {
@@ -649,6 +826,83 @@ describe("createRenderer", () => {
                 calls.some((c) => c.name === "fill" && c.fillStyle === "blue")
             ).toBe(true)
             expect(texts()).toEqual(["🐉", "👺", "❄️"])
+        })
+
+        // Regression (PR #74 review): the sprite and badge were drawn with
+        // the look's translucent fill still set, and canvas draws colour
+        // emoji with the fill's alpha, so they came out see-through.
+        it("draws a sprite with a look opaque, not in its disc's colour", () => {
+            const enemy = makeEnemy(3, 1)
+            const state = makeState(
+                [
+                    [1, 1, 1, 1, 1],
+                    [1, 0, 0, 0, 1],
+                    [1, 1, 1, 1, 1],
+                ],
+                { x: 1, y: 1 },
+                [enemy]
+            )
+            const color = "rgba(255, 110, 20, 0.45)"
+            addStatus(
+                enemy,
+                { name: "test.burning", look: { color, emoji: "🔥" } },
+                1
+            )
+            const { renderer, calls } = setup()
+            renderer.draw(state, 0)
+            for (const text of ["👺", "🔥"]) {
+                const drawn = calls.find(
+                    (c) => c.name === "fillText" && c.args[0] === text
+                )!
+                expect(drawn.fillStyle, text).toBe("#000")
+            }
+        })
+
+        // Regression (KDA-260): a player that walked onto a frozen enemy was
+        // hidden under its disc, sprite and badge.
+        it("draws a held enemy under the players, the others over them", () => {
+            const frozen = makeEnemy(2, 1)
+            const moving = makeEnemy(2, 1, AiType.chase)
+            const state = makeState(
+                [
+                    [1, 1, 1, 1, 1],
+                    [1, 0, 0, 0, 1],
+                    [1, 1, 1, 1, 1],
+                ],
+                [
+                    { x: 2, y: 1 },
+                    { x: 2, y: 1 },
+                ],
+                [moving, frozen]
+            )
+            addStatus(
+                frozen,
+                {
+                    name: "test.frozen",
+                    holds: true,
+                    look: { color: "blue", emoji: "🧊" },
+                },
+                1
+            )
+            const { renderer, calls, texts } = setup()
+            renderer.draw(state, 0)
+            // The frozen enemy and its badge, both players with their
+            // markers, then the moving enemy.
+            expect(texts().filter((t) => t !== "1" && t !== "2")).toEqual([
+                "👺",
+                "🧊",
+                "🐉",
+                "🐉",
+                "👹",
+            ])
+            const disc = calls.findIndex(
+                (c) => c.name === "fill" && c.fillStyle === "blue"
+            )
+            const player = calls.findIndex(
+                (c) => c.name === "fillText" && c.args[0] === "🐉"
+            )
+            expect(disc).toBeGreaterThanOrEqual(0)
+            expect(disc).toBeLessThan(player)
         })
 
         // Regression: the frame alpha moved a held enemy on between ticks,
@@ -803,6 +1057,90 @@ describe("createRenderer", () => {
             expect(flashes(hit.calls)).toHaveLength(1)
         })
 
+        // The boss winding up its breath (see bossBreath.ts) at the player,
+        // to its left.
+        function windingUp() {
+            const state = bossState()
+            state.boss!.breath.windingUp = 10
+            state.boss!.breath.facing = vec2(-1, 0)
+            return state
+        }
+        // On the board in play, paused or ending (see Effects.bossBreath).
+        const IN_GAME = { bossBreath: true } as const
+
+        // The cells (as "x,y") filled in the warning colour.
+        const tinted = ({ calls, canvas }: ReturnType<typeof setup>) =>
+            calls
+                .filter(
+                    (c) =>
+                        c.name === "fillRect" &&
+                        c.fillStyle === BOSS_BREATH.warning
+                )
+                .map((c) => {
+                    const cell = cellOf(canvas)
+                    const [x, y] = c.args as number[]
+                    return `${Math.round(x / cell)},${Math.round(y / cell)}`
+                })
+        // The first fill of its glow, or -1.
+        const glows = (calls: ReturnType<typeof setup>["calls"]) =>
+            calls.findIndex(
+                (c) =>
+                    c.name === "fill" &&
+                    String(c.fillStyle).startsWith(`rgba(${BOSS_BREATH.glow},`)
+            )
+
+        it("tints the cells its breath will strike while it winds up", () => {
+            const calm = setup()
+            calm.renderer.draw(bossState(), 0, {}, {}, IN_GAME)
+            expect(tinted(calm)).toEqual([])
+            // Whatever the facing guide: it is a warning, not a guide.
+            const warned = setup()
+            warned.renderer.draw(windingUp(), 0, {}, {}, IN_GAME)
+            expect(tinted(warned).sort()).toEqual(["1,1", "1,2", "2,1", "2,2"])
+            // With an edge round it in the same colour, as an aim's.
+            expect(
+                warned.calls.some(
+                    (c) =>
+                        c.name === "stroke" &&
+                        c.strokeStyle === BOSS_BREATH.warning
+                )
+            ).toBe(true)
+        })
+
+        it("glows behind it while it winds up", () => {
+            const calm = setup()
+            calm.renderer.draw(bossState(), 0, {}, {}, IN_GAME)
+            expect(glows(calm.calls)).toBe(-1)
+            const { calls, renderer } = setup()
+            renderer.draw(windingUp(), 0, {}, {}, IN_GAME)
+            const glow = glows(calls)
+            const sprite = calls.findIndex(
+                (c) => c.name === "fillText" && c.args[0] === BOSS_SPRITE
+            )
+            expect(glow).toBeGreaterThanOrEqual(0)
+            expect(glow).toBeLessThan(sprite)
+        })
+
+        // Regression (PR #74 review): the sprite was drawn with the glow's
+        // translucent fill still set, and canvas draws colour emoji with
+        // the fill's alpha, so the boss faded out as it wound up.
+        it("draws its sprite opaque over the glow", () => {
+            const { calls, renderer } = setup()
+            renderer.draw(windingUp(), 0, {}, {}, IN_GAME)
+            const sprite = calls.find(
+                (c) => c.name === "fillText" && c.args[0] === BOSS_SPRITE
+            )!
+            expect(sprite.fillStyle).toBe("#000")
+        })
+
+        it("shows no wind-up on end screens", () => {
+            const end = setup()
+            end.renderer.draw(windingUp(), 0, {}, {}, {})
+            expect(tinted(end)).toEqual([])
+            expect(glows(end.calls)).toBe(-1)
+            expect(end.texts()).toContain(BOSS_SPRITE)
+        })
+
         it("doesn't draw it once defeated", () => {
             const state = bossState()
             state.boss!.defeated = true
@@ -825,6 +1163,92 @@ describe("createRenderer", () => {
             const lit = setup()
             lit.renderer.draw(state, 0, {}, { fog: { radius: 2 } })
             expect(lit.texts()).toEqual([BOSS_SPRITE, "🐉"])
+        })
+    })
+
+    // KDA-291, see enemyBreath.ts.
+    describe("a breather", () => {
+        // A 9x5 room with the player at (1, 1) and a breather at (4, 1).
+        const room = textMap([
+            "#########",
+            "#       #",
+            "#       #",
+            "#       #",
+            "#########",
+        ]).map
+        // The breather winding up its breath at the player, to its left,
+        // unless `winding` is false.
+        function breatherState(winding = true) {
+            const enemy = makeEnemy(4, 1, AiType.breather)
+            if (winding) {
+                enemy.breath!.windingUp = 10
+                enemy.breath!.facing = vec2(-1, 0)
+            }
+            return makeState(room, { x: 1, y: 1 }, [enemy])
+        }
+        const cellOf = (canvas: HTMLCanvasElement) =>
+            parseFloat(canvas.style.width) / 9
+        // On the board in play, paused or ending (see Effects.bossBreath).
+        const IN_GAME = { bossBreath: true } as const
+        // The cells (as "x,y") filled in the warning colour.
+        const tinted = ({ calls, canvas }: ReturnType<typeof setup>) =>
+            calls
+                .filter(
+                    (c) =>
+                        c.name === "fillRect" &&
+                        c.fillStyle === ENEMY_BREATH.warning
+                )
+                .map((c) => {
+                    const cell = cellOf(canvas)
+                    const [x, y] = c.args as number[]
+                    return `${Math.round(x / cell)},${Math.round(y / cell)}`
+                })
+        // The first fill of its glow, or -1.
+        const glows = (calls: ReturnType<typeof setup>["calls"]) =>
+            calls.findIndex(
+                (c) =>
+                    c.name === "fill" &&
+                    String(c.fillStyle).startsWith(`rgba(${ENEMY_BREATH.glow},`)
+            )
+
+        it("tints the cells its breath will strike while it winds up", () => {
+            const calm = setup()
+            calm.renderer.draw(breatherState(false), 0, {}, {}, IN_GAME)
+            expect(tinted(calm)).toEqual([])
+            const warned = setup()
+            warned.renderer.draw(breatherState(), 0, {}, {}, IN_GAME)
+            // Up to the wall: three cells, the player's included.
+            expect(tinted(warned).sort()).toEqual(["1,1", "2,1", "3,1"])
+            expect(
+                warned.calls.some(
+                    (c) =>
+                        c.name === "stroke" &&
+                        c.strokeStyle === ENEMY_BREATH.warning
+                )
+            ).toBe(true)
+        })
+
+        it("glows behind its sprite while it winds up, drawn opaque", () => {
+            const calm = setup()
+            calm.renderer.draw(breatherState(false), 0, {}, {}, IN_GAME)
+            expect(glows(calm.calls)).toBe(-1)
+            const { calls, renderer } = setup()
+            renderer.draw(breatherState(), 0, {}, {}, IN_GAME)
+            const glow = glows(calls)
+            const sprite = calls.findIndex(
+                (c) => c.name === "fillText" && c.args[0] === "🐍"
+            )
+            expect(glow).toBeGreaterThanOrEqual(0)
+            expect(glow).toBeLessThan(sprite)
+            expect(calls[sprite].fillStyle).toBe("#000")
+        })
+
+        it("shows no wind-up on end screens", () => {
+            const end = setup()
+            end.renderer.draw(breatherState(), 0, {}, {}, {})
+            expect(tinted(end)).toEqual([])
+            expect(glows(end.calls)).toBe(-1)
+            expect(end.texts()).toContain("🐍")
         })
     })
 })
@@ -881,18 +1305,39 @@ describe("createRenderer with two players", () => {
         expect(calls.some((c) => c.name === "stroke")).toBe(false)
     })
 
-    it("draws each player's score and meter, and the shared lives", () => {
+    it("draws each player's score, meter and health", () => {
         const { calls, renderer, texts } = setup()
         const meter = { energy: 50, max: 100, cost: 50, ready: true }
         renderer.draw(pair(), 0, {
-            lives: 2,
             players: [
-                { score: 30, energy: meter },
-                { score: 10, energy: { ...meter, ready: false } },
+                { score: 30, energy: meter, health: { health: 100, max: 100 } },
+                {
+                    score: 10,
+                    energy: { ...meter, ready: false },
+                    health: { health: 40, max: 100 },
+                },
             ],
         })
-        expect(texts().slice(0, 3)).toEqual(["1P 30", "2P 10", "❤️❤️"])
-        expect(calls.filter((c) => c.name === "strokeRect")).toHaveLength(2)
+        expect(texts().slice(0, 2)).toEqual(["1P 30", "2P 10"])
+        // A meter and a health gauge each.
+        expect(calls.filter((c) => c.name === "strokeRect")).toHaveLength(4)
+        // Each gauge in its player's colour, filled up to its health.
+        PLAYER_COLORS.forEach((color, i) => {
+            // The gauge is drawn after the meter, framed in the same colour.
+            const frame = calls
+                .filter(
+                    (c) => c.name === "strokeRect" && c.strokeStyle === color
+                )
+                .at(-1)!
+            const fill = calls.find(
+                (c) =>
+                    c.name === "fillRect" &&
+                    c.fillStyle === color &&
+                    c.args[1] === frame.args[1]
+            )!
+            const w = frame.args[2] as number
+            expect(fill.args[2]).toBeCloseTo(w * [1, 0.4][i])
+        })
         const scores = calls.filter(
             (c) => c.name === "fillText" && String(c.args[0]).includes("P ")
         )
@@ -940,27 +1385,9 @@ describe("createRenderer with two players", () => {
                     { x: 11, y: 1 },
                 ],
                 [
-                    makeEnemy(
-                        3,
-                        1,
-                        AiType.random,
-                        undefined,
-                        CharacterId.enemy1
-                    ),
-                    makeEnemy(
-                        6,
-                        1,
-                        AiType.chase,
-                        undefined,
-                        CharacterId.enemy2
-                    ),
-                    makeEnemy(
-                        10,
-                        1,
-                        AiType.ambusher,
-                        undefined,
-                        CharacterId.enemy3
-                    ),
+                    makeEnemy(3, 1, AiType.random, undefined, ENEMY_IDS[0]),
+                    makeEnemy(6, 1, AiType.chase, undefined, ENEMY_IDS[1]),
+                    makeEnemy(10, 1, AiType.ambusher, undefined, ENEMY_IDS[2]),
                 ]
             )
             renderer.draw(state, 0, {}, { fog: { radius: 2 } })
@@ -1085,19 +1512,18 @@ describe("createRenderer with a player out of play", () => {
     it("shows its countdown, or that it is out for good, in place of its meter", () => {
         const { calls, renderer, texts } = setup()
         const meter = { energy: 50, max: 100, cost: 50, ready: true }
+        const health = { health: 0, max: 100 }
         renderer.draw(pair(), 0, {
-            lives: 1,
             players: [
-                { score: 30, energy: meter, out: { respawnIn: 2.5 } },
-                { score: 10, energy: meter, out: { respawnIn: null } },
+                { score: 30, energy: meter, health, out: { respawnIn: 2.5 } },
+                { score: 10, energy: meter, health, out: { respawnIn: null } },
             ],
         })
-        expect(texts().slice(0, 5)).toEqual([
+        expect(texts().slice(0, 4)).toEqual([
             "1P 30",
             "back in 3",
             "2P 10",
             "OUT",
-            "❤️",
         ])
         expect(calls.filter((c) => c.name === "strokeRect")).toHaveLength(0)
         // Each label fits its meter's slot.
@@ -1184,8 +1610,6 @@ describe("createRenderer in versus", () => {
             "2P ●6",
             "Round 2 · 1–0",
         ])
-        // No hearts: versus has no lives.
-        expect(texts()).not.toContain("❤️")
         // Only player 2's meter.
         expect(calls.filter((c) => c.name === "strokeRect")).toHaveLength(1)
     })
@@ -1258,6 +1682,31 @@ describe("createRenderer with effects", () => {
         expect(r).toBeCloseTo(0.1 * cell)
         const fills = calls.filter((c) => c.name === "fill")
         expect(fills.map((c) => c.fillStyle)).toEqual(["lime"])
+    })
+
+    // KDA-293: the block's pale sparks are outlined.
+    it("outlines only a particle whose look has an outline", () => {
+        const strokes = (p: Particle) => {
+            const { calls, renderer } = setup()
+            renderer.draw(corridor(), 0, {}, {}, { particles: [p] })
+            return calls.filter(
+                (c) => c.name === "stroke" || c.name === "strokeRect"
+            )
+        }
+        const none = strokes(particle())
+        const disc = strokes(particle({ outline: "#a16207" }))
+        expect(disc).toHaveLength(none.length + 1)
+        expect(disc.at(-1)).toMatchObject({
+            name: "stroke",
+            strokeStyle: "#a16207",
+        })
+        const square = strokes(
+            particle({ outline: "#a16207", shape: "square" })
+        )
+        expect(square.at(-1)).toMatchObject({
+            name: "strokeRect",
+            strokeStyle: "#a16207",
+        })
     })
 
     it("draws a square particle as a square", () => {
@@ -1387,6 +1836,203 @@ describe("createRenderer with effects", () => {
         renderer.resize()
         expect(calls.filter((c) => c.name === "arc")).toHaveLength(1)
     })
+
+    describe("a jab", () => {
+        const sprite = (
+            calls: ReturnType<typeof setup>["calls"],
+            text: string
+        ) => calls.find((c) => c.name === "fillText" && c.args[0] === text)
+
+        it("lunges the player along it, with a fist just ahead", () => {
+            const { calls, canvas, renderer } = setup()
+            const jab = {
+                player: 0,
+                facing: vec2(1, 0),
+                age: JAB_SECONDS / 2,
+                lunge: JAB_LUNGE,
+            }
+            renderer.draw(corridor(), 0, {}, {}, { jabs: [jab] })
+            const cell = cellOf(canvas)
+            const player = sprite(calls, "🐉")
+            expect(player?.args[1]).toBeCloseTo((1.5 + JAB_LUNGE) * cell)
+            expect(player?.args[2]).toBeCloseTo(1.5 * cell)
+            const fist = sprite(calls, "👊")
+            expect(fist?.args[1]).toBeGreaterThan(player?.args[1] as number)
+            expect(fist?.args[2]).toBeCloseTo(1.5 * cell)
+        })
+
+        it("shows nothing without one, or for another player", () => {
+            const { calls, canvas, renderer } = setup()
+            const other = {
+                player: 1,
+                facing: vec2(1, 0),
+                age: 0.05,
+                lunge: JAB_LUNGE,
+            }
+            renderer.draw(corridor(), 0, {}, {}, { jabs: [other] })
+            expect(sprite(calls, "🐉")?.args[1]).toBeCloseTo(
+                1.5 * cellOf(canvas)
+            )
+            expect(sprite(calls, "👊")).toBeUndefined()
+        })
+
+        // Regression: the fist was drawn with the player, before the
+        // enemies, so the enemy it hit covered it.
+        it("draws the fist over the enemy it hits", () => {
+            const { calls, renderer } = setup()
+            const state = corridor()
+            state.enemies.push(makeEnemy(2, 1))
+            const jab = {
+                player: 0,
+                facing: vec2(1, 0),
+                age: 0.05,
+                lunge: JAB_LUNGE,
+            }
+            renderer.draw(state, 0, {}, {}, { jabs: [jab] })
+            const at = (text: string) =>
+                calls.findIndex(
+                    (c) => c.name === "fillText" && c.args[0] === text
+                )
+            expect(at("👺")).toBeGreaterThan(-1)
+            expect(at("👊")).toBeGreaterThan(at("👺"))
+        })
+    })
+
+    const sprite = (calls: ReturnType<typeof setup>["calls"], text: string) =>
+        calls.find((c) => c.name === "fillText" && c.args[0] === text)
+
+    it("bounces a blocked jab's fist back towards the player (KDA-293)", () => {
+        const fistAt = (blocked: boolean, age: number) => {
+            const { calls, canvas, renderer } = setup()
+            const jab = {
+                player: 0,
+                facing: vec2(1, 0),
+                age,
+                lunge: 0,
+                blocked,
+            }
+            renderer.draw(corridor(), 0, {}, {}, { jabs: [jab] })
+            const fist = sprite(calls, "👊")
+            return (fist?.args[1] as number) / cellOf(canvas)
+        }
+        expect(fistAt(false, 0) - fistAt(true, 0)).toBeCloseTo(FIST_BOUNCE)
+        const half = FIST_BOUNCE_SECONDS / 2
+        expect(fistAt(false, half) - fistAt(true, half)).toBeCloseTo(
+            FIST_BOUNCE / 2
+        )
+        expect(fistAt(true, FIST_BOUNCE_SECONDS)).toBeCloseTo(fistAt(false, 0))
+    })
+
+    describe("an enemy in its guard stance (KDA-293)", () => {
+        // Each canvas the renderer makes for a guarding sprite shares one
+        // stub context.
+        function setupLayers() {
+            const drawn = setup()
+            const image = document.createElement("canvas")
+            const layer = stubContext()
+            vi.spyOn(image, "getContext").mockReturnValue(layer.ctx as never)
+            vi.spyOn(document, "createElement").mockReturnValue(image)
+            return { ...drawn, image, layer }
+        }
+        const guarding = (stance = GUARD_STANCE) => {
+            const state = corridor()
+            const enemy = makeEnemy(2, 1)
+            enemy.stance = stance
+            state.enemies.push(enemy)
+            return state
+        }
+
+        it("crouches, tinted, with its feet where they were", () => {
+            const { calls, canvas, image, layer, renderer } = setupLayers()
+            renderer.draw(guarding(), 0, {}, {}, {})
+            const cell = cellOf(canvas)
+            const size = cell * SPRITE_SCALE
+            // Drawn from its tinted canvas, not as text.
+            expect(sprite(calls, "👺")).toBeUndefined()
+            const draws = calls.filter((c) => c.name === "drawImage")
+            expect(draws).toHaveLength(1)
+            const [source, left, top, width, height] = draws[0].args as [
+                unknown,
+                number,
+                number,
+                number,
+                number,
+            ]
+            expect(source).toBe(image)
+            expect(left + width / 2).toBeCloseTo(2.5 * cell)
+            const box = width / CROUCH_WIDTH
+            expect(height).toBeCloseTo(box * CROUCH_HEIGHT)
+            // Its box is the sprite and its outline on each side; the
+            // feet stay put.
+            const edge = (box - size) / 2
+            expect(edge).toBeGreaterThan(0)
+            expect(top + height - edge * CROUCH_HEIGHT).toBeCloseTo(
+                1.5 * cell + size / 2
+            )
+            // Tinted steel-blue, outlined in pale blue.
+            const fills = layer.calls
+                .filter((c) => c.name === "fillRect")
+                .map((c) => c.fillStyle)
+            expect(fills).toContain(STANCE_TINT)
+            expect(fills).toContain(STANCE_OUTLINE)
+            expect(
+                layer.calls.some(
+                    (c) => c.name === "fillText" && c.args[0] === "👺"
+                )
+            ).toBe(true)
+        })
+
+        it("doesn't crouch with reduced motion, but stays tinted", () => {
+            const { calls, renderer } = setupLayers()
+            renderer.draw(guarding(), 0, {}, {}, { reducedMotion: true })
+            const [draw] = calls.filter((c) => c.name === "drawImage")
+            const [, , , width, height] = draw.args as number[]
+            expect(width).toBeCloseTo(height)
+        })
+
+        it("makes its tinted sprite once and keeps it", () => {
+            const { layer, renderer } = setupLayers()
+            renderer.draw(guarding(), 0, {}, {}, {})
+            const made = layer.calls.length
+            renderer.draw(guarding(), 0, {}, {}, {})
+            expect(layer.calls.length).toBe(made)
+        })
+
+        it("is drawn as usual without a stance", () => {
+            const { calls, layer, renderer } = setupLayers()
+            renderer.draw(guarding(0), 0, {}, {}, {})
+            expect(sprite(calls, "👺")?.args[1]).toBeDefined()
+            expect(calls.some((c) => c.name === "drawImage")).toBe(false)
+            expect(layer.calls).toEqual([])
+        })
+
+        it("still crouches, untinted, where a canvas has no 2D context", () => {
+            const { calls, renderer } = setup()
+            renderer.draw(guarding(), 0, {}, {}, {})
+            const scales = calls.filter((c) => c.name === "scale")
+            expect(scales.map((c) => c.args)).toEqual([
+                [CROUCH_WIDTH, CROUCH_HEIGHT],
+            ])
+            expect(sprite(calls, "👺")).toBeDefined()
+        })
+    })
+})
+
+describe("stanceLook (KDA-293)", () => {
+    it("crouches an enemy in its guard stance, and not without one", () => {
+        const enemy = makeEnemy(2, 1)
+        expect(stanceLook(enemy, false)).toBeNull()
+        expect(stanceLook(enemy, true)).toBeNull()
+        enemy.stance = GUARD_STANCE
+        expect(stanceLook(enemy, false)).toEqual({
+            width: CROUCH_WIDTH,
+            height: CROUCH_HEIGHT,
+        })
+        expect(CROUCH_HEIGHT).toBeCloseTo(0.85)
+        expect(CROUCH_WIDTH).toBeCloseTo(1.06)
+        // Reduced motion: no crouch, but still the stance's look.
+        expect(stanceLook(enemy, true)).toEqual({ width: 1, height: 1 })
+    })
 })
 
 describe("createRenderer with the facing guide", () => {
@@ -1399,7 +2045,7 @@ describe("createRenderer with the facing guide", () => {
 
     // A dotted corridor 9 cells long: player 1 at (1, 1) and, with two
     // players, player 2 at (7, 1) facing it. Both breathe the Dragon's
-    // line, 5 cells.
+    // line, 3 cells for a tap (level 1).
     const corridor = [
         Array(9).fill(1),
         [1, ...Array(7).fill(2), 1],
@@ -1446,10 +2092,20 @@ describe("createRenderer with the facing guide", () => {
         const state = game()
         charge(state)
         renderer.draw(state, 0, {}, {}, AIM)
-        expect(tinted(calls, canvas)).toEqual([2, 3, 4, 5, 6])
+        expect(tinted(calls, canvas)).toEqual([2, 3, 4])
         // An edge round the line: its top and bottom along each cell, and
         // its two ends.
-        expect(edges(calls)).toBe(5 * 2 + 2)
+        expect(edges(calls)).toBe(3 * 2 + 2)
+    })
+
+    it("tints the cells of the level a held breath has charged to", () => {
+        const { calls, canvas, renderer } = setup()
+        const state = game()
+        charge(state)
+        // Held long enough for level 3: the Dragon's line is 5 cells.
+        state.players[0].breather.charge = CHARGE_SECONDS * 2
+        renderer.draw(state, 0, {}, {}, AIM)
+        expect(tinted(calls, canvas)).toEqual([2, 3, 4, 5, 6])
     })
 
     it("draws the tint under the dots and the characters", () => {
@@ -1497,8 +2153,8 @@ describe("createRenderer with the facing guide", () => {
         const state = game(2)
         charge(state)
         renderer.draw(state, 0, {}, {}, AIM)
-        expect(tinted(calls, canvas, 0)).toEqual([2, 3, 4, 5, 6])
-        expect(tinted(calls, canvas, 1)).toEqual([2, 3, 4, 5, 6])
+        expect(tinted(calls, canvas, 0)).toEqual([2, 3, 4])
+        expect(tinted(calls, canvas, 1)).toEqual([4, 5, 6])
     })
 
     it("draws no aim for a player out of play", () => {
@@ -1508,7 +2164,7 @@ describe("createRenderer with the facing guide", () => {
         takeOut(state.players[0], 3)
         renderer.draw(state, 0, {}, {}, AIM)
         expect(tinted(calls, canvas, 0)).toEqual([])
-        expect(tinted(calls, canvas, 1)).toEqual([2, 3, 4, 5, 6])
+        expect(tinted(calls, canvas, 1)).toEqual([4, 5, 6])
     })
 
     it("draws no aim for a stunned player", () => {
@@ -1517,7 +2173,7 @@ describe("createRenderer with the facing guide", () => {
         charge(state)
         stun(state.players[1])
         renderer.draw(state, 0, {}, {}, AIM)
-        expect(tinted(calls, canvas, 0)).toEqual([2, 3, 4, 5, 6])
+        expect(tinted(calls, canvas, 0)).toEqual([2, 3, 4])
         expect(tinted(calls, canvas, 1)).toEqual([])
     })
 
@@ -1578,6 +2234,22 @@ describe("createRenderer with the facing guide", () => {
         it("points right before the first move", () => {
             const { calls, canvas, renderer } = setup()
             renderer.draw(charged(), 0, {}, {}, ARROW)
+            expect(arrows(calls, canvas)).toEqual([
+                { color: 0, tip: [2.2, 1.5] },
+            ])
+        })
+
+        // Regression: the arrow was drawn on the lunging sprite, so it
+        // bobbed with every punch.
+        it("stays with the glide while the player jabs", () => {
+            const { calls, canvas, renderer } = setup()
+            const jab = {
+                player: 0,
+                facing: vec2(1, 0),
+                age: JAB_SECONDS / 2,
+                lunge: JAB_LUNGE,
+            }
+            renderer.draw(charged(), 0, {}, {}, { ...ARROW, jabs: [jab] })
             expect(arrows(calls, canvas)).toEqual([
                 { color: 0, tip: [2.2, 1.5] },
             ])
@@ -1648,6 +2320,389 @@ describe("createRenderer with the facing guide", () => {
                 renderer.draw(state, 0, {}, {}, effects)
                 expect(arrows(calls, canvas)).toEqual([])
             }
+        })
+    })
+})
+
+describe("createRenderer on a maze too big for the screen", () => {
+    afterEach(() => {
+        vi.restoreAllMocks()
+    })
+
+    // BIG_LEVEL (29x21) in a 390 x 400 window: 12 px cells to fit it whole,
+    // so MIN_CELL_PX (20 px) cells and a 358 x 368 canvas, 348 px of it maze
+    // below the HUD: 17.9 x 17.4 cells in view.
+    const VIEWPORT = { width: 358, height: 348 }
+    const CELL = MIN_CELL_PX
+    // How far the view scrolls at most, in CSS pixels.
+    const MAX_X = 29 * CELL - VIEWPORT.width
+    const MAX_Y = 21 * CELL - VIEWPORT.height
+
+    function bigSetup() {
+        const view = { innerWidth: 390, innerHeight: 400, devicePixelRatio: 1 }
+        const clock = { now: 0 }
+        const canvas = document.createElement("canvas")
+        const { ctx, calls } = stubContext()
+        vi.spyOn(canvas, "getContext").mockReturnValue(ctx as never)
+        const renderer = createRenderer(canvas, {
+            view,
+            now: () => clock.now,
+        })
+        const texts = () =>
+            calls.filter((c) => c.name === "fillText").map((c) => c.args[0])
+        // How far the view scrolled the maze this frame: the translate after
+        // the HUD's, undone; [0, 0] without one.
+        const scroll = () => {
+            const move = calls.filter((c) => c.name === "translate")[1]
+            const [x, y] = (move?.args ?? [0, 0]) as number[]
+            // + 0 turns -0 into 0.
+            return [-x + 0, -y + 0]
+        }
+        // Draw a frame `ms` after the last one.
+        const frame = (
+            state: GameState,
+            ms = 0,
+            rules: LevelRules = {},
+            effects: Effects = {}
+        ) => {
+            calls.length = 0
+            clock.now += ms
+            renderer.draw(state, 0, {}, rules, effects)
+        }
+        return { calls, canvas, texts, scroll, frame, view }
+    }
+
+    // Put `player` at `pos`, standing still.
+    function place(player: Player, pos: { x: number; y: number }) {
+        player.character.pos = vec2(pos.x, pos.y)
+        player.character.lastPos = vec2(pos.x, pos.y)
+        player.character.moveProgress = 1
+    }
+
+    const coop = () =>
+        createGameState(BIG_LEVEL, [DEFAULT_ANIMAL, DEFAULT_ANIMAL], "coop")
+
+    const font = (cell: number) =>
+        `${Math.round(cell * SPRITE_SCALE)}px sans-serif`
+
+    it("zooms in to the minimum cell size and shows the player's corner", () => {
+        const { canvas, calls, frame, scroll, texts } = bigSetup()
+        // Player 1 starts bottom left.
+        frame(createGameState(BIG_LEVEL))
+        expect(canvas.style.width).toBe(`${VIEWPORT.width}px`)
+        expect(canvas.style.height).toBe(`${VIEWPORT.height + CELL}px`)
+        // Held at the maze's left and bottom edges.
+        expect(scroll()).toEqual([0, MAX_Y])
+        const sprite = calls.find((c) => c.args[0] === "🐉")
+        expect(sprite?.args.slice(1)).toEqual([1.5 * CELL, 19.5 * CELL])
+        expect(sprite?.font).toBe(font(CELL))
+        // The enemy top right is out of view; the one in the middle isn't.
+        expect(texts()).toEqual(["🐉", "👹"])
+    })
+
+    it("centres the player when it is away from the edges", () => {
+        const { frame, scroll } = bigSetup()
+        const state = createGameState(BIG_LEVEL)
+        place(state.players[0], { x: 14, y: 9 })
+        frame(state)
+        const [x, y] = scroll()
+        expect(x).toBeCloseTo(14.5 * CELL - VIEWPORT.width / 2)
+        expect(y).toBeCloseTo(9.5 * CELL - VIEWPORT.height / 2)
+    })
+
+    it("keeps the maze inside its part of the canvas, off the HUD", () => {
+        const { calls, frame } = bigSetup()
+        frame(createGameState(BIG_LEVEL))
+        const clip = calls.findIndex((c) => c.name === "clip")
+        const rect = calls[clip - 1]
+        expect(rect.name).toBe("rect")
+        expect(rect.args).toEqual([0, 0, VIEWPORT.width, VIEWPORT.height])
+        // The view moves the maze inside the clip.
+        const translates = calls.filter((c) => c.name === "translate")
+        expect(calls.indexOf(translates[1])).toBeGreaterThan(clip)
+    })
+
+    it("draws a jab's fist in the view, with the characters", () => {
+        const { calls, frame } = bigSetup()
+        const jab = {
+            player: 0,
+            facing: vec2(1, 0),
+            age: 0.05,
+            lunge: JAB_LUNGE,
+        }
+        frame(createGameState(BIG_LEVEL), 0, {}, { jabs: [jab] })
+        const clip = calls.findIndex((c) => c.name === "clip")
+        const view = calls.indexOf(
+            calls.filter((c) => c.name === "translate")[1]!
+        )
+        const fist = calls.findIndex(
+            (c) => c.name === "fillText" && c.args[0] === "👊"
+        )
+        expect(fist).toBeGreaterThan(Math.max(clip, view))
+        // In maze space: just right of player 1 at (1, 19).
+        const [x, y] = calls[fist]!.args.slice(1) as number[]
+        expect(x).toBeGreaterThan(1.5 * CELL)
+        expect(y).toBeCloseTo(19.5 * CELL)
+    })
+
+    it("draws only the cells in view", () => {
+        const { calls, frame } = bigSetup()
+        frame(createGameState(BIG_LEVEL))
+        // Wall blocks, not dots.
+        const walls = calls.filter(
+            (c) => c.name === "fillRect" && (c.args[2] as number) > CELL / 2
+        )
+        // The maze has 211 walls; about 19 columns by 19 rows of it are in
+        // or near the view, none past column 19.
+        expect(walls.length).toBeLessThan(150)
+        expect(walls.every((c) => (c.args[0] as number) < 19 * CELL)).toBe(true)
+    })
+
+    it("eases after the player over time, not by frames", () => {
+        const { frame, scroll } = bigSetup()
+        const state = createGameState(BIG_LEVEL)
+        place(state.players[0], { x: 14, y: 9 })
+        frame(state)
+        const [x0] = scroll()
+        place(state.players[0], { x: 18, y: 9 })
+        // No time passed: the view hasn't moved.
+        frame(state)
+        expect(scroll()[0]).toBeCloseTo(x0)
+        frame(state, 50)
+        const [x1] = scroll()
+        const target = 18.5 * CELL - VIEWPORT.width / 2
+        expect(x1).toBeGreaterThan(x0)
+        expect(x1).toBeLessThan(target)
+        frame(state, 10_000)
+        expect(scroll()[0]).toBeCloseTo(target)
+    })
+
+    it("starts a new game's view right on its player", () => {
+        const { frame, scroll } = bigSetup()
+        const first = createGameState(BIG_LEVEL)
+        place(first.players[0], { x: 27, y: 1 })
+        frame(first)
+        frame(createGameState(BIG_LEVEL), 16)
+        expect(scroll()).toEqual([0, MAX_Y])
+    })
+
+    it("draws an enemy in a tunnel whose other half is in view", () => {
+        const { calls, frame, scroll } = bigSetup()
+        const state = createGameState(BIG_LEVEL)
+        place(state.players[0], { x: 27, y: 10 })
+        // The chaser halfway through the tunnel, from the right edge to the
+        // left: half off the left edge, out of view, and half on the right.
+        const enemy = state.enemies[1]
+        enemy.lastPos = vec2(28, 10)
+        enemy.pos = vec2(0, 10)
+        enemy.moveProgress = 0.5
+        frame(state)
+        expect(scroll()[0]).toBeCloseTo(MAX_X)
+        const drawn = calls.filter((c) => c.args[0] === "👹")
+        expect(drawn.map((c) => c.args[1])).toEqual([0, 29 * CELL])
+    })
+
+    it("draws a maze that fits whole under MIN_CELL_PX whole, without zooming in", () => {
+        const { calls, frame, view } = bigSetup()
+        // A 17x15 maze (the size the stages were before KDA-264) on an
+        // Android phone in portrait: 19 px cells.
+        view.innerWidth = 360
+        view.innerHeight = 740
+        const open = "#" + ".".repeat(15) + "#"
+        const level = parseFlat({
+            name: "17x15",
+            parTime: 60,
+            map: [
+                "#".repeat(17),
+                "#P" + ".".repeat(14) + "#",
+                ...Array<string>(12).fill(open),
+                "#".repeat(17),
+            ],
+            enemies: [],
+        })
+        frame(createGameState(level))
+        expect(calls.filter((c) => c.name === "translate")).toHaveLength(1)
+        const rect = calls.find((c) => c.name === "rect")
+        expect(rect?.args).toEqual([0, 0, 17 * 19, 15 * 19])
+        const sprite = calls.find((c) => c.args[0] === "🐉")
+        expect(sprite?.font).toBe(font(19))
+    })
+
+    it("draws a maze that fits whole as before, unmoved", () => {
+        const { calls, frame, view } = bigSetup()
+        view.innerWidth = 1000
+        view.innerHeight = 800
+        frame(createGameState(BIG_LEVEL))
+        // (1000 - 32) / 29 columns: 33 px cells.
+        expect(calls.filter((c) => c.name === "translate")).toHaveLength(1)
+        const rect = calls.find((c) => c.name === "rect")
+        expect(rect?.args).toEqual([0, 0, 29 * 33, 21 * 33])
+    })
+
+    describe("with two players", () => {
+        it("follows their midpoint while they are close", () => {
+            const { calls, frame, scroll } = bigSetup()
+            const state = coop()
+            place(state.players[0], { x: 12, y: 9 })
+            place(state.players[1], { x: 16, y: 9 })
+            frame(state)
+            expect(scroll()[0]).toBeCloseTo(14.5 * CELL - VIEWPORT.width / 2)
+            const sprite = calls.find((c) => c.args[0] === "🐉")
+            expect(sprite?.args[1]).toBe(12.5 * CELL)
+        })
+
+        it("zooms out to keep both in view, down to the whole maze", () => {
+            const { calls, frame, scroll } = bigSetup()
+            // On their spawns, bottom left and bottom right.
+            frame(coop())
+            const cell = VIEWPORT.width / 29
+            const sprites = calls.filter((c) => c.args[0] === "🐉")
+            expect(sprites.map((c) => c.args[1])).toEqual([
+                1.5 * cell,
+                27.5 * cell,
+            ])
+            expect(sprites[0].font).toBe(font(cell))
+            // The whole maze across, and centred down.
+            const [x, y] = scroll()
+            expect(x).toBe(0)
+            expect(y).toBeCloseTo((21 * cell - VIEWPORT.height) / 2, 0)
+        })
+
+        it("ignores a player out of play", () => {
+            const { calls, frame, scroll } = bigSetup()
+            const state = coop()
+            takeOut(state.players[1], PLAYER_RESPAWN_DELAY)
+            frame(state)
+            expect(scroll()).toEqual([0, MAX_Y])
+            const sprite = calls.find((c) => c.args[0] === "🐉")
+            expect(sprite?.font).toBe(font(CELL))
+        })
+
+        it("holds the view while nobody is in play", () => {
+            const { frame, scroll } = bigSetup()
+            const state = coop()
+            place(state.players[0], { x: 12, y: 9 })
+            place(state.players[1], { x: 16, y: 9 })
+            frame(state)
+            const held = scroll()
+            takeOut(state.players[0], PLAYER_RESPAWN_DELAY)
+            takeOut(state.players[1], PLAYER_RESPAWN_DELAY)
+            // Out far from where the view is.
+            place(state.players[0], { x: 1, y: 19 })
+            place(state.players[1], { x: 27, y: 19 })
+            frame(state, 1000)
+            expect(scroll()).toEqual(held)
+        })
+
+        it("draws the fog's darkness over the screen, with only the lights on it", () => {
+            const { calls, frame } = bigSetup()
+            const layerCanvas = document.createElement("canvas")
+            const layer = stubContext()
+            vi.spyOn(layerCanvas, "getContext").mockReturnValue(
+                layer.ctx as never
+            )
+            vi.spyOn(document, "createElement").mockReturnValue(layerCanvas)
+            const state = coop()
+            place(state.players[1], { x: 3, y: 19 })
+            frame(state, 0, { fog: { radius: 2 } })
+            // The layer covers the screen, not the whole maze.
+            expect(layerCanvas.width).toBe(VIEWPORT.width)
+            expect(layerCanvas.height).toBe(VIEWPORT.height)
+            const image = calls.find((c) => c.name === "drawImage")
+            expect(image?.args.slice(1)).toEqual([
+                0,
+                MAX_Y,
+                VIEWPORT.width,
+                VIEWPORT.height,
+            ])
+            // The maze wraps across, but the lights' copies one maze-width
+            // away are off screen.
+            const lights = layer.calls.filter(
+                (c) => c.name === "createRadialGradient"
+            )
+            expect(lights.map((c) => c.args[0])).toEqual([
+                1.5 * CELL,
+                3.5 * CELL,
+            ])
+        })
+    })
+})
+
+describe("createGuardSprites (KDA-293)", () => {
+    // A document whose every canvas has a stub context of its own; `made`
+    // lists them, in the order made. A guarding sprite takes two.
+    function fakeDocument() {
+        const made: ReturnType<typeof stubContext>[] = []
+        const doc = {
+            createElement: () => {
+                const stub = stubContext()
+                made.push(stub)
+                return { width: 0, height: 0, getContext: () => stub.ctx }
+            },
+        }
+        return { doc: doc as never, made, builds: () => made.length / 2 }
+    }
+
+    // Regression (PR #101 review): keyed by the exact size, a view easing
+    // its cell size made a new sprite on nearly every frame.
+    it("makes one sprite for sizes within a pixel of each other", () => {
+        const { doc, builds } = fakeDocument()
+        const sprites = createGuardSprites(doc)
+        for (let i = 0; i < 40; i++) sprites("👺", 38 + i * 0.01, 2)
+        expect(builds()).toBe(1)
+        expect(sprites("👺", 38.3, 2)?.size).toBe(38)
+        sprites("👺", 39, 2)
+        expect(builds()).toBe(2)
+    })
+
+    it("makes one per sprite and per pixel ratio", () => {
+        const { doc, builds } = fakeDocument()
+        const sprites = createGuardSprites(doc)
+        sprites("👺", 38, 1)
+        sprites("👺", 38, 2)
+        sprites("👹", 38, 2)
+        expect(builds()).toBe(3)
+        sprites("👺", 38, 1)
+        sprites("👺", 38, 2)
+        expect(builds()).toBe(3)
+    })
+
+    it("drops them all once there are too many", () => {
+        const { doc, builds } = fakeDocument()
+        const sprites = createGuardSprites(doc)
+        for (let size = 1; size <= GUARD_SPRITES_KEPT; size++) {
+            sprites("👺", size, 1)
+        }
+        sprites("👺", 1, 1)
+        expect(builds()).toBe(GUARD_SPRITES_KEPT)
+        // One more: the rest go, so the first is made again.
+        sprites("👺", GUARD_SPRITES_KEPT + 1, 1)
+        sprites("👺", 1, 1)
+        expect(builds()).toBe(GUARD_SPRITES_KEPT + 2)
+    })
+
+    it("tints by colour, keeping the sprite's shape, then outlines it", () => {
+        const { doc, made } = fakeDocument()
+        createGuardSprites(doc)("👺", 38, 2)
+        const [tinted, outlined] = made
+        const tint = tinted.calls.find(
+            (c) => c.name === "fillRect" && c.fillStyle === STANCE_TINT
+        )
+        // "color" keeps the sprite's lightness, so its shading shows.
+        expect(tint?.composite).toBe("color")
+        // Then cut back to the sprite's own shape.
+        expect(tinted.calls.at(-1)).toMatchObject({
+            name: "fillText",
+            composite: "destination-in",
+        })
+        const outline = outlined.calls.find(
+            (c) => c.name === "fillRect" && c.fillStyle === STANCE_OUTLINE
+        )
+        expect(outline?.composite).toBe("source-in")
+        // The tinted sprite goes over its outline.
+        expect(outlined.calls.at(-1)).toMatchObject({
+            name: "drawImage",
+            composite: "source-over",
         })
     })
 })

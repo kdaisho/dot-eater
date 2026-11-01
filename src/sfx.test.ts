@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vite-plus/test"
 import { BREATHS } from "./breaths"
+import { BOSS_BREATH_WIND_UP, ENEMY_BREATH_WIND_UP } from "./constants"
 import { ANIMAL_IDS } from "./roster"
 import { BREATH_SFX, breathSfx, SFX, SFX_IDS, SfxId } from "./sfx"
 import { soundLength, type Tone } from "./tone"
@@ -38,6 +39,79 @@ describe("SFX", () => {
             expect(soundLength(SFX[id]), id).toBeLessThanOrEqual(2)
         // The dot plays several times a second.
         expect(soundLength(SFX[SfxId.dot])).toBeLessThanOrEqual(0.1)
+    })
+})
+
+describe("the dot dropped sound", () => {
+    it("is short and quieter than the dot blip", () => {
+        const loudest = (id: SfxId) =>
+            Math.max(...SFX[id].map((tone) => tone.volume))
+        expect(soundLength(SFX[SfxId.dotDropped])).toBeLessThanOrEqual(0.1)
+        expect(loudest(SfxId.dotDropped)).toBeLessThan(loudest(SfxId.dot))
+    })
+})
+
+describe("the hurt sound", () => {
+    it("is shorter than the knockout's", () => {
+        expect(soundLength(SFX[SfxId.hurt])).toBeLessThan(
+            soundLength(SFX[SfxId.caught])
+        )
+    })
+})
+
+describe("the boss's breath sounds", () => {
+    // KDA-293, with the user: the mock-up's sound 3.
+    it("thocks a block: a low falling sine knock and a short mid click", () => {
+        const [knock, click] = SFX[SfxId.punchBlocked]
+        expect(knock).toMatchObject({
+            wave: "sine",
+            at: 0,
+            duration: 0.12,
+            freq: 320,
+            freqEnd: 140,
+        })
+        expect(click).toMatchObject({
+            wave: "noise",
+            at: 0,
+            duration: 0.04,
+            freq: 900,
+        })
+        expect(click.volume).toBeLessThan(knock.volume)
+        expect(SFX[SfxId.punchBlocked]).toHaveLength(2)
+    })
+
+    it("rumble low through about the wind-up, then roar", () => {
+        expect(soundLength(SFX[SfxId.bossWindUp])).toBeCloseTo(
+            BOSS_BREATH_WIND_UP,
+            1
+        )
+        for (const id of [SfxId.bossWindUp, SfxId.bossBreath]) {
+            const lowest = Math.min(...SFX[id].map((t) => t.freq))
+            expect(lowest, id).toBeLessThan(200)
+        }
+        expect(SfxId.bossWindUp).not.toBe(SfxId.bossBreath)
+    })
+})
+
+describe("the breather's breath sounds", () => {
+    // KDA-291: a charge through about the wind-up, then a hiss, both
+    // softer than the boss's.
+    it("charge through about the wind-up, then hiss, softer than the boss's", () => {
+        expect(soundLength(SFX[SfxId.enemyWindUp])).toBeCloseTo(
+            ENEMY_BREATH_WIND_UP,
+            1
+        )
+        const loudest = (id: SfxId) =>
+            Math.max(...SFX[id].map((tone) => tone.volume))
+        expect(loudest(SfxId.enemyWindUp)).toBeLessThan(
+            loudest(SfxId.bossWindUp)
+        )
+        expect(loudest(SfxId.enemyBreath)).toBeLessThan(
+            loudest(SfxId.bossBreath)
+        )
+        expect(soundLength(SFX[SfxId.enemyBreath])).toBeLessThan(
+            soundLength(SFX[SfxId.bossBreath])
+        )
     })
 })
 

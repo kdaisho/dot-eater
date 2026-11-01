@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { describe, expect, it, vi } from "vite-plus/test"
-import { levels } from "./levels"
+import { stages as levels } from "./levels"
 import { tickCount, verify, type Recording } from "./replay"
 
 // main with ?record: a real game of stage 1, paused for a while midway

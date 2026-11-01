@@ -6,18 +6,23 @@ import type {
     PlayerInput,
 } from "./input"
 
-// On-screen touch buttons for player 1: a D-pad with a breath button
-// (optional, off by default) and a pause button (on touch screens, during
-// play). They are DOM buttons rather than drawn on the canvas: each gets its
-// own pointer events, CSS places them beside or below the maze by
-// orientation (see controlsSpace in layout.ts), and the renderer stays as
-// it is.
+// On-screen touch buttons for player 1: pause, punch and breath (on touch
+// screens, during play) and a D-pad (optional, off by default). They are
+// DOM buttons rather than drawn on the canvas: each gets its own pointer
+// events, CSS places them beside or below the maze by orientation (see
+// controlsSpace in layout.ts), and the renderer stays as it is. Dragging on
+// the board steers too (touch.ts), with or without the D-pad.
 //
 // The D-pad works like the keyboard: a direction is held while a finger is
 // on it, and sliding the finger round the pad changes direction without
-// lifting, as on a stick. The breath and pause buttons press on touch. Which
-// controls show is set on the body's data attributes (setControls), which
-// the CSS reads.
+// lifting, as on a stick. The pause, punch and breath buttons press on
+// touch and release on lift, so holding one presses it once (no
+// auto-repeat); a button looks pressed (the "pressed" class) while held.
+// Held, Breath charges the breath, which fires on the lift (or a lost
+// capture), as letting go of the key does (KDA-289).
+// Each finger is tracked on its own, so one can steer while another
+// presses. Which controls show is set on the body's data attributes
+// (setControls), which the CSS reads.
 
 // How far (CSS pixels) from the D-pad's centre a finger must be before it
 // points anywhere, so a thumb resting in the middle holds nothing.
@@ -67,7 +72,10 @@ export function createTouchControls(doc: Document = document): HTMLElement {
     const breath = button(doc, "breath", "Breath", "💨")
     breath.classList.add("touch-breath")
 
-    root.append(pause, pad, breath)
+    const punch = button(doc, "punch", "Punch", "👊")
+    punch.classList.add("touch-punch")
+
+    root.append(pause, pad, breath, punch)
     doc.body.appendChild(root)
     return root
 }
@@ -89,17 +97,28 @@ function button(
 export type ControlFlags = {
     // A touch screen: the pause button shows during play.
     touch?: boolean
-    // The D-pad and breath button show (and the maze makes room for them).
+    // The punch and breath buttons show during play (and the maze makes
+    // room for them): touch is the main input, or the D-pad shows.
+    buttons?: boolean
+    // The D-pad shows (and the maze makes a bigger band for it).
     dpad?: boolean
     // A game is being played (not a menu or pause).
     playing?: boolean
 }
 
 // Set which touch controls show, as "on"/"off" data attributes on the body
-// (data-touch, data-dpad, data-playing). Flags left out stay as they are.
+// (data-touch, data-buttons, data-dpad, data-playing). Flags left out stay as they are.
 export function setControls(doc: Document, flags: ControlFlags): void {
     for (const [name, on] of Object.entries(flags)) {
         if (on !== undefined) doc.body.dataset[name] = on ? "on" : "off"
+    }
+}
+
+// Mark `root`'s breath button ready (the "ready" class) while player 1 can
+// breathe, as the HUD meter's amber does (energyHud's `ready`).
+export function setBreathReady(root: ParentNode, ready: boolean): void {
+    for (const el of root.querySelectorAll("[data-action=breath]")) {
+        el.classList.toggle("ready", ready)
     }
 }
 
@@ -110,7 +129,7 @@ type Press =
     // A finger on the D-pad and the direction it holds, if any.
     | { pad: Element; direction?: DirectionAction | undefined }
     // A finger on a button.
-    | { action: Action }
+    | { action: Action; button: Element }
 
 // Feeds player 1 from the touch controls. Listens on their container
 // (injected), and finds the control from the event's target.
@@ -165,7 +184,8 @@ export class DpadSource implements InputSource {
         }
         if (control instanceof HTMLElement && control.dataset.action) {
             const action = control.dataset.action as Action
-            this.presses.set(p.pointerId, { action })
+            this.presses.set(p.pointerId, { action, button: control })
+            control.classList.add("pressed")
             this.player()?.press(action, buttonControl(action, p.pointerId))
             return
         }
@@ -211,6 +231,11 @@ export class DpadSource implements InputSource {
                 press.action,
                 buttonControl(press.action, pointerId)
             )
+            // It looks pressed while any finger is still on it.
+            const held = [...this.presses.values()].some(
+                (other) => "button" in other && other.button === press.button
+            )
+            if (!held) press.button.classList.remove("pressed")
         } else if (press.direction) {
             player?.release(press.direction, padControl(pointerId))
         }

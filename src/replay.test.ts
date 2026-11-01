@@ -9,7 +9,7 @@ import {
     type TickInput,
 } from "./flow"
 import { directionStep, type DirectionAction } from "./input"
-import { levels } from "./levels"
+import { stages as levels } from "./levels"
 import { emptyProgress } from "./progress"
 import {
     checksumOf,

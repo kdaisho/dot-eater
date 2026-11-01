@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vite-plus/test"
-import { DEFAULT_BINDINGS, PAD_A, PAD_START, rebind } from "./bindings"
+import { DEFAULT_BINDINGS, PAD_A, PAD_START, PAD_X, rebind } from "./bindings"
 import { CONTROLS_ROWS } from "./controlsMenu"
 import {
     baseScreen,
@@ -14,10 +14,9 @@ import {
 } from "./flow"
 import type { MoveInput } from "./game"
 import type { Action } from "./input"
-import { parseLevel } from "./level"
 import { emptyProgress } from "./progress"
 import { bindingsOf, defaultSettings, type Settings } from "./settings"
-import { fixedRandom } from "./test/helpers"
+import { fixedRandom, parseFlat, sameAtEvery } from "./test/helpers"
 import { vec2 } from "./vec2"
 
 // The controls screen (KDA-215): opened from the settings' Controls row,
@@ -25,13 +24,13 @@ import { vec2 } from "./vec2"
 // reset and back.
 
 const levels = [
-    parseLevel({
+    parseFlat({
         name: "corridor",
         parTime: 60,
         map: ["######", "#PQ..#", "######"],
         enemies: [],
     }),
-]
+].map(sameAtEvery)
 
 // One tick's input: player 1's presses, and what main captured.
 function input(pressed: readonly Action[] = [], captured?: Capture): TickInput {
@@ -67,7 +66,8 @@ function rowIndex(kind: string, action?: string): number {
 // The settings, opened from the title, with the cursor on Controls.
 function settingsOnControls(d = deps()): Screen {
     const title = press(initialScreen(), ["down", "down", "down"], d)
-    return press(title, ["confirm", "down", "down", "down", "down", "down"], d)
+    const down = Array<Action>(6).fill("down")
+    return press(title, ["confirm", ...down], d)
 }
 
 // The controls screen, fresh from the settings.
@@ -107,12 +107,13 @@ describe("opening the controls screen", () => {
         const pausedSettings: Screen = {
             kind: "settings",
             mode: "solo",
-            row: 5,
+            row: 6,
             settings: defaultSettings(),
             back: {
                 kind: "paused",
                 mode: "solo",
                 level: 0,
+                difficulty: "medium",
                 animals: ["dragon"],
                 game: {} as never,
             },
@@ -244,9 +245,10 @@ describe("capturing", () => {
 
     it("binds pad buttons on pad rows, swapping with pause", () => {
         let screen = press(on(padBreath), ["confirm"])
-        screen = update(screen, input([], { button: 2 }), deps())
+        screen = update(screen, input([], { button: 3 }), deps())
         expect(bindings(screen).players[0].pad).toEqual({
-            breath: 2,
+            breath: 3,
+            punch: PAD_X,
             confirm: PAD_A,
             pause: PAD_START,
         })
@@ -254,6 +256,7 @@ describe("capturing", () => {
         screen = update(screen, input([], { button: PAD_A }), deps())
         expect(bindings(screen).players[0].pad).toEqual({
             breath: PAD_START,
+            punch: PAD_X,
             confirm: PAD_START,
             pause: PAD_A,
         })
@@ -353,7 +356,7 @@ describe("reset and back", () => {
         screen = update(screen, input([], { key: "KeyX" }), deps())
         screen = { ...asControls(screen), row }
         const settings = press(screen, [action])
-        expect(settings).toMatchObject({ kind: "settings", row: 5 })
+        expect(settings).toMatchObject({ kind: "settings", row: 6 })
         expect(screenSettings(settings)).toBe(screenSettings(screen))
         expect(
             bindingsOf(screenSettings(settings)!).players[0].keys.breath

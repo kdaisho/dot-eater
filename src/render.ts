@@ -1,4 +1,6 @@
 import { footprint } from "./boss"
+import { bossLooks, bossWarning } from "./bossBreath"
+import { enemyBreathLooks, enemyWarnings } from "./enemyBreath"
 import {
     aimPreviews,
     canBreathe,
@@ -8,6 +10,16 @@ import {
     type EnergyHud,
     type Look,
 } from "./breath"
+import {
+    clampView,
+    easeView,
+    inView,
+    viewFor,
+    viewOrigin,
+    type View,
+    type Viewport,
+} from "./camera"
+import type { Character } from "./character"
 import { AiType, Cell, CharacterId, SPRITE_SCALE } from "./constants"
 import {
     fogDistance,
@@ -16,8 +28,16 @@ import {
     lightCentres,
     type FogWrap,
 } from "./fog"
-import type { GameState, Player } from "./game"
+import {
+    playerVisible,
+    type GameState,
+    type HealthHud,
+    type Player,
+} from "./game"
 import { eatenDotVisible, glidePos, wrapCopies } from "./glide"
+import { inStance } from "./guard"
+import { sneakAlpha } from "./intercept"
+import { fistBounce, jabLunge, type Jab } from "./jab"
 import { computeLayout, type Layout } from "./layout"
 import type { LevelRules } from "./level"
 import { particleAlpha, type Particle } from "./particles"
@@ -30,21 +50,33 @@ import { stunImmune, stunned } from "./versus"
 // What the HUD strip above the maze shows. Fields left out aren't drawn.
 export type Hud = {
     score?: number
-    lives?: number
+    // The player's health gauge, on the right (KDA-257).
+    health?: HealthHud
     // The energy meter, in the middle (see energyHud in breath.ts).
     energy?: EnergyHud
-    // With two players, each one's score and meter, player 1 first: drawn
-    // in place of `score` and `energy`, player 1 on the left and player 2
-    // on the right, in their marker colours, with the shared lives between.
+    // With two players, each one's score, meter and health, player 1
+    // first: drawn in place of `score`, `energy` and `health`, player 1 on
+    // the left and player 2 on the right, in their marker colours.
     players?: readonly PlayerHud[]
     // Versus: the round and tally (e.g. "Round 2 · 1–0"), drawn in the
-    // middle in place of the lives, which versus doesn't have.
+    // middle. A co-op story run (KDA-271) puts its total there too
+    // ("Total 1230").
     round?: string
+    // On a boss level, the boss's health (see bossHud in game.ts): the
+    // stage's goal (KDA-267), drawn as a band along the bottom of the
+    // strip, in every mode, so it shows wherever the boss is on the map.
+    boss?: HealthHud
+    // The difficulty's name (e.g. "Hard"), small: with one player between
+    // the meter and the health gauge, with two in the middle (under the
+    // round in versus).
+    difficulty?: string
 }
 
 export type PlayerHud = {
     score: number
     energy: EnergyHud
+    // Its health gauge, drawn under its meter in its marker colour.
+    health?: HealthHud
     // Set while the player is out of play (see takeOut in game.ts): the
     // seconds until it is back, or null if it is out for good. Drawn in
     // place of its meter.
@@ -71,6 +103,17 @@ export type Effects = {
     // (see aimPreviews in breath.ts), a faint tint in its colour on the
     // cells its breath would hit, under the dots.
     aim?: boolean
+    // Each player's jab under way (KDA-258; see jab.ts): its sprite lunges
+    // along it, with a fist just ahead.
+    jabs?: readonly Jab[]
+    // Whether the system asks for reduced motion: an enemy in its guard
+    // stance then doesn't crouch (see stanceLook).
+    reducedMotion?: boolean
+    // Whether the boss's wind-up shows (KDA-268; see bossBreath.ts): its
+    // glow and the warning tint on the cells it will strike. Set while
+    // playing, paused and in the ending outro, not on end screens. The
+    // breathers' wind-ups (KDA-291, see enemyBreath.ts) show with it.
+    bossBreath?: boolean
 }
 
 export type Renderer = {
@@ -95,6 +138,10 @@ export type Renderer = {
 
 const COLORS = {
     background: "#fff",
+    // The fill an emoji sprite, badge or fist is drawn with. Opaque: canvas
+    // draws colour emoji with the fill colour's alpha, so drawing one right
+    // after a translucent look disc would leave it see-through.
+    sprite: "#000",
     wall: "#000",
     dot: "#000",
     // Ice floor: a pale blue tile under the dot.
@@ -104,16 +151,23 @@ const COLORS = {
     fog: "17, 17, 17",
     // The energy meter: its frame and cost marks, the fill while a breath
     // is ready, and the fill while it isn't (too little energy or cooling
-    // down).
+    // down); and the levels a held breath has charged (KDA-289).
     meter: "#000",
     meterReady: "#f59e0b",
     meterCharging: "#9ca3af",
+    meterCharge: "#dc2626",
+    // The solo player's health gauge (with two players each one's is in
+    // its marker colour).
+    health: "#16a34a",
     // The boss's health bar: health left over a dark track, framed; and
     // its flash when hit.
     bossHealth: "#dc2626",
     bossTrack: "#374151",
     bossFrame: "#000",
     bossFlash: "#fff",
+    // The HUD's boss band: the health lost, pale against the white strip
+    // and the maze's black top edge (the health left is bossHealth).
+    bossBandTrack: "#fecaca",
 }
 
 // The width of the fog's soft edge in cells: the darkness fades in over this
@@ -126,8 +180,7 @@ const FOG_SOFT_EDGE = 1.5
 // player nears rather than popping in.
 const FOG_REACH = Math.SQRT1_2
 
-// Each player is drawn as its character's emoji (ANIMALS in roster.ts), as
-// are the HUD's lives (player 1's).
+// Each player is drawn as its character's emoji (ANIMALS in roster.ts).
 function playerSprite(player: Player): string {
     return ANIMALS[player.breather.breath.animal].emoji
 }
@@ -148,6 +201,24 @@ const LABEL_SCALE = 0.4
 const ARROW_TIP = 0.7
 const ARROW_WIDTH = 0.3
 
+// A jab (see jab.ts) shows a fist this far ahead of the sprite's centre and
+// this wide, in cells: just past the sprite's front, where the punch
+// reaches. Placeholders to tune at preview.
+const FIST = "👊"
+const FIST_AHEAD = 0.6
+const FIST_SCALE = 0.4
+
+// An enemy in its guard stance (KDA-293, with the user; see guard.ts;
+// placeholders to tune at preview) crouches: its sprite is drawn this much
+// wider and less tall, its feet where they were. It is tinted steel-blue
+// (its shading kept), with a thin pale-blue outline this wide as a fraction
+// of the sprite. With reduced motion it doesn't crouch; the tint stays.
+export const CROUCH_WIDTH = 1.06
+export const CROUCH_HEIGHT = 0.85
+export const STANCE_TINT = "#4682b4"
+export const STANCE_OUTLINE = "#93c5fd"
+const STANCE_OUTLINE_WIDTH = 0.04
+
 // The aim preview (see Effects.aim) is a tint in the player's colour: a
 // faint fill over each cell its breath would hit, and a slightly stronger
 // edge round the outside of those cells, this wide as a fraction of a cell.
@@ -165,6 +236,8 @@ const ENEMY_SPRITES: Record<AiType, string> = {
     [AiType.patroller]: "🤖",
     [AiType.phantom]: "👻",
     [AiType.splitter]: "🦠",
+    [AiType.breather]: "🐍",
+    [AiType.interceptor]: "🐺",
 }
 
 // A Splitter's half (see splitter.ts) is drawn at this fraction of the usual
@@ -180,6 +253,9 @@ export const BOSS_SCALE = 2
 const BOSS_BAR_HEIGHT = 0.12
 // How opaque the white flash over the sprite is just after a hit.
 const BOSS_FLASH_ALPHA = 0.7
+// The disc of a look on the boss (its glow while it winds up) is this much
+// wider than the sprite, so it shows round it.
+const BOSS_GLOW_SCALE = 1.15
 
 // A status's badge emoji is this size, as a fraction of the sprite's.
 const BADGE_SCALE = 0.5
@@ -192,6 +268,9 @@ const DOT_SCALE = 5 / 35
 export type RendererOptions = {
     // The window to fit; defaults to the global one.
     view?: Pick<Window, "innerWidth" | "innerHeight" | "devicePixelRatio">
+    // The time in milliseconds, for easing the view after the players
+    // (camera.ts); defaults to performance.now.
+    now?: () => number
 }
 
 export function createRenderer(
@@ -199,8 +278,13 @@ export function createRenderer(
     options: RendererOptions = {}
 ): Renderer {
     const view = options.view ?? window
+    const now = options.now ?? (() => performance.now())
     const ctx = canvas.getContext("2d")
     let layout: Layout | undefined
+    // The part of the maze on screen (see camera.ts), the game it follows
+    // and when it last moved. A new game or a new layout starts it afresh,
+    // right on the players.
+    let camera: { view: View; state: GameState; time: number } | undefined
     let cols = 0
     let rows = 0
     let last:
@@ -223,6 +307,7 @@ export function createRenderer(
         }
         return layer
     }
+    const guardSprites = createGuardSprites(canvas.ownerDocument)
 
     function fit() {
         layout = computeLayout(
@@ -236,6 +321,43 @@ export function createRenderer(
         canvas.height = layout.pixelHeight
         canvas.style.width = `${layout.width}px`
         canvas.style.height = `${layout.height}px`
+        camera = undefined
+    }
+
+    // Where the view is this frame: eased after the players in play (their
+    // midpoint, both kept in view), or held where it was while nobody is in
+    // play. A fresh view starts right on the players (all of them when none
+    // is in play). It zooms in no closer than the layout's cell size.
+    function follow(
+        state: GameState,
+        alpha: number,
+        viewport: Viewport,
+        close: number
+    ) {
+        const maze = { cols, rows }
+        const time = now()
+        const inPlay = state.players.filter((p) => !p.out)
+        const viewOf = (players: readonly Player[]) =>
+            viewFor(
+                maze,
+                viewport,
+                players.map((p) =>
+                    glidePos(p.character, alpha, cols, rows, p.rate)
+                ),
+                close
+            )
+        let next: View
+        if (!camera || camera.state !== state) {
+            next = viewOf(inPlay.length > 0 ? inPlay : state.players)
+        } else if (inPlay.length === 0) {
+            next = camera.view
+        } else {
+            const dt = (time - camera.time) / 1000
+            const eased = easeView(camera.view, viewOf(inPlay), dt)
+            next = clampView(eased, maze, viewport, close)
+        }
+        camera = { view: next, state, time }
+        return next
     }
 
     function draw(
@@ -254,24 +376,51 @@ export function createRenderer(
             fit()
         }
         if (!ctx || !layout) return
-        const { cell, hudHeight, width, height, dpr } = layout
+        const { hudHeight, width, height, dpr } = layout
+        const viewport = { width, height: height - hudHeight }
+        // The view this frame (see camera.ts). From here on `cell` is its
+        // cell size: the layout's, or less while the view zooms out to keep
+        // two players in view.
+        const shot = follow(state, alpha, viewport, layout.cell)
+        const cell = shot.cell
+        const origin = viewOrigin(shot, viewport)
+        // The part of the maze on screen, in maze pixels; its corner on a
+        // whole device pixel so cell edges stay crisp.
+        const screen = {
+            x: Math.round(origin.x * cell * dpr) / dpr || 0,
+            y: Math.round(origin.y * cell * dpr) / dpr || 0,
+            ...viewport,
+        }
 
         // Work in CSS pixels; the transform scales to device pixels.
         ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
         ctx.fillStyle = COLORS.background
         ctx.fillRect(0, 0, width, height)
 
-        drawHud(ctx, hud, playerSprite(state.players[0]), width, hudHeight)
+        drawHud(ctx, hud, width, hudHeight)
 
         ctx.save()
         ctx.translate(0, hudHeight)
-        // Characters in a tunnel poke over the map edge; keep them on the map.
+        // Characters in a tunnel poke over the map edge; keep them on the map,
+        // and the map off the HUD.
+        const clipLeft = Math.max(0, -screen.x)
+        const clipTop = Math.max(0, -screen.y)
         ctx.beginPath()
-        ctx.rect(0, 0, cols * cell, rows * cell)
+        ctx.rect(
+            clipLeft,
+            clipTop,
+            Math.min(viewport.width, cols * cell - screen.x) - clipLeft,
+            Math.min(viewport.height, rows * cell - screen.y) - clipTop
+        )
         ctx.clip()
+        // Everything below is drawn in maze space, moved by the view.
+        if (screen.x !== 0 || screen.y !== 0) {
+            ctx.translate(-screen.x, -screen.y)
+        }
         const fog = rules.fog
             ? createFog(state, alpha, cols, rows, rules.fog.radius)
             : null
+        const seen = sight(fog, shot, viewport, cols, rows)
         // A shake moves everything in the maze, inside the still clip; the
         // fog's darkness doesn't move, so it covers the edge a shake bares.
         ctx.save()
@@ -281,8 +430,9 @@ export function createRenderer(
         }
         const aims =
             effects.aim && effects.guide === "aim" ? aimPreviews(state) : []
-        drawCells(ctx, state, alpha, cell, fog, aims)
-        drawBoss(ctx, state, alpha, cell, cols, rows, fog)
+        const windUp = effects.bossBreath === true
+        drawCells(ctx, state, alpha, cell, seen, tintsFor(state, aims, windUp))
+        drawBoss(ctx, state, alpha, cell, cols, rows, seen, windUp)
         drawCharacters(
             ctx,
             state,
@@ -290,12 +440,18 @@ export function createRenderer(
             cell,
             cols,
             rows,
-            fog,
-            effects.guide === "arrow"
+            seen,
+            effects.guide === "arrow",
+            effects.jabs ?? [],
+            effects.reducedMotion === true,
+            (sprite, size) => guardSprites(sprite, size, dpr),
+            windUp
         )
-        if (effects.particles) drawParticles(ctx, effects.particles, cell, fog)
+        if (effects.particles) drawParticles(ctx, effects.particles, cell, seen)
         ctx.restore()
-        if (fog) drawDarkness(ctx, fog, cell, cols, rows, darknessLayer, dpr)
+        if (fog) {
+            drawDarkness(ctx, fog, cell, cols, rows, darknessLayer, dpr, screen)
+        }
         ctx.restore()
     }
 
@@ -358,6 +514,25 @@ function createFog(
     }
 }
 
+// What shows this frame: things in the view (or whose copy across a
+// tunnel is) and, in fog, in the light. The draw functions' `fog` parameter
+// takes it, and skips anything it hides.
+type Sight = { visible(p: Vec2): boolean }
+
+function sight(
+    fog: Fog | null,
+    view: View,
+    viewport: Viewport,
+    cols: number,
+    rows: number
+): Sight {
+    return {
+        visible: (p) =>
+            wrapCopies(p, cols, rows).some((c) => inView(view, viewport, c)) &&
+            (!fog || fog.visible(p)),
+    }
+}
+
 // Darken the map outside the light. With one player: per light centre (the
 // player and its copies across tunnels), a radial gradient over the part of
 // the map nearest that centre, clear in the middle and fading to full
@@ -370,6 +545,8 @@ function createFog(
 // dark, every light centre of every player clears its circle out of it
 // (destination-out, fading at the soft edge), and the layer goes over the
 // map. Without a 2D context for the layer, only `visible` hides things.
+// `screen` is the part of the map on screen, in the map's pixels: the layer
+// covers just that, so it keeps its size as the view moves and zooms.
 function drawDarkness(
     ctx: CanvasRenderingContext2D,
     fog: Fog,
@@ -377,12 +554,13 @@ function drawDarkness(
     cols: number,
     rows: number,
     layer: () => Layer,
-    dpr: number
+    dpr: number,
+    screen: Rect
 ) {
     const outer = fog.radius * cell
     const inner = Math.max(0, fog.radius - FOG_SOFT_EDGE) * cell
     if (fog.players.length > 1) {
-        drawSharedDarkness(ctx, fog, cell, cols, rows, layer(), dpr)
+        drawSharedDarkness(ctx, fog, cell, cols, rows, layer(), dpr, screen)
         return
     }
     for (const c of lightCentres(fog.players[0], cols, rows, fog.wrap)) {
@@ -406,6 +584,9 @@ function drawDarkness(
     }
 }
 
+// A rectangle, in pixels.
+type Rect = { x: number; y: number; width: number; height: number }
+
 // The canvas the 2-player darkness is drawn on, and its 2D context (null if
 // it has none).
 type Layer = {
@@ -420,15 +601,14 @@ function drawSharedDarkness(
     cols: number,
     rows: number,
     layer: Layer,
-    dpr: number
+    dpr: number,
+    screen: Rect
 ) {
-    const width = cols * cell
-    const height = rows * cell
     const dark = layer.ctx
     if (!dark) return
     // Resizing a canvas reallocates it, so only when the size changes.
-    const pixelWidth = Math.ceil(width * dpr)
-    const pixelHeight = Math.ceil(height * dpr)
+    const pixelWidth = Math.ceil(screen.width * dpr)
+    const pixelHeight = Math.ceil(screen.height * dpr)
     if (layer.canvas.width !== pixelWidth) layer.canvas.width = pixelWidth
     if (layer.canvas.height !== pixelHeight) layer.canvas.height = pixelHeight
     const outer = fog.radius * cell
@@ -437,15 +617,24 @@ function drawSharedDarkness(
     dark.setTransform(1, 0, 0, 1, 0, 0)
     dark.globalCompositeOperation = "source-over"
     dark.clearRect(0, 0, pixelWidth, pixelHeight)
-    dark.setTransform(dpr, 0, 0, dpr, 0, 0)
+    dark.setTransform(dpr, 0, 0, dpr, -screen.x * dpr, -screen.y * dpr)
     dark.globalCompositeOperation = "source-over"
     dark.fillStyle = `rgb(${COLORS.fog})`
-    dark.fillRect(0, 0, width, height)
+    dark.fillRect(0, 0, cols * cell, rows * cell)
     dark.globalCompositeOperation = "destination-out"
     for (const player of fog.players) {
         for (const c of lightCentres(player, cols, rows, fog.wrap)) {
             const x = (c.x + 0.5) * cell
             const y = (c.y + 0.5) * cell
+            // A light wholly off screen clears nothing that shows.
+            if (
+                x + outer < screen.x ||
+                x - outer > screen.x + screen.width ||
+                y + outer < screen.y ||
+                y - outer > screen.y + screen.height
+            ) {
+                continue
+            }
             const light = dark.createRadialGradient(x, y, inner, x, y, outer)
             light.addColorStop(0, "rgba(0, 0, 0, 1)")
             light.addColorStop(1, "rgba(0, 0, 0, 0)")
@@ -454,7 +643,7 @@ function drawSharedDarkness(
         }
     }
     dark.globalCompositeOperation = "source-over"
-    ctx.drawImage(layer.canvas, 0, 0, width, height)
+    ctx.drawImage(layer.canvas, screen.x, screen.y, screen.width, screen.height)
 }
 
 // Ice floor, walls and dots, plus the dot each player has just eaten while its
@@ -468,8 +657,8 @@ function drawCells(
     state: GameState,
     alpha: number,
     cell: number,
-    fog: Fog | null,
-    aims: readonly AimPreview[]
+    fog: Sight | null,
+    tints: readonly Tint[]
 ) {
     const wall = cell * WALL_SCALE
     const dot = Math.max(1, cell * DOT_SCALE)
@@ -492,7 +681,7 @@ function drawCells(
         )
     }
     const looks = tileLooks(state)
-    const aimed = aimGrid(state, aims)
+    const tinted = tintGrid(state, tints)
     state.cells.forEach((row, y) => {
         row.forEach((value, x) => {
             if (fog && !fog.visible(vec2(x, y))) return
@@ -502,9 +691,9 @@ function drawCells(
             for (const look of looks?.[y][x] ?? []) {
                 if (look.color) fillCell(x, y, look.color)
             }
-            for (const player of aimed?.[y][x] ?? []) {
+            for (const color of tinted?.[y][x] ?? []) {
                 ctx.globalAlpha = AIM_FILL_ALPHA
-                fillCell(x, y, PLAYER_COLORS[player])
+                fillCell(x, y, color)
                 ctx.globalAlpha = 1
             }
             if (value === Cell.wall) {
@@ -519,7 +708,7 @@ function drawCells(
             }
         })
     })
-    for (const aim of aims) drawAimEdge(ctx, aim, cell, fog)
+    for (const tint of tints) drawTintEdge(ctx, tint, cell, fog)
     if (!looks) return
     // Tile emoji go on top of everything in the cells, before characters.
     const emoji = looks.flatMap((row, y) =>
@@ -535,6 +724,7 @@ function drawCells(
     ctx.font = `${Math.round(cell * SPRITE_SCALE)}px sans-serif`
     ctx.textAlign = "center"
     ctx.textBaseline = "middle"
+    ctx.fillStyle = COLORS.sprite
     for (const e of emoji) {
         ctx.fillText(e.emoji, (e.x + 0.5) * cell, (e.y + 0.5) * cell)
     }
@@ -551,37 +741,64 @@ function tileLooks(state: GameState): Look[][][] | null {
     return looks
 }
 
-// Per cell [y][x], the players whose aim preview covers it, player 1
-// first, or null with no previews (the common case: no grid each frame).
-function aimGrid(
+// A faint tint over some cells, with a slightly stronger edge round them,
+// drawn under the dots: a player's aim preview in its colour, or the
+// boss's warning while it winds up its breath (see bossWarning).
+type Tint = { cells: readonly Vec2[]; color: string }
+
+// The tints to draw this frame: each aim preview in its player's colour
+// (player 1 first), then, with `windUp` (Effects.bossBreath), the boss's
+// warning if it is winding up, and each breather's that is (KDA-291). The
+// warnings come from their state and their own colours (BOSS_BREATH in
+// bossBreath.ts, ENEMY_BREATH in enemyBreath.ts), so nothing here knows the
+// breaths.
+function tintsFor(
     state: GameState,
-    aims: readonly AimPreview[]
-): number[][][] | null {
-    if (aims.length === 0) return null
-    const grid: number[][][] = state.cells.map((row) => row.map(() => []))
-    for (const { player, cells } of aims) {
-        for (const c of cells) grid[c.y][c.x].push(player)
+    aims: readonly AimPreview[],
+    windUp: boolean
+): Tint[] {
+    const tints: Tint[] = aims.map(({ player, cells }) => ({
+        cells,
+        color: PLAYER_COLORS[player],
+    }))
+    if (!windUp) return tints
+    const warning = bossWarning(state)
+    if (warning && warning.cells.length > 0) tints.push(warning)
+    tints.push(...enemyWarnings(state))
+    return tints
+}
+
+// Per cell [y][x], the colours of the tints covering it, in order, or null
+// with no tints (the common case: no grid each frame).
+function tintGrid(
+    state: GameState,
+    tints: readonly Tint[]
+): string[][][] | null {
+    if (tints.length === 0) return null
+    const grid: string[][][] = state.cells.map((row) => row.map(() => []))
+    for (const { color, cells } of tints) {
+        for (const c of cells) grid[c.y][c.x].push(color)
     }
     return grid
 }
 
-// The edge of one aim preview: a line along every side of its cells that
-// doesn't border another of them, so it outlines the whole shape. In fog,
-// cells outside the light get none, as they get no fill.
-function drawAimEdge(
+// The edge of one tint: a line along every side of its cells that doesn't
+// border another of them, so it outlines the whole shape. In fog, cells
+// outside the light get none, as they get no fill.
+function drawTintEdge(
     ctx: CanvasRenderingContext2D,
-    aim: AimPreview,
+    tint: Tint,
     cell: number,
-    fog: Fog | null
+    fog: Sight | null
 ) {
-    const inAim = new Set(aim.cells.map((c) => `${c.x},${c.y}`))
-    const has = (x: number, y: number) => inAim.has(`${x},${y}`)
+    const inTint = new Set(tint.cells.map((c) => `${c.x},${c.y}`))
+    const has = (x: number, y: number) => inTint.has(`${x},${y}`)
     ctx.save()
     ctx.globalAlpha = AIM_EDGE_ALPHA
-    ctx.strokeStyle = PLAYER_COLORS[aim.player]
+    ctx.strokeStyle = tint.color
     ctx.lineWidth = Math.max(1, cell * AIM_EDGE_WIDTH)
     ctx.beginPath()
-    for (const { x, y } of aim.cells) {
+    for (const { x, y } of tint.cells) {
         if (fog && !fog.visible(vec2(x, y))) continue
         const left = x * cell
         const top = y * cell
@@ -620,7 +837,8 @@ function drawBoss(
     cell: number,
     cols: number,
     rows: number,
-    fog: Fog | null
+    fog: Sight | null,
+    windUp: boolean
 ) {
     const { boss } = state
     if (!boss || boss.defeated) return
@@ -629,9 +847,20 @@ function drawBoss(
     const size = cell * SPRITE_SCALE * BOSS_SCALE
     const x = (pos.x + 1) * cell
     const y = (pos.y + 1) * cell
+    // Its looks (see bossLooks: the glow while it winds up its breath, with
+    // `windUp`), each colour as a disc behind the sprite, like an enemy
+    // status's.
+    for (const look of windUp ? bossLooks(state) : []) {
+        if (!look.color) continue
+        ctx.fillStyle = look.color
+        ctx.beginPath()
+        ctx.arc(x, y, (size / 2) * BOSS_GLOW_SCALE, 0, Math.PI * 2)
+        ctx.fill()
+    }
     ctx.textAlign = "center"
     ctx.textBaseline = "middle"
     ctx.font = `${Math.round(size)}px sans-serif`
+    ctx.fillStyle = COLORS.sprite
     ctx.fillText(BOSS_SPRITE, x, y)
     if (boss.flash > 0) {
         ctx.save()
@@ -664,13 +893,18 @@ function drawCharacters(
     cell: number,
     cols: number,
     rows: number,
-    fog: Fog | null,
-    arrows: boolean
+    fog: Sight | null,
+    arrows: boolean,
+    jabs: readonly Jab[],
+    reducedMotion: boolean,
+    guardSprite: (sprite: string, size: number) => GuardSprite | null,
+    windUp: boolean
 ) {
     ctx.textAlign = "center"
     ctx.textBaseline = "middle"
-    // Later characters are drawn on top of earlier ones: the players (player
-    // 1 first), then the enemies. In fog, enemies outside the light are
+    // Later characters are drawn on top of earlier ones: the held enemies
+    // (e.g. frozen, which players walk onto), the players (player 1 first),
+    // then the other enemies. In fog, enemies outside the light are
     // hidden; the players are always in it. A defeated enemy is hidden until
     // it blinks before coming back (enemyVisible). Statuses are drawn by
     // their Look: the colour as a disc behind the sprite, the emoji as a
@@ -681,12 +915,43 @@ function drawCharacters(
     // with two players wears its marker (see PLAYER_COLORS). A Splitter's
     // half is drawn smaller (HALF_SCALE), its disc and badges too. With
     // `arrows`, each player who could breathe also gets its facing arrow (see
-    // drawArrow).
+    // drawArrow). A player with a jab under way (see jab.ts) lunges along
+    // it, with a fist just ahead (see drawFist), and an enemy in its guard
+    // stance (see guard.ts) crouches, tinted (see stanceLook). With `windUp`
+    // (Effects.bossBreath), a breather winding up its breath glows, a disc
+    // like a status's colour (see enemyBreathLooks, KDA-291). An
+    // interceptor (KDA-292) sneaks: it is drawn faint away from the players
+    // and fades in as it closes in on the nearest one in play (sneakAlpha),
+    // its disc and badges with it; fog hides it as it does any enemy.
     const marked = state.players.length > 1
-    // A player out of play (see takeOut in game.ts) isn't drawn.
+    const wrap = fogWrap(state.cells)
+    const hunted = state.players.flatMap((p) =>
+        p.out ? [] : [glidePos(p.character, alpha, cols, rows, p.rate)]
+    )
+    const sneak = (pos: Vec2) =>
+        sneakAlpha(
+            Math.min(
+                ...hunted.map((p) => fogDistance(pos, p, cols, rows, wrap))
+            )
+        )
+    const enemySprite = (enemy: Character) => ({
+        character: enemy,
+        sprite: ENEMY_SPRITES[enemy.ai],
+        rate: 1,
+        marker: null,
+        badge: null,
+        arrow: null,
+        jab: null,
+        stance: stanceLook(enemy, reducedMotion),
+    })
+    const held = state.enemies.filter((e) => hasStatus(e, "holds"))
+    const free = state.enemies.filter((e) => !hasStatus(e, "holds"))
+    // A player out of play (see takeOut in game.ts) isn't drawn, and one
+    // invulnerable after a hit blinks (see playerVisible).
     const sprites = [
+        ...held.map(enemySprite),
         ...state.players.flatMap((player, i) =>
-            player.out
+            !playerVisible(player)
                 ? []
                 : [
                       {
@@ -701,31 +966,43 @@ function drawCharacters(
                               canBreathe(player.breather)
                                   ? { index: i, facing: player.breather.facing }
                                   : null,
+                          jab: jabs.find((j) => j.player === i) ?? null,
+                          stance: null,
                       },
                   ]
         ),
-        ...state.enemies.map((enemy) => ({
-            character: enemy,
-            sprite: ENEMY_SPRITES[enemy.ai],
-            rate: 1,
-            marker: null,
-            badge: null,
-            arrow: null,
-        })),
+        ...free.map(enemySprite),
     ]
-    for (const { character, sprite, rate, marker, badge, arrow } of sprites) {
+    // Fists are drawn after every character, so one isn't hidden under the
+    // enemy it hits (players are drawn before enemies) or another enemy
+    // drawn on top.
+    const fists: { x: number; y: number; facing: Vec2; back: number }[] = []
+    for (const sprite of sprites) {
+        const { character, rate, marker, badge, arrow, jab, stance } = sprite
         const isPlayer = character.id === CharacterId.player
         if (!isPlayer && !enemyVisible(character)) continue
         const held = !isPlayer && hasStatus(character, "holds")
-        const pos = glidePos(character, held ? 0 : alpha, cols, rows, rate)
+        const glide = glidePos(character, held ? 0 : alpha, cols, rows, rate)
+        const lunge = jab ? jabLunge(jab) : 0
+        const pos = jab
+            ? vec2(
+                  glide.x + jab.facing.x * lunge,
+                  glide.y + jab.facing.y * lunge
+              )
+            : glide
         if (fog && !isPlayer && !fog.visible(pos)) continue
-        const looks = character.statuses.flatMap((s) =>
-            s.status.look ? [s.status.look] : []
-        )
+        const looks = [
+            ...character.statuses.flatMap((s) =>
+                s.status.look ? [s.status.look] : []
+            ),
+            ...(windUp && !isPlayer ? enemyBreathLooks(character) : []),
+        ]
         const size =
             cell *
             SPRITE_SCALE *
             (!isPlayer && isSplitterHalf(character) ? HALF_SCALE : 1)
+        const faint = character.ai === AiType.interceptor && !isPlayer
+        if (faint) ctx.globalAlpha = sneak(pos)
         for (const p of wrapCopies(pos, cols, rows)) {
             ctx.font = `${Math.round(size)}px sans-serif`
             const x = (p.x + 0.5) * cell
@@ -737,9 +1014,17 @@ function drawCharacters(
                 ctx.arc(x, y, size / 2, 0, Math.PI * 2)
                 ctx.fill()
             }
-            ctx.fillText(sprite, x, y)
+            ctx.fillStyle = COLORS.sprite
+            if (stance) {
+                const image = guardSprite(sprite.sprite, size)
+                drawGuarding(ctx, image, sprite.sprite, stance, x, y, size)
+            } else {
+                ctx.fillText(sprite.sprite, x, y)
+            }
             if (marker !== null) drawMarker(ctx, marker, x, y, size)
-            if (arrow) drawArrow(ctx, arrow, x, y, cell)
+            if (jab) {
+                fists.push({ x, y, facing: jab.facing, back: fistBounce(jab) })
+            }
             // A stunned player (versus) wears the stun badge, and one
             // immune just after a stun the immune badge, like a status's.
             const badges = [
@@ -748,6 +1033,7 @@ function drawCharacters(
             ]
             if (badges.length === 0) continue
             ctx.font = `${Math.round(size * BADGE_SCALE)}px sans-serif`
+            ctx.fillStyle = COLORS.sprite
             badges.forEach((look, i) => {
                 ctx.fillText(
                     look.emoji!,
@@ -756,7 +1042,155 @@ function drawCharacters(
                 )
             })
         }
+        if (faint) ctx.globalAlpha = 1
+        // The arrow stays with the glide, not the jab's lunge.
+        if (!arrow) continue
+        for (const p of wrapCopies(glide, cols, rows)) {
+            drawArrow(ctx, arrow, (p.x + 0.5) * cell, (p.y + 0.5) * cell, cell)
+        }
     }
+    for (const fist of fists) {
+        drawFist(ctx, fist.facing, fist.x, fist.y, cell, fist.back)
+    }
+}
+
+// How an enemy's sprite is drawn in its guard stance (see CROUCH_WIDTH):
+// its width and height as fractions of its usual size, or null for one not
+// in its stance, drawn as usual. With `reducedMotion` it doesn't crouch.
+export type StanceLook = { width: number; height: number }
+
+export function stanceLook(
+    enemy: Character,
+    reducedMotion: boolean
+): StanceLook | null {
+    if (!inStance(enemy)) return null
+    if (reducedMotion) return { width: 1, height: 1 }
+    return { width: CROUCH_WIDTH, height: CROUCH_HEIGHT }
+}
+
+// A guarding enemy's sprite, tinted and outlined (see STANCE_TINT), on a
+// canvas of its own, made for a sprite `size` CSS pixels across: a square
+// `box` CSS pixels wide round the sprite's centre, the sprite's size plus
+// the outline, `edge` wide, on each side.
+export type GuardSprite = {
+    image: HTMLCanvasElement
+    size: number
+    box: number
+    edge: number
+}
+
+// How many guarding enemies' sprites (see createGuardSprites) a renderer
+// keeps.
+export const GUARD_SPRITES_KEPT = 32
+
+// A renderer's guarding enemies' sprites (see guardSprite): made when
+// first needed and kept, one per sprite, whole-pixel size (the font's) and
+// pixel ratio, so a view easing its cell size from frame to frame (see
+// camera.ts) reuses them, drawn scaled to the exact size (see
+// drawGuarding). All are dropped at once when there are too many (a
+// resize or zoom has left them behind). Each is null where a canvas has no
+// 2D context.
+export function createGuardSprites(
+    doc: Pick<Document, "createElement">
+): (emoji: string, size: number, dpr: number) => GuardSprite | null {
+    const kept = new Map<string, GuardSprite | null>()
+    return (emoji, size, dpr) => {
+        const whole = Math.max(1, Math.round(size))
+        const key = `${emoji} ${whole} ${dpr}`
+        if (!kept.has(key)) {
+            if (kept.size >= GUARD_SPRITES_KEPT) kept.clear()
+            kept.set(key, guardSprite(doc, emoji, whole, dpr))
+        }
+        return kept.get(key) ?? null
+    }
+}
+
+// Make `emoji`'s GuardSprite at `size` CSS pixels, for `dpr`: null if a
+// canvas has no 2D context. Colour emoji can't be tinted on the canvas
+// itself everywhere (CanvasRenderingContext2D.filter isn't), so it is
+// drawn on its own canvas and coloured there by compositing.
+function guardSprite(
+    doc: Pick<Document, "createElement">,
+    emoji: string,
+    size: number,
+    dpr: number
+): GuardSprite | null {
+    const edge = Math.max(1, size * STANCE_OUTLINE_WIDTH)
+    const box = size + edge * 2
+    const mid = box / 2
+    const layer = () => {
+        const image = doc.createElement("canvas")
+        image.width = Math.ceil(box * dpr)
+        image.height = Math.ceil(box * dpr)
+        const ctx = image.getContext("2d")
+        if (!ctx) return null
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
+        ctx.font = `${Math.round(size)}px sans-serif`
+        ctx.textAlign = "center"
+        ctx.textBaseline = "middle"
+        ctx.fillStyle = COLORS.sprite
+        return { image, ctx }
+    }
+    const tinted = layer()
+    const outlined = layer()
+    if (!tinted || !outlined) return null
+    // The sprite in steel-blue, its shading kept ("color" keeps its
+    // lightness), then cut back to its own shape.
+    tinted.ctx.fillText(emoji, mid, mid)
+    tinted.ctx.globalCompositeOperation = "color"
+    tinted.ctx.fillStyle = STANCE_TINT
+    tinted.ctx.fillRect(0, 0, box, box)
+    tinted.ctx.globalCompositeOperation = "destination-in"
+    tinted.ctx.fillText(emoji, mid, mid)
+    // Its shape `edge` out on every side, in the outline's colour, with the
+    // tinted sprite over it.
+    const { ctx } = outlined
+    for (const [dx, dy] of [
+        [edge, 0],
+        [-edge, 0],
+        [0, edge],
+        [0, -edge],
+    ]) {
+        ctx.fillText(emoji, mid + dx, mid + dy)
+    }
+    ctx.globalCompositeOperation = "source-in"
+    ctx.fillStyle = STANCE_OUTLINE
+    ctx.fillRect(0, 0, box, box)
+    ctx.globalCompositeOperation = "source-over"
+    ctx.drawImage(tinted.image, 0, 0, box, box)
+    return { image: outlined.image, size, box, edge }
+}
+
+// A guarding enemy's sprite `emoji`, centred at (x, y) and `size` across
+// as usual: its GuardSprite scaled from the size it was made at to `size`
+// and stretched by `look`, its feet (the bottom of its usual box) where
+// they were. Without one (no 2D context to tint on), the plain sprite,
+// stretched the same way.
+function drawGuarding(
+    ctx: CanvasRenderingContext2D,
+    sprite: GuardSprite | null,
+    emoji: string,
+    look: StanceLook,
+    x: number,
+    y: number,
+    size: number
+) {
+    const feet = y + size / 2
+    if (!sprite) {
+        ctx.save()
+        ctx.translate(x, feet)
+        ctx.scale(look.width, look.height)
+        ctx.fillText(emoji, 0, -size / 2)
+        ctx.restore()
+        return
+    }
+    const scale = size / sprite.size
+    const box = sprite.box * scale
+    const edge = sprite.edge * scale
+    const width = box * look.width
+    const height = box * look.height
+    const top = feet - (size + edge) * look.height
+    ctx.drawImage(sprite.image, x - width / 2, top, width, height)
 }
 
 // Particles (see particles.ts), each a disc or a square of its colour,
@@ -767,7 +1201,7 @@ function drawParticles(
     ctx: CanvasRenderingContext2D,
     particles: readonly Particle[],
     cell: number,
-    fog: Fog | null
+    fog: Sight | null
 ) {
     if (particles.length === 0) return
     ctx.save()
@@ -786,6 +1220,15 @@ function drawParticles(
             ctx.beginPath()
             ctx.arc(x, y, size / 2, 0, Math.PI * 2)
             ctx.fill()
+        }
+        if (p.outline) {
+            ctx.strokeStyle = p.outline
+            ctx.lineWidth = 1
+            if (p.shape === "square") {
+                ctx.strokeRect(x - size / 2, y - size / 2, size, size)
+            } else {
+                ctx.stroke()
+            }
         }
     }
     ctx.restore()
@@ -809,6 +1252,23 @@ function drawMarker(
     ctx.fillStyle = color
     ctx.font = `bold ${Math.round(size * LABEL_SCALE)}px sans-serif`
     ctx.fillText(String(index + 1), x - size / 2, y + size / 2)
+}
+
+// A jab's fist (see jab.ts) for a sprite centred at (x, y): a small 👊
+// FIST_AHEAD cells out along `facing`, less `back` cells for a blocked one
+// bouncing back (see fistBounce), FIST_SCALE of a cell wide.
+function drawFist(
+    ctx: CanvasRenderingContext2D,
+    facing: Vec2,
+    x: number,
+    y: number,
+    cell: number,
+    back: number
+) {
+    const ahead = (FIST_AHEAD - back) * cell
+    ctx.font = `${Math.round(cell * FIST_SCALE)}px sans-serif`
+    ctx.fillStyle = COLORS.sprite
+    ctx.fillText(FIST, x + facing.x * ahead, y + facing.y * ahead)
 }
 
 // Player `arrow.index`'s facing arrow, for its sprite centred at (x, y): a
@@ -839,14 +1299,15 @@ function drawArrow(
     ctx.restore()
 }
 
-// Score on the left, lives (as the player's emoji) on the right, the energy
-// meter in the middle. With two players (hud.players): player 1's score and
-// meter on the left, player 2's on the right, each in its marker colour,
-// and the shared lives (as hearts) in the middle.
+// Score on the left, the health gauge on the right, the energy meter in the
+// middle. With two players (hud.players): player 1's score, meter and
+// health on the left, player 2's on the right, each in its marker colour,
+// and in versus the round in the middle. On a boss level, the boss's band
+// along the bottom under all of them. The difficulty goes where there is
+// room (see Hud).
 function drawHud(
     ctx: CanvasRenderingContext2D,
     hud: Hud,
-    sprite: string,
     width: number,
     height: number
 ) {
@@ -854,6 +1315,7 @@ function drawHud(
     ctx.fillStyle = COLORS.text
     ctx.font = `${Math.round(height * 0.6)}px monospace`
     ctx.textBaseline = "middle"
+    if (hud.boss) drawBossBand(ctx, hud.boss, width, height, pad)
     if (hud.players && hud.players.length > 1) {
         drawPlayersHud(ctx, hud, width, height, pad)
         return
@@ -862,18 +1324,79 @@ function drawHud(
         ctx.textAlign = "left"
         ctx.fillText(`Score ${hud.score}`, pad, height / 2)
     }
-    if (hud.lives !== undefined) {
-        ctx.textAlign = "right"
-        ctx.fillText(
-            sprite.repeat(Math.max(0, hud.lives)),
-            width - pad,
-            height / 2
-        )
+    const h = height * METER_HEIGHT
+    const top = (height - h) / 2
+    if (hud.health) {
+        const w = width * HEALTH_WIDTH
+        const left = width - pad - w
+        drawGauge(ctx, hud.health, left, top, w, h, COLORS.health)
     }
     if (hud.energy) {
-        drawMeter(ctx, hud.energy, (width - width / 4) / 2, width / 4, height)
+        const w = width / 4
+        drawMeter(ctx, hud.energy, (width - w) / 2, top, w, h)
+    }
+    if (hud.difficulty !== undefined) {
+        // In the gap between the meter's right end and the gauge.
+        const left = width * 0.625 + pad
+        const right = width - pad - width * HEALTH_WIDTH - pad
+        drawLabel(ctx, hud.difficulty, (left + right) / 2, height / 2, {
+            width: right - left,
+            size: height * LABEL_SIZE,
+        })
     }
 }
+
+// The difficulty label's text size, and the versus round's when it shares
+// the middle with it, as a fraction of the HUD strip's height.
+const LABEL_SIZE = 0.45
+
+// Centred text at (x, y) in the HUD's text colour, `size` high, squeezed
+// into `width` if it is wider.
+function drawLabel(
+    ctx: CanvasRenderingContext2D,
+    text: string,
+    x: number,
+    y: number,
+    { width, size }: { width: number; size: number }
+) {
+    ctx.save()
+    ctx.fillStyle = COLORS.text
+    ctx.textAlign = "center"
+    ctx.font = `${Math.round(size)}px monospace`
+    ctx.fillText(text, x, y, Math.max(width, 1))
+    ctx.restore()
+}
+
+// The bars' height, as a fraction of the HUD strip's.
+const METER_HEIGHT = 0.4
+// The boss band's height, as a fraction of the HUD strip's: below the
+// solo bars (which end at 0.7) and the 2-player health gauges (0.88).
+const BOSS_BAND = 0.1
+
+// The boss's health as a band along the bottom of the HUD strip, from `pad`
+// to `pad` off the right edge: the health left in the boss's colour (as
+// its bar on the map), the rest pale. Text and bars are drawn over it.
+function drawBossBand(
+    ctx: CanvasRenderingContext2D,
+    gauge: HealthHud,
+    width: number,
+    height: number,
+    pad: number
+) {
+    const fraction =
+        gauge.max > 0 ? Math.max(0, Math.min(1, gauge.health / gauge.max)) : 0
+    const h = height * BOSS_BAND
+    const top = height - h
+    const w = width - 2 * pad
+    ctx.save()
+    ctx.fillStyle = COLORS.bossBandTrack
+    ctx.fillRect(pad, top, w, h)
+    ctx.fillStyle = COLORS.bossHealth
+    ctx.fillRect(pad, top, w * fraction, h)
+    ctx.restore()
+}
+// The solo health gauge's width, as a fraction of the HUD's.
+const HEALTH_WIDTH = 0.2
 
 // The HUD's share of each player's meter, as a fraction of its width.
 const PLAYER_METER = 0.15
@@ -905,23 +1428,72 @@ function drawPlayersHud(
             // Squeezed into the meter's width, so it never runs into the
             // score on a narrow screen.
             ctx.fillText(outLabel(player.out), meterLeft + w / 2, height / 2, w)
-        } else if (player.stunned !== undefined) {
+            return
+        }
+        // With a health gauge, the meter (or the stun countdown) takes the
+        // top of the slot and the gauge the bottom.
+        const meter = player.health
+            ? { top: height * 0.1, h: height * 0.38 }
+            : { top: height * 0.3, h: height * METER_HEIGHT }
+        if (player.stunned !== undefined) {
             ctx.textAlign = "center"
             const label = stunLabel(player.stunned)
-            ctx.fillText(label, meterLeft + w / 2, height / 2)
+            const y = meter.top + meter.h / 2
+            ctx.save()
+            // Sized to the meter's band, so it stays clear of the gauge.
+            if (player.health) {
+                ctx.font = `${Math.round(meter.h * 1.1)}px monospace`
+            }
+            ctx.fillText(label, meterLeft + w / 2, y, w)
+            ctx.restore()
         } else {
-            drawMeter(ctx, player.energy, meterLeft, w, height, color)
+            drawMeter(
+                ctx,
+                player.energy,
+                meterLeft,
+                meter.top,
+                w,
+                meter.h,
+                color
+            )
+        }
+        if (player.health) {
+            const top = height * 0.6
+            drawGauge(
+                ctx,
+                player.health,
+                meterLeft,
+                top,
+                w,
+                height * 0.28,
+                color
+            )
         }
     })
-    if (hud.lives !== undefined) {
-        ctx.fillStyle = COLORS.text
-        ctx.textAlign = "center"
-        ctx.fillText(LIFE.repeat(Math.max(0, hud.lives)), width / 2, height / 2)
-    }
-    if (hud.round !== undefined) {
+    // The middle, between the two meters: the round and the difficulty, one
+    // above the other when there are both, the lower one clear of a boss
+    // band. Player 1's meter ends at 35% of the width, and player 2's starts
+    // at 65%.
+    const middle = width * 0.3 - 2 * pad
+    if (hud.round !== undefined && hud.difficulty !== undefined) {
+        const size = height * LABEL_SIZE
+        drawLabel(ctx, hud.round, width / 2, height * 0.29, {
+            width: middle,
+            size,
+        })
+        drawLabel(ctx, hud.difficulty, width / 2, height * 0.69, {
+            width: middle,
+            size,
+        })
+    } else if (hud.round !== undefined) {
         ctx.fillStyle = COLORS.text
         ctx.textAlign = "center"
         ctx.fillText(hud.round, width / 2, height / 2)
+    } else if (hud.difficulty !== undefined) {
+        drawLabel(ctx, hud.difficulty, width / 2, height / 2, {
+            width: middle,
+            size: height * LABEL_SIZE,
+        })
     }
 }
 
@@ -957,26 +1529,51 @@ export function outLabel(out: { respawnIn: number | null }): string {
     return `back in ${Math.max(1, Math.ceil(out.respawnIn - 1e-9))}`
 }
 
-// The shared lives of a 2-player game, which aren't any one character's.
-const LIFE = "❤️"
+// A health gauge: a bar `w` by `h` from (`left`, `top`), filled in `color`
+// up to the health left, framed in it too.
+function drawGauge(
+    ctx: CanvasRenderingContext2D,
+    gauge: HealthHud,
+    left: number,
+    top: number,
+    w: number,
+    h: number,
+    color: string
+) {
+    const fraction =
+        gauge.max > 0 ? Math.max(0, Math.min(1, gauge.health / gauge.max)) : 0
+    ctx.fillStyle = color
+    ctx.fillRect(left, top, w * fraction, h)
+    ctx.strokeStyle = color
+    ctx.lineWidth = 1
+    ctx.strokeRect(left, top, w, h)
+}
 
-// The energy meter: a framed bar `w` wide from `left`, filled up to the
-// energy, with a mark at every multiple of the breath's cost (so the player
-// sees how many breaths it holds). The fill is bright while a breath is
-// ready and grey otherwise. `frame` colours the frame (and the marks).
+// The energy meter: a framed bar `w` by `h` from (`left`, `top`), filled up
+// to the energy, with a mark at every multiple of the breath's cost per
+// level (so the player sees how many levels it holds). The fill is bright
+// while a breath is ready and grey otherwise. While the breath charges
+// (KDA-289), the energy the level reached would spend, one segment a
+// level, is filled in the charge colour over it. `frame` colours the frame
+// (and the marks).
 function drawMeter(
     ctx: CanvasRenderingContext2D,
     meter: EnergyHud,
     left: number,
+    top: number,
     w: number,
-    height: number,
+    h: number,
     frame: string = COLORS.meter
 ) {
-    const h = height * 0.4
-    const top = (height - h) / 2
     const fraction = meter.max > 0 ? Math.min(1, meter.energy / meter.max) : 0
     ctx.fillStyle = meter.ready ? COLORS.meterReady : COLORS.meterCharging
     ctx.fillRect(left, top, w * fraction, h)
+    const charged =
+        meter.max > 0 ? ((meter.charge ?? 0) * meter.cost) / meter.max : 0
+    if (charged > 0) {
+        ctx.fillStyle = COLORS.meterCharge
+        ctx.fillRect(left, top, w * Math.min(1, charged), h)
+    }
     ctx.strokeStyle = frame
     ctx.lineWidth = 1
     ctx.strokeRect(left, top, w, h)

@@ -120,20 +120,27 @@ describe("main's particles and shake", () => {
         expect(selectedItem()).toBe("Settings")
         pressAndTick("Space")
         for (let i = 0; i < 3; i++) pressAndTick("ArrowDown")
-        expect(selectedItem()).toBe("Screen shake Off")
+        expect(selectedItem()).toBe("Screen shake ◀ Auto ▶")
         pressAndTick("Space")
-        expect(selectedItem()).toBe("Screen shake On")
+        expect(selectedItem()).toBe("Screen shake ◀ On ▶")
         expect(seen.shake!.enabled).toBe(true)
         // Particles still follow reduced motion.
         expect(seen.particles!.reduced).toBe(true)
         pressAndTick("Space")
-        expect(selectedItem()).toBe("Screen shake Off")
+        expect(selectedItem()).toBe("Screen shake ◀ Off ▶")
+        expect(seen.shake!.enabled).toBe(false)
+        // Back to Auto: reduced motion turns it off again.
+        pressAndTick("Space")
+        expect(selectedItem()).toBe("Screen shake ◀ Auto ▶")
         expect(seen.shake!.enabled).toBe(false)
         pressAndTick("Space")
         expect(seen.shake!.enabled).toBe(true)
         // Back to the title, then into a game.
         pressAndTick("Escape")
         for (let i = 0; i < 3; i++) pressAndTick("ArrowUp")
+        pressAndTick("Space")
+        pressAndTick("ArrowDown")
+        pressAndTick("Space")
         pressAndTick("Space")
         pressAndTick("Space")
         pressAndTick("Space")
@@ -150,6 +157,30 @@ describe("main's particles and shake", () => {
         expect(seen.effects?.aim).toBe(true)
         // The Facing guide setting's default.
         expect(seen.effects?.guide).toBe("arrow")
+        expect(seen.effects?.bossBreath).toBe(true)
+    })
+
+    // KDA-293: the sparks, and the fist bouncing back.
+    it("draws a blocked punch's sparks and bounces its fist back", () => {
+        nextEvents = [
+            { type: "punched", player: 0, at: vec2(1, 1), facing: vec2(1, 0) },
+            {
+                type: "punchBlocked",
+                player: 0,
+                at: vec2(2, 1),
+                facing: vec2(1, 0),
+                enemy: 0,
+            },
+        ]
+        vi.advanceTimersByTime(20)
+        nextEvents = []
+        expect(seen.effects?.jabs).toEqual([
+            expect.objectContaining({ player: 0, blocked: true }),
+        ])
+        expect(seen.particles!.list.length).toBeGreaterThan(0)
+        // The system asks for reduced motion here: a guarding enemy
+        // doesn't crouch.
+        expect(seen.effects?.reducedMotion).toBe(true)
     })
 
     // Regression (the resume tick): effects moved on once more than the
@@ -182,6 +213,7 @@ describe("main's particles and shake", () => {
         expect(seen.effects?.aim).toBeUndefined()
         // The arrow still shows on the paused board.
         expect(seen.effects?.guide).toBe("arrow")
+        expect(seen.effects?.bossBreath).toBe(true)
         pressAndTick("KeyP")
         expect(screen()).toBe("playing")
         expect(seen.updates - updates).toBe(steps - stepped)

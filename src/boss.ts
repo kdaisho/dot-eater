@@ -7,8 +7,10 @@ import {
     Cell,
 } from "./constants"
 import type { BlockMap } from "./breath"
+import { createBossBreath, type BossBreath } from "./bossBreath"
 import { emit } from "./events"
 import type { GameState, Player } from "./game"
+import type { BossBreathData } from "./level"
 import { distanceMap, type DistanceMap } from "./path"
 import { allDirections, directions, samePos, vec2, type Vec2 } from "./vec2"
 
@@ -20,16 +22,20 @@ import { allDirections, directions, samePos, vec2, type Vec2 } from "./vec2"
 // in one go, and it takes no enemy slot. Instead:
 //
 // - Breaths: any breath whose cells touch its footprint damages it once by
-//   its cost times BOSS_DAMAGE_PER_ENERGY (see breathe in breath.ts, which
-//   also stops lines and cones at its body). At 0 health it is defeated for
-//   good: BOSS_DEFEAT_POINTS, and it is no longer drawn, moved or caught by.
+//   the energy it spends times BOSS_DAMAGE_PER_ENERGY (see breathe in
+//   breath.ts, which also stops lines and cones at its body), so a charged
+//   breath does no more for its energy than taps do (KDA-289). At 0 health
+//   it is defeated for good: BOSS_DEFEAT_POINTS, and it is no longer
+//   drawn, moved or caught by.
 // - Moving: it chases the player it can get nearest (bossTarget) at its
 //   own speed, but only where all four of its cells fit (see bossMove), so
 //   1-wide corridors are safe from it.
 //   Tile effects that block enemies block it too.
-// - Catching: touching it catches the player like an enemy (see caught in
-//   game.ts), anywhere on its footprint.
-// - A lost life sends it back to its spawn, keeping its damage (resetBoss).
+// - Touching: touching it hurts the player like an enemy, but harder (see
+//   touchedBy in game.ts and BOSS_DAMAGE), anywhere on its footprint. A
+//   hit sends nobody home: it carries on where it is.
+// - Breathing: every few seconds it breathes at a player in line with it
+//   (KDA-268; see bossBreath.ts, which keeps its own state in `breath`).
 //
 // Boss levels have no wrap tunnels and no level ice (parseLevel checks), so
 // it never wraps or slides.
@@ -40,7 +46,8 @@ export type Boss = {
     pos: Vec2
     // pos before its latest move (as Character.lastPos), for the glide.
     lastPos: Vec2
-    // Where it starts, and goes back to after a lost life.
+    // Where it starts, and heads back to while no player is in play (see
+    // bossHomeStep).
     spawn: Vec2
     // Cells per second.
     speed: number
@@ -52,9 +59,18 @@ export type Boss = {
     flash: number
     // At 0 health it is gone for good.
     defeated: boolean
+    // Its breath attack (see bossBreath.ts).
+    breath: BossBreath
 }
 
-export function createBoss(pos: Vec2, speed: number = BOSS_SPEED): Boss {
+// A boss on `pos` at `speed` with `health`, its breath tuned by `breath`
+// (the level's; the defaults for anything it leaves out).
+export function createBoss(
+    pos: Vec2,
+    speed: number = BOSS_SPEED,
+    breath?: BossBreathData,
+    health: number = BOSS_HEALTH
+): Boss {
     return {
         pos: vec2(pos.x, pos.y),
         lastPos: vec2(pos.x, pos.y),
@@ -62,10 +78,11 @@ export function createBoss(pos: Vec2, speed: number = BOSS_SPEED): Boss {
         speed,
         // As for enemies: a short grace period before its first move.
         moveProgress: 0,
-        health: BOSS_HEALTH,
-        maxHealth: BOSS_HEALTH,
+        health,
+        maxHealth: health,
         flash: 0,
         defeated: false,
+        breath: createBossBreath(breath),
     }
 }
 
@@ -87,9 +104,9 @@ export function inFootprint(pos: Vec2, cell: Vec2): boolean {
     return (dx === 0 || dx === 1) && (dy === 0 || dy === 1)
 }
 
-// The damage a breath costing `cost` energy does to the boss.
-export function bossDamage(cost: number): number {
-    return cost * BOSS_DAMAGE_PER_ENERGY
+// The damage a breath spending `energy` does to the boss.
+export function bossDamage(energy: number): number {
+    return energy * BOSS_DAMAGE_PER_ENERGY
 }
 
 // Take `damage` off the boss's health and flash it. At 0 it is defeated:
@@ -122,15 +139,6 @@ export function damageBoss(
 // Count the flash down by `dt` seconds.
 export function tickBoss(boss: Boss, dt: number) {
     boss.flash = Math.max(0, boss.flash - dt)
-}
-
-// After a lost life: back at its spawn, at rest, waiting out the grace
-// period again. Its health (and defeat) is kept.
-export function resetBoss(boss: Boss) {
-    boss.pos = vec2(boss.spawn.x, boss.spawn.y)
-    boss.lastPos = vec2(boss.spawn.x, boss.spawn.y)
-    boss.moveProgress = 0
-    boss.flash = 0
 }
 
 // ---- Movement ----

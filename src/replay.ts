@@ -8,13 +8,15 @@ import {
     type Match,
     type Mode,
     type Picks,
+    type Run,
     type Screen,
     type ScreenKind,
     type TickInput,
 } from "./flow"
 import type { GameState, MoveInput } from "./game"
 import { DIRECTION_ACTIONS, directionStep, type Action } from "./input"
-import type { Level } from "./level"
+import type { Difficulty } from "./difficulty"
+import type { Stage } from "./level"
 import { emptyProgress } from "./progress"
 import { vec2, type Vec2 } from "./vec2"
 
@@ -35,7 +37,9 @@ import { vec2, type Vec2 } from "./vec2"
 // second for minutes: each player's tick is a few letters (see PlayerTick),
 // and runs of identical ticks are stored once with a count (see TickRun).
 
-export const RECORDING_VERSION = 1
+// Version 2 (KDA-257 onwards) adds the difficulty and story run, and
+// checks health where version 1 checked lives.
+export const RECORDING_VERSION = 2
 
 // One player's input on one tick. Fields with nothing in them are left
 // out, so an idle player is `{}`. Directions are the letters u, d, l, r.
@@ -68,7 +72,8 @@ export type Checksum = {
     dots: number[]
     // Dots left on the board.
     dotsLeft: number
-    lives: number
+    // Per player, player 1 first.
+    health: number[]
     // Where everyone is, as "x,y" cells: the players, then the enemies,
     // then the boss if there is one.
     positions: string
@@ -78,7 +83,10 @@ export type Recording = {
     version: typeof RECORDING_VERSION
     level: number
     mode: Mode
+    difficulty: Difficulty
     animals: Picks
+    // Story mode only: the run before this stage.
+    run?: Run
     // Versus only: the rounds before this one.
     match?: Match
     // Seeds the run's randomness (see seededRandom).
@@ -248,8 +256,10 @@ export function createRecorder(
                 version: RECORDING_VERSION,
                 level: start.level,
                 mode: start.mode,
+                difficulty: start.difficulty,
                 animals: start.animals,
                 ...(start.match ? { match: start.match } : {}),
+                ...(start.run ? { run: start.run } : {}),
                 seed,
                 ticks: runs.map((run) => ({ ...run })),
                 final: checksumOf(screen),
@@ -275,7 +285,7 @@ export function checksumOf(screen: Screen): Checksum {
         scores: game.players.map((p) => p.score),
         dots: game.players.map((p) => p.dots),
         dotsLeft,
-        lives: game.lives,
+        health: game.players.map((p) => p.health),
         positions: [
             ...game.players.map((p) => p.character),
             ...game.enemies,
@@ -291,7 +301,7 @@ function sameChecksum(a: Checksum, b: Checksum): boolean {
         a.kind === b.kind &&
         a.ticks === b.ticks &&
         a.dotsLeft === b.dotsLeft &&
-        a.lives === b.lives &&
+        a.health.join() === b.health.join() &&
         a.positions === b.positions &&
         a.scores.join() === b.scores.join() &&
         a.dots.join() === b.dots.join()
@@ -343,7 +353,7 @@ const SNAPSHOT_EVERY = 300
 // tick, and from the nearest snapshot for an earlier one.
 export function createReplayer(
     recording: Recording,
-    levels: readonly Level[]
+    levels: readonly Stage[]
 ): Replayer {
     if (recording.version !== RECORDING_VERSION) {
         throw new Error(
@@ -363,7 +373,9 @@ export function createReplayer(
         recording.level,
         recording.animals,
         recording.mode,
-        recording.match
+        recording.match,
+        recording.difficulty,
+        recording.run
     )
     let done = 0
     const snapshots = new Map<number, { screen: Screen; rng: number }>()
@@ -402,7 +414,7 @@ export function createReplayer(
 // Whether replaying `recording` ends where the recorded run did.
 export function verify(
     recording: Recording,
-    levels: readonly Level[]
+    levels: readonly Stage[]
 ): boolean {
     const replayer = createReplayer(recording, levels)
     const end = replayer.at(replayer.length)

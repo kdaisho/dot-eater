@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vite-plus/test"
-import { inPlay } from "../breath"
+import { breathe, inPlay } from "../breath"
 import type { Character } from "../character"
 import { AiType, DEFEAT_POINTS, PLAYER_SPEED, TICK_RATE } from "../constants"
 import { step, type GameState } from "../game"
 import { fixedRandom, makeEnemy, makeState, textMap } from "../test/helpers"
 import { vec2, type Vec2 } from "../vec2"
-import { BURNING, dragon } from "./dragon"
+import { BURNING, dragon, fireRange } from "./dragon"
 
 // The Dragon's fire breath end to end through step().
 
@@ -78,7 +78,8 @@ describe("dragon fire breath", () => {
     it("burns the whole line when it hits nobody", () => {
         const state = dragonState({ x: 1, y: 1 })
         tick(state, { breath: true })
-        expect(burning(state)).toEqual([2, 3, 4, 5, 6])
+        // A tap's line: 3 cells.
+        expect(burning(state)).toEqual([2, 3, 4])
         expect(state.players[0].breather.energy).toBe(
             dragon.maxEnergy - dragon.cost
         )
@@ -150,10 +151,11 @@ describe("dragon fire breath", () => {
     })
 
     it("leaves burning cells that block enemies for 2 s, then don't", () => {
-        // The chaser at x 8 heads for the player, but x 2 to 6 burn.
+        // The chaser at x 8 heads for the player, but x 2 to 6 burn (a
+        // level-3 line).
         const chaser = makeEnemy(8, 1, AiType.chase)
         const state = dragonState({ x: 1, y: 1 }, [chaser])
-        tick(state, { breath: true })
+        breathe(state, state.players[0], 3)
         expect(inPlay(chaser)).toBe(true)
         for (let i = 0; i < TICK_RATE * 2 - 2; i++) {
             expect(tick(state)).toBeNull()
@@ -171,7 +173,7 @@ describe("dragon fire breath", () => {
         // player head on in the corridor.
         const chaser = makeEnemy(8, 1, AiType.chase)
         const state = dragonState({ x: 1, y: 1 }, [chaser])
-        tick(state, { breath: true })
+        breathe(state, state.players[0], 3)
         expect(burning(state)).toEqual([2, 3, 4, 5, 6])
         for (let i = 0; i < MOVE * 4; i++) {
             expect(tick(state, { held: east })).toBeNull()
@@ -179,4 +181,33 @@ describe("dragon fire breath", () => {
         expect(state.players[0].character.pos.x).toBeGreaterThanOrEqual(5)
         expect(chaser.pos.x).toBeGreaterThanOrEqual(7)
     })
+})
+
+describe("the Dragon's charged breath (KDA-289)", () => {
+    // A hall 10 cells long.
+    const hall = textMap([
+        "############",
+        "#          #",
+        "############",
+        "#.##########",
+    ]).map
+
+    it("reaches 3 cells for a tap, one more a level, up to 7", () => {
+        expect([1, 2, 3, 4, 5].map(fireRange)).toEqual([3, 4, 5, 6, 7])
+    })
+
+    it.each([1, 2, 3, 4, 5])(
+        "burns further and defeats further off at level %i, for 20 a level",
+        (level) => {
+            // On the line's last cell, and one just past it.
+            const last = makeEnemy(1 + fireRange(level), 1)
+            const past = makeEnemy(2 + fireRange(level), 1)
+            const state = dragonState({ x: 1, y: 1 }, [last, past], hall)
+            expect(breathe(state, state.players[0], level)).toBe(true)
+            expect(inPlay(last)).toBe(false)
+            expect(inPlay(past)).toBe(true)
+            expect(burning(state)).toHaveLength(fireRange(level))
+            expect(state.players[0].breather.energy).toBe(100 - 20 * level)
+        }
+    )
 })

@@ -4,7 +4,7 @@ import type { GameEvent } from "../../src/events"
 import { gameOf, type Screen, type ScreenKind } from "../../src/flow"
 import { drawnPos } from "../../src/game"
 import { wrapDelta } from "../../src/glide"
-import { levels } from "../../src/levels"
+import { stages as levels } from "../../src/levels"
 import { createReplayer, type Recording, type Replayer } from "../../src/replay"
 import { vec2 } from "../../src/vec2"
 import type { PlayerTrack } from "./camera"
@@ -37,7 +37,8 @@ export type RunLog = {
 
 export type TickLog = {
     kind: ScreenKind
-    lives: number
+    // The players' health, added up: a close call costs none.
+    health: number
     // How close the nearest threat came to player 1 (see threatDistance).
     threat: number
     // What the game step of tick k reported (see events.ts): empty when
@@ -86,7 +87,7 @@ function buildRun(recording: Recording): RunLog {
         const stepped = prev?.kind === "playing"
         ticks.push({
             kind: screen.kind,
-            lives: game.lives,
+            health: game.players.reduce((sum, p) => sum + p.health, 0),
             threat: threatDistance(screen),
             events: stepped ? game.events : [],
             moved:
@@ -161,17 +162,17 @@ export function nearMisses(
 
 // nearMisses over a run log's ticks.
 export function closeCalls(
-    ticks: readonly Pick<TickLog, "threat" | "lives">[],
+    ticks: readonly Pick<TickLog, "threat" | "health">[],
     { within = 1.5, grace = 30, gap = 60 } = {}
 ): NearMiss[] {
     const closest = ticks.map((t) => t.threat)
-    const lives = ticks.map((t) => t.lives)
+    const health = ticks.map((t) => t.health)
     const misses: NearMiss[] = []
     for (let k = 1; k < closest.length - 1; k++) {
         const d = closest[k]
         if (d > within || d > closest[k - 1] || d > closest[k + 1]) continue
-        const after = lives[Math.min(k + grace, lives.length - 1)]
-        if (after < lives[k]) continue
+        const after = health[Math.min(k + grace, health.length - 1)]
+        if (after < health[k]) continue
         const last = misses.at(-1)
         if (last && k - last.tick < gap) {
             if (d < last.distance)
@@ -185,7 +186,7 @@ export function closeCalls(
 
 // The maze size of `recording`'s stage.
 export function boardOf(recording: Recording) {
-    const level = levels[recording.level]
+    const level = levels[recording.level]?.[recording.difficulty]
     if (!level) throw new Error(`No level ${recording.level}`)
     return { cols: level.width, rows: level.height }
 }

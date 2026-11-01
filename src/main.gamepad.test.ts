@@ -1,5 +1,6 @@
 // @vitest-environment happy-dom
 import { beforeAll, describe, expect, it, vi } from "vite-plus/test"
+import type { MoveInput } from "./game"
 import type { Pad } from "./gamepad"
 
 // main with a gamepad: the pad drives the menus and play, a toast reports
@@ -128,15 +129,29 @@ describe("main with a gamepad", () => {
             tapPad(0, UP)
             expect(selectedItem()).toBe("1 player")
             tapPad(1, A)
+            expect(screen()).toBe("play-select")
+            tapPad(0, DOWN)
+            expect(selectedItem()).toBe("Stage select")
+            tapPad(1, A)
             expect(screen()).toBe("stage-select")
             tapPad(0, A)
+            expect(screen()).toBe("difficulty-select")
+            tapPad(1, DOWN)
+            expect(selectedItem()).toMatch(/^Hard/)
+            tapPad(0, UP)
+            expect(selectedItem()).toMatch(/^Medium/)
+            tapPad(1, A)
             expect(screen()).toBe("character-select")
             const first = selectedCard()
             tapPad(1, RIGHT)
             expect(selectedCard()).not.toBe(first)
             tapPad(1, START)
+            expect(screen()).toBe("difficulty-select")
+            tapPad(0, START)
             expect(screen()).toBe("stage-select")
             tapPad(0, START)
+            expect(screen()).toBe("play-select")
+            tapPad(1, START)
             expect(screen()).toBe("title")
         })
 
@@ -144,10 +159,24 @@ describe("main with a gamepad", () => {
             tapPad(1, DOWN)
             expect(selectedItem()).toBe("Co-op")
             tapPad(0, A)
+            expect(screen()).toBe("play-select")
+            // The choice of story or stage mode follows player 1, and pad
+            // 2 is player 2's now.
+            tapPad(1, DOWN)
+            expect(selectedItem()).toBe("Story")
+            tapPad(0, DOWN)
+            tapPad(0, A)
             expect(screen()).toBe("stage-select")
-            // Stage select follows player 1, and pad 2 is player 2's now.
+            // So does stage select.
             tapPad(1, A)
             expect(screen()).toBe("stage-select")
+            tapPad(0, A)
+            expect(screen()).toBe("difficulty-select")
+            // Difficulty select follows player 1 too.
+            tapPad(1, DOWN)
+            expect(selectedItem()).toMatch(/^Medium/)
+            tapPad(1, A)
+            expect(screen()).toBe("difficulty-select")
             tapPad(0, A)
             expect(screen()).toBe("character-select")
             const p1 = cardOf(1)
@@ -165,16 +194,24 @@ describe("main with a gamepad", () => {
             expect(screen()).toBe("character-select")
             // Player 1 isn't ready, so its back leaves character select.
             tapPad(0, START)
+            expect(screen()).toBe("difficulty-select")
+            tapPad(0, START)
             expect(screen()).toBe("stage-select")
         })
 
         it("shares the pads again on the title and in 1-player", () => {
             tapPad(0, START)
+            expect(screen()).toBe("play-select")
+            tapPad(0, START)
             expect(screen()).toBe("title")
             tapPad(1, UP)
             expect(selectedItem()).toBe("1 player")
             tapPad(1, A)
+            expect(screen()).toBe("play-select")
+            tapPad(1, DOWN)
+            tapPad(1, A)
             expect(screen()).toBe("stage-select")
+            tapPad(1, A)
             tapPad(1, A)
             expect(screen()).toBe("character-select")
             const first = selectedCard()
@@ -182,6 +219,8 @@ describe("main with a gamepad", () => {
             expect(selectedCard()).not.toBe(first)
             tapPad(1, START)
             tapPad(0, START)
+            tapPad(0, START)
+            tapPad(1, START)
             expect(screen()).toBe("title")
             // The tests below use one pad.
             pads = [pad()]
@@ -192,7 +231,12 @@ describe("main with a gamepad", () => {
 
     it("plays through the menus with A", () => {
         tap(A)
+        expect(screen()).toBe("play-select")
+        tap(DOWN)
+        tap(A)
         expect(screen()).toBe("stage-select")
+        tap(A)
+        expect(screen()).toBe("difficulty-select")
         tap(A)
         expect(screen()).toBe("character-select")
         tap(A)
@@ -203,6 +247,28 @@ describe("main with a gamepad", () => {
         tap(START)
         expect(screen()).toBe("pause")
         tap(START)
+        expect(screen()).toBe("playing")
+    })
+
+    // KDA-289: the breath charges while held and fires once let go.
+    it("holds the breath while A is held in play, letting go with it", async () => {
+        const { step } = await import("./game")
+        const moves = (from: number): MoveInput[] =>
+            vi
+                .mocked(step)
+                .mock.calls.slice(from)
+                .map(([, , m]) => ("held" in m ? m : m[0]))
+        const from = vi.mocked(step).mock.calls.length
+        pads = [pad([A])]
+        vi.advanceTimersByTime(100)
+        const held = moves(from)
+        expect(held.length).toBeGreaterThan(1)
+        expect(held[0]?.breath).toBe(true)
+        expect(held.every((m) => m.breathHeld)).toBe(true)
+        const after = vi.mocked(step).mock.calls.length
+        pads = [pad()]
+        vi.advanceTimersByTime(100)
+        expect(moves(after).every((m) => !m.breathHeld)).toBe(true)
         expect(screen()).toBe("playing")
     })
 

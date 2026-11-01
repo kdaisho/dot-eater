@@ -147,6 +147,50 @@ describe("resolveShape", () => {
             [4, 4],
         ])
     })
+
+    // KDA-289: the Skunk's cloud.
+    it("floods open cells by walking distance, nearest first", () => {
+        // 2 steps from (3, 3): up the gap at (3, 2) to the row above, and
+        // round the wall at (4, 3) by the row below, never through a wall.
+        const reach = resolveShape(cells, vec2(3, 3), east, {
+            kind: "flood",
+            reach: 2,
+        })
+        expect(xy(reach.cells)).toEqual([
+            [3, 3],
+            [3, 2],
+            [2, 3],
+            [3, 4],
+            [3, 1],
+            [1, 3],
+            [2, 4],
+            [4, 4],
+        ])
+        expect(reach.wall).toBeNull()
+    })
+
+    it("floods through a wrap tunnel", () => {
+        const reach = resolveShape(cells, vec2(1, 1), east, {
+            kind: "flood",
+            reach: 2,
+        })
+        expect(xy(reach.cells)).toEqual([
+            [1, 1],
+            [0, 1],
+            [1, 2],
+            [2, 1],
+            [8, 1],
+            [1, 3],
+            [3, 1],
+        ])
+    })
+
+    it("floods just the player's cell with no reach", () => {
+        const flood = { kind: "flood", reach: 0 } as const
+        expect(xy(resolveShape(cells, vec2(3, 3), east, flood).cells)).toEqual([
+            [3, 3],
+        ])
+    })
 })
 
 describe("resolveShape with a boss's body in the way", () => {
@@ -247,6 +291,13 @@ describe("resolveShape with a boss's body in the way", () => {
             resolveShape(cells, vec2(2, 3), east, area)
         )
     })
+
+    it("doesn't change a flood", () => {
+        const flood = { kind: "flood", reach: 3 } as const
+        expect(resolveShape(cells, vec2(2, 3), east, flood, body)).toEqual(
+            resolveShape(cells, vec2(2, 3), east, flood)
+        )
+    })
 })
 
 describe("enemy statuses", () => {
@@ -318,6 +369,26 @@ describe("enemyVisible", () => {
         enemy.respawnIn = RESPAWN_BLINK - half * 1.5
         expect(enemyVisible(enemy)).toBe(false)
         enemy.respawnIn = RESPAWN_BLINK - half * 2.5
+        expect(enemyVisible(enemy)).toBe(true)
+    })
+
+    it("blinks an enemy in play in the last seconds of a status that blinksBeforeEnd", () => {
+        const enemy = makeEnemy(0, 0)
+        const warned = { name: "test.warned", blinksBeforeEnd: true }
+        const quiet = { name: "test.quiet", holds: true }
+        addStatus(enemy, warned, 3)
+        addStatus(enemy, quiet, 0.1)
+        const half = 1 / (BLINK_RATE * 2)
+        const at = (left: number) => {
+            enemy.statuses[0].left = left
+            return enemyVisible(enemy)
+        }
+        expect(at(RESPAWN_BLINK + 0.01)).toBe(true)
+        expect(at(RESPAWN_BLINK)).toBe(true)
+        expect(at(RESPAWN_BLINK - half * 1.5)).toBe(false)
+        expect(at(RESPAWN_BLINK - half * 2.5)).toBe(true)
+        // A status without the flag never blinks, however little is left.
+        enemy.statuses = [{ status: quiet, left: half * 0.5 }]
         expect(enemyVisible(enemy)).toBe(true)
     })
 })
@@ -519,7 +590,8 @@ describe("the breath registry", () => {
     it("has a breath for every animal, with the decided costs and stats", () => {
         for (const id of ANIMAL_IDS) expect(BREATHS[id].animal).toBe(id)
         const costs = ANIMAL_IDS.map((id) => BREATHS[id].cost)
-        expect(costs).toEqual([50, 50, 25, 50, 75])
+        // Per charge level (KDA-289).
+        expect(costs).toEqual([20, 20, 10, 30, 20])
         const cooldowns = ANIMAL_IDS.map((id) => BREATHS[id].cooldown)
         expect(cooldowns).toEqual([1, 1, 0.5, 1, 1])
         const meters = ANIMAL_IDS.map((id) => BREATHS[id].maxEnergy)

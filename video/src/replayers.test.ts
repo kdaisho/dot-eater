@@ -5,7 +5,7 @@ import { FROZEN } from "../../src/breaths/penguin"
 import { Cell } from "../../src/constants"
 import { gameOf, type Screen } from "../../src/flow"
 import type { GameState } from "../../src/game"
-import { levels } from "../../src/levels"
+import { stages as levels } from "../../src/levels"
 import { verify, type Recording } from "../../src/replay"
 import { makeBoss, makeEnemy, makeState, OLD_MAP } from "../../src/test/helpers"
 import { playDemo } from "../scripts/bot"
@@ -94,6 +94,7 @@ describe("threatDistance", () => {
         kind: "playing",
         mode: "solo",
         level: 0,
+        difficulty: "medium",
         animals: ["dragon"],
         game,
     })
@@ -135,11 +136,11 @@ describe("threatDistance", () => {
 describe("closeCalls", () => {
     it("picks the closest tick of each pass with no life lost", () => {
         const threat = [9, 3, 1.2, 0.8, 1.1, 4, 9, 9]
-        const ticks = threat.map((t) => ({ threat: t, lives: 3 }))
+        const ticks = threat.map((t) => ({ threat: t, health: 100 }))
         expect(closeCalls(ticks, { grace: 2 })).toEqual([
             { tick: 3, distance: 0.8 },
         ])
-        const lost = ticks.map((t, k) => ({ ...t, lives: k > 4 ? 2 : 3 }))
+        const lost = ticks.map((t, k) => ({ ...t, health: k > 4 ? 75 : 100 }))
         expect(closeCalls(lost, { grace: 2 })).toEqual([])
     })
 })
@@ -153,8 +154,10 @@ describe("nearMisses", () => {
         const replayer = replayerFor(demo)
         for (const { tick, distance } of misses) {
             expect(distance).toBeLessThanOrEqual(1.5)
-            const lives = gameOf(replayer.at(tick))!.lives
-            expect(gameOf(replayer.at(tick + 30))!.lives).toBe(lives)
+            const health = gameOf(replayer.at(tick))!.players[0].health
+            expect(gameOf(replayer.at(tick + 30))!.players[0].health).toBe(
+                health
+            )
         }
     })
 })

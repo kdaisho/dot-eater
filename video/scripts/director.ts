@@ -30,7 +30,7 @@ import { drawnPos, type GameState } from "../../src/game.ts"
 import { wrapDelta } from "../../src/glide.ts"
 import type { DirectionAction } from "../../src/input.ts"
 import { loopPos } from "../../src/level.ts"
-import { levels } from "../../src/levels/index.ts"
+import { stages as levels } from "../../src/levels/index.ts"
 import { openNeighbours } from "../../src/path.ts"
 import { emptyProgress } from "../../src/progress.ts"
 import {

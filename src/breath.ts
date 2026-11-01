@@ -4,10 +4,14 @@ import {
     DEFEAT_POINTS,
     DOT_ENERGY,
     RESPAWN_BLINK,
-    RESPAWN_DELAY,
 } from "./constants"
 import { bossDamage, damageBoss, inFootprint, tickBoss } from "./boss"
-import type { Character } from "./character"
+import {
+    endKnock,
+    freshFromPunches,
+    skipKnockTurn,
+    type Character,
+} from "./character"
 import { emit } from "./events"
 import type { ParticleLook } from "./particles"
 import type { GameState, Player } from "./game"
@@ -23,17 +27,21 @@ import { opponentsStruck, stun, stunned } from "./versus"
 import { allDirections, directions, samePos, vec2, type Vec2 } from "./vec2"
 
 // The breath system. Pure, no DOM: time comes in as `dt`, the breath press
-// as a flag on MoveInput (see step in game.ts).
+// and hold as flags on MoveInput (see step in game.ts).
 //
 // Every playable animal has one BreathDef (src/breaths/, one file each). A
 // breath costs energy from the player's meter, which dots refill, and has a
-// cooldown on top. When the player breathes, the breath's shape is resolved
-// against the maze into cells (BreathHit), and the breath's `fire` hook
-// decides what happens to them, using only the generic effects below:
+// cooldown on top. It is charged (KDA-289): holding the breath charges a
+// gauge a level at a time, and letting go fires it at that level, for that
+// level's energy (see chargeTick). The breath's shape and what its hook does
+// grow with the level, each breath its own way. When the player breathes,
+// the breath's shape is resolved against the maze into cells (BreathHit),
+// and the breath's `fire` hook decides what happens to them, using only the
+// generic effects below:
 //
 // - defeat an enemy: it scores DEFEAT_POINTS and comes back alone at its
-//   spawn after RESPAWN_DELAY, blinking for the last RESPAWN_BLINK seconds
-//   (a whole Splitter splits in two instead; see splitter.ts);
+//   spawn after GameState.respawnDelay, blinking for the last RESPAWN_BLINK
+//   seconds (a whole Splitter splits in two instead; see splitter.ts);
 // - put a timed status on an enemy (EnemyStatus: e.g. frozen);
 // - put a timed effect on a cell (TileEffect: blocks enemies, ice, an opened
 //   wall);
@@ -44,8 +52,8 @@ import { allDirections, directions, samePos, vec2, type Vec2 } from "./vec2"
 // particular breath.
 //
 // A boss (see boss.ts) is out of the hooks' reach: it isn't in
-// BreathHit.enemies. The engine damages it instead, by the breath's cost,
-// whenever the breath touches its footprint (see breathe).
+// BreathHit.enemies. The engine damages it instead, by the energy the breath
+// spends, whenever the breath touches its footprint (see breathe).
 
 // How a status or tile effect is drawn. Both fields are optional; leave the
 // whole look out to draw nothing.
@@ -89,9 +97,10 @@ export type EnemyStatus = {
     holds?: boolean
     // The enemy doesn't catch the player.
     harmless?: boolean
-    // The player can't walk into the enemy's cell; it blocks like a wall,
-    // and a slide into it ends next to it.
-    solid?: boolean
+    // The enemy blinks for the status's last RESPAWN_BLINK seconds, as a
+    // respawning one does, warning that it is about to end (see
+    // enemyVisible). Drawing only: nothing else changes.
+    blinksBeforeEnd?: boolean
     look?: Look
 }
 
@@ -121,6 +130,10 @@ export type BreathShape =
     // The player's cell and the cells around it within `radius` (a square),
     // spreading only through open cells, so it doesn't leak past walls.
     | { kind: "area"; radius: number }
+    // The player's cell and every open cell within `reach` steps of it,
+    // walking through open cells only (no diagonals), like a gas filling
+    // the corridors: nearest first, by walking distance.
+    | { kind: "flood"; reach: number }
     // Just the player's own cell.
     | { kind: "self" }
 
@@ -136,6 +149,11 @@ export type BreathHit = {
     cells: readonly Vec2[]
     // The wall a line (or a cone's first cell) stopped at, if any.
     wall: Vec2 | null
+    // The walls the breath acts on (BreathDef.wallsHit), nearest first;
+    // empty for a breath that does nothing to walls.
+    walls: readonly Vec2[]
+    // The charge level it fires at, 1 (a tap) to MAX_CHARGE.
+    level: number
     // Enemies in play standing on `cells` (by their cell, pos), in the order
     // of `cells`, so the first is the one nearest the player. For a line or
     // a cone, enemies on `origin` come first: one can stand on the player's
@@ -152,31 +170,41 @@ export type BreathHit = {
 
 // One character's breath and stats: everything a file in src/breaths/
 // defines.
+//
+// What grows with the charge level is up to each breath: its shape is a
+// function of the level, and its hook reads BreathHit.level for the rest
+// (how long a freeze lasts, how far a push goes).
 export type BreathDef = {
     animal: AnimalId
-    shape: BreathShape
-    // Energy it costs; the player can't breathe with less.
+    // Where the breath reaches at charge `level` (1 to MAX_CHARGE).
+    shape: (level: number) => BreathShape
+    // Energy per charge level: a level-N breath costs N times this, so a
+    // tap (level 1) costs just this. The player can't breathe with less.
     cost: number
     // Seconds after a breath before the next one.
     cooldown: number
-    // Seconds its main effect lasts (0 for an instant one). The hook applies
-    // it; this is here so the select screen and tests can read it.
+    // Seconds its main effect lasts at level 1 (0 for an instant one). The
+    // hook applies it; this is here so the select screen and tests can read
+    // it.
     duration: number
     // Stats: the energy meter's size, and the player's speed as a factor of
     // the level's (1 for normal).
     maxEnergy: number
     speedScale: number
-    // A further factor on the player's speed on its slide steps on ice
-    // (level or breath ice; see Player.rate). Leave it out for 1.
-    slideSpeedScale?: number
+    // Whether the player walks on ice (level or breath ice) as on normal
+    // floor, moving and stopping by its input, instead of sliding (see
+    // slideTick in game.ts). Leave it out to slide like everyone else.
+    walksOnIce?: boolean
     // How the breath looks in particles (see particles.ts): a burst on each
     // cell it strikes, flying along the facing. Leave it out for none.
     particles?: ParticleLook
-    // Whether the breath acts on `wall`, the wall its shape stopped at
-    // (BreathHit.wall), e.g. to break it. The aim preview (see aimCells)
-    // marks that wall when this says yes. Leave it out for a breath that
-    // does nothing to walls.
-    targetsWall?: (cells: Cells, wall: Vec2) => boolean
+    // The walls the breath acts on at charge `level` (BreathHit.walls), e.g.
+    // to break them, starting from `wall`, the wall its shape stopped at
+    // (BreathHit.wall), facing `facing`: none, `wall` alone, or a run of
+    // walls on from it. The aim preview (see aimCells) marks only these
+    // walls, and nothing else, for such a breath. Leave it out for a breath
+    // that does nothing to walls.
+    wallsHit?: (cells: Cells, wall: Vec2, facing: Vec2, level: number) => Vec2[]
     // What the breath does once its cost is paid. Return false (before
     // changing anything) to refuse, e.g. when there is nothing to hit; then
     // no energy is spent and there is no cooldown.
@@ -190,11 +218,15 @@ export type Breather = {
     // tried to move into a wall (see movePlayerTick in game.ts). Starts
     // facing right; kept while standing still.
     facing: Vec2
-    // From 0 to breath.maxEnergy. Starts empty each stage, kept when a life
-    // is lost.
+    // From 0 to breath.maxEnergy. Starts empty each stage, kept when the
+    // player is hurt or knocked out.
     energy: number
     // Seconds until it can breathe again (0 when ready).
     cooldown: number
+    // While the breath is held to charge it (see chargeTick), the seconds
+    // it has been held since the tick of the press; null when it isn't
+    // charging.
+    charge: number | null
 }
 
 // Tolerance for timers counting down by dt, as in game.ts.
@@ -202,12 +234,19 @@ const EPSILON = 1e-9
 
 export const START_FACING: Vec2 = vec2(1, 0)
 
+// The highest charge level (KDA-289; a placeholder to tune at preview).
+export const MAX_CHARGE = 5
+// Seconds of holding the breath for each level past the first (KDA-289;
+// a placeholder to tune at preview).
+export const CHARGE_SECONDS = 0.25
+
 export function createBreather(breath: BreathDef): Breather {
     return {
         breath,
         facing: vec2(START_FACING.x, START_FACING.y),
         energy: 0,
         cooldown: 0,
+        charge: null,
     }
 }
 
@@ -219,16 +258,95 @@ export function gainEnergy(breather: Breather) {
     )
 }
 
-// Whether the player has the energy and is past the cooldown.
+// Whether the player has the energy (for a level-1 breath) and is past the
+// cooldown.
 export function canBreathe(breather: Breather): boolean {
-    return (
-        breather.energy >= breather.breath.cost && breather.cooldown <= EPSILON
-    )
+    return affordable(breather) >= 1 && breather.cooldown <= EPSILON
 }
 
-// Breathe as `who` (player 1 unless given), if allowed: resolve the shape
-// from its cell along its facing, run the breath's hook, and pay (cost and
-// cooldown) unless the hook refused. What it defeats scores for `who`.
+// The highest charge level the meter pays for now, up to MAX_CHARGE: 0
+// when it can't pay for level 1.
+export function affordable(breather: Breather): number {
+    const { energy, breath } = breather
+    if (breath.cost <= 0) return MAX_CHARGE
+    return Math.min(MAX_CHARGE, Math.floor(energy / breath.cost + EPSILON))
+}
+
+// The level the charge has reached: 1 at the press and one more every
+// CHARGE_SECONDS held, up to MAX_CHARGE or what the meter pays for,
+// whichever is lower. 0 while not charging.
+export function chargeLevel(breather: Breather): number {
+    if (breather.charge === null) return 0
+    const held = 1 + Math.floor(breather.charge / CHARGE_SECONDS + EPSILON)
+    return Math.max(1, Math.min(held, affordable(breather)))
+}
+
+// The level a breath would fire at now: the charge's while charging, else
+// a tap's (1).
+function aimLevel(breather: Breather): number {
+    return breather.charge === null ? 1 : chargeLevel(breather)
+}
+
+// One player's breath input for a tick (part of MoveInput in game.ts).
+export type BreathInput = {
+    // Whether the breath was newly pressed this tick, even if it was
+    // already let go again.
+    breath?: boolean
+    // Whether it is held now.
+    breathHeld?: boolean
+}
+
+// One tick of `who`'s breath input (KDA-289, with the user: hold to
+// charge, let go to fire). A press starts a charge if the player can
+// breathe (see canBreathe); otherwise it is dropped, not kept. Held on, the
+// charge grows a level every CHARGE_SECONDS (see chargeLevel) while the
+// player keeps moving. Letting go fires it at the level reached (see
+// breathe), so a tap fires level 1: on the tick of its press when it was
+// let go within that tick, else on the next. A hold that began while the
+// player couldn't breathe charges nothing, even once it can: only a fresh
+// press starts a charge. A fresh press during a charge means it was let go
+// and pressed again within the tick: the charge fires at its level, then
+// the press is taken as any other (the cooldown usually drops it). `dt` is
+// the tick's length. Returns true if a breath happened.
+export function chargeTick(
+    state: GameState,
+    who: Player,
+    input: BreathInput,
+    dt: number
+): boolean {
+    const { breather } = who
+    let fired = false
+    if (breather.charge !== null) {
+        if (input.breathHeld && !input.breath) {
+            breather.charge += dt
+            return false
+        }
+        const level = chargeLevel(breather)
+        breather.charge = null
+        fired = breathe(state, who, level)
+    }
+    if (!input.breath || !canBreathe(breather)) return fired
+    breather.charge = 0
+    if (input.breathHeld) return fired
+    breather.charge = null
+    return breathe(state, who, 1) || fired
+}
+
+// Drop the breath's charge, if any, without firing it.
+export function cancelCharge(breather: Breather) {
+    breather.charge = null
+}
+
+// Drop every player's charge without firing: a pause does (see flow.ts).
+export function cancelCharges(state: GameState) {
+    for (const { breather } of state.players) cancelCharge(breather)
+}
+
+// Breathe as `who` (player 1 unless given) at charge `level` (1 unless
+// given, and no higher than the meter pays for), if allowed: resolve the
+// level's shape from its cell along its facing, run the breath's hook, and
+// pay (the level's energy, and the cooldown) unless the hook refused. What
+// it defeats scores for `who`.
 // Breaths don't affect players, except in versus: there the other player,
 // standing on any cell the breath strikes (as for enemies: the origin too
 // for a line or a cone), is stunned (see versus.ts), whatever the breath,
@@ -238,23 +356,26 @@ export function canBreathe(breather: Breather): boolean {
 // A boss in the way (see boss.ts) stops a line or a cone like a wall would,
 // except that its cells are covered: the big body takes the breath. If any
 // of the cells the breath strikes (as for enemies: the origin too for a
-// line or a cone) is under the boss, it takes bossDamage(cost), once
-// however many of its cells are struck, and the breath counts as fired
-// even if the hook refused (e.g. the Boar with no wall to break): it hit
-// something.
+// line or a cone) is under the boss, it takes bossDamage of the energy the
+// breath spends, once however many of its cells are struck (so a charged
+// breath hurts it as much as the taps its energy pays for, KDA-289), and
+// the breath counts as fired even if the hook refused (e.g. the Boar with
+// no wall to break): it hit something.
 export function breathe(
     state: GameState,
-    who: Player = state.players[0]
+    who: Player = state.players[0],
+    level = 1
 ): boolean {
     const breather = who.breather
     if (!canBreathe(breather)) return false
     const { breath, facing } = breather
-    const { origin, reach, body } = aimOf(state, who)
+    const at = Math.max(1, Math.min(Math.floor(level), affordable(breather)))
+    const { origin, shape, reach, walls, body } = aimOf(state, who, at)
     // Line and cone shapes start a cell ahead, but an enemy can stand on the
     // player's own cell while its sprite still glides in (collisions are on
     // drawn positions), so they hit enemies there too, first.
     const struck =
-        breath.shape.kind === "line" || breath.shape.kind === "cone"
+        shape.kind === "line" || shape.kind === "cone"
             ? [origin, ...reach.cells]
             : reach.cells
     const enemies = struck.flatMap((cell) =>
@@ -269,6 +390,8 @@ export function breathe(
         facing: vec2(facing.x, facing.y),
         cells: reach.cells,
         wall: reach.wall,
+        walls,
+        level: at,
         enemies,
         defeat: (enemy) => defeatEnemy(state, enemy, who),
         addStatus,
@@ -307,9 +430,10 @@ export function breathe(
         animal: breath.animal,
         at: origin,
         facing: vec2(facing.x, facing.y),
-        cells: coveredCells(state, origin, reach),
+        cells: coveredCells(state, origin, reach, walls),
     })
-    if (bossHit) damageBoss(state, bossDamage(breath.cost), who)
+    const spent = breath.cost * at
+    if (bossHit) damageBoss(state, bossDamage(spent), who)
     for (const other of stuns) {
         stun(other)
         const { pos } = other.character
@@ -320,21 +444,25 @@ export function breathe(
             at: vec2(pos.x, pos.y),
         })
     }
-    breather.energy -= breath.cost
+    breather.energy -= spent
     breather.cooldown = breath.cooldown
     return true
 }
 
-// Where `who`'s breath reaches if it breathes now: its shape resolved from
-// the player's cell (not its gliding sprite) along its facing, stopped by
-// walls and by the live boss's body. Shared by breathe and the aim preview,
-// so the preview always shows what a breath would do.
+// Where `who`'s breath reaches if it breathes now at charge `level`: the
+// level's shape resolved from the player's cell (not its gliding sprite)
+// along its facing, stopped by walls and by the live boss's body, and the
+// walls it acts on (BreathDef.wallsHit). Shared by breathe and the aim
+// preview, so the preview always shows what a breath would do.
 function aimOf(
     state: GameState,
-    who: Player
+    who: Player,
+    level: number
 ): {
     origin: Vec2
+    shape: BreathShape
     reach: ShapeReach
+    walls: Vec2[]
     // The boss's body, if one is in play (see resolveShape).
     body: ((p: Vec2) => boolean) | undefined
 } {
@@ -342,25 +470,29 @@ function aimOf(
     const origin = vec2(who.character.pos.x, who.character.pos.y)
     const boss = state.boss && !state.boss.defeated ? state.boss : null
     const body = boss ? (p: Vec2) => inFootprint(boss.pos, p) : undefined
-    const reach = resolveShape(state.cells, origin, facing, breath.shape, body)
-    return { origin, reach, body }
+    const shape = breath.shape(level)
+    const reach = resolveShape(state.cells, origin, facing, shape, body)
+    const { wall } = reach
+    const walls =
+        wall && breath.wallsHit
+            ? breath.wallsHit(state.cells, wall, facing, level)
+            : []
+    return { origin, shape, reach, walls, body }
 }
 
 // The cells player `index`'s breath (player 1's unless given) would hit if
 // it breathed now, nearest first, whether or not it can: the cells its shape
-// reaches (see aimOf), plus the wall it stopped at if the breath acts on
-// that wall (BreathDef.targetsWall: the Boar's target). Not the player's
-// own cell for a line or a cone, though enemies there are hit too: the
-// preview shows where the breath goes, and the sprite covers that cell.
+// reaches (see aimOf) at the level it would fire at, the charge's while
+// charging, else a tap's, 1 (KDA-289). Not the player's own cell for a line
+// or a cone, though enemies there are hit too: the preview shows where the
+// breath goes, and the sprite covers that cell. A breath that acts on walls
+// (BreathDef.wallsHit: the Boar) shows only the walls it would act on, or
+// nothing, since those walls are all it does (with the user, KDA-252).
 export function aimCells(state: GameState, index = 0): Vec2[] {
     const who = state.players[index]
-    const { reach } = aimOf(state, who)
-    const cells = reach.cells.map((c) => vec2(c.x, c.y))
-    const { wall } = reach
-    if (wall && who.breather.breath.targetsWall?.(state.cells, wall)) {
-        cells.push(vec2(wall.x, wall.y))
-    }
-    return cells
+    const { reach, walls } = aimOf(state, who, aimLevel(who.breather))
+    const cells = who.breather.breath.wallsHit ? walls : reach.cells
+    return cells.map((c) => vec2(c.x, c.y))
 }
 
 // One player's aim preview: its index and the cells its breath would hit.
@@ -382,18 +514,18 @@ export function aimPreviews(state: GameState): AimPreview[] {
 }
 
 // The cells a breath covered, for its event (see "breathed" in events.ts):
-// what its shape reached, or with nothing in reach the wall it stopped at
-// if the hook has just opened it (the Boar), else the player's own cell.
+// what its shape reached, or with nothing in reach the walls it acted on
+// that the hook has just opened (the Boar's tunnel), else the player's own
+// cell.
 function coveredCells(
     state: GameState,
     origin: Vec2,
-    reach: ShapeReach
+    reach: ShapeReach,
+    walls: readonly Vec2[]
 ): Vec2[] {
     if (reach.cells.length > 0) return reach.cells.map((c) => vec2(c.x, c.y))
-    const { wall } = reach
-    if (wall && state.cells[wall.y][wall.x] !== Cell.wall) {
-        return [vec2(wall.x, wall.y)]
-    }
+    const opened = walls.filter((w) => state.cells[w.y][w.x] !== Cell.wall)
+    if (opened.length > 0) return opened.map((w) => vec2(w.x, w.y))
     return [vec2(origin.x, origin.y)]
 }
 
@@ -419,7 +551,7 @@ function add(cells: Cells, p: Vec2, d: Vec2): Vec2 {
 // shadows like walls without being walls. A cone's shadow is the cells
 // behind the body: once a row meets it, those offsets across the facing
 // stay dark for the rest of the cone, except for more of the body itself.
-// Area and self shapes ignore it.
+// Area, flood and self shapes ignore it.
 export function resolveShape(
     cells: Cells,
     origin: Vec2,
@@ -512,6 +644,26 @@ export function resolveShape(
             }
             return { cells: result, wall: null }
         }
+        case "flood": {
+            // Breadth-first through open cells, a ring per step.
+            const result: Vec2[] = [vec2(origin.x, origin.y)]
+            const seen = new Set([key(origin)])
+            let ring = [origin]
+            for (let k = 1; k <= shape.reach && ring.length > 0; k++) {
+                const next: Vec2[] = []
+                for (const p of ring) {
+                    for (const dir of allDirections) {
+                        const q = add(cells, p, directions[dir])
+                        if (isWall(q) || seen.has(key(q))) continue
+                        seen.add(key(q))
+                        next.push(q)
+                    }
+                }
+                result.push(...next)
+                ring = next
+            }
+            return { cells: result, wall: null }
+        }
         default: {
             const unhandled: never = shape
             throw new Error(`Unknown shape: ${JSON.stringify(unhandled)}`)
@@ -529,7 +681,7 @@ export function inPlay(enemy: Character): boolean {
 // Whether any of the enemy's statuses has `flag` set.
 export function hasStatus(
     enemy: Character,
-    flag: "holds" | "harmless" | "solid"
+    flag: "holds" | "harmless"
 ): boolean {
     return enemy.statuses.some((s) => s.status[flag] === true)
 }
@@ -549,9 +701,10 @@ export function addStatus(
 
 // Take `enemy` out of play: DEFEAT_POINTS for `by` (the player whose breath
 // did it, player 1 unless given), then back at its spawn after
-// RESPAWN_DELAY (see tickEffects). It waits at its spawn meanwhile, so the
-// blink before it is back is drawn there. Statuses are dropped and a
-// patroller will start its route again. Defeating an enemy already out of
+// state.respawnDelay (see tickEffects). It waits at its spawn meanwhile, so the
+// blink before it is back is drawn there. Statuses are dropped, a
+// patroller will start its route again, and the punches it took and its
+// guard roll are forgotten (see freshFromPunches). Defeating an enemy already out of
 // play does nothing.
 //
 // A Splitter (see splitter.ts) scores the same, but a whole one splits into
@@ -579,24 +732,40 @@ export function defeatEnemy(
         return
     }
     const spawn = state.spawns.enemies[i]
-    enemy.respawnIn = RESPAWN_DELAY
+    enemy.respawnIn = state.respawnDelay
     enemy.statuses = []
     enemy.pos = vec2(spawn.x, spawn.y)
     enemy.lastPos = vec2(spawn.x, spawn.y)
     enemy.moveProgress = 0
     enemy.routeIndex = 0
+    // It comes back fresh from the punch: no decay, and a new guard roll.
+    freshFromPunches(enemy)
     if (isSplitterHalf(enemy)) halfDefeated(state, i)
 }
 
-// Whether to draw an enemy: always while in play; while defeated, only in
-// the last RESPAWN_BLINK seconds, on and off BLINK_RATE times a second
-// (starting on).
+// Whether to draw an enemy. While defeated, only in the last RESPAWN_BLINK
+// seconds, blinking. In play, always, except that it blinks in the last
+// RESPAWN_BLINK seconds of a status that blinksBeforeEnd (e.g. a freeze).
 export function enemyVisible(enemy: Character): boolean {
-    if (inPlay(enemy)) return true
-    if (enemy.respawnIn > RESPAWN_BLINK + EPSILON) return false
-    const phase = Math.floor(
-        (RESPAWN_BLINK - enemy.respawnIn) * BLINK_RATE * 2 + EPSILON
+    if (!inPlay(enemy)) {
+        return (
+            enemy.respawnIn <= RESPAWN_BLINK + EPSILON &&
+            blinkOn(enemy.respawnIn)
+        )
+    }
+    return enemy.statuses.every(
+        (s) =>
+            !s.status.blinksBeforeEnd ||
+            s.left > RESPAWN_BLINK + EPSILON ||
+            blinkOn(s.left)
     )
+}
+
+// Within the last RESPAWN_BLINK seconds of a wait with `left` seconds to go,
+// whether the blink is on: on and off BLINK_RATE times a second, starting
+// on.
+function blinkOn(left: number): boolean {
+    const phase = Math.floor((RESPAWN_BLINK - left) * BLINK_RATE * 2 + EPSILON)
     return phase % 2 === 0
 }
 
@@ -635,6 +804,7 @@ export function pushEnemy(
     enemy.lastPos = vec2(start.x, start.y)
     enemy.pos = vec2(to.x, to.y)
     enemy.moveProgress = 0
+    endKnock(enemy)
     return moved
 }
 
@@ -756,37 +926,55 @@ export function tickEffects(state: GameState, dt: number) {
         return false
     })
     // Only one opened-wall effect can be on a cell at a time (another
-    // needs a wall there), so its end always brings the wall back.
-    for (const t of expired) {
-        if (t.effect.opensWall) regrowWall(state, t.pos)
-    }
+    // needs a wall there), so its end always brings the wall back. Every
+    // wall due grows back before anyone is pushed out, so nobody in a run
+    // of them (the Boar's tunnel) is pushed into one about to grow back.
+    const regrown = expired.filter((t) => t.effect.opensWall)
+    for (const t of regrown) state.cells[t.pos.y][t.pos.x] = Cell.wall
+    for (const t of regrown) pushOutOfWall(state, t.pos)
     if (expired.some((t) => t.effect.ice)) rebuildIce(state)
 }
 
-// Put the wall at `pos` back, and move anyone standing in it out: back to
+// Move anyone standing in the wall just grown back at `pos` out: back to
 // the cell they came from if that is open, else to the nearest open cell
 // (direction order on ties). They arrive there at rest, not gliding. Cells
 // under a boss in play don't count as open: it treats an opened wall as a
 // wall, so it often waits right where they came from, and landing there
-// would be a catch they did nothing to earn.
-function regrowWall(state: GameState, pos: Vec2) {
-    state.cells[pos.y][pos.x] = Cell.wall
+// would be a catch they did nothing to earn. When players bump
+// (GameState.playersBump), a player isn't put on another player in play's
+// cell either, so the two never stack. An enemy a short punch knocks out
+// of it (KDA-288) doesn't turn back into it, but carries on (see
+// skipKnockTurn).
+function pushOutOfWall(state: GameState, pos: Vec2) {
     const boss = state.boss && !state.boss.defeated ? state.boss : null
     const open = (p: Vec2) =>
         state.cells[p.y][p.x] !== Cell.wall &&
         !(boss && inFootprint(boss.pos, p))
+    // Another player in play on `p`, which `c` mustn't be put on.
+    const bumped = (c: Character, p: Vec2) =>
+        state.playersBump &&
+        state.players.some(
+            (o) => o.character !== c && !o.out && samePos(o.character.pos, p)
+        )
     // Players out of play too, so none is left inside the wall (enemies
     // may go after where an out player stands).
     const players = state.players.map((p) => p.character)
+    for (const enemy of state.enemies) {
+        if (samePos(enemy.lastPos, pos)) skipKnockTurn(enemy)
+    }
     for (const c of [...players, ...state.enemies]) {
         if (!samePos(c.pos, pos)) continue
+        const free = players.includes(c)
+            ? (p: Vec2) => open(p) && !bumped(c, p)
+            : open
         const back =
-            !samePos(c.lastPos, pos) && open(c.lastPos)
+            !samePos(c.lastPos, pos) && free(c.lastPos)
                 ? c.lastPos
-                : nearestOpen(state.cells, pos, open)
+                : nearestOpen(state.cells, pos, free)
         if (!back) continue
         c.pos = vec2(back.x, back.y)
         c.lastPos = vec2(back.x, back.y)
+        endKnock(c)
     }
 }
 
@@ -817,10 +1005,13 @@ function nearestOpen(
 export type EnergyHud = {
     energy: number
     max: number
-    // The breath's cost, marked on the meter.
+    // The breath's cost per charge level, marked on the meter.
     cost: number
     // Whether a breath would fire now (enough energy, no cooldown).
     ready: boolean
+    // While the breath charges, the level it has reached (see chargeLevel),
+    // which the meter shows; 0 (or left out) otherwise.
+    charge?: number
 }
 
 // Player `index`'s meter (player 1's unless given).
@@ -831,5 +1022,6 @@ export function energyHud(state: GameState, index = 0): EnergyHud {
         max: b.breath.maxEnergy,
         cost: b.breath.cost,
         ready: canBreathe(b),
+        charge: chargeLevel(b),
     }
 }

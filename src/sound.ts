@@ -5,17 +5,22 @@
 
 import { volumesOf, type Audio } from "./audio"
 import type { GameEvent } from "./events"
-import type { Screen } from "./flow"
+import { storyCardTimedOut, type Screen } from "./flow"
 import { MusicTrackId, stageTrack } from "./music"
 import type { Settings } from "./settings"
 import { breathSfx, SfxId } from "./sfx"
 
 // The effect a game event plays, if any. playerRespawned plays nothing: a
-// solo catch reports a catch and then a respawn, and is one sound.
+// versus player coming back makes no sound. Nor does a dot growing back
+// (KDA-269): dots regrow about as often as they are eaten, so a sound for
+// it would echo every dot blip a few seconds later, often off screen; its
+// sparkle is enough.
 export function soundForEvent(event: GameEvent): SfxId | undefined {
     switch (event.type) {
         case "dotEaten":
             return SfxId.dot
+        case "dotDropped":
+            return SfxId.dotDropped
         case "breathed":
             return breathSfx(event.animal)
         case "enemyDefeated":
@@ -24,25 +29,62 @@ export function soundForEvent(event: GameEvent): SfxId | undefined {
             return SfxId.bossHit
         case "bossDefeated":
             return SfxId.bossDefeated
+        case "bossWindUp":
+            return SfxId.bossWindUp
+        case "bossBreathed":
+            return SfxId.bossBreath
+        case "enemyWindUp":
+            return SfxId.enemyWindUp
+        case "enemyBreathed":
+            return SfxId.enemyBreath
+        case "hurt":
+            return SfxId.hurt
         case "playerCaught":
             return SfxId.caught
         case "playerStunned":
             return SfxId.stunned
+        case "punched":
+            return SfxId.punch
+        case "punchHit":
+            return event.target === "boss" ? SfxId.punchHitBoss : SfxId.punchHit
+        case "punchBlocked":
+            return SfxId.punchBlocked
         case "gameWon":
             return SfxId.stageClear
         case "gameLost":
             return SfxId.gameOver
         case "playerRespawned":
+        case "dotRegrown":
             return undefined
     }
 }
 
 // The effects a tick's events play, each once (two dots eaten on one tick
 // are one blip), in the order they first happened. The game over jingle
-// replaces the catch that lost the game.
+// replaces the catch that lost the game. Each punch is one sound: its
+// first hit's if it landed (a punch reports enemies first, so an enemy's
+// thwack wins over the boss's thud), else a block's thock if an enemy
+// blocked it (KDA-288, KDA-293), else its whiff. A player punches once a tick at most, so
+// one player's punch never silences the other's.
 export function eventSounds(events: readonly GameEvent[]): SfxId[] {
+    const by = (type: "punchHit" | "punchBlocked") =>
+        new Set(events.flatMap((e) => (e.type === type ? [e.player] : [])))
+    const landed = by("punchHit")
+    const blocked = by("punchBlocked")
+    // Players whose punch has made its sound this tick.
+    const sounded = new Set<number>()
     const ids = new Set<SfxId>()
     for (const event of events) {
+        if (
+            event.type === "punched" &&
+            (landed.has(event.player) || blocked.has(event.player))
+        )
+            continue
+        if (event.type === "punchBlocked" && landed.has(event.player)) continue
+        if (event.type === "punchHit" || event.type === "punchBlocked") {
+            if (sounded.has(event.player)) continue
+            sounded.add(event.player)
+        }
         const id = soundForEvent(event)
         if (id) ids.add(id)
     }
@@ -57,16 +99,27 @@ export function playEventSounds(
     for (const id of eventSounds(events)) audio.playSfx(id)
 }
 
-// The tune a screen plays: the title's on the title and the menus, the
-// stage's while playing, frozen while paused (settings opened from pause
-// included). None from the ending outro on, so the stage clear and game
-// over jingles play alone; the result screens stay quiet.
+// The tune a screen plays: the title's on the title and the menus (the
+// story menus too), the stage's while playing, frozen while paused
+// (settings opened from pause included). None from the ending outro on, so
+// the stage clear and game over jingles play alone; the result screens,
+// story mode's clear card and ending included, stay quiet. The end roll
+// plays its own track (endRoll.ts).
 export type MusicCue = { track: MusicTrackId; paused: boolean }
 
 export function musicForScreen(screen: Screen): MusicCue | undefined {
     switch (screen.kind) {
+        // The opening's own track once its title shows; quiet on the
+        // studio logo.
+        case "opening":
+            return screen.stage === "title"
+                ? { track: MusicTrackId.opening, paused: false }
+                : undefined
         case "title":
+        case "playSelect":
+        case "storyMenu":
         case "stageSelect":
+        case "difficultySelect":
         case "characterSelect":
             return { track: MusicTrackId.title, paused: false }
         case "settings":
@@ -81,7 +134,11 @@ export function musicForScreen(screen: Screen): MusicCue | undefined {
         case "matchResult":
         case "stageClear":
         case "gameOver":
+        case "storyClear":
+        case "storyEnd":
             return undefined
+        case "endRoll":
+            return { track: MusicTrackId.endRoll, paused: false }
     }
 }
 
@@ -89,8 +146,12 @@ export function musicForScreen(screen: Screen): MusicCue | undefined {
 // screen, which is a step in).
 function isBack(prev: Screen, next: Screen): boolean {
     return (
-        (prev.kind === "stageSelect" && next.kind === "title") ||
-        (prev.kind === "characterSelect" && next.kind === "stageSelect") ||
+        (prev.kind === "playSelect" && next.kind === "title") ||
+        (prev.kind === "storyMenu" && next.kind === "playSelect") ||
+        (prev.kind === "stageSelect" &&
+            (next.kind === "title" || next.kind === "playSelect")) ||
+        (prev.kind === "difficultySelect" && next.kind === prev.back.kind) ||
+        (prev.kind === "characterSelect" && next.kind === "difficultySelect") ||
         (prev.kind === "settings" && next.kind !== "controls") ||
         prev.kind === "controls"
     )
@@ -102,6 +163,8 @@ function readyCount(ready: readonly boolean[]): number {
 
 // A change within one menu: the cursor moved or a value changed.
 function sameScreenSound(prev: Screen, next: Screen): SfxId | undefined {
+    if (prev.kind === "opening" && next.kind === "opening")
+        return prev.choice !== next.choice ? SfxId.menuMove : undefined
     if (prev.kind === "title" && next.kind === "title")
         return prev.mode !== next.mode || prev.onSettings !== next.onSettings
             ? SfxId.menuMove
@@ -123,6 +186,8 @@ function sameScreenSound(prev: Screen, next: Screen): SfxId | undefined {
     }
     if (prev.kind === "stageSelect" && next.kind === "stageSelect")
         return prev.selected !== next.selected ? SfxId.menuMove : undefined
+    if (prev.kind === "difficultySelect" && next.kind === "difficultySelect")
+        return prev.difficulty !== next.difficulty ? SfxId.menuMove : undefined
     if (prev.kind === "characterSelect" && next.kind === "characterSelect") {
         const was = readyCount(prev.ready)
         const now = readyCount(next.ready)
@@ -154,6 +219,9 @@ export function menuSound(prev: Screen, next: Screen): SfxId | undefined {
     )
         return SfxId.pause
     if (prev.kind === "playing" || prev.kind === "ending") return undefined
+    // The story clear card starting the next stage by itself: nobody
+    // pressed anything, so no confirm.
+    if (prev.kind === "storyClear" && storyCardTimedOut(prev)) return undefined
     if (isBack(prev, next)) return SfxId.back
     return SfxId.confirm
 }

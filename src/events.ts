@@ -14,10 +14,17 @@ import type { Vec2 } from "./vec2"
 // nothing new.
 //
 // `player` is always a player's index (player 1 is 0). `at` is a cell (the
-// top-left one of the boss's 2x2 footprint), for placing effects.
+// top-left one of the boss's 2x2 footprint), for placing effects, except
+// for the punch's events, where it is a drawn position.
 export type GameEvent =
     // A player ate a dot on `at` (walking or sliding onto it).
     | { type: "dotEaten"; player: number; at: Vec2 }
+    // An eaten dot grew back on `at` (KDA-269, see regrow.ts).
+    | { type: "dotRegrown"; at: Vec2 }
+    // A Splitter slot, enemy `enemy` (its index in GameState.enemies),
+    // dropped a dot on `at`, the cell it just left (KDA-270, see dropDot
+    // in splitter.ts).
+    | { type: "dotDropped"; enemy: number; at: Vec2 }
     // A player breathed: the breath fired (or struck the boss or the other
     // player) and its cost was paid. A refused breath reports nothing.
     // `at` is the player's cell and `facing` the unit step it breathed
@@ -48,16 +55,72 @@ export type GameEvent =
     // A player's breath finished the boss. Its killing blow reports this
     // only, not a bossHit as well.
     | { type: "bossDefeated"; player: number; at: Vec2 }
-    // An enemy or the boss caught a player on `at` (its cell). `outForGood`
-    // is true when the player won't be back: the solo game's last life, or
-    // co-op with the shared lives spent. A solo catch with lives left is
-    // followed by a playerRespawned for every player.
+    // The boss (at `at`) started winding up its breath, facing `facing`
+    // (a unit step) at the player it targets (see bossBreath.ts).
+    | { type: "bossWindUp"; at: Vec2; facing: Vec2 }
+    // The boss (at `at`) breathed along `facing`, striking `cells`,
+    // nearest first. The players it hurt report their own hurt (or
+    // playerCaught) after it.
+    | {
+          type: "bossBreathed"
+          at: Vec2
+          facing: Vec2
+          cells: readonly Vec2[]
+      }
+    // Breather `enemy` (its index in GameState.enemies), on `at`, started
+    // winding up its breath, facing `facing` (a unit step) at the player it
+    // targets (KDA-291, see enemyBreath.ts).
+    | { type: "enemyWindUp"; enemy: number; at: Vec2; facing: Vec2 }
+    // Breather `enemy`, on `at`, breathed along `facing`, striking `cells`,
+    // nearest first. The players it hurt report their own hurt (or
+    // playerCaught) after it.
+    | {
+          type: "enemyBreathed"
+          enemy: number
+          at: Vec2
+          facing: Vec2
+          cells: readonly Vec2[]
+      }
+    // A player was hurt (see hurtPlayer in game.ts) on `at` (its cell when
+    // hit, before the knockback) and lost `damage` health, with some left.
+    // A hit that takes its last health reports a playerCaught instead.
+    | { type: "hurt"; player: number; at: Vec2; damage: number }
+    // A player was knocked out on `at` (its cell): a hit took its last
+    // health. `outForGood` is true when the player won't be back: in solo
+    // (the game is lost) and co-op; a versus player comes back later.
     | { type: "playerCaught"; player: number; at: Vec2; outForGood: boolean }
-    // A player is back in play on its spawn, `at`: after a solo catch, or
-    // when a 2-player wait is over.
+    // A player is back in play on its spawn, `at`, when its wait after a
+    // versus knockout is over.
     | { type: "playerRespawned"; player: number; at: Vec2 }
     // Versus: player `by`'s breath stunned `player`, on `at` (its cell).
     | { type: "playerStunned"; player: number; by: number; at: Vec2 }
+    // A player punched (see punch.ts), whether it hit anything or not. `at`
+    // is where the player is drawn (not a whole cell) and `facing` the unit
+    // step it punched along. Its hits follow, one punchHit (or
+    // punchBlocked) each.
+    | { type: "punched"; player: number; at: Vec2; facing: Vec2 }
+    // A player's punch hit an enemy (`enemy`, its index in
+    // GameState.enemies), the boss or the other player (versus), at `at`:
+    // where the target was drawn when the fist met it (the nearest point of
+    // the boss's body), not a whole cell. The boss isn't hurt or moved.
+    | {
+          type: "punchHit"
+          player: number
+          at: Vec2
+          target: "enemy" | "boss" | "player"
+          enemy?: number
+      }
+    // Enemy `enemy` (its index in GameState.enemies) blocked a player's
+    // punch with its guard (KDA-288, see guard.ts), in place of a
+    // punchHit: it wasn't moved. `at` is where it was drawn and `facing`
+    // the unit step the punch came along, as in punched.
+    | {
+          type: "punchBlocked"
+          player: number
+          at: Vec2
+          facing: Vec2
+          enemy: number
+      }
     // The stage is cleared: the game is won. In versus this is the end of
     // a round; whether it also ends the match is up to flow.ts (the next
     // screen is roundResult or matchResult).

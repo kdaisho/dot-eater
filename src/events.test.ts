@@ -1,7 +1,13 @@
 import { describe, expect, it } from "vite-plus/test"
 import type { BreathDef } from "./breath"
 import { BREATHS } from "./breaths"
-import { BOSS_HEALTH, CharacterId, START_LIVES, TICK_RATE } from "./constants"
+import {
+    BOSS_HEALTH,
+    ENEMY_DAMAGE,
+    ENEMY_IDS,
+    MAX_HEALTH,
+    TICK_RATE,
+} from "./constants"
 import { takeEvents, type GameEvent, type GameEventType } from "./events"
 import {
     settle,
@@ -70,7 +76,7 @@ function breather(
     options: Parameters<typeof makeState>[3] = {}
 ): GameState {
     const state = makeState(map, vec2(1, 1), [], {
-        lives: START_LIVES,
+        health: MAX_HEALTH,
         breath: def,
         ...options,
     })
@@ -126,7 +132,7 @@ describe("dotEaten", () => {
             textMap(["######", "#  . #", "######", "#.####"]).map,
             [vec2(1, 1), vec2(4, 1)],
             [],
-            { mode: "coop", lives: START_LIVES }
+            { mode: "coop" }
         )
         const eaten: GameEvent[] = []
         for (let i = 0; i < TICK_RATE / 2; i++) {
@@ -148,8 +154,8 @@ describe("breathed", () => {
                 animal: AnimalId.penguin,
                 at: vec2(1, 1),
                 facing: east,
-                // The cone, in a corridor one cell high.
-                cells: [vec2(2, 1), vec2(3, 1), vec2(4, 1)],
+                // A tap's cone (range 2), in a corridor one cell high.
+                cells: [vec2(2, 1), vec2(3, 1)],
             },
         ])
     })
@@ -244,10 +250,7 @@ describe("enemyDefeated", () => {
 
     it("marks a whole Splitter's split", () => {
         const state = breather(defeating)
-        const slots = createSplitter(
-            [CharacterId.enemy1, CharacterId.enemy2],
-            vec2(3, 1)
-        )
+        const slots = createSplitter([ENEMY_IDS[0], ENEMY_IDS[1]], vec2(3, 1))
         state.enemies.push(...slots)
         state.spawns = {
             ...state.spawns,
@@ -269,7 +272,7 @@ describe("enemyDefeated", () => {
         const state = breather(defeating)
         state.enemies.push(
             makeEnemy(2, 1),
-            makeEnemy(3, 1, undefined, undefined, CharacterId.enemy2)
+            makeEnemy(3, 1, undefined, undefined, ENEMY_IDS[1])
         )
         state.spawns = {
             ...state.spawns,
@@ -306,9 +309,11 @@ describe("bossHit and bossDefeated", () => {
         boss.health = 2
         const state = breather(strong, room, { boss })
         tick(state, breath)
+        // Defeating it clears the stage too (KDA-267).
         expect(state.events.map((e) => e.type)).toEqual([
             "breathed",
             "bossDefeated",
+            "gameWon",
         ])
         expect(ofType(state, "bossDefeated")).toEqual([
             { type: "bossDefeated", player: 0, at: vec2(3, 1) },
@@ -317,29 +322,23 @@ describe("bossHit and bossDefeated", () => {
 })
 
 // A game where an enemy stands on player 1's cell (1, 1), so the first step
-// catches it; with two players, player 2 is at (5, 1), out of reach.
-function caughtGame(mode: Mode, lives: number, players = 1): GameState {
+// hits it; with two players, player 2 is at (5, 1), out of reach.
+function caughtGame(mode: Mode, health: number, players = 1): GameState {
     const starts = [vec2(1, 1), vec2(5, 1)].slice(0, players)
-    return makeState(hall, starts, [makeEnemy(1, 1)], { mode, lives })
+    return makeState(hall, starts, [makeEnemy(1, 1)], { mode, health })
 }
 
-describe("playerCaught and playerRespawned", () => {
-    it("solo with lives left: caught, then everyone respawned", () => {
-        const state = caughtGame("solo", 2)
+describe("hurt, playerCaught and playerRespawned", () => {
+    it("solo with health left: hurt, and nobody respawned", () => {
+        const state = caughtGame("solo", MAX_HEALTH)
         expect(tick(state)).toBeNull()
         expect(state.events).toEqual([
-            {
-                type: "playerCaught",
-                player: 0,
-                at: vec2(1, 1),
-                outForGood: false,
-            },
-            { type: "playerRespawned", player: 0, at: vec2(1, 1) },
+            { type: "hurt", player: 0, at: vec2(1, 1), damage: ENEMY_DAMAGE },
         ])
     })
 
-    it("solo on the last life: caught for good, then the game is lost", () => {
-        const state = caughtGame("solo", 1)
+    it("solo with the last health: caught for good, then the game is lost", () => {
+        const state = caughtGame("solo", ENEMY_DAMAGE)
         expect(tick(state)).toBe("dead")
         expect(state.events).toEqual([
             {
@@ -352,21 +351,16 @@ describe("playerCaught and playerRespawned", () => {
         ])
     })
 
-    it("co-op with lives left: out for a while, not for good", () => {
-        const state = caughtGame("coop", 1, 2)
+    it("co-op with health left: hurt", () => {
+        const state = caughtGame("coop", MAX_HEALTH, 2)
         tick(state)
         expect(state.events).toEqual([
-            {
-                type: "playerCaught",
-                player: 0,
-                at: vec2(1, 1),
-                outForGood: false,
-            },
+            { type: "hurt", player: 0, at: vec2(1, 1), damage: ENEMY_DAMAGE },
         ])
     })
 
-    it("co-op with the lives spent: out for good, the game goes on", () => {
-        const state = caughtGame("coop", 0, 2)
+    it("co-op with the last health: out for good, the game goes on", () => {
+        const state = caughtGame("coop", 1, 2)
         expect(tick(state)).toBeNull()
         expect(state.events).toEqual([
             {
@@ -378,24 +372,22 @@ describe("playerCaught and playerRespawned", () => {
         ])
     })
 
-    it("reports each of two players caught on one tick once", () => {
+    it("reports each of two players hurt on one tick once", () => {
         const state = makeState(
             hall,
             [vec2(1, 1), vec2(5, 1)],
             [
                 makeEnemy(1, 1),
-                makeEnemy(5, 1, undefined, undefined, CharacterId.enemy2),
+                makeEnemy(5, 1, undefined, undefined, ENEMY_IDS[1]),
             ],
-            { mode: "coop", lives: START_LIVES }
+            { mode: "coop", health: MAX_HEALTH }
         )
         tick(state)
-        expect(ofType(state, "playerCaught").map((e) => e.player)).toEqual([
-            0, 1,
-        ])
+        expect(ofType(state, "hurt").map((e) => e.player)).toEqual([0, 1])
     })
 
-    it("versus: caught, never for good", () => {
-        const state = caughtGame("versus", 0, 2)
+    it("versus: knocked out, never for good", () => {
+        const state = caughtGame("versus", 1, 2)
         tick(state)
         expect(ofType(state, "playerCaught")).toEqual([
             {
@@ -409,8 +401,7 @@ describe("playerCaught and playerRespawned", () => {
 
     it("reports a 2-player respawn on the tick the player is back", () => {
         const state = makeState(hall, [vec2(1, 1), vec2(5, 1)], [], {
-            mode: "coop",
-            lives: START_LIVES,
+            mode: "versus",
         })
         const p2 = state.players[1]
         p2.character.pos = vec2(3, 1)
@@ -439,8 +430,8 @@ describe("playerStunned", () => {
                 animal: AnimalId.dragon,
                 at: vec2(1, 1),
                 facing: east,
-                // The whole line: players don't stop it.
-                cells: [2, 3, 4, 5, 6].map((x) => vec2(x, 1)),
+                // A tap's whole line: players don't stop it.
+                cells: [2, 3, 4].map((x) => vec2(x, 1)),
             },
             { type: "playerStunned", player: 1, by: 0, at: vec2(3, 1) },
         ])

@@ -8,8 +8,9 @@ import {
     type GameState,
     type Outcome,
 } from "./game"
-import { LAST_PICK_KEY } from "./lastPick"
-import { levels } from "./levels"
+import { MAX_HEALTH } from "./constants"
+import { LAST_DIFFICULTY_KEY, LAST_PICK_KEY } from "./lastPick"
+import { stages } from "./levels"
 import { emptyProgress, PROGRESS_KEY, serializeProgress } from "./progress"
 import { vec2 } from "./vec2"
 
@@ -90,7 +91,16 @@ describe("main with two players", () => {
         pressAndTick("ArrowDown")
         expect(selectedItem()).toBe("Co-op")
         pressAndTick("Space")
+        expect(screen()).toBe("play-select")
+        pressAndTick("ArrowDown")
+        pressAndTick("Space")
         expect(screen()).toBe("stage-select")
+        pressAndTick("Space")
+
+        // Difficulty select, on Medium with nothing saved: Hard.
+        expect(screen()).toBe("difficulty-select")
+        expect(selectedItem()).toMatch(/^Medium/)
+        pressAndTick("ArrowDown")
         pressAndTick("Space")
 
         // Character select: both cursors start on the Dragon; each player
@@ -111,12 +121,15 @@ describe("main with two players", () => {
         pressAndTick("KeyE")
         expect(screen()).toBe("playing")
         expect(vi.mocked(createGameState).mock.lastCall).toEqual([
-            levels[0],
+            stages[0].hard,
             ["dragon", "owl"],
             "coop",
+            "hard",
         ])
-        // The saved 1-player pick is left alone, player 1's included.
+        // The saved 1-player picks are left alone, player 1's included,
+        // and so is the difficulty.
         expect(localStorage.getItem(LAST_PICK_KEY)).toBeNull()
+        expect(localStorage.getItem(LAST_DIFFICULTY_KEY)).toBeNull()
 
         // Both players' keys reach the game, one input each.
         keydown("ArrowLeft")
@@ -124,18 +137,35 @@ describe("main with two players", () => {
         vi.advanceTimersByTime(100)
         const moves = vi.mocked(step).mock.lastCall?.[2]
         expect(moves).toEqual([
-            { held: [vec2(-1, 0)], pressed: vec2(0, 0), breath: false },
-            { held: [vec2(0, 1)], pressed: vec2(0, 0), breath: false },
+            {
+                held: [vec2(-1, 0)],
+                pressed: vec2(0, 0),
+                breath: false,
+                breathHeld: false,
+                punch: false,
+            },
+            {
+                held: [vec2(0, 1)],
+                pressed: vec2(0, 0),
+                breath: false,
+                breathHeld: false,
+                punch: false,
+            },
         ])
         keyup("ArrowLeft")
         keyup("KeyS")
 
-        // The HUD shows each player's score and meter.
+        // The HUD shows each player's score, meter and health.
         const game = drawn.last?.[0] as GameState
         expect(game.players).toHaveLength(2)
+        game.players[1].health = 40
+        vi.advanceTimersByTime(100)
         expect(drawn.last?.[2]).toMatchObject({
-            lives: game.lives,
-            players: [{ score: 0 }, { score: 0 }],
+            players: [
+                { score: 0, health: { health: MAX_HEALTH, max: MAX_HEALTH } },
+                { score: 0, health: { health: 40, max: MAX_HEALTH } },
+            ],
+            difficulty: "Hard",
         })
         expect(drawn.last?.[2]).not.toHaveProperty("players.0.out")
 
@@ -170,7 +200,8 @@ describe("main with two players", () => {
         vi.advanceTimersByTime(1000)
         expect(screen()).toBe("stage-clear")
         const lines = [...(overlay()?.querySelectorAll(".overlay-line") ?? [])]
-        expect(lines.slice(0, 3).map((p) => p.textContent)).toEqual([
+        expect(lines.slice(0, 4).map((p) => p.textContent)).toEqual([
+            "Difficulty Hard",
             "Score 50",
             "1P 30 · 3 dots",
             "2P 20 · 2 dots",
@@ -181,12 +212,13 @@ describe("main with two players", () => {
         )
         expect(localStorage.getItem(PROGRESS_KEY)).toBe(saved)
 
-        // Retry plays the same two characters again.
+        // Retry plays the same two characters again, at the same
+        // difficulty.
         pressAndTick("Space")
         expect(screen()).toBe("playing")
-        expect(vi.mocked(createGameState).mock.lastCall?.[1]).toEqual([
-            "dragon",
-            "owl",
+        expect(vi.mocked(createGameState).mock.lastCall?.slice(0, 2)).toEqual([
+            stages[0].hard,
+            ["dragon", "owl"],
         ])
 
         // Game over shows the same breakdown.
@@ -198,6 +230,7 @@ describe("main with two players", () => {
         expect(screen()).toBe("game-over")
         const over = [...(overlay()?.querySelectorAll(".overlay-line") ?? [])]
         expect(over.map((p) => p.textContent)).toEqual([
+            "Difficulty Hard",
             "Score 10",
             "1P 10 · 1 dot",
             "2P 0 · 0 dots",
