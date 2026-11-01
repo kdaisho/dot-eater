@@ -134,7 +134,8 @@ function characterShots(scenes: Scenes): Shot[] {
                 zoom: animal === "dragon" ? [1.6, 2.2] : [2, 3.2],
                 punch: 0.18,
             },
-            caption: look.ability,
+            // A sound, not what it is: the card said that.
+            caption: look.sound,
             // The skunk's cloud is low in the frame.
             ...(animal === "skunk" && { captionPosition: "top" as const }),
             shake: 1.4,

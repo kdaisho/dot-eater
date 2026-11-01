@@ -19,6 +19,9 @@ export type CharacterLook = {
     // The name and ability word as the slam card shows them.
     name: string
     ability: string
+    // The sound its ability makes, as a comic would spell it: the caption
+    // over its ability shot.
+    sound: string
     // The character's colour, and a darker shade of it for text on paper
     // and for the card's shadow.
     colour: string
@@ -31,6 +34,7 @@ export const LOOKS: Readonly<Record<AnimalId, CharacterLook>> = {
         emoji: ANIMALS.dragon.emoji,
         name: "DRAGON",
         ability: "FIRE.",
+        sound: "FWOOOSH!",
         colour: "#FF4B12",
         deep: "#B22A00",
     },
@@ -39,6 +43,7 @@ export const LOOKS: Readonly<Record<AnimalId, CharacterLook>> = {
         emoji: ANIMALS.penguin.emoji,
         name: "PENGUIN",
         ability: "ICE.",
+        sound: "BRRR... CLONK!",
         colour: "#12C8F2",
         deep: "#006F96",
     },
@@ -47,6 +52,7 @@ export const LOOKS: Readonly<Record<AnimalId, CharacterLook>> = {
         emoji: ANIMALS.owl.emoji,
         name: "OWL",
         ability: "WIND.",
+        sound: "HOO-WHOOOSH!",
         colour: "#8B4DFF",
         deep: "#4A1DB0",
     },
@@ -55,6 +61,7 @@ export const LOOKS: Readonly<Record<AnimalId, CharacterLook>> = {
         emoji: ANIMALS.skunk.emoji,
         name: "SKUNK",
         ability: "STINK.",
+        sound: "PFFFRRRT!",
         colour: "#34D058",
         deep: "#137A2C",
     },
@@ -63,6 +70,7 @@ export const LOOKS: Readonly<Record<AnimalId, CharacterLook>> = {
         emoji: ANIMALS.boar.emoji,
         name: "BOAR",
         ability: "SMASH.",
+        sound: "OINK-KABLAM!",
         colour: "#A8642A",
         deep: "#5E3410",
     },
