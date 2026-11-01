@@ -1,6 +1,6 @@
 import type { Recording } from "../../src/replay"
 import type { AnimalId } from "../../src/roster"
-import type { CutList, GameShot, Shot } from "./cutList"
+import type { CardShot, CutList, GameShot, Shot } from "./cutList"
 import type { RampOptions, Transition } from "./drama"
 import { PROMO3_EXCERPT } from "./excerpts"
 import { heroMoment, highlightsOf, type Moment } from "./highlights"
@@ -10,13 +10,12 @@ import type { SceneName } from "./scenes"
 // The v3 promo's edit (see Promo3.tsx): the 80 beats of PROMO3_EXCERPT,
 // the song from its start on its half-time grid, beat 0 on its first
 // downbeat. Made from the user's notes on v2: each character gets two
-// whole bars and shows its charged ability, no caption explains it, the
-// camera moves less, the boss is short and wordless, and the name shows
-// only on the end card.
+// whole bars (v2's card and caption, then its charged ability), the boss
+// is short and wordless, and the name shows only on the end card.
 //
 //   beats  0–8   OPEN: the chase, a close call in gentle slow motion
-//   beats  8–48  CHARACTERS: two bars each, the charge building, then the
-//                release in slow motion on beat 2 of the second bar
+//   beats  8–48  CHARACTERS: two bars each: a slam card, then the charged
+//                ability in hard slow motion on the second bar's snare
 //   beats 48–56  FIGHT: a punch lands, a guard blocks one, a breather's
 //                breath hurts
 //   beats 56–66  BOSS: two hits, the boss down on bar 16 (the lift)
@@ -55,11 +54,14 @@ export const CHARACTER_ORDER: readonly AnimalId[] = [
     "boar",
 ]
 
-// Calm motion: a soft slow motion on a moment, no fast-forward into it.
-const SOFT: RampOptions = { fast: 1, fastFrames: 1, slow: 0.3, hold: 24 }
+// The slow motion on a moment: fast into it, hard slow on it.
+const SOFT: RampOptions = { slow: 0.15, hold: 20 }
 
-// The camera never punches in on the beat in this edit (note 5).
-const STILL = { punch: 0 } as const
+// The hard slow motion on an ability, as v2 had it (see speedRamp).
+const ABILITY_RAMP: RampOptions = { slow: 0.1, hold: 18 }
+
+// Zoom punches on the beat, a little under v2's.
+const STILL = { punch: 0.12 } as const
 
 function hero(scenes: Scenes, scene: SceneName): Moment {
     const m = heroMoment(scene, scenes[scene])
@@ -92,31 +94,52 @@ function openShots(scenes: Scenes): Shot[] {
         on(scenes, "hook", hero(scenes, "hook"), {
             name: "Chase",
             durationBeats: 8,
-            heroBeat: 3,
+            heroBeat: 2.5,
             speed: SOFT,
-            camera: { move: "follow", zoom: 2 },
-            shake: 0.3,
+            camera: { move: "follow", zoom: 2.3, punch: 0.14 },
+            shake: 1,
         }),
     ]
 }
 
-// Each character: two bars following it as the charge builds, the release
-// on beat 2 of the second bar (beat 5) in soft slow motion, then what it
-// did. The owl's run is short before its gust, so its release is earlier.
+// Each character, two bars, as v2 introduced them: a slam card (emoji,
+// name, ability word) for two beats, then its charged ability for six,
+// landing in hard slow motion on the second bar's snare, with its colour,
+// caption and a zoom punch.
 function characterShots(scenes: Scenes): Shot[] {
-    const ways: Transition[] = ["wipe", "wipe", "wipe", "wipe", "wipe"]
-    return CHARACTER_ORDER.map((animal, i) => {
+    const ways: Transition[] = ["flash", "whip", "wipe", "flash", "whip"]
+    const cardWays: Transition[] = ["cut", "wipe", "flash", "whip", "wipe"]
+    return CHARACTER_ORDER.flatMap((animal, i) => {
         const look = LOOKS[animal]
-        return on(scenes, animal, hero(scenes, animal), {
-            name: `${look.name}: charged ${look.ability.toLowerCase()}`,
-            durationBeats: 8,
-            heroBeat: animal === "owl" ? 3 : 5,
+        const card: CardShot = {
+            kind: "card",
+            name: `${look.name} card`,
+            animal,
+            durationBeats: 2,
+            hits: [0, 0.5, 1],
+            transition: cardWays[i],
+            colour: look.colour,
+        }
+        const shot = on(scenes, animal, hero(scenes, animal), {
+            name: `${look.name} ${look.ability}`,
+            durationBeats: 6,
+            // The owl's run before its gust is short.
+            heroBeat: animal === "owl" ? 2.5 : 3,
             transition: ways[i],
             colour: look.colour,
-            speed: SOFT,
-            camera: { move: "push", zoom: [1.7, 2.2] },
-            shake: 0.5,
+            speed: ABILITY_RAMP,
+            camera: {
+                move: "push",
+                // The dragon's fire is six cells long: keep it in shot.
+                zoom: animal === "dragon" ? [1.6, 2.2] : [2, 3.2],
+                punch: 0.18,
+            },
+            caption: look.ability,
+            // The skunk's cloud is low in the frame.
+            ...(animal === "skunk" && { captionPosition: "top" as const }),
+            shake: 1.4,
         })
+        return [card, shot]
     })
 }
 
@@ -128,8 +151,8 @@ function fightShots(scenes: Scenes): Shot[] {
             heroBeat: 1.5,
             transition: "cut",
             speed: SOFT,
-            camera: { move: "hold", zoom: 2.4 },
-            shake: 0.4,
+            camera: { move: "push", zoom: [2, 3], punch: 0.16 },
+            shake: 1.3,
         }),
         on(scenes, "guard", hero(scenes, "guard"), {
             name: "Guard",
@@ -137,8 +160,8 @@ function fightShots(scenes: Scenes): Shot[] {
             heroBeat: 1.25,
             transition: "cut",
             speed: SOFT,
-            camera: { move: "hold", zoom: 2.4 },
-            shake: 0.3,
+            camera: { move: "push", zoom: [2, 3], punch: 0.16 },
+            shake: 1.2,
         }),
         on(scenes, "breather", hero(scenes, "breather"), {
             name: "Breather",
@@ -146,8 +169,8 @@ function fightShots(scenes: Scenes): Shot[] {
             heroBeat: 1.25,
             transition: "cut",
             speed: SOFT,
-            camera: { move: "hold", zoom: 2 },
-            shake: 0.5,
+            camera: { move: "push", zoom: [1.8, 2.7], punch: 0.16 },
+            shake: 1.4,
         }),
     ]
 }
@@ -166,8 +189,8 @@ function bossShots(scenes: Scenes): Shot[] {
             transition: n === 0 ? "flash" : "cut",
             colour: fire,
             speed: SOFT,
-            camera: { move: "hold", zoom: 1.8 },
-            shake: 0.6,
+            camera: { move: "push", zoom: [1.8, 2.7], punch: 0.18 },
+            shake: 1.6,
         })
     return [
         hit(0),
@@ -182,7 +205,7 @@ function bossShots(scenes: Scenes): Shot[] {
                 heroBeat: 1,
                 speed: false,
                 transition: "cut",
-                camera: { move: "follow", zoom: 2 },
+                camera: { move: "follow", zoom: 2.4, punch: 0.2 },
                 shake: 0,
             }
         ),
@@ -192,9 +215,9 @@ function bossShots(scenes: Scenes): Shot[] {
             durationBeats: 4,
             heroBeat: 2,
             colour: fire,
-            speed: { fast: 1, fastFrames: 1, slow: 0.15, hold: 40 },
-            camera: { move: "push", zoom: [1.8, 2.4] },
-            shake: 0.8,
+            speed: { fast: 2, fastFrames: 10, slow: 0.05, hold: 50 },
+            camera: { move: "push", zoom: [2, 3.4], punch: 0.15 },
+            shake: 2.4,
         }),
     ]
 }
@@ -213,10 +236,10 @@ function montageShots(scenes: Scenes): Shot[] {
                 durationBeats: 1,
                 heroBeat: 0.5,
                 speed: false,
-                transition: "cut",
+                transition: "flash",
                 ...(look && { colour: look.colour }),
-                camera: { move: "hold", zoom: 2 },
-                shake: 0,
+                camera: { move: "hold", zoom: 1.9, punch: 0 },
+                shake: 0.7,
             }
         )
     })

@@ -44,39 +44,39 @@ describe("promo3CutList", () => {
         expect(beats).toBe(SECTIONS.end)
     })
 
-    it("gives every character two bars on its charged ability, in order", () => {
-        const shown = list.shots.filter(
-            (s) => isGameShot(s) && s.durationBeats === 8
+    it("gives every character two bars: its card, then its ability", () => {
+        const cards = list.shots.flatMap((sh) =>
+            sh.kind === "card" ? [sh.animal] : []
         )
-        const order = CHARACTER_ORDER.map((animal) => {
+        expect(cards).toEqual(CHARACTER_ORDER)
+        for (const animal of CHARACTER_ORDER) {
             const hero = heroMoment(animal, scenes[animal])
-            return shown.findIndex(
-                (s) =>
-                    isGameShot(s) &&
-                    s.recording === scenes[animal] &&
-                    s.heroTick === hero?.tick
+            const k = list.shots.findIndex(
+                (sh) =>
+                    isGameShot(sh) &&
+                    sh.recording === scenes[animal] &&
+                    sh.heroTick === hero?.tick
             )
-        })
-        expect(order.every((i) => i >= 0)).toBe(true)
-        expect([...order].sort((a, b) => a - b)).toEqual(order)
+            const card = list.shots[k - 1]
+            expect(card?.kind, animal).toBe("card")
+            expect(card.durationBeats + list.shots[k].durationBeats).toBe(8)
+            expect(
+                (list.shots[k] as { caption?: string }).caption
+            ).toBeDefined()
+        }
     })
 
-    it("explains no ability in words and keeps the name for the end", () => {
-        for (const s of list.shots) {
-            if (isGameShot(s)) expect(s.caption, s.name).toBeUndefined()
-            if (s.kind === "card") throw new Error(`A card: ${s.name}`)
+    it("has no words over the boss, and the name only at the end", () => {
+        const boss = list.shots.filter(
+            (sh) => isGameShot(sh) && sh.recording === scenes.boss
+        )
+        expect(boss.length).toBeGreaterThan(0)
+        for (const sh of boss) {
+            if (isGameShot(sh)) expect(sh.caption, sh.name).toBeUndefined()
         }
-        const titles = list.shots.filter((s) => s.kind === "title")
+        const titles = list.shots.filter((sh) => sh.kind === "title")
         expect(titles).toHaveLength(1)
         expect(list.shots.at(-1)).toBe(titles[0])
-    })
-
-    it("keeps the camera calm: no beat punches, light shake", () => {
-        for (const s of list.shots) {
-            if (!isGameShot(s)) continue
-            expect(s.camera?.punch, s.name).toBe(0)
-            expect(s.shake ?? 1, s.name).toBeLessThanOrEqual(0.8)
-        }
     })
 
     it("lands every hero tick exactly on its beat", () => {
