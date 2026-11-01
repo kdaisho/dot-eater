@@ -13,11 +13,11 @@ export const BURNING: TileEffect = {
     look: { color: "rgba(255, 110, 20, 0.45)", emoji: "🔥" },
 }
 
-// How far the fire spreads at charge `level`, in steps from the player: 3
-// for a tap, one more a level, 7 at the top (KDA-289; placeholders to tune
-// at preview).
+// How far the fire spreads at charge `level`, in steps from the player: 2
+// for a tap, one more a level, 6 at the top (KDA-289; it was 3 to 7, too
+// strong once the fire spread, per user feedback 2026-11-01).
 export function fireRange(level: number): number {
-    return level + 2
+    return level + 1
 }
 
 // Dragon 🐉, fire breath (KDA-216): fire that spreads down the corridors

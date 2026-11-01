@@ -72,11 +72,13 @@ describe("aimCells", () => {
         expect(aimCells(aimer("dragon", { x: 3, y: 3 }))).toEqual([])
     })
 
-    // From (1, 4) a tap's fire reaches 3 steps: along row 4 and up into
-    // row 3, round to (1, 3) above the player, but never back through the
-    // player's cell, and not as far as row 2.
+    // From (1, 4) fire charged to level 2 reaches 3 steps: along row 4 and
+    // up into row 3, round to (1, 3) above the player, but never back
+    // through the player's cell, and not as far as row 2.
     it("spreads the Dragon's fire ahead and round corners", () => {
-        expect(xy(aimCells(aimer("dragon", { x: 1, y: 4 })))).toEqual([
+        const state = aimer("dragon", { x: 1, y: 4 })
+        chargeTo(state.players[0].breather, 2)
+        expect(xy(aimCells(state))).toEqual([
             [2, 4],
             [2, 3],
             [3, 4],
@@ -137,7 +139,6 @@ describe("aimCells", () => {
         expect(xy(aimCells(aimer("dragon", { x: 1, y: 1 }, west)))).toEqual([
             [0, 1],
             [8, 1],
-            [7, 1],
         ])
     })
 
@@ -148,7 +149,6 @@ describe("aimCells", () => {
         expect(xy(aimCells(state))).toEqual([
             [2, 4],
             [3, 4],
-            [4, 4],
         ])
     })
 
@@ -162,11 +162,11 @@ describe("aimCells", () => {
             breather.charge = (level - 1) * CHARGE_SECONDS
             return aimCells(state).length
         })
-        // Ranges 3 to 7; the row has 6 open cells ahead.
-        expect(lengths).toEqual([3, 4, 5, 6, 6])
+        // Ranges 2 to 6; the row has 6 open cells ahead.
+        expect(lengths).toEqual([2, 3, 4, 5, 6])
         // Not charging: a tap's.
         breather.charge = null
-        expect(aimCells(state)).toHaveLength(3)
+        expect(aimCells(state)).toHaveLength(2)
     })
 
     it("shows no more than the level the meter pays for", () => {
@@ -175,7 +175,7 @@ describe("aimCells", () => {
         // Enough for level 2 (40), held long enough for 5.
         breather.energy = 45
         breather.charge = 10
-        expect(aimCells(state)).toHaveLength(4)
+        expect(aimCells(state)).toHaveLength(3)
     })
 
     it("marks the Boar's tunnel only up to open floor, however charged", () => {
@@ -194,7 +194,7 @@ describe("aimCells", () => {
             "#########",
         ])
 
-        // A line charged to level 3, for 5 cells.
+        // A line charged to level 3, for 4 cells.
         it("ends a line at the live boss's body, its cells there included", () => {
             const state = makeState(arena, { x: 1, y: 2 }, [], {
                 breath: lineFire(),
@@ -216,7 +216,7 @@ describe("aimCells", () => {
                 boss,
             })
             chargeTo(state.players[0].breather, 3)
-            expect(aimCells(state)).toHaveLength(5)
+            expect(aimCells(state)).toHaveLength(4)
         })
     })
 
@@ -358,6 +358,6 @@ describe("aimPreviews", () => {
     it("shows a charging player's aim at the level reached", () => {
         const state = aimer(lineFire(), { x: 1, y: 4 })
         chargeTo(state.players[0].breather, 2)
-        expect(xy(aimPreviews(state)[0].cells)).toHaveLength(4)
+        expect(xy(aimPreviews(state)[0].cells)).toHaveLength(3)
     })
 })
