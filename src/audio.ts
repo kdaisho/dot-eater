@@ -89,6 +89,27 @@ export const MUSIC_LEVEL = 2
 // about -16 LUFS when encoded, which is about as loud as the chip tunes
 // come out of the bus (measured on renders of them), so they pass as is.
 export const RECORDED_LEVEL = 1
+// Each tune's trim in dB on top of those levels, set by ear in a mixer
+// with the tunes played one after another at the default music volume: the
+// title's chip tune came across far louder than the stages, and the
+// recorded files differ in how loud they feel despite their even LUFS.
+// Tunes not listed play at 0 dB.
+export const MUSIC_TRIM_DB: Partial<Record<MusicTrackId, number>> = {
+    title: -8,
+    stage1: 1,
+    stage4: 2,
+    stage5: -1.5,
+    stage6: 1,
+    stage7: -1,
+    stage8: 1.5,
+    stage9: -2.5,
+    stage10: -1.5,
+}
+
+// A tune's trim as a gain.
+export function trimGain(track: MusicTrackId): number {
+    return 10 ** ((MUSIC_TRIM_DB[track] ?? 0) / 20)
+}
 // The limiter between master and the speakers: with the music lifted, loud
 // music at full volume plus a loud effect or two can top full scale, which
 // the speakers would hard-clip into clicks. It squashes peaks over the
@@ -367,10 +388,17 @@ export function createAudio(options: AudioOptions): Audio {
             })
     }
 
-    function startRecorded(recorded: RecordedTrack, buffer: AudioBuffer) {
+    function startRecorded(
+        track: MusicTrackId,
+        recorded: RecordedTrack,
+        buffer: AudioBuffer
+    ) {
         if (!context || !buses) return
         const bus = context.createGain()
-        bus.gain.setValueAtTime(RECORDED_LEVEL, context.currentTime)
+        bus.gain.setValueAtTime(
+            RECORDED_LEVEL * trimGain(track),
+            context.currentTime
+        )
         bus.connect(buses.music)
         const source = context.createBufferSource()
         source.buffer = buffer
@@ -388,11 +416,12 @@ export function createAudio(options: AudioOptions): Audio {
         const recorded = options.recorded?.[music]
         if (recorded && !unloadable.has(recorded.url)) {
             const buffer = decoded.get(recorded.url)
-            if (buffer) startRecorded(recorded, buffer)
+            if (buffer) startRecorded(music, recorded, buffer)
             else load(recorded.url)
             return
         }
         const bus = context.createGain()
+        bus.gain.setValueAtTime(trimGain(music), context.currentTime)
         bus.connect(buses.music)
         playing = {
             kind: "chip",
