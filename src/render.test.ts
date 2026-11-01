@@ -51,6 +51,12 @@ import {
     type Effects,
     CROUCH_HEIGHT,
     CROUCH_WIDTH,
+    CHARGE_AURA_ALPHA,
+    CHARGE_AURA_BASE,
+    CHARGE_AURA_FULL_ALPHA,
+    CHARGE_AURA_GROWTH,
+    CHARGE_FLICKER_HZ,
+    chargeAura,
 } from "./render"
 import { GUARD_STANCE } from "./guard"
 import { SNEAK_ALPHA, SNEAK_FAR, SNEAK_NEAR, sneakAlpha } from "./intercept"
@@ -2032,6 +2038,120 @@ describe("stanceLook (KDA-293)", () => {
         expect(CROUCH_WIDTH).toBeCloseTo(1.06)
         // Reduced motion: no crouch, but still the stance's look.
         expect(stanceLook(enemy, true)).toEqual({ width: 1, height: 1 })
+    })
+})
+
+// User feedback 2026-11-01: a charging breath shows on the character, so
+// the player needn't watch the meter.
+describe("chargeAura", () => {
+    // Amber while charging, the meter's charge red once full.
+    const AMBER = "#f59e0b"
+    const RED = "#dc2626"
+
+    function breather(energy = 100) {
+        const { breather } = makeState(textMap(["#.#"]).map, { x: 1, y: 0 })
+            .players[0]
+        breather.energy = energy
+        return breather
+    }
+
+    it("is null while the breath isn't charging", () => {
+        expect(chargeAura(breather(), false)).toBeNull()
+    })
+
+    it("grows a step each level, in amber", () => {
+        const b = breather()
+        const scales = [1, 2, 3, 4].map((level) => {
+            b.charge = (level - 1) * CHARGE_SECONDS
+            const aura = chargeAura(b, false)!
+            expect(aura.color).toBe(AMBER)
+            expect(aura.alpha).toBe(CHARGE_AURA_ALPHA)
+            return aura.scale
+        })
+        expect(scales).toEqual(
+            [0, 1, 2, 3].map((n) => CHARGE_AURA_BASE + n * CHARGE_AURA_GROWTH)
+        )
+    })
+
+    it("turns red and flickers once fully charged", () => {
+        const b = breather()
+        b.charge = 4 * CHARGE_SECONDS
+        const bright = chargeAura(b, false)!
+        expect(bright).toEqual({
+            color: RED,
+            alpha: CHARGE_AURA_FULL_ALPHA,
+            scale: CHARGE_AURA_BASE + 4 * CHARGE_AURA_GROWTH,
+        })
+        // Half a flicker on: faint.
+        b.charge += 0.5 / CHARGE_FLICKER_HZ
+        expect(chargeAura(b, false)!.alpha).toBe(CHARGE_AURA_ALPHA / 2)
+        // Reduced motion: steady.
+        expect(chargeAura(b, true)!.alpha).toBe(CHARGE_AURA_FULL_ALPHA)
+    })
+
+    it("is full at the level the meter pays for", () => {
+        // 40 energy pays for the Dragon's level 2.
+        const b = breather(40)
+        b.charge = CHARGE_SECONDS
+        expect(chargeAura(b, false)!.color).toBe(RED)
+        b.charge = 0
+        expect(chargeAura(b, false)!.color).toBe(AMBER)
+    })
+})
+
+describe("createRenderer with a charging breath", () => {
+    afterEach(() => {
+        vi.restoreAllMocks()
+    })
+
+    const discs = (calls: ReturnType<typeof setup>["calls"]) =>
+        calls.filter((c) => c.name === "arc")
+
+    function charging() {
+        const state = makeState(textMap(["#####", "#. .#", "#####"]).map, {
+            x: 2,
+            y: 1,
+        })
+        state.players[0].breather.energy = 100
+        return state
+    }
+
+    it("draws the aura behind the player's sprite", () => {
+        const { calls, canvas, renderer } = setup()
+        const state = charging()
+        state.players[0].breather.charge = CHARGE_SECONDS
+        renderer.draw(state, 0)
+        const cell = parseFloat(canvas.style.width) / 5
+        const [disc] = discs(calls)
+        const [x, y, r] = disc.args as number[]
+        expect(x).toBeCloseTo(2.5 * cell)
+        expect(y).toBeCloseTo(1.5 * cell)
+        expect(r).toBeCloseTo(
+            ((SPRITE_SCALE * cell) / 2) *
+                (CHARGE_AURA_BASE + CHARGE_AURA_GROWTH)
+        )
+        const fill = calls.findIndex((c) => c.name === "fill")
+        expect(calls[fill]).toMatchObject({
+            fillStyle: "#f59e0b",
+            globalAlpha: CHARGE_AURA_ALPHA,
+        })
+        const sprite = calls.findIndex(
+            (c) => c.name === "fillText" && c.args[0] === "🐉"
+        )
+        expect(sprite).toBeGreaterThan(fill)
+        expect(calls[sprite].globalAlpha).toBe(1)
+    })
+
+    it("draws none while not charging, or while stunned", () => {
+        const idle = setup()
+        idle.renderer.draw(charging(), 0)
+        expect(discs(idle.calls)).toEqual([])
+        const dazed = setup()
+        const state = charging()
+        state.players[0].breather.charge = 0
+        stun(state.players[0])
+        dazed.renderer.draw(state, 0)
+        expect(discs(dazed.calls)).toEqual([])
     })
 })
 
