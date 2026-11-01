@@ -49,8 +49,9 @@ export type PlayerTick = {
     // MoveInput.pressed: the direction newly pressed this tick.
     p?: string
     // The actions pressed this tick other than pause: directions, b for
-    // breath, c for confirm. A replay's MoveInput.breath is whether b is in
-    // it.
+    // breath, x for punch, c for confirm; and B while the breath key is
+    // held (it charges, KDA-289). A replay's MoveInput.breath, breathHeld
+    // and punch are whether b, B and x are in it.
     a?: string
 }
 
@@ -133,8 +134,12 @@ const ACTION_LETTERS: Partial<Record<Action, string>> = {
     left: "l",
     right: "r",
     breath: "b",
+    punch: "x",
     confirm: "c",
 }
+
+// In PlayerTick.a while the breath key is held.
+const HELD = "B"
 
 // A direction's letter, for its unit step.
 function letterOf(step: Vec2): string {
@@ -172,9 +177,12 @@ export function recordTick(input: TickInput, players: number): RecordedTick {
             const pressed =
                 action === "breath"
                     ? move.breath || input.wasPressed("breath", i)
-                    : input.wasPressed(action as Action, i)
+                    : action === "punch"
+                      ? move.punch || input.wasPressed("punch", i)
+                      : input.wasPressed(action as Action, i)
             if (pressed) actions += letter
         }
+        if (move.breathHeld) actions += HELD
         if (actions) tick.a = actions
         return tick
     })
@@ -194,6 +202,8 @@ export function tickInputOf(tick: RecordedTick): TickInput {
                 held: h.split("").map(stepOf),
                 pressed: p ? stepOf(p) : vec2(0, 0),
                 breath: a.includes("b"),
+                breathHeld: a.includes(HELD),
+                punch: a.includes("x"),
             }
         },
     }

@@ -48,6 +48,10 @@ describe("main with ?record", () => {
         pressAndTick("Space")
         pressAndTick("Space")
         pressAndTick("Space")
+        // Then difficulty select (KDA-263) and character select: the
+        // defaults.
+        pressAndTick("Space")
+        pressAndTick("Space")
         expect(screen()).toBe("playing")
 
         // Walk a little, pause for two seconds or so, walk again.

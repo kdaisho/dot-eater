@@ -122,20 +122,30 @@ describe("recordTick and tickInputOf", () => {
             move: (player = 0) =>
                 player === 0
                     ? { held: [vec2(0, -1), vec2(1, 0)], pressed: vec2(0, 0) }
-                    : { held: [], pressed: vec2(-1, 0), breath: true },
+                    : {
+                          held: [],
+                          pressed: vec2(-1, 0),
+                          breath: true,
+                          breathHeld: true,
+                          punch: true,
+                      },
         }
         const tick = recordTick(input, 2)
-        expect(tick).toEqual([{ h: "ur" }, { p: "l", a: "lbc" }])
+        expect(tick).toEqual([{ h: "ur" }, { p: "l", a: "lbxcB" }])
         const replayed = tickInputOf(tick)
         expect(replayed.move()).toEqual({
             held: [vec2(0, -1), vec2(1, 0)],
             pressed: vec2(0, 0),
             breath: false,
+            breathHeld: false,
+            punch: false,
         })
         expect(replayed.move(1)).toEqual({
             held: [],
             pressed: vec2(-1, 0),
             breath: true,
+            breathHeld: true,
+            punch: true,
         })
         expect(replayed.wasPressed("confirm", 1)).toBe(true)
         expect(replayed.wasPressed("pause", 1)).toBe(false)
@@ -159,6 +169,8 @@ describe("recordTick and tickInputOf", () => {
             held: [vec2(-1, 0)],
             pressed: vec2(-1, 0),
             breath: false,
+            breathHeld: false,
+            punch: false,
         })
         // Nor within a tick: each call is fresh.
         const replayed = tickInputOf(tick)
