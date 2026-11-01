@@ -1199,7 +1199,7 @@ function updateStageSelect(
 
 // Difficulty select for stage `level`, its cursor on `difficulty`: confirm
 // goes on to character select, Back to stage select on the stage.
-function stageDifficultySelect(
+export function stageDifficultySelect(
     mode: Mode,
     level: number,
     difficulty: Difficulty

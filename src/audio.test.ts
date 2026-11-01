@@ -665,4 +665,21 @@ describe("browserAudioContext", () => {
         expect(browserAudioContext({ AudioContext })()).toBe(made)
         expect(browserAudioContext({})()).toBeUndefined()
     })
+
+    // Regression: on iOS in silent mode the game played no sound at all.
+    it("makes iOS play it in silent mode, before making the context", () => {
+        const audioSession = { type: "auto" }
+        const AudioContext = vi.fn(function () {
+            expect(audioSession.type).toBe("playback")
+            return fakeContext()
+        }) as unknown as new () => AudioContextLike
+        const make = browserAudioContext({
+            AudioContext,
+            navigator: { audioSession },
+        })
+        expect(audioSession.type).toBe("auto")
+        make()
+        expect(audioSession.type).toBe("playback")
+        expect(AudioContext).toHaveBeenCalledOnce()
+    })
 })
