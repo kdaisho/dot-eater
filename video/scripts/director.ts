@@ -856,7 +856,7 @@ export const SCENES: Readonly<Record<SceneName, SceneDef>> = {
         seed: 1,
         brains: () => [daredevil(1.5, 90)],
         isKey: (_moments, screen) => threatDistance(screen) <= 0.9,
-        tail: 60,
+        tail: 240,
         maxTicks: 600,
         score: (run) => {
             const close = Math.min(...run.threats)
@@ -892,7 +892,7 @@ export const SCENES: Readonly<Record<SceneName, SceneDef>> = {
             ),
         ],
         isKey: (moments) => count(moments, "enemyDefeated") > 0,
-        tail: 75,
+        tail: 240,
         maxTicks: 900,
         score: (run) => {
             const moments = at(run, run.keyTick!)
@@ -924,7 +924,7 @@ export const SCENES: Readonly<Record<SceneName, SceneDef>> = {
             ),
         ],
         isKey: (moments) => count(moments, "enemyFrozen") > 0,
-        tail: 150,
+        tail: 240,
         maxTicks: 900,
         score: (run) =>
             count(at(run, run.keyTick!), "enemyFrozen") * 500 - run.keyTick!,
@@ -958,7 +958,7 @@ export const SCENES: Readonly<Record<SceneName, SceneDef>> = {
             ),
         ],
         isKey: (moments) => count(moments, "enemyBlown") > 0,
-        tail: 75,
+        tail: 240,
         maxTicks: 900,
         score: (run) =>
             count(at(run, run.keyTick!), "enemyBlown") * 400 - run.keyTick!,
@@ -971,7 +971,7 @@ export const SCENES: Readonly<Record<SceneName, SceneDef>> = {
         seed: 24,
         brains: () => [charged(3, camper(1.6, 90), 0.6)],
         isKey: (moments) => count(moments, "enemyRepelled") > 0,
-        tail: 150,
+        tail: 240,
         maxTicks: 900,
         score: (run) => {
             const key = run.keyTick!
@@ -993,7 +993,7 @@ export const SCENES: Readonly<Record<SceneName, SceneDef>> = {
         seed: 1,
         brains: () => [charged(4, breaker(3.5, 240, 80, 4), 0.6)],
         isKey: (moments) => count(moments, "wallBroken") > 0,
-        tail: 120,
+        tail: 240,
         maxTicks: 1200,
         score: (run) => {
             const walls = count(at(run, run.keyTick!), "wallBroken")
@@ -1009,7 +1009,7 @@ export const SCENES: Readonly<Record<SceneName, SceneDef>> = {
         seed: 1,
         brains: () => [puncher(20)],
         isKey: (moments) => count(moments, "punchHit") > 0,
-        tail: 60,
+        tail: 240,
         maxTicks: 900,
         score: (run) => -run.keyTick!,
     },
@@ -1022,7 +1022,7 @@ export const SCENES: Readonly<Record<SceneName, SceneDef>> = {
         seed: 4,
         brains: () => [puncher(8)],
         isKey: (moments) => count(moments, "punchBlocked") > 0,
-        tail: 60,
+        tail: 240,
         maxTicks: 900,
         score: (run) => {
             const key = run.keyTick!
@@ -1042,7 +1042,7 @@ export const SCENES: Readonly<Record<SceneName, SceneDef>> = {
         brains: () => [daredevil(2.5, 60)],
         isKey: (moments) =>
             count(moments, "enemyBreathed") > 0 && count(moments, "hurt") > 0,
-        tail: 75,
+        tail: 240,
         maxTicks: 1800,
         score: (run) => -run.keyTick!,
     },

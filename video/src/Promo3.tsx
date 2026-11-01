@@ -11,40 +11,40 @@ import type { BeatsFile } from "./beats"
 import { compileCuts } from "./cutList"
 import { CutSequence } from "./CutSequence"
 import { Confetti, Flash, Letterbox, Slam, Vignette } from "./DramaFx"
-import { excerptFrames, PROMO2_EXCERPT } from "./excerpts"
+import { excerptFrames, PROMO3_EXCERPT } from "./excerpts"
 import { loadBeats } from "./loadBeats"
 import { DISPLAY, INK, LOOKS, PAPER } from "./palette"
 import {
     BOSS_DOWN_BEAT,
     CHARACTER_ORDER,
     END_EMOJI_BEATS,
-    promo2CutList,
+    promo3CutList,
     SECTIONS,
     type Scenes,
-} from "./promo2Cuts"
+} from "./promo3Cuts"
 import { promo2Tracks } from "./promo2Sound"
 import { sceneRecording } from "./recordings/scenes"
 import { SCENE_NAMES } from "./scenes"
 import { SONGS } from "./songs"
 
-// The v2 promo: the characters' trailer, cut to The Return of the 8-Bit Era
-// (PROMO2_EXCERPT, about 44 s) from the directed scenes.
-// The song only, no game sound. The edit is promo2Cuts.ts; this adds the
-// song and what spans shots: the boss look, the boss-down flash and
-// confetti, and the end card's emoji.
+// The v3 promo: the characters' trailer on the current game, cut to The
+// Return of the 8-Bit Era from its start (PROMO3_EXCERPT, about 55 s), from
+// the directed scenes. The song only, no game sound. The edit is
+// promo3Cuts.ts; this adds the song and what spans shots: the boss look,
+// the boss-down flash and confetti, and the end card's emoji.
 
-export const PROMO2_FPS = 30
+export const PROMO3_FPS = 30
 
-export type Promo2Props = {
+export type Promo3Props = {
     beats: BeatsFile | null
     song: string | null
 }
 
-export const calculatePromo2: CalculateMetadataFunction<
-    Promo2Props
+export const calculatePromo3: CalculateMetadataFunction<
+    Promo3Props
 > = async () => {
-    const loaded = await loadBeats(SONGS.promo2)
-    const frames = excerptFrames(loaded.file, PROMO2_EXCERPT, PROMO2_FPS)
+    const loaded = await loadBeats(SONGS.promo3)
+    const frames = excerptFrames(loaded.file, PROMO3_EXCERPT, PROMO3_FPS)
     return {
         durationInFrames: frames.duration,
         props: { beats: loaded.file, song: loaded.song },
@@ -57,21 +57,21 @@ const SCENES: Scenes = Object.fromEntries(
 
 const CONFETTI = [...CHARACTER_ORDER.map((a) => LOOKS[a].colour), PAPER]
 
-export function Promo2({ beats: file, song }: Promo2Props) {
+export function Promo3({ beats: file, song }: Promo3Props) {
     const frame = useCurrentFrame()
     const frames = useMemo(
-        () => (file ? excerptFrames(file, PROMO2_EXCERPT, PROMO2_FPS) : null),
+        () => (file ? excerptFrames(file, PROMO3_EXCERPT, PROMO3_FPS) : null),
         [file]
     )
     const shots = useMemo(
-        () => (frames ? compileCuts(promo2CutList(SCENES), frames.beats) : []),
+        () => (frames ? compileCuts(promo3CutList(SCENES), frames.beats) : []),
         [frames]
     )
     if (!frames) return null
     const { beats } = frames
     const at = (beat: number) => Math.round(beats.beatFrame(beat))
     const bossFrom = at(SECTIONS.boss)
-    const bossTo = at(SECTIONS.endCard)
+    const bossTo = at(SECTIONS.montage)
     const down = at(BOSS_DOWN_BEAT)
     const endFrom = at(SECTIONS.endCard)
     // The boss look closes in over the hook's first frames and opens on
@@ -85,7 +85,7 @@ export function Promo2({ beats: file, song }: Promo2Props) {
     const tracks = promo2Tracks(song, {
         start: frames.start,
         duration: frames.duration,
-        fps: PROMO2_FPS,
+        fps: PROMO3_FPS,
     })
     return (
         <AbsoluteFill style={{ backgroundColor: INK }}>
