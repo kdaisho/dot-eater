@@ -133,7 +133,7 @@ import {
     showToast,
     type EndScreenView,
 } from "./ui"
-import { isTouchDevice, isTouchFirst, TouchSource } from "./touch"
+import { heading, isTouchDevice, isTouchFirst, TouchSource } from "./touch"
 import { OPENING_DRUM } from "./opening"
 import { createOpeningLayer, openingItemAt } from "./openingView"
 import { roundWins, stunned, tallyText } from "./versus"
@@ -473,6 +473,10 @@ function tick(dt: number) {
         (screen.kind === "playing" && next.kind !== "paused")
     if (next !== screen) enter(screen, next)
     if (moved) effects.tick(dt)
+    // The way player 1 is going, for the flicks (see TouchSource.follow).
+    const player =
+        next.kind === "playing" ? gameOf(next)?.players[0] : undefined
+    touchSource.follow(player && heading(player))
 }
 
 function flowDeps(dt: number): FlowDeps {
