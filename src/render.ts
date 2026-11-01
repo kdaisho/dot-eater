@@ -475,12 +475,14 @@ export function createRenderer(
     }
 }
 
-// The fog for one frame: the light is centred on where each player is
-// drawn (mid-glide), and anything wholly outside `radius` cells of every
-// player is hidden.
+// The fog for one frame: each player's light is centred on where it is
+// drawn (mid-glide), `radius` cells across times its breath's sightScale
+// (the Owl sees further), and anything wholly outside every light is
+// hidden.
+type Light = { pos: Vec2; radius: number }
+
 type Fog = {
-    players: Vec2[]
-    radius: number
+    lights: Light[]
     wrap: FogWrap
     // Whether something centred at `p` (cell units) reaches into the light.
     visible(p: Vec2): boolean
@@ -497,19 +499,19 @@ function createFog(
     // the light stays where they went out.
     const inPlay = state.players.filter((p) => !p.out)
     const lit = inPlay.length > 0 ? inPlay : state.players
-    const players = lit.map((p) =>
-        glidePos(p.character, alpha, cols, rows, p.rate)
-    )
+    const lights = lit.map((p) => ({
+        pos: glidePos(p.character, alpha, cols, rows, p.rate),
+        radius: radius * (p.breather.breath.sightScale ?? 1),
+    }))
     const wrap = fogWrap(state.cells)
     return {
-        players,
-        radius,
+        lights,
         wrap,
         visible: (p) =>
-            players.some(
-                (player) =>
-                    fogDistance(p, player, cols, rows, wrap) <=
-                    radius + FOG_REACH
+            lights.some(
+                (light) =>
+                    fogDistance(p, light.pos, cols, rows, wrap) <=
+                    light.radius + FOG_REACH
             ),
     }
 }
@@ -557,13 +559,14 @@ function drawDarkness(
     dpr: number,
     screen: Rect
 ) {
-    const outer = fog.radius * cell
-    const inner = Math.max(0, fog.radius - FOG_SOFT_EDGE) * cell
-    if (fog.players.length > 1) {
+    if (fog.lights.length > 1) {
         drawSharedDarkness(ctx, fog, cell, cols, rows, layer(), dpr, screen)
         return
     }
-    for (const c of lightCentres(fog.players[0], cols, rows, fog.wrap)) {
+    const [{ pos, radius }] = fog.lights
+    const outer = radius * cell
+    const inner = Math.max(0, radius - FOG_SOFT_EDGE) * cell
+    for (const c of lightCentres(pos, cols, rows, fog.wrap)) {
         const band = lightBand(c, cols, rows, fog.wrap)
         if (!band) continue
         const x = (c.x + 0.5) * cell
@@ -611,8 +614,6 @@ function drawSharedDarkness(
     const pixelHeight = Math.ceil(screen.height * dpr)
     if (layer.canvas.width !== pixelWidth) layer.canvas.width = pixelWidth
     if (layer.canvas.height !== pixelHeight) layer.canvas.height = pixelHeight
-    const outer = fog.radius * cell
-    const inner = Math.max(0, fog.radius - FOG_SOFT_EDGE) * cell
     // Last frame's darkness is still there: start from a clear layer.
     dark.setTransform(1, 0, 0, 1, 0, 0)
     dark.globalCompositeOperation = "source-over"
@@ -622,8 +623,10 @@ function drawSharedDarkness(
     dark.fillStyle = `rgb(${COLORS.fog})`
     dark.fillRect(0, 0, cols * cell, rows * cell)
     dark.globalCompositeOperation = "destination-out"
-    for (const player of fog.players) {
-        for (const c of lightCentres(player, cols, rows, fog.wrap)) {
+    for (const { pos, radius } of fog.lights) {
+        const outer = radius * cell
+        const inner = Math.max(0, radius - FOG_SOFT_EDGE) * cell
+        for (const c of lightCentres(pos, cols, rows, fog.wrap)) {
             const x = (c.x + 0.5) * cell
             const y = (c.y + 0.5) * cell
             // A light wholly off screen clears nothing that shows.

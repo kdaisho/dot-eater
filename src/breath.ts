@@ -203,6 +203,9 @@ export type BreathDef = {
     // floor, moving and stopping by its input, instead of sliding (see
     // slideTick in game.ts). Leave it out to slide like everyone else.
     walksOnIce?: boolean
+    // How far the player sees in fog, as a factor of the level's radius
+    // (see FogRule in level.ts). Leave it out for 1.
+    sightScale?: number
     // How the breath looks in particles (see particles.ts): a burst on each
     // cell it strikes, flying along the facing. Leave it out for none.
     particles?: ParticleLook

@@ -536,6 +536,35 @@ describe("createRenderer", () => {
             expect(walls.has("12,1")).toBe(false)
         })
 
+        // User feedback 2026-11-01: the Owl sees 1.5 times as far.
+        it("lights 1.5 times the radius round the Owl", () => {
+            const fogged = (breath = BREATHS.dragon) => {
+                const { calls, canvas, renderer, texts } = setup()
+                const state = makeState(
+                    corridor(),
+                    { x: 2, y: 1 },
+                    [makeEnemy(8, 1, AiType.chase, undefined, ENEMY_IDS[0])],
+                    { breath }
+                )
+                renderer.draw(state, 0, {}, { fog: { radius: 4 } })
+                const cell = parseFloat(canvas.style.width) / 13
+                const [light] = calls.filter(
+                    (c) => c.name === "createRadialGradient"
+                )
+                // The light's inner and outer radius, in cells.
+                const radii = [light.args[2], light.args[5]].map(
+                    (r) => (r as number) / cell
+                )
+                return { texts: texts(), radii }
+            }
+            // The chaser is 6 cells off: out of a radius of 4, in one of 6.
+            expect(fogged()).toEqual({ texts: ["🐉"], radii: [2.5, 4] })
+            expect(fogged(BREATHS.owl)).toEqual({
+                texts: ["🦉", "👹"],
+                radii: [4.5, 6],
+            })
+        })
+
         // Regression: only things whose centre was inside the radius were
         // drawn, so walls and enemies popped in at the soft edge.
         it("draws what reaches into the light, so it fades in", () => {
@@ -1424,6 +1453,31 @@ describe("createRenderer with two players", () => {
             expect(images).toHaveLength(1)
             expect(images[0].args[0]).toBe(layerCanvas)
             expect(images[0].args.slice(1)).toEqual([0, 0, 13 * cell, 3 * cell])
+        })
+
+        it("gives each player its own light: the Owl's 1.5 times as wide", () => {
+            const { canvas, renderer } = setup()
+            const layerCanvas = document.createElement("canvas")
+            const layer = stubContext()
+            vi.spyOn(layerCanvas, "getContext").mockReturnValue(
+                layer.ctx as never
+            )
+            vi.spyOn(document, "createElement").mockReturnValue(layerCanvas)
+            const state = makeState(
+                corridor,
+                [
+                    { x: 1, y: 1 },
+                    { x: 11, y: 1 },
+                ],
+                [],
+                { breath: [BREATHS.dragon, BREATHS.owl] }
+            )
+            renderer.draw(state, 0, {}, { fog: { radius: 2 } })
+            const cell = parseFloat(canvas.style.width) / 13
+            const outer = layer.calls
+                .filter((c) => c.name === "createRadialGradient")
+                .map((c) => (c.args[5] as number) / cell)
+            expect(outer).toEqual([2, 3])
         })
 
         // Resizing a canvas reallocates it: the layer is sized, and its

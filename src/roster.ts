@@ -68,7 +68,7 @@ export const ANIMALS: Readonly<Record<AnimalId, AnimalInfo>> = {
         breathName: "Wind breath",
         breathText:
             "Blows every enemy in a line back 3 cells, even through tunnels.",
-        statText: "Cheap breath, short cooldown",
+        statText: "Cheap breath, short cooldown, sees further in fog",
     },
     skunk: {
         id: AnimalId.skunk,
