@@ -12,6 +12,10 @@ import {
     SKIP_TO,
     STAFF,
     staffAt,
+    lampPower,
+    ufoAt,
+    UFO_CROSSING,
+    UFO_PASSES,
 } from "./endRoll"
 import { update, type FlowDeps, type Screen, type TickInput } from "./flow"
 import type { Action } from "./input"
@@ -209,5 +213,34 @@ describe("the endRoll screen", () => {
         expect(
             update(screen, input(["breath", "punch", "left"]), deps(0))
         ).toBe(screen)
+    })
+})
+
+describe("lampPower", () => {
+    const samples = Array.from({ length: 8600 }, (_, i) => lampPower(i / 100))
+    it("is full most of the time", () => {
+        const full = samples.filter((p) => p === 1).length
+        expect(full / samples.length).toBeGreaterThan(0.9)
+    })
+    it("stutters now and then over the roll", () => {
+        let stutters = 0
+        samples.forEach((p, i) => {
+            if (p < 1 && (i === 0 || samples[i - 1] === 1)) stutters++
+        })
+        // Several stutters, each a few quick cuts.
+        expect(stutters).toBeGreaterThan(20)
+        expect(samples.every((p) => p === 1 || p === 0.25)).toBe(true)
+    })
+})
+
+describe("ufoAt", () => {
+    it("crosses right to left at each pass, quickly", () => {
+        for (const at of UFO_PASSES) {
+            expect(ufoAt(at)).toBe(0)
+            expect(ufoAt(at + UFO_CROSSING / 2)).toBeCloseTo(0.5)
+            expect(ufoAt(at + UFO_CROSSING + 0.001)).toBeUndefined()
+            expect(ufoAt(at - 0.01)).toBeUndefined()
+        }
+        expect(UFO_CROSSING).toBeLessThan(1)
     })
 })

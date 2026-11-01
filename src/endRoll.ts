@@ -228,6 +228,37 @@ export function staffAt(
     return shown < per - 0.4 ? { index, shown } : undefined
 }
 
+// The spotlight's lamp is a little broken: now and then it stutters for a
+// moment. Its power (1 full, lower when it cuts out) at `t` seconds.
+const FLICKER_EVERY = 3.7
+export function lampPower(t: number): number {
+    const k = Math.floor(t / FLICKER_EVERY)
+    const roll = (n: number) => {
+        const x = Math.sin(k * 12.9898 + n * 78.233) * 43758.5453
+        return x - Math.floor(x)
+    }
+    // About two periods in three have a stutter, somewhere in the period.
+    if (roll(1) > 0.65) return 1
+    const from = k * FLICKER_EVERY + roll(2) * (FLICKER_EVERY - 0.5)
+    const into = t - from
+    if (into < 0 || into >= 0.36) return 1
+    // Off and on at about 17 Hz, the lamp catching on the last flash.
+    return Math.floor(into / 0.06) % 2 === 0 ? 0.25 : 1
+}
+
+// A tiny UFO zips across the sky, right to left, at these times.
+export const UFO_PASSES = [9.6, 33.4, 62] as const
+export const UFO_CROSSING = 0.55
+// How far across the UFO is at `t` (0 at the right edge, 1 at the left),
+// or undefined when it isn't on screen.
+export function ufoAt(t: number): number | undefined {
+    for (const at of UFO_PASSES) {
+        const p = (t - at) / UFO_CROSSING
+        if (p >= 0 && p < 1) return p
+    }
+    return undefined
+}
+
 // What a press does at `t` seconds: during the roll it skips to THE END;
 // once THE END has shown END_ROLL.endingReady seconds it goes to the title;
 // in between (the fade, THE END's first moments) it does nothing.
