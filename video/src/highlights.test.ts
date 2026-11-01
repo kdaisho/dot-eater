@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vite-plus/test"
-import { addTileEffect, type BreathDef } from "../../src/breath"
+import { addTileEffect, CHARGE_SECONDS, type BreathDef } from "../../src/breath"
 import { BREATHS } from "../../src/breaths"
 import { BURNING } from "../../src/breaths/dragon"
 import { AiType, Cell, TICK_MS } from "../../src/constants"
@@ -39,10 +39,18 @@ function ready(state: GameState, breath: BreathDef, facing: Vec2): GameState {
     return state
 }
 
-// One tick, player 1 breathing if `breath`: the moments it makes.
-function tick(state: GameState, breath = true): Moment[] {
+// One tick, player 1 breathing if `breath` (a tap, or let go at charge
+// `level`; see chargeTick): the moments it makes.
+function tick(state: GameState, breath = true, level = 1): Moment[] {
     const before = cloneState(state)
-    step(state, DT, { ...IDLE, breath }, fixedRandom(0))
+    if (breath && level > 1) {
+        state.players[0].breather.charge = (level - 1) * CHARGE_SECONDS
+    }
+    const input =
+        breath && level > 1
+            ? { ...IDLE, breath: false, breathHeld: false }
+            : { ...IDLE, breath }
+    step(state, DT, input, fixedRandom(0))
     return momentsOf(before, state, state.events, 1)
 }
 
@@ -81,7 +89,9 @@ describe("momentsOf", () => {
             BREATHS.penguin,
             vec2(1, 0)
         )
-        const frozen = tick(state).filter((m) => m.kind === "enemyFrozen")
+        const frozen = tick(state, true, 3).filter(
+            (m) => m.kind === "enemyFrozen"
+        )
         expect(frozen.map((m) => [m.enemy, m.at, m.player])).toEqual([
             [0, vec2(3, 1), 0],
             [1, vec2(4, 1), 0],
@@ -96,7 +106,10 @@ describe("momentsOf", () => {
             BREATHS.owl,
             vec2(1, 0)
         )
-        const blown = tick(state).filter((m) => m.kind === "enemyBlown")
+        // Level 2 blows it back 3 cells (see windPush).
+        const blown = tick(state, true, 2).filter(
+            (m) => m.kind === "enemyBlown"
+        )
         expect(blown).toHaveLength(1)
         expect(blown[0]).toMatchObject({ player: 0, enemy: 0, at: vec2(5, 1) })
     })
@@ -153,12 +166,13 @@ describe("momentsOf", () => {
             vec2(1, 0)
         )
         state.boss!.health = 4
-        const hit = tick(state).find((m) => m.kind === "bossHit")
+        const hit = tick(state, true, 3).find((m) => m.kind === "bossHit")
         expect(hit).toMatchObject({ player: 0, at: vec2(4, 1) })
         expect(hit?.focus).toEqual(vec2(5, 2))
         state.players[0].breather.cooldown = 0
         const boss = state.boss!
-        const down = tick(state).find((m) => m.kind === "bossDefeated")
+        state.players[0].breather.energy = BREATHS.dragon.maxEnergy
+        const down = tick(state, true, 3).find((m) => m.kind === "bossDefeated")
         expect(down).toMatchObject({ player: 0, at: boss.pos })
     })
 })

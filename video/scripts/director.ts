@@ -9,7 +9,13 @@
 // Everything is seeded, so a scene records the same run every time. The
 // seeds were picked by searching (record-scenes --search), scoring each run
 // on how well it shows its moment (see SceneDef.score).
-import { canBreathe, hasStatus, inPlay } from "../../src/breath.ts"
+import {
+    affordable,
+    canBreathe,
+    chargeLevel,
+    hasStatus,
+    inPlay,
+} from "../../src/breath.ts"
 import {
     bossFits,
     bossReach,
@@ -18,6 +24,7 @@ import {
     squareDistance,
 } from "../../src/boss.ts"
 import { Cell, TICK_MS } from "../../src/constants.ts"
+import type { Difficulty } from "../../src/difficulty.ts"
 import {
     startLevel,
     update,
@@ -58,9 +65,15 @@ const ACTIONS = Object.keys(DIRECTIONS) as DirectionAction[]
 
 const key = (p: Vec2) => `${p.x},${p.y}`
 
-// One player's choice for one tick: the direction to hold (null for none)
-// and whether to press breath.
-export type Decision = { dir: DirectionAction | null; breath: boolean }
+// One player's choice for one tick: the direction to hold (null for none),
+// whether to press breath, whether the breath key is held (to charge it;
+// left out, a press is a tap) and whether to punch.
+export type Decision = {
+    dir: DirectionAction | null
+    breath: boolean
+    hold?: boolean
+    punch?: boolean
+}
 
 const IDLE: Decision = { dir: null, breath: false }
 
@@ -73,10 +86,13 @@ export type View = {
     // Ticks recorded so far.
     tick: number
     // What the game would do this tick if this player held `dir` and
-    // breathed (the others idle): the moments of that tick (see
-    // highlights.ts), the game before and after it. A dry run on a copy:
-    // the real game and its randomness are left as they were.
+    // breathed (the others idle): a tap, or letting go of the charge it
+    // holds. The moments of that tick (see highlights.ts), the game before
+    // and after it. A dry run on a copy: the real game and its randomness
+    // are left as they were.
     tryBreath(dir: DirectionAction | null): Lookahead
+    // The same for any decision of this player's, e.g. a punch.
+    tryDecision(decision: Decision): Lookahead
 }
 
 export type Lookahead = {
@@ -91,6 +107,8 @@ export type Brain = (view: View) => Decision
 
 export type SceneDef = {
     level: number
+    // Medium when left out.
+    difficulty?: Difficulty
     animals: Picks
     mode: "solo" | "coop"
     seed: number
@@ -368,14 +386,16 @@ export function hunter(options: HunterOptions): Brain {
 // The Skunk: charges up, waits at a junction (so the cloud spreads every
 // way), breathes its cloud when a threat comes within `trigger` cells, then
 // stands in it.
-export function camper(trigger: number): Brain {
+export function camper(trigger: number, chargeTo = 0): Brain {
     let breathed = false
     return (view) => {
         const { game, player } = view
         const me = game.players[player].character.pos
         if (breathed) return IDLE
         const breather = game.players[player].breather
-        if (!canBreathe(breather)) return { dir: eat(game, me), breath: false }
+        if (!canBreathe(breather) || breather.energy < chargeTo) {
+            return { dir: eat(game, me), breath: false }
+        }
         const junction = (p: Vec2) => openNeighbours(game.cells, p).length >= 3
         if (!junction(me)) {
             const step = firstStepTo(game, me, dangerOf(game), junction)
@@ -394,13 +414,27 @@ export function camper(trigger: number): Brain {
 
 // A wall the Boar could break from `cell` facing `dir`: an inner wall with
 // open floor behind it.
-type BreakSpot = { cell: Vec2; dir: DirectionAction; through: Vec2 }
+type BreakSpot = {
+    cell: Vec2
+    dir: DirectionAction
+    through: Vec2
+    // How many walls in a row it breaks through.
+    walls: number
+}
 
-function breakSpots(game: GameState, minShortcut: number): BreakSpot[] {
+// Spots where a run of 1 to `maxWalls` inner walls in a line has open
+// floor behind it, and the way round is at least `minShortcut` steps.
+function breakSpots(
+    game: GameState,
+    minShortcut: number,
+    maxWalls = 1
+): BreakSpot[] {
     const { cells } = game
     const rows = cells.length
     const cols = cells[0].length
     const open = (p: Vec2) => cells[p.y][p.x] !== Cell.wall
+    const inner = (p: Vec2) =>
+        p.x > 0 && p.y > 0 && p.x < cols - 1 && p.y < rows - 1
     const spots: BreakSpot[] = []
     for (let y = 1; y < rows - 1; y++) {
         for (let x = 1; x < cols - 1; x++) {
@@ -408,22 +442,24 @@ function breakSpots(game: GameState, minShortcut: number): BreakSpot[] {
             if (!open(cell)) continue
             for (const dir of ACTIONS) {
                 const d = DIRECTIONS[dir]
-                const wall = vec2(x + d.x, y + d.y)
-                const through = vec2(x + 2 * d.x, y + 2 * d.y)
-                if (
-                    wall.x <= 0 ||
-                    wall.y <= 0 ||
-                    wall.x >= cols - 1 ||
-                    wall.y >= rows - 1 ||
-                    open(wall) ||
-                    !cells[through.y]?.[through.x] ||
-                    !open(through)
-                ) {
-                    continue
+                let walls = 0
+                let through: Vec2 | null = null
+                for (let k = 1; k <= maxWalls + 1; k++) {
+                    const p = vec2(x + k * d.x, y + k * d.y)
+                    if (cells[p.y]?.[p.x] === undefined) break
+                    if (open(p)) {
+                        through = p
+                        break
+                    }
+                    // The outer wall never breaks.
+                    if (!inner(p)) break
+                    walls++
                 }
+                if (!through || walls === 0) continue
                 // Only walls worth breaking: the way round is long.
                 const round = firstStepDistance(game, cell, through)
-                if (round >= minShortcut) spots.push({ cell, dir, through })
+                if (round >= minShortcut)
+                    spots.push({ cell, dir, through, walls })
             }
         }
     }
@@ -450,7 +486,12 @@ function firstStepDistance(game: GameState, a: Vec2, b: Vec2): number {
 // The Boar: charges up, walks to the nearest wall worth breaking, waits
 // there (facing it) for a threat to come within `trigger` cells or for
 // `patience` ticks, breaks it and goes through.
-export function breaker(trigger: number, patience: number): Brain {
+export function breaker(
+    trigger: number,
+    patience: number,
+    chargeTo = 0,
+    maxWalls = 1
+): Brain {
     let spot: BreakSpot | null = null
     let waited = 0
     let broken = false
@@ -468,13 +509,17 @@ export function breaker(trigger: number, patience: number): Brain {
             spot = null
             return { dir: eat(game, me), breath: false }
         }
-        if (!canBreathe(breather)) return { dir: eat(game, me), breath: false }
+        if (!canBreathe(breather) || breather.energy < chargeTo) {
+            return { dir: eat(game, me), breath: false }
+        }
         if (!spot) {
-            const spots = breakSpots(game, 8)
+            const spots = breakSpots(game, 8, maxWalls)
+            // The most walls in a row, then the nearest.
             spot =
                 spots
                     .map((s) => ({ s, d: firstStepDistance(game, me, s.cell) }))
-                    .sort((a, b) => a.d - b.d)[0]?.s ?? null
+                    .sort((a, b) => b.s.walls - a.s.walls || a.d - b.d)[0]?.s ??
+                null
             if (!spot) return { dir: eat(game, me), breath: false }
         }
         const target = spot
@@ -522,6 +567,91 @@ export function daredevil(nerve: number, rest: number): Brain {
     }
 }
 
+// Plays `brain`, but charges every breath to `level` (KDA-289): holds the
+// breath key from when the meter pays for `level` (moving on as `brain`
+// says), and lets go once the charge has reached `level` and `brain` has
+// asked to breathe (its look-ahead is then of the charged breath, see
+// View.tryBreath). A threat within `panic` cells makes it let go early.
+// `brain` never taps: its asks are kept until the charge fires.
+export function charged(level: number, brain: Brain, panic = 1): Brain {
+    let asked = false
+    return (view) => {
+        const { game, player } = view
+        const breather = game.players[player].breather
+        const d = brain(view)
+        if (d.breath) asked = true
+        const dir = d.dir
+        if (breather.charge !== null) {
+            const ready = chargeLevel(breather) >= level
+            if ((ready && asked) || threatTo(game, player) <= panic) {
+                asked = false
+                return { dir, breath: false, hold: false }
+            }
+            return { dir, breath: false, hold: true }
+        }
+        if (canBreathe(breather) && affordable(breather) >= level) {
+            return { dir, breath: true, hold: true }
+        }
+        return { dir, breath: false, hold: false }
+    }
+}
+
+// Walks up to the nearest enemy and punches it: on every `every`th tick
+// while a punch would land (hit or be blocked). With `targets`, only those
+// enemies (by index).
+export function puncher(
+    every: number,
+    targets?: (game: GameState) => number[]
+): Brain {
+    let wait = 0
+    return (view) => {
+        const { game, player } = view
+        const me = game.players[player].character.pos
+        const wanted = new Set(
+            targets
+                ? targets(game)
+                : game.enemies.flatMap((e, i) => (inPlay(e) ? [i] : []))
+        )
+        const cells = new Set(
+            game.enemies
+                .filter((e, i) => wanted.has(i) && inPlay(e))
+                .map((e) => key(e.pos))
+        )
+        if (wait > 0) wait--
+        // Punch where it would land, facing the way it is going.
+        const facing = facingOf(game, player)
+        if (wait === 0) {
+            const look = view.tryDecision({
+                dir: null,
+                breath: false,
+                punch: true,
+            })
+            const lands = look.moments.some(
+                (m) =>
+                    (m.kind === "punchHit" || m.kind === "punchBlocked") &&
+                    m.player === player
+            )
+            if (lands) {
+                wait = every
+                return { dir: null, breath: false, punch: true }
+            }
+        }
+        // Next to a target: turn to it.
+        for (const dir of ACTIONS) {
+            const d = DIRECTIONS[dir]
+            const q = loopPos(game.cells, vec2(me.x + d.x, me.y + d.y))
+            if (cells.has(key(q))) {
+                return { dir: dir === facing ? null : dir, breath: false }
+            }
+        }
+        const step = firstStepTo(game, me, new Set(), (p) => cells.has(key(p)))
+        return {
+            dir: step ? directionTo(me, step) : eat(game, me),
+            breath: false,
+        }
+    }
+}
+
 // ---- Playing a scene ----
 
 // One tick's input from every player's decision. `held` is what each held
@@ -535,6 +665,7 @@ function inputOf(
             const d = decisions[player]
             if (!d) return false
             if (action === "breath") return d.breath
+            if (action === "punch") return d.punch === true
             return d.dir === action && d.dir !== held[player]
         },
         move: (player = 0) => {
@@ -544,6 +675,8 @@ function inputOf(
                 held: d.dir ? [DIRECTIONS[d.dir]] : [],
                 pressed: d.dir && pressed ? DIRECTIONS[d.dir] : vec2(0, 0),
                 breath: d.breath,
+                ...(d.hold !== undefined ? { breathHeld: d.hold } : {}),
+                ...(d.punch ? { punch: true } : {}),
             }
         },
     }
@@ -551,7 +684,14 @@ function inputOf(
 
 // Play `def` from `seed` (its own unless given) and record it.
 export function playScene(def: SceneDef, seed = def.seed): SceneRun {
-    const start = startLevel(levels, def.level, def.animals, def.mode)
+    const start = startLevel(
+        levels,
+        def.level,
+        def.animals,
+        def.mode,
+        [],
+        def.difficulty ?? "medium"
+    )
     if (start.kind !== "playing") throw new Error("Not playing")
     const rng = createRng(seed)
     const deps: FlowDeps = {
@@ -582,12 +722,12 @@ export function playScene(def: SceneDef, seed = def.seed): SceneRun {
                     game: current.game,
                     player,
                     tick,
-                    tryBreath: (dir) => {
+                    tryDecision: (decision) => {
                         const copy = cloneScreen(current) as Playing
                         const before = cloneScreen(current) as Playing
                         const state = rng.state
                         const tries = brains.map((_, i) =>
-                            i === player ? { dir, breath: true } : IDLE
+                            i === player ? decision : IDLE
                         )
                         const after = update(copy, inputOf(tries, held), deps)
                         rng.state = state
@@ -602,6 +742,16 @@ export function playScene(def: SceneDef, seed = def.seed): SceneRun {
                             before: before.game,
                             after: game,
                         }
+                    },
+                    tryBreath(dir) {
+                        const charging =
+                            current.game.players[player].breather.charge !==
+                            null
+                        return this.tryDecision(
+                            charging
+                                ? { dir, breath: false, hold: false }
+                                : { dir, breath: true }
+                        )
                     },
                 })
             )
@@ -718,24 +868,28 @@ export const SCENES: Readonly<Record<SceneName, SceneDef>> = {
         level: 0,
         animals: ["dragon"],
         mode: "solo",
-        seed: 23,
+        seed: 30,
         brains: () => [
-            hunter({
-                chargeTo: 50,
-                targets: enemyCells,
-                range: 5,
-                minRange: 3,
-                wants: (look, view) =>
-                    look.moments.some(
-                        (m) =>
-                            m.kind === "enemyDefeated" &&
-                            apart(
-                                look.after,
-                                m.at,
-                                look.after.players[view.player].character.pos
-                            ) >= 3
-                    ),
-            }),
+            charged(
+                3,
+                hunter({
+                    chargeTo: 75,
+                    targets: enemyCells,
+                    range: 5,
+                    minRange: 3,
+                    wants: (look, view) =>
+                        look.moments.some(
+                            (m) =>
+                                m.kind === "enemyDefeated" &&
+                                apart(
+                                    look.after,
+                                    m.at,
+                                    look.after.players[view.player].character
+                                        .pos
+                                ) >= 3
+                        ),
+                })
+            ),
         ],
         isKey: (moments) => count(moments, "enemyDefeated") > 0,
         tail: 75,
@@ -751,20 +905,23 @@ export const SCENES: Readonly<Record<SceneName, SceneDef>> = {
             return length * 100 - run.keyTick!
         },
     },
-    // An ice cone over two enemies on the ice rink.
+    // A full-charge ice cone over three enemies on the wrap maze.
     penguin: {
-        level: 2,
+        level: 1,
         animals: ["penguin"],
         mode: "solo",
-        seed: 53,
+        seed: 1,
         brains: () => [
-            hunter({
-                chargeTo: 50,
-                targets: enemyCells,
-                range: 3,
-                wants: (look) => count(look.moments, "enemyFrozen") >= 2,
-                panic: 1.6,
-            }),
+            charged(
+                5,
+                hunter({
+                    chargeTo: 100,
+                    targets: enemyCells,
+                    range: 5,
+                    wants: (look) => count(look.moments, "enemyFrozen") >= 2,
+                    panic: 1.6,
+                })
+            ),
         ],
         isKey: (moments) => count(moments, "enemyFrozen") > 0,
         tail: 150,
@@ -777,24 +934,28 @@ export const SCENES: Readonly<Record<SceneName, SceneDef>> = {
         level: 0,
         animals: ["owl"],
         mode: "solo",
-        seed: 4,
+        seed: 10,
         brains: () => [
-            hunter({
-                chargeTo: 25,
-                targets: enemyCells,
-                range: 5,
-                wants: (look, view) =>
-                    look.moments.some(
-                        (m) =>
-                            m.kind === "enemyBlown" &&
-                            m.enemy !== undefined &&
-                            apart(
-                                look.before,
-                                look.before.enemies[m.enemy].pos,
-                                look.before.players[view.player].character.pos
-                            ) <= 2
-                    ),
-            }),
+            charged(
+                3,
+                hunter({
+                    chargeTo: 75,
+                    targets: enemyCells,
+                    range: 5,
+                    wants: (look, view) =>
+                        look.moments.some(
+                            (m) =>
+                                m.kind === "enemyBlown" &&
+                                m.enemy !== undefined &&
+                                apart(
+                                    look.before,
+                                    look.before.enemies[m.enemy].pos,
+                                    look.before.players[view.player].character
+                                        .pos
+                                ) <= 2
+                        ),
+                })
+            ),
         ],
         isKey: (moments) => count(moments, "enemyBlown") > 0,
         tail: 75,
@@ -807,8 +968,8 @@ export const SCENES: Readonly<Record<SceneName, SceneDef>> = {
         level: 0,
         animals: ["skunk"],
         mode: "solo",
-        seed: 3,
-        brains: () => [camper(1.6)],
+        seed: 24,
+        brains: () => [charged(3, camper(1.6, 90), 0.6)],
         isKey: (moments) => count(moments, "enemyRepelled") > 0,
         tail: 150,
         maxTicks: 900,
@@ -829,23 +990,70 @@ export const SCENES: Readonly<Record<SceneName, SceneDef>> = {
         level: 0,
         animals: ["boar"],
         mode: "solo",
-        seed: 21,
-        brains: () => [breaker(3.5, 240)],
+        seed: 1,
+        brains: () => [charged(4, breaker(3.5, 240, 80, 4), 0.6)],
         isKey: (moments) => count(moments, "wallBroken") > 0,
         tail: 120,
         maxTicks: 1200,
         score: (run) => {
+            const walls = count(at(run, run.keyTick!), "wallBroken")
             const close = run.threats[run.keyTick!]
-            return (5 - Math.min(close, 5)) * 100 - run.keyTick!
+            return walls * 300 + (5 - Math.min(close, 5)) * 100 - run.keyTick!
         },
+    },
+    // A punch knocking an enemy back.
+    punch: {
+        level: 0,
+        animals: ["dragon"],
+        mode: "solo",
+        seed: 1,
+        brains: () => [puncher(20)],
+        isKey: (moments) => count(moments, "punchHit") > 0,
+        tail: 60,
+        maxTicks: 900,
+        score: (run) => -run.keyTick!,
+    },
+    // Punches mashed at an enemy on Hard, and its guard blocking them.
+    guard: {
+        level: 0,
+        difficulty: "hard",
+        animals: ["boar"],
+        mode: "solo",
+        seed: 4,
+        brains: () => [puncher(8)],
+        isKey: (moments) => count(moments, "punchBlocked") > 0,
+        tail: 60,
+        maxTicks: 900,
+        score: (run) => {
+            const key = run.keyTick!
+            const hits = run.moments.filter(
+                (m) =>
+                    m.kind === "punchHit" && m.tick < key && m.tick > key - 90
+            ).length
+            return hits * 200 - key
+        },
+    },
+    // A breather's breath catching the penguin, which loses health.
+    breather: {
+        level: 2,
+        animals: ["penguin"],
+        mode: "solo",
+        seed: 1,
+        brains: () => [daredevil(2.5, 60)],
+        isKey: (moments) =>
+            count(moments, "enemyBreathed") > 0 && count(moments, "hurt") > 0,
+        tail: 75,
+        maxTicks: 1800,
+        score: (run) => -run.keyTick!,
     },
     // Two dragons wearing the boss down from the doors, breath after breath.
     boss: {
         level: 4,
-        animals: ["dragon", "dragon"],
-        mode: "coop",
+        animals: ["dragon"],
+        mode: "solo",
         seed: 1,
-        brains: () => [bossHunter(), bossHunter()],
+        difficulty: "easy",
+        brains: () => [charged(5, bossHunter())],
         isKey: (moments) => count(moments, "bossDefeated") > 0,
         tail: 90,
         maxTicks: 60 * 90,

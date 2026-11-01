@@ -1,4 +1,4 @@
-import { inPlay } from "../../src/breath"
+import { chargeLevel, inPlay } from "../../src/breath"
 import { FROZEN } from "../../src/breaths/penguin"
 import { Cell } from "../../src/constants"
 import type { GameEvent } from "../../src/events"
@@ -39,6 +39,14 @@ export type MomentKind =
     // A threat came close to player 1 without catching it (see nearMisses
     // in replayers.ts).
     | "nearMiss"
+    // A player's punch hit an enemy (or the boss), or an enemy's guard
+    // blocked it.
+    | "punchHit"
+    | "punchBlocked"
+    // A breather enemy breathed, and a player lost health without being
+    // knocked out.
+    | "enemyBreathed"
+    | "hurt"
 
 export type Moment = {
     // The tick it happened on: the game after `tick` ticks shows it.
@@ -60,6 +68,8 @@ export type Moment = {
     focus: Vec2
     // nearMiss only: how close the threat came, in cells.
     distance?: number
+    // breathed only: the charge level it fired at (1 for a tap).
+    level?: number
 }
 
 const centre = (p: Vec2) => vec2(p.x + 0.5, p.y + 0.5)
@@ -112,6 +122,7 @@ export function momentsOf(
                     kind: "breathed",
                     player: e.player,
                     animal: e.animal,
+                    level: chargeLevel(before.players[e.player].breather) || 1,
                     at: e.at,
                     focus: midpoint(e.at, e.cells.at(-1) ?? e.at, cols, rows),
                 })
@@ -135,6 +146,35 @@ export function momentsOf(
                     at: e.at,
                     // The middle of its 2x2 footprint.
                     focus: vec2(e.at.x + 1, e.at.y + 1),
+                })
+                break
+            case "punchHit":
+            case "punchBlocked":
+                moments.push({
+                    tick,
+                    kind: e.type,
+                    player: e.player,
+                    ...(e.enemy !== undefined ? { enemy: e.enemy } : {}),
+                    at: vec2(Math.round(e.at.x), Math.round(e.at.y)),
+                    focus: centre(e.at),
+                })
+                break
+            case "enemyBreathed":
+                moments.push({
+                    tick,
+                    kind: "enemyBreathed",
+                    enemy: e.enemy,
+                    at: e.at,
+                    focus: midpoint(e.at, e.cells.at(-1) ?? e.at, cols, rows),
+                })
+                break
+            case "hurt":
+                moments.push({
+                    tick,
+                    kind: "hurt",
+                    player: e.player,
+                    at: e.at,
+                    focus: centre(e.at),
                 })
                 break
             default:
@@ -289,5 +329,13 @@ export function heroMoment(
     scene: SceneName,
     recording: Recording
 ): Moment | undefined {
-    return heroOf(highlightsOf(recording), HERO_KIND[scene])
+    const moments = highlightsOf(recording)
+    // The breather's is a hurt from its breath, not from a touch.
+    if (scene === "breather") {
+        const breathed = new Set(
+            moments.filter((m) => m.kind === "enemyBreathed").map((m) => m.tick)
+        )
+        return moments.find((m) => m.kind === "hurt" && breathed.has(m.tick))
+    }
+    return heroOf(moments, HERO_KIND[scene])
 }

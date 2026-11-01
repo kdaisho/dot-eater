@@ -38,7 +38,7 @@ describe("the directed scenes", () => {
         })
     })
 
-    it("frames the dragon's fire reaching an enemy 5 cells away", () => {
+    it("frames the dragon's charged fire reaching an enemy 6 cells away", () => {
         const recording = JSON.parse(saved("dragon")) as Recording
         const hero = heroMoment("dragon", recording)!
         const breath = highlightsOf(recording).find(
@@ -47,16 +47,17 @@ describe("the directed scenes", () => {
         expect(
             Math.abs(hero.at.x - breath.at.x) +
                 Math.abs(hero.at.y - breath.at.y)
-        ).toBe(5)
+        ).toBe(6)
+        expect(breath.level).toBeGreaterThanOrEqual(3)
     })
 
-    it("freezes two enemies at once with the penguin", () => {
+    it("freezes three enemies at once with the penguin", () => {
         const recording = JSON.parse(saved("penguin")) as Recording
         const hero = heroMoment("penguin", recording)!
         const frozen = highlightsOf(recording).filter(
             (m) => m.kind === "enemyFrozen" && m.tick === hero.tick
         )
-        expect(frozen).toHaveLength(2)
+        expect(frozen).toHaveLength(3)
     })
 
     it("ends with the boss down", () => {
@@ -65,6 +66,23 @@ describe("the directed scenes", () => {
         expect(
             highlightsOf(recording).filter((m) => m.kind === "bossHit").length
         ).toBeGreaterThan(0)
+    })
+
+    it("charges every animal's breath", () => {
+        for (const name of ["dragon", "penguin", "owl", "skunk", "boar"]) {
+            const recording = JSON.parse(saved(name)) as Recording
+            const levels = highlightsOf(recording)
+                .filter((m) => m.kind === "breathed")
+                .map((m) => m.level ?? 1)
+            expect(Math.max(...levels), name).toBeGreaterThanOrEqual(3)
+        }
+    })
+
+    it("shows a punch land, a guard block it and a breather's breath hurt", () => {
+        for (const name of ["punch", "guard", "breather"] as const) {
+            const recording = JSON.parse(saved(name)) as Recording
+            expect(heroMoment(name, recording), name).toBeDefined()
+        }
     })
 })
 

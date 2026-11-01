@@ -59,6 +59,26 @@ export const PROMO2_EXCERPT = {
     },
 } as const satisfies Excerpt
 
+// The v3 promo's excerpt: the same song from its very start, on the same
+// half-time grid, bars 0–20 (0:00.06–0:55.24, 55.2 s), so the build's
+// rising tension opens it. Each character gets two bars; the boss goes
+// down on bar 16 (0:44.20, the strongest lift) and the hook carries a
+// montage and the title.
+export const PROMO3_EXCERPT = {
+    song: SONGS.promo3,
+    fromBar: 0,
+    toBar: 20,
+    cues: {
+        open: 0,
+        characters: 2,
+        fight: 12,
+        boss: 14,
+        lift: 16,
+        title: 18,
+        end: 20,
+    },
+} as const satisfies Excerpt
+
 // The beats file to use for `song` when none was found: its measured grid,
 // or a plain 120 bpm one.
 export function fallbackFor(song: string): BeatsFile {

@@ -15,6 +15,8 @@ export const SONGS = {
     promo: "slam",
     // v2: DJARTMUSIC, The Return of the 8-Bit Era (Pixabay licence).
     promo2: "return of the 8 bit era",
+    // v3: the same song (also named stage_01), from its start.
+    promo3: "return of the 8 bit era",
     // The toolkit demo: Jurassic 5, Great Expectations.
     toolkit: "great expectations",
 } as const
