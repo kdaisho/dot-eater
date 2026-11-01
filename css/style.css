@@ -619,3 +619,27 @@ body[data-dpad="on"] .touch-breath {
     flex-basis: 100%;
     min-height: 1.3em;
 }
+
+/* The mute button (src/muteButton.ts): small, in the top right corner,
+   over every screen (the opening and end roll too) but under the admin
+   panel. */
+#mute {
+    background: rgba(0, 0, 0, 0.5);
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 18px;
+    height: 36px;
+    line-height: 1;
+    padding: 0;
+    position: fixed;
+    right: calc(8px + env(safe-area-inset-right, 0px));
+    top: calc(8px + env(safe-area-inset-top, 0px));
+    touch-action: manipulation;
+    width: 36px;
+    z-index: 60;
+}
+
+#mute:focus-visible {
+    outline: 2px solid #fff;
+}

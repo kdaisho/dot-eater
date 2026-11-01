@@ -542,9 +542,22 @@ export function createAudio(options: AudioOptions): Audio {
 }
 
 // The browser's AudioContext as a createContext (pass globalThis):
-// undefined where there is no Web Audio.
+// undefined where there is no Web Audio. On iOS, Web Audio counts as
+// "ambient" sound by default, which the Ring/Silent switch (or silent
+// mode on an iPad) mutes, so the game would play nothing; the audio
+// session's "playback" type plays it like a video does. Set before the
+// context is made; other browsers have no audioSession.
 export function browserAudioContext(scope: {
     AudioContext?: new () => AudioContextLike
+    // Not typed by the DOM lib yet (Safari 17+).
+    navigator?: object
 }): () => AudioContextLike | undefined {
-    return () => (scope.AudioContext ? new scope.AudioContext() : undefined)
+    return () => {
+        if (!scope.AudioContext) return undefined
+        const { audioSession: session } = (scope.navigator ?? {}) as {
+            audioSession?: { type: string }
+        }
+        if (session) session.type = "playback"
+        return new scope.AudioContext()
+    }
 }

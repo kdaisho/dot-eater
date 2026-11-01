@@ -6,8 +6,9 @@ import {
 } from "./bindings"
 import { adminScreen, loadAdmin, saveAdmin, unlockAll } from "./admin"
 import { createAdminPanel } from "./adminPanel"
-import { browserAudioContext, createAudio } from "./audio"
+import { browserAudioContext, createAudio, volumesOf } from "./audio"
 import { RECORDED_TRACKS } from "./recorded"
+import { createMuteButton } from "./muteButton"
 import { playEventSounds, screenSound } from "./sound"
 import { energyHud } from "./breath"
 import {
@@ -162,6 +163,25 @@ let lastAnimal: AnimalId = loadLastPick(storage)
 let lastDifficulty: Difficulty = loadLastDifficulty(storage)
 // Likewise the settings: saved on every change on the settings screen.
 let settings: Settings = loadSettings(storage)
+// The mute button (muteButton.ts) flips the settings' mute from any
+// screen. On the settings and controls screens, which keep their own
+// copy of the settings, it goes through that screen so the copy agrees.
+const muteButton = createMuteButton(document, {
+    isMuted: () => settings.muted,
+    toggle() {
+        const muted = !settings.muted
+        if (screen.kind === "settings" || screen.kind === "controls") {
+            enter(screen, {
+                ...screen,
+                settings: { ...screen.settings, muted },
+            })
+            return
+        }
+        settings = { ...settings, muted }
+        saveSettings(storage, settings)
+        audio.setVolumes(volumesOf(settings))
+    },
+})
 // Debug mode (admin.ts): on while this browser holds the hash of the
 // passphrase the build was given. Tests set their own (main.admin.test.ts).
 const adminHash =
@@ -595,6 +615,7 @@ function enter(prev: Screen, next: Screen) {
         effects.motion()
     }
     screenSound(audio, prev, next, settings)
+    muteButton.update()
     showOverlay(next)
 }
 
