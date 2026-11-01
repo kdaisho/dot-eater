@@ -204,6 +204,14 @@ const SPRITES: Record<string, readonly string[]> = {
         "V..VV.VVVV.VV..V",
         "...V...VV...V...",
     ],
+    // Claude Code's mascot, for the staff credit.
+    claude: [
+        ".CCCCCCCC.",
+        ".CKCCCCKC.",
+        "CCCCCCCCCC",
+        ".CCCCCCCC.",
+        ".C.C..C.C.",
+    ],
     crown: [
         "........",
         "........",
@@ -222,6 +230,7 @@ const PALETTE: Record<string, string> = {
     Y: C.gold,
     R: C.red,
     O: C.tan,
+    C: "#d97757",
     B: "#ac7c00",
     T: C.tan,
     D: "#503000",
@@ -633,9 +642,22 @@ function finale(g: Ctx, all: Card[], v: number, t: number) {
     })
     const staff = staffAt(v)
     if (staff) {
-        const [role, name] = STAFF[staff.index]
+        const { role, names, icon } = STAFF[staff.index]
         text(g, typed(role, staff.shown, 30), W / 2, 140, C.menu)
-        text(g, typed(name, staff.shown - 0.3, 30), W / 2, 158, C.white)
+        names.forEach((name, i) => {
+            const y = 158 + i * 16
+            const last = i === names.length - 1
+            const shown = staff.shown - 0.3 - i * 0.5
+            // With an icon, the name and the icon are centred together.
+            const withIcon = last ? icon : undefined
+            const iconW = withIcon ? SPRITES[withIcon][0].length * 2 + 6 : 0
+            const x = W / 2 - iconW / 2
+            text(g, typed(name, shown, 30), x, y, C.white)
+            if (withIcon && shown * 30 >= name.length) {
+                const left = x + (name.length * 8) / 2 + 6
+                sprite(g, withIcon, left, y - 1 - hop(shown, 2, 2), 2)
+            }
+        })
     }
     // The heroes run along the bottom.
     if (v > 2) {

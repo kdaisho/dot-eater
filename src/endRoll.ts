@@ -12,6 +12,7 @@ import type { Difficulty } from "./difficulty"
 import { AnimalId } from "./roster"
 
 // One cast card: who, the sprite its portrait shows, and its three lines.
+// A hero's line is about them; an enemy's is a quote from it.
 export type CastCard = {
     // An animal or an enemy's AI; the Phantom Lord is the boss.
     who:
@@ -74,7 +75,7 @@ export const CAST: readonly CastCard[] = [
         sprite: "tengu",
         name: "TENGU",
         ability: "THE WANDERER",
-        line: "Goes where it likes.",
+        line: '"Left? Right? Who knows!"',
         tile: ENEMY_TILE,
     },
     {
@@ -82,7 +83,7 @@ export const CAST: readonly CastCard[] = [
         sprite: "oni",
         name: "ONI",
         ability: "THE CHASER",
-        line: "Never stops chasing.",
+        line: '"I never stop chasing you!"',
         tile: ENEMY_TILE,
     },
     {
@@ -90,7 +91,7 @@ export const CAST: readonly CastCard[] = [
         sprite: "fox",
         name: "FOX",
         ability: "THE AMBUSHER",
-        line: "Waits around the corner.",
+        line: '"Peekaboo! Got you!"',
         tile: ENEMY_TILE,
     },
     {
@@ -98,7 +99,7 @@ export const CAST: readonly CastCard[] = [
         sprite: "robot",
         name: "ROBOT",
         ability: "THE PATROLLER",
-        line: "Walks the same beat.",
+        line: '"Beep. Same route. Always."',
         tile: ENEMY_TILE,
     },
     {
@@ -106,7 +107,7 @@ export const CAST: readonly CastCard[] = [
         sprite: "ghost",
         name: "GHOST",
         ability: "THE PHANTOM",
-        line: "Drifts through walls.",
+        line: '"Walls? What walls?"',
         tile: ENEMY_TILE,
     },
     {
@@ -114,7 +115,7 @@ export const CAST: readonly CastCard[] = [
         sprite: "germ",
         name: "GERM",
         ability: "THE SPLITTER",
-        line: "Hit it and it splits!",
+        line: '"Hit me and meet my twin!"',
         tile: ENEMY_TILE,
     },
     {
@@ -122,7 +123,7 @@ export const CAST: readonly CastCard[] = [
         sprite: "snake",
         name: "SNAKE",
         ability: "THE BREATHER",
-        line: "Breathes from afar.",
+        line: '"Sss... I can reach you."',
         tile: ENEMY_TILE,
     },
     {
@@ -130,7 +131,7 @@ export const CAST: readonly CastCard[] = [
         sprite: "wolf",
         name: "WOLF",
         ability: "THE INTERCEPTOR",
-        line: "Reads your next move.",
+        line: '"I know where you\'re going."',
         tile: ENEMY_TILE,
     },
     {
@@ -138,16 +139,28 @@ export const CAST: readonly CastCard[] = [
         sprite: "boss",
         name: "PHANTOM LORD",
         ability: "FINAL BOSS",
-        line: "Now he just wants to dance.",
+        line: '"Shall we dance instead?"',
         tile: "#1c0c3c",
     },
 ]
 
-export const STAFF: readonly (readonly [string, string])[] = [
-    ["GAME BY", "DAISHO KOMIYAMA"],
-    ["MUSIC", "DJARTMUSIC"],
-    ["PRESENTED BY", "DAISHODESIGN"],
-    ["THANK YOU", "FOR PLAYING!"],
+// One staff credit: the role, then a name a line; `icon` is a sprite drawn
+// after the last name.
+export type StaffCredit = {
+    role: string
+    names: readonly string[]
+    icon?: string
+}
+
+export const STAFF: readonly StaffCredit[] = [
+    {
+        role: "GAME BY",
+        names: ["DAISHO KOMIYAMA", "& CLAUDE CODE"],
+        icon: "claude",
+    },
+    { role: "MUSIC", names: ["DJARTMUSIC"] },
+    { role: "PRESENTED BY", names: ["DAISHODESIGN"] },
+    { role: "THANK YOU", names: ["FOR PLAYING!"] },
 ]
 
 // The timeline, in seconds of the end roll (the music runs 86 s).

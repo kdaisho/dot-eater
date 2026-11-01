@@ -44,9 +44,9 @@ describe("CAST", () => {
             for (const text of [c.name, c.ability, c.line])
                 expect(text.length, text).toBeLessThanOrEqual(30)
         }
-        for (const [role, name] of STAFF) {
-            expect(role.length).toBeLessThanOrEqual(30)
-            expect(name.length).toBeLessThanOrEqual(30)
+        for (const { role, names } of STAFF) {
+            for (const text of [role, ...names])
+                expect(text.length, text).toBeLessThanOrEqual(30)
         }
     })
 })
