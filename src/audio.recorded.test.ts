@@ -2,7 +2,9 @@ import { describe, expect, it, vi } from "vite-plus/test"
 import {
     createAudio,
     MUSIC_START_DELAY,
+    MUSIC_TRIM_DB,
     RECORDED_LEVEL,
+    trimGain,
     type AudioContextLike,
 } from "./audio"
 import type { RecordedTracks } from "./recorded"
@@ -70,7 +72,7 @@ describe("recorded music", () => {
         const own = source
             .connections[0] as unknown as (typeof context.gains)[0]
         expect(own.connections).toEqual([context.gains[1]])
-        expect(own.gain.setAt(10)).toBe(RECORDED_LEVEL)
+        expect(own.gain.setAt(10)).toBe(RECORDED_LEVEL * trimGain("stage1"))
         expect(context.oscillators).toHaveLength(0)
     })
 
@@ -161,5 +163,23 @@ describe("recorded music", () => {
         expect(audio.musicPosition()).toBeCloseTo(2.5, 9)
         audio.stopMusic()
         expect(audio.musicPosition()).toBeUndefined()
+    })
+})
+
+describe("music trims", () => {
+    it("turns decibels into gain, 0 dB for a tune not listed", () => {
+        expect(MUSIC_TRIM_DB.stage2).toBeUndefined()
+        expect(trimGain("stage2")).toBe(1)
+        expect(trimGain("title")).toBeCloseTo(10 ** (-8 / 20), 9)
+    })
+
+    it("plays a chip tune through its trim", () => {
+        const { audio, context } = setup()
+        audio.unlock()
+        audio.playMusic("title")
+        // master, music and effects, then the tune's own bus
+        const own = context.gains[3]!
+        expect(own.connections).toEqual([context.gains[1]])
+        expect(own.gain.setAt(10)).toBeCloseTo(trimGain("title"), 9)
     })
 })
