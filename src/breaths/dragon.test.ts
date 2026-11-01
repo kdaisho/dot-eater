@@ -183,6 +183,57 @@ describe("dragon fire breath", () => {
     })
 })
 
+describe("the Dragon's spreading fire", () => {
+    // A hall with a passage down from x 3.
+    const fork = textMap([
+        "#########",
+        "#       #",
+        "###.#####",
+        "###.#####",
+        "#########",
+        "#.#######",
+    ]).map
+
+    // The burning cells, as [x, y].
+    const burningCells = (state: GameState) =>
+        state.tiles
+            .filter((t) => t.effect.name === BURNING.name)
+            .map((t) => [t.pos.x, t.pos.y])
+
+    it("splits at a junction, burning both ways", () => {
+        const state = dragonState({ x: 1, y: 1 }, [], fork)
+        tick(state, { breath: true })
+        // A tap: 3 steps, along the hall and a step down the passage.
+        expect(burningCells(state)).toEqual([
+            [2, 1],
+            [3, 1],
+            [3, 2],
+            [4, 1],
+        ])
+    })
+
+    it("defeats an enemy down each branch, but goes no further past one", () => {
+        // Charged to level 2: 4 steps, as far as (5, 1) and (3, 3).
+        const hall = makeEnemy(4, 1)
+        const behind = makeEnemy(5, 1)
+        const passage = makeEnemy(3, 3)
+        const state = dragonState({ x: 1, y: 1 }, [hall, behind, passage], fork)
+        expect(breathe(state, state.players[0], 2)).toBe(true)
+        expect(inPlay(hall)).toBe(false)
+        expect(inPlay(passage)).toBe(false)
+        // Behind the first enemy in the hall: the fire stopped there.
+        expect(inPlay(behind)).toBe(true)
+        expect(state.players[0].score).toBe(2 * DEFEAT_POINTS)
+        expect(burningCells(state)).toEqual([
+            [2, 1],
+            [3, 1],
+            [3, 2],
+            [4, 1],
+            [3, 3],
+        ])
+    })
+})
+
 describe("the Dragon's charged breath (KDA-289)", () => {
     // A hall 10 cells long.
     const hall = textMap([

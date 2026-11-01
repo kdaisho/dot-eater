@@ -1,6 +1,7 @@
-import type { BreathDef, TileEffect } from "../breath"
+import type { BreathDef, BreathHit, TileEffect } from "../breath"
+import { loopPos } from "../level"
 import { AnimalId } from "../roster"
-import { samePos } from "../vec2"
+import { allDirections, directions, samePos, vec2, type Vec2 } from "../vec2"
 
 // Seconds the cells the fire passed keep burning.
 const BURN_SECONDS = 2
@@ -12,32 +13,39 @@ export const BURNING: TileEffect = {
     look: { color: "rgba(255, 110, 20, 0.45)", emoji: "🔥" },
 }
 
-// The fire's range at charge `level`: 3 cells for a tap, one more a level,
-// 7 at the top (KDA-289; placeholders to tune at preview).
+// How far the fire spreads at charge `level`, in steps from the player: 3
+// for a tap, one more a level, 7 at the top (KDA-289; placeholders to tune
+// at preview).
 export function fireRange(level: number): number {
     return level + 2
 }
 
-// Dragon 🐉, fire breath (KDA-216): a line that defeats the first enemy it
-// hits; the cells it passed burn for 2 s and block enemies. Charging it
-// (KDA-289) makes the line longer (fireRange), for 20 energy a level.
-// Stat: balanced, the default character.
+// Dragon 🐉, fire breath (KDA-216): fire that spreads down the corridors
+// ahead (a spread shape), turning corners and splitting at junctions, and
+// defeats every enemy it reaches; the cells it passed burn for 2 s and
+// block enemies. Charging it (KDA-289) makes it spread further (fireRange),
+// for 20 energy a level. Stat: balanced, the default character.
 //
-// The fire stops at the enemy it defeats: it burns the cells up to and
-// including that enemy's, and enemies further along are untouched. An enemy
-// on the player's own cell (its sprite still gliding in) is the first hit,
-// and then nothing burns, since the fire never left the player's cell.
-// Facing a wall with no enemy on the player's cell there is nothing to burn,
-// so the breath refuses and costs nothing.
+// It was a straight line that stopped at the first enemy; user feedback
+// (2026-11-01) found a charged line worth little, since it only went
+// straight ahead. It now spreads like the Skunk's cloud, but only forward.
+//
+// Fire can't go through an enemy (unlike the Owl's wind): each branch stops
+// at the enemy it defeats, burning that enemy's cell, and cells it could
+// only reach past one stay untouched. An enemy on the player's own cell
+// (its sprite still gliding in) is the first hit, and then nothing burns,
+// since the fire never left the player's cell. Facing a wall with no enemy
+// on the player's cell there is nothing to burn, so the breath refuses and
+// costs nothing.
 export const dragon: BreathDef = {
     animal: AnimalId.dragon,
-    shape: (level) => ({ kind: "line", range: fireRange(level) }),
+    shape: (level) => ({ kind: "spread", reach: fireRange(level) }),
     cost: 20,
     cooldown: 1,
     duration: BURN_SECONDS,
     maxEnergy: 100,
     speedScale: 1,
-    // Embers flying along the line from each burning cell.
+    // Embers flying along from each burning cell.
     particles: {
         colors: ["#f97316", "#fbbf24", "#dc2626"],
         count: 4,
@@ -49,15 +57,43 @@ export const dragon: BreathDef = {
         drag: 2,
     },
     fire(hit) {
-        const target = hit.enemies[0]
-        if (!target && hit.cells.length === 0) return false
-        // Where the fire stops: the target's cell, or the end of the line.
-        // -1 when the target is on the player's own cell.
-        const stop = target
-            ? hit.cells.findIndex((c) => samePos(c, target.pos))
-            : hit.cells.length - 1
-        const burnt = hit.cells.slice(0, stop + 1)
-        if (target) hit.defeat(target)
-        for (const cell of burnt) hit.addTile(cell, BURNING, BURN_SECONDS)
+        const onPlayer = hit.enemies.find((e) => samePos(e.pos, hit.origin))
+        if (onPlayer) {
+            hit.defeat(onPlayer)
+            return
+        }
+        if (hit.cells.length === 0) return false
+        for (const cell of burnt(hit)) {
+            for (const enemy of hit.enemies) {
+                if (samePos(enemy.pos, cell)) hit.defeat(enemy)
+            }
+            hit.addTile(cell, BURNING, BURN_SECONDS)
+        }
     },
 }
+
+// The cells the fire reaches, nearest first: the shape's cells it can walk
+// to from the first without going through an enemy's cell (it burns that
+// cell and goes no further that way).
+function burnt(hit: BreathHit): Vec2[] {
+    const { cells } = hit.state
+    const inShape = new Set(hit.cells.map(key))
+    const blocked = new Set(hit.enemies.map((e) => key(e.pos)))
+    const first = hit.cells[0]
+    const result = [first]
+    const seen = new Set([key(first)])
+    for (let head = 0; head < result.length; head++) {
+        const p = result[head]
+        if (blocked.has(key(p))) continue
+        for (const dir of allDirections) {
+            const step = directions[dir]
+            const q = loopPos(cells, vec2(p.x + step.x, p.y + step.y))
+            if (!inShape.has(key(q)) || seen.has(key(q))) continue
+            seen.add(key(q))
+            result.push(q)
+        }
+    }
+    return result
+}
+
+const key = (p: Vec2) => `${p.x},${p.y}`

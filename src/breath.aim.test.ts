@@ -11,7 +11,7 @@ import {
 import { BREATHS } from "./breaths"
 import { takeOut, type GameState } from "./game"
 import { ANIMAL_IDS, type AnimalId } from "./roster"
-import { makeBoss, makeState, textMap } from "./test/helpers"
+import { lineFire, makeBoss, makeState, textMap } from "./test/helpers"
 import { vec2, type Vec2 } from "./vec2"
 import { stun } from "./versus"
 
@@ -47,27 +47,43 @@ function chargeTo(b: Breather, level: number) {
     b.charge = (level - 1) * CHARGE_SECONDS
 }
 
-// A one-player game with `animal`'s breath at `at`, facing `facing`.
+// A one-player game with `animal`'s breath (or `breath`) at `at`, facing
+// `facing`.
 function aimer(
-    animal: AnimalId,
+    animal: AnimalId | BreathDef,
     at: { x: number; y: number },
     facing: Vec2 = east
 ): GameState {
-    const state = makeState(map, at, [], { breath: BREATHS[animal] })
+    const breath = typeof animal === "string" ? BREATHS[animal] : animal
+    const state = makeState(map, at, [], { breath })
     state.players[0].breather.facing = facing
     return state
 }
 
 describe("aimCells", () => {
-    it("follows the Dragon's line up to the wall, not into it", () => {
-        expect(xy(aimCells(aimer("dragon", { x: 1, y: 3 })))).toEqual([
+    it("follows a line up to the wall, not into it", () => {
+        expect(xy(aimCells(aimer(lineFire(), { x: 1, y: 3 })))).toEqual([
             [2, 3],
             [3, 3],
         ])
     })
 
-    it("is empty for a line facing straight into a wall", () => {
+    it("is empty for the fire facing straight into a wall", () => {
         expect(aimCells(aimer("dragon", { x: 3, y: 3 }))).toEqual([])
+    })
+
+    // From (1, 4) a tap's fire reaches 3 steps: along row 4 and up into
+    // row 3, round to (1, 3) above the player, but never back through the
+    // player's cell, and not as far as row 2.
+    it("spreads the Dragon's fire ahead and round corners", () => {
+        expect(xy(aimCells(aimer("dragon", { x: 1, y: 4 })))).toEqual([
+            [2, 4],
+            [2, 3],
+            [3, 4],
+            [1, 3],
+            [3, 3],
+            [4, 4],
+        ])
     })
 
     it("follows the Owl's line its whole range", () => {
@@ -126,7 +142,9 @@ describe("aimCells", () => {
     })
 
     it("aims right before the player has moved, as the breath does", () => {
-        const state = makeState(map, { x: 1, y: 4 })
+        const state = makeState(map, { x: 1, y: 4 }, [], {
+            breath: lineFire(),
+        })
         expect(xy(aimCells(state))).toEqual([
             [2, 4],
             [3, 4],
@@ -137,7 +155,7 @@ describe("aimCells", () => {
     // KDA-289: a tap's cells until the breath is held, then the level the
     // charge has reached.
     it("shows the cells of the level the charge has reached", () => {
-        const state = aimer("dragon", { x: 1, y: 4 })
+        const state = aimer(lineFire(), { x: 1, y: 4 })
         const { breather } = state.players[0]
         charge(breather)
         const lengths = [1, 2, 3, 4, 5].map((level) => {
@@ -152,7 +170,7 @@ describe("aimCells", () => {
     })
 
     it("shows no more than the level the meter pays for", () => {
-        const state = aimer("dragon", { x: 1, y: 4 })
+        const state = aimer(lineFire(), { x: 1, y: 4 })
         const { breather } = state.players[0]
         // Enough for level 2 (40), held long enough for 5.
         breather.energy = 45
@@ -176,9 +194,10 @@ describe("aimCells", () => {
             "#########",
         ])
 
-        // The Dragon charged to level 3, for a 5-cell line.
+        // A line charged to level 3, for 5 cells.
         it("ends a line at the live boss's body, its cells there included", () => {
             const state = makeState(arena, { x: 1, y: 2 }, [], {
+                breath: lineFire(),
                 boss: makeBoss(4, 1),
             })
             chargeTo(state.players[0].breather, 3)
@@ -192,7 +211,10 @@ describe("aimCells", () => {
         it("goes past a defeated boss", () => {
             const boss = makeBoss(4, 1)
             boss.defeated = true
-            const state = makeState(arena, { x: 1, y: 2 }, [], { boss })
+            const state = makeState(arena, { x: 1, y: 2 }, [], {
+                breath: lineFire(),
+                boss,
+            })
             chargeTo(state.players[0].breather, 3)
             expect(aimCells(state)).toHaveLength(5)
         })
@@ -273,7 +295,7 @@ describe("aimCells", () => {
 })
 
 describe("aimPreviews", () => {
-    const two = (breath: BreathDef = BREATHS.dragon) =>
+    const two = (breath: BreathDef = lineFire()) =>
         makeState(
             map,
             [
@@ -334,7 +356,7 @@ describe("aimPreviews", () => {
     })
 
     it("shows a charging player's aim at the level reached", () => {
-        const state = aimer("dragon", { x: 1, y: 4 })
+        const state = aimer(lineFire(), { x: 1, y: 4 })
         chargeTo(state.players[0].breather, 2)
         expect(xy(aimPreviews(state)[0].cells)).toHaveLength(4)
     })

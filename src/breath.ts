@@ -134,6 +134,12 @@ export type BreathShape =
     // walking through open cells only (no diagonals), like a gas filling
     // the corridors: nearest first, by walking distance.
     | { kind: "flood"; reach: number }
+    // Ahead and on along the corridors, like fire spreading: the cell in
+    // front, then every open cell within `reach` steps of the player
+    // walking on from it (no diagonals, never back through the player's
+    // cell), so it turns corners and splits at junctions; nearest first.
+    // Facing a wall it covers nothing.
+    | { kind: "spread"; reach: number }
     // Just the player's own cell.
     | { kind: "self" }
 
@@ -144,10 +150,12 @@ export type BreathHit = {
     // The player's cell and facing (a unit step) when it breathed.
     origin: Vec2
     facing: Vec2
-    // The cells the shape covers, nearest first. Never walls. A line or a
-    // cone ends at a boss's body, its cells there included (see breathe).
+    // The cells the shape covers, nearest first. Never walls. A line, a
+    // cone or a spread ends at a boss's body, its cells there included
+    // (see breathe).
     cells: readonly Vec2[]
-    // The wall a line (or a cone's first cell) stopped at, if any.
+    // The wall a line (or a cone's or a spread's first cell) stopped at, if
+    // any.
     wall: Vec2 | null
     // The walls the breath acts on (BreathDef.wallsHit), nearest first;
     // empty for a breath that does nothing to walls.
@@ -349,18 +357,19 @@ export function cancelCharges(state: GameState) {
 // it defeats scores for `who`.
 // Breaths don't affect players, except in versus: there the other player,
 // standing on any cell the breath strikes (as for enemies: the origin too
-// for a line or a cone), is stunned (see versus.ts), whatever the breath,
-// and the breath counts as fired even if the hook refused. Only the strike
-// stuns: tile effects it leaves don't. Returns true if the breath happened.
+// for a line, a cone or a spread), is stunned (see versus.ts), whatever
+// the breath, and the breath counts as fired even if the hook refused.
+// Only the strike stuns: tile effects it leaves don't. Returns true if the
+// breath happened.
 //
-// A boss in the way (see boss.ts) stops a line or a cone like a wall would,
-// except that its cells are covered: the big body takes the breath. If any
-// of the cells the breath strikes (as for enemies: the origin too for a
-// line or a cone) is under the boss, it takes bossDamage of the energy the
-// breath spends, once however many of its cells are struck (so a charged
-// breath hurts it as much as the taps its energy pays for, KDA-289), and
-// the breath counts as fired even if the hook refused (e.g. the Boar with
-// no wall to break): it hit something.
+// A boss in the way (see boss.ts) stops a line, a cone or a spread like a
+// wall would, except that its cells are covered: the big body takes the
+// breath. If any of the cells the breath strikes (as for enemies: the
+// origin too for a line, a cone or a spread) is under the boss, it takes
+// bossDamage of the energy the breath spends, once however many of its
+// cells are struck (so a charged breath hurts it as much as the taps its
+// energy pays for, KDA-289), and the breath counts as fired even if the
+// hook refused (e.g. the Boar with no wall to break): it hit something.
 export function breathe(
     state: GameState,
     who: Player = state.players[0],
@@ -371,13 +380,10 @@ export function breathe(
     const { breath, facing } = breather
     const at = Math.max(1, Math.min(Math.floor(level), affordable(breather)))
     const { origin, shape, reach, walls, body } = aimOf(state, who, at)
-    // Line and cone shapes start a cell ahead, but an enemy can stand on the
+    // Line, cone and spread shapes start a cell ahead, but an enemy can stand on the
     // player's own cell while its sprite still glides in (collisions are on
     // drawn positions), so they hit enemies there too, first.
-    const struck =
-        shape.kind === "line" || shape.kind === "cone"
-            ? [origin, ...reach.cells]
-            : reach.cells
+    const struck = aimsAhead(shape) ? [origin, ...reach.cells] : reach.cells
     const enemies = struck.flatMap((cell) =>
         state.enemies.filter((e) => inPlay(e) && samePos(e.pos, cell))
     )
@@ -542,6 +548,16 @@ function add(cells: Cells, p: Vec2, d: Vec2): Vec2 {
     return loopPos(cells, vec2(p.x + d.x, p.y + d.y))
 }
 
+// Whether `shape` starts a cell ahead (a line, a cone or a spread), so an
+// enemy on the player's own cell is struck too, first (see breathe).
+function aimsAhead(shape: BreathShape): boolean {
+    return (
+        shape.kind === "line" ||
+        shape.kind === "cone" ||
+        shape.kind === "spread"
+    )
+}
+
 // The cells `shape` covers from `origin` facing `facing` (see BreathShape).
 // Each cell appears once, nearest first, even where a tunnel brings the
 // shape back round to cells it already covered.
@@ -551,6 +567,7 @@ function add(cells: Cells, p: Vec2, d: Vec2): Vec2 {
 // shadows like walls without being walls. A cone's shadow is the cells
 // behind the body: once a row meets it, those offsets across the facing
 // stay dark for the rest of the cone, except for more of the body itself.
+// A spread's body cells take the fire but it goes no further through them.
 // Area, flood and self shapes ignore it.
 export function resolveShape(
     cells: Cells,
@@ -660,6 +677,30 @@ export function resolveShape(
                     }
                 }
                 result.push(...next)
+                ring = next
+            }
+            return { cells: result, wall: null }
+        }
+        case "spread": {
+            // Breadth-first from the cell ahead, a ring per step; the
+            // player's cell is never walked back through.
+            const first = add(cells, origin, facing)
+            if (isWall(first)) return { cells: [], wall: first }
+            const result: Vec2[] = [first]
+            const seen = new Set([key(origin), key(first)])
+            let ring = body(first) ? [] : [first]
+            for (let k = 2; k <= shape.reach && ring.length > 0; k++) {
+                const next: Vec2[] = []
+                for (const p of ring) {
+                    for (const dir of allDirections) {
+                        const q = add(cells, p, directions[dir])
+                        if (isWall(q) || seen.has(key(q))) continue
+                        seen.add(key(q))
+                        result.push(q)
+                        // A big body takes the fire but stops it.
+                        if (!body(q)) next.push(q)
+                    }
+                }
                 ring = next
             }
             return { cells: result, wall: null }

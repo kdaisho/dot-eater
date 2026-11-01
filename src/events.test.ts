@@ -21,6 +21,7 @@ import { AnimalId } from "./roster"
 import { createSplitter } from "./splitter"
 import {
     fixedRandom,
+    lineFire,
     makeBoss,
     makeEnemy,
     makeState,
@@ -161,7 +162,7 @@ describe("breathed", () => {
     })
 
     it("reports the cells up to the boss's body", () => {
-        const state = breather(BREATHS[AnimalId.dragon], room, {
+        const state = breather(lineFire(), room, {
             boss: makeBoss(3, 1),
         })
         tick(state, breath)
