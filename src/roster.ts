@@ -49,7 +49,7 @@ export const ANIMALS: Readonly<Record<AnimalId, AnimalInfo>> = {
         emoji: "🐉",
         breathName: "Fire breath",
         breathText:
-            "Fire that spreads down the corridors ahead, round corners, and defeats the enemies it reaches. Burning cells block enemies for 2 s.",
+            "Spreading fire that defeats the enemies it reaches. Burning cells block enemies for 2 s.",
         statText: "Balanced",
     },
     penguin: {
