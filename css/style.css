@@ -522,3 +522,100 @@ body[data-dpad="on"] .touch-breath {
     width: 100vw;
     z-index: 50;
 }
+
+/* The admin panel (src/adminPanel.ts), over everything, the opening
+   included. */
+#admin {
+    align-items: center;
+    background: rgba(0, 0, 0, 0.85);
+    box-sizing: border-box;
+    display: flex;
+    inset: 0;
+    justify-content: center;
+    overflow-y: auto;
+    padding: 16px;
+    position: fixed;
+    touch-action: pan-y;
+    user-select: text;
+    z-index: 100;
+}
+
+#admin * {
+    font-size: 18px;
+    line-height: 1.3;
+}
+
+.admin-panel {
+    background: #111;
+    border: 2px solid #fff;
+    box-sizing: border-box;
+    color: #fff;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    margin: auto;
+    max-width: 560px;
+    padding: 24px;
+    width: 100%;
+}
+
+#admin h1 {
+    font-size: 26px;
+}
+
+#admin form {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    justify-content: center;
+}
+
+#admin label {
+    flex-basis: 100%;
+}
+
+#admin input {
+    background: #000;
+    border: 2px solid #fff;
+    color: #fff;
+    min-width: 0;
+    padding: 8px;
+    text-align: left;
+}
+
+#admin button {
+    background: #fff;
+    border: 0;
+    color: #000;
+    cursor: pointer;
+    padding: 8px 12px;
+}
+
+#admin button:disabled {
+    opacity: 0.5;
+}
+
+#admin button:focus-visible,
+#admin input:focus-visible {
+    outline: 3px solid #f0b83a;
+    outline-offset: 2px;
+}
+
+.admin-jumps {
+    display: grid;
+    gap: 8px;
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+}
+
+.admin-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    justify-content: center;
+}
+
+.admin-error {
+    color: #ff6b5b;
+    flex-basis: 100%;
+    min-height: 1.3em;
+}
