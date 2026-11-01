@@ -7,9 +7,9 @@ import { levels, stages } from "./levels"
 import { ANIMAL_IDS } from "./roster"
 import { SETTINGS_KEY } from "./settings"
 
-// main on a phone: overlays are tapped, a drag on the play area steers
-// while the finger is down, the punch and breath buttons press, and the
-// pause button pauses. (A separate file, since main is imported once per
+// main on a phone: overlays are tapped, a flick on the play area steers
+// (the player runs on after the lift, and a flick back stops it), the
+// punch and breath buttons press, and the pause button pauses. (A separate file, since main is imported once per
 // module graph.)
 
 vi.mock("canvas-confetti", () => ({ default: vi.fn() }))
@@ -180,7 +180,7 @@ describe("main on a touch screen", () => {
         expect(el("canvas").style.width).toBe(`${fitted.width}px`)
     })
 
-    it("steers while a finger drags on the board, and stops on the lift", () => {
+    it("steers with a flick that holds after the lift, and stops at a flick back", () => {
         const play = el("#play")
         const from = vi.mocked(step).mock.calls.length
         pointer(play, "pointerdown", 100, 100)
@@ -188,14 +188,29 @@ describe("main on a touch screen", () => {
         vi.advanceTimersByTime(FRAMES_MS)
         const during = moves(from)
         expect(during[0]?.pressed).toEqual({ x: 0, y: -1 })
-        // Held, and not pressed again, while the finger stays down.
+        // Held, and not pressed again, while the finger stays down...
         expect(during.at(-1)?.held).toEqual([{ x: 0, y: -1 }])
         expect(during.at(-1)?.pressed).toEqual({ x: 0, y: 0 })
-
+        // ...and after the lift.
         pointer(play, "pointerup", 100, 60)
         const lifted = vi.mocked(step).mock.calls.length
         vi.advanceTimersByTime(FRAMES_MS)
-        expect(moves(lifted)[0]?.held).toEqual([])
+        expect(moves(lifted).at(-1)?.held).toEqual([{ x: 0, y: -1 }])
+
+        // The player on its way up (step is mocked, so set it so): main
+        // tells the touch source each tick, and a flick down stops it.
+        const game = vi.mocked(step).mock.lastCall![0]
+        game.players[0].character.moveProgress = 0.5
+        game.players[0].breather.facing = { x: 0, y: -1 }
+        vi.advanceTimersByTime(FRAMES_MS)
+        pointer(play, "pointerdown", 100, 100)
+        pointer(play, "pointerup", 100, 140)
+        const stopped = vi.mocked(step).mock.calls.length
+        vi.advanceTimersByTime(FRAMES_MS)
+        expect(moves(stopped).at(-1)?.held).toEqual([])
+        // Standing again, for the tests after.
+        game.players[0].character.moveProgress = 1
+        vi.advanceTimersByTime(FRAMES_MS)
     })
 
     it("doesn't breathe on a tap on the board", () => {
