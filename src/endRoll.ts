@@ -75,7 +75,7 @@ export const CAST: readonly CastCard[] = [
         sprite: "tengu",
         name: "TENGU",
         ability: "THE WANDERER",
-        line: '"Left? Right? Who knows!"',
+        line: '"I took a wrong turn. Again."',
         tile: ENEMY_TILE,
     },
     {
@@ -123,7 +123,7 @@ export const CAST: readonly CastCard[] = [
         sprite: "snake",
         name: "SNAKE",
         ability: "THE BREATHER",
-        line: '"Sss... I can reach you."',
+        line: '"Sss... Sssss! SSSSSSS!!"',
         tile: ENEMY_TILE,
     },
     {
