@@ -2045,7 +2045,7 @@ describe("createRenderer with the facing guide", () => {
 
     // A dotted corridor 9 cells long: player 1 at (1, 1) and, with two
     // players, player 2 at (7, 1) facing it. Both breathe the Dragon's
-    // line, 3 cells for a tap (level 1).
+    // line, 2 cells for a tap (level 1).
     const corridor = [
         Array(9).fill(1),
         [1, ...Array(7).fill(2), 1],
@@ -2092,20 +2092,20 @@ describe("createRenderer with the facing guide", () => {
         const state = game()
         charge(state)
         renderer.draw(state, 0, {}, {}, AIM)
-        expect(tinted(calls, canvas)).toEqual([2, 3, 4])
+        expect(tinted(calls, canvas)).toEqual([2, 3])
         // An edge round the line: its top and bottom along each cell, and
         // its two ends.
-        expect(edges(calls)).toBe(3 * 2 + 2)
+        expect(edges(calls)).toBe(2 * 2 + 2)
     })
 
     it("tints the cells of the level a held breath has charged to", () => {
         const { calls, canvas, renderer } = setup()
         const state = game()
         charge(state)
-        // Held long enough for level 3: the Dragon's line is 5 cells.
+        // Held long enough for level 3: the Dragon's line is 4 cells.
         state.players[0].breather.charge = CHARGE_SECONDS * 2
         renderer.draw(state, 0, {}, {}, AIM)
-        expect(tinted(calls, canvas)).toEqual([2, 3, 4, 5, 6])
+        expect(tinted(calls, canvas)).toEqual([2, 3, 4, 5])
     })
 
     it("draws the tint under the dots and the characters", () => {
@@ -2153,8 +2153,8 @@ describe("createRenderer with the facing guide", () => {
         const state = game(2)
         charge(state)
         renderer.draw(state, 0, {}, {}, AIM)
-        expect(tinted(calls, canvas, 0)).toEqual([2, 3, 4])
-        expect(tinted(calls, canvas, 1)).toEqual([4, 5, 6])
+        expect(tinted(calls, canvas, 0)).toEqual([2, 3])
+        expect(tinted(calls, canvas, 1)).toEqual([5, 6])
     })
 
     it("draws no aim for a player out of play", () => {
@@ -2164,7 +2164,7 @@ describe("createRenderer with the facing guide", () => {
         takeOut(state.players[0], 3)
         renderer.draw(state, 0, {}, {}, AIM)
         expect(tinted(calls, canvas, 0)).toEqual([])
-        expect(tinted(calls, canvas, 1)).toEqual([4, 5, 6])
+        expect(tinted(calls, canvas, 1)).toEqual([5, 6])
     })
 
     it("draws no aim for a stunned player", () => {
@@ -2173,7 +2173,7 @@ describe("createRenderer with the facing guide", () => {
         charge(state)
         stun(state.players[1])
         renderer.draw(state, 0, {}, {}, AIM)
-        expect(tinted(calls, canvas, 0)).toEqual([2, 3, 4])
+        expect(tinted(calls, canvas, 0)).toEqual([2, 3])
         expect(tinted(calls, canvas, 1)).toEqual([])
     })
 
@@ -2181,6 +2181,8 @@ describe("createRenderer with the facing guide", () => {
         const { calls, canvas, renderer } = setup()
         const state = game()
         charge(state)
+        // Held for level 2: 3 cells, the last out of the light.
+        state.players[0].breather.charge = CHARGE_SECONDS
         renderer.draw(state, 0, {}, { fog: { radius: 1.5 } }, AIM)
         expect(tinted(calls, canvas)).toEqual([2, 3])
         // The edge of those two cells only: top and bottom of each, and

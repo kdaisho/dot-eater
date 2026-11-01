@@ -185,6 +185,40 @@ describe("resolveShape", () => {
         ])
     })
 
+    it("spreads ahead and round corners, never back through the player", () => {
+        // 3 steps from (1, 4) facing right: along row 4 and up into row 3,
+        // round to (1, 3) over the player, nearest first.
+        const reach = resolveShape(cells, vec2(1, 4), east, {
+            kind: "spread",
+            reach: 3,
+        })
+        expect(xy(reach.cells)).toEqual([
+            [2, 4],
+            [2, 3],
+            [3, 4],
+            [1, 3],
+            [3, 3],
+            [4, 4],
+        ])
+        expect(reach.wall).toBeNull()
+    })
+
+    it("spreads a single cell ahead with a reach of 1", () => {
+        const spread = { kind: "spread", reach: 1 } as const
+        expect(xy(resolveShape(cells, vec2(1, 4), east, spread).cells)).toEqual(
+            [[2, 4]]
+        )
+    })
+
+    it("reports the wall straight in front of a spread", () => {
+        const reach = resolveShape(cells, vec2(3, 3), east, {
+            kind: "spread",
+            reach: 3,
+        })
+        expect(reach.cells).toEqual([])
+        expect(reach.wall).toEqual(vec2(4, 3))
+    })
+
     it("floods just the player's cell with no reach", () => {
         const flood = { kind: "flood", reach: 0 } as const
         expect(xy(resolveShape(cells, vec2(3, 3), east, flood).cells)).toEqual([
@@ -220,6 +254,31 @@ describe("resolveShape with a boss's body in the way", () => {
         expect(resolveShape(cells, vec2(1, 3), east, line).cells).toHaveLength(
             4
         )
+    })
+
+    it("spreads round its body but not through it, covering it", () => {
+        // From (1, 3) facing right, 3 steps: the body's cells (3, 3) and
+        // (3, 4) are covered, but the fire goes on only round them, never
+        // to (4, 3) or (4, 4) through them.
+        const reach = resolveShape(
+            cells,
+            vec2(1, 3),
+            east,
+            { kind: "spread", reach: 3 },
+            body
+        )
+        expect(xy(reach.cells)).toEqual([
+            [2, 3],
+            [2, 2],
+            [2, 4],
+            [3, 3],
+            [2, 1],
+            [1, 2],
+            [3, 2],
+            [1, 4],
+            [2, 5],
+            [3, 4],
+        ])
     })
 
     it("lets its body cast a cone's shadow, covered itself", () => {

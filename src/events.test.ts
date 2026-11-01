@@ -21,6 +21,7 @@ import { AnimalId } from "./roster"
 import { createSplitter } from "./splitter"
 import {
     fixedRandom,
+    lineFire,
     makeBoss,
     makeEnemy,
     makeState,
@@ -161,7 +162,7 @@ describe("breathed", () => {
     })
 
     it("reports the cells up to the boss's body", () => {
-        const state = breather(BREATHS[AnimalId.dragon], room, {
+        const state = breather(lineFire(), room, {
             boss: makeBoss(3, 1),
         })
         tick(state, breath)
@@ -417,7 +418,7 @@ describe("hurt, playerCaught and playerRespawned", () => {
 
 describe("playerStunned", () => {
     it("follows the breath that stunned, naming both players", () => {
-        const state = makeState(hall, [vec2(1, 1), vec2(3, 1)], [], {
+        const state = makeState(hall, [vec2(1, 1), vec2(2, 1)], [], {
             mode: "versus",
             breath: BREATHS[AnimalId.dragon],
         })
@@ -431,9 +432,9 @@ describe("playerStunned", () => {
                 at: vec2(1, 1),
                 facing: east,
                 // A tap's whole line: players don't stop it.
-                cells: [2, 3, 4].map((x) => vec2(x, 1)),
+                cells: [2, 3].map((x) => vec2(x, 1)),
             },
-            { type: "playerStunned", player: 1, by: 0, at: vec2(3, 1) },
+            { type: "playerStunned", player: 1, by: 0, at: vec2(2, 1) },
         ])
     })
 
