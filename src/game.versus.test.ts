@@ -95,7 +95,7 @@ function run(state: GameState, moves: readonly MoveInput[], ticks: number) {
 describe("a breath on the other player in versus", () => {
     // The furthest cell a tap (level 1) reaches along the hall.
     const cases: [AnimalId, Vec2][] = [
-        [AnimalId.dragon, vec2(4, 1)],
+        [AnimalId.dragon, vec2(3, 1)],
         [AnimalId.penguin, vec2(3, 1)],
         [AnimalId.owl, vec2(5, 1)],
         [AnimalId.skunk, vec2(3, 1)],
@@ -129,8 +129,8 @@ describe("a breath on the other player in versus", () => {
     // the usual time.
     it("stuns it once, for the usual time, with a full charge", () => {
         const def = BREATHS[AnimalId.dragon]
-        // Out of a tap's reach (3 cells), within a full charge's (7).
-        const state = duel(def, vec2(8, 1))
+        // Out of a tap's reach (2 cells), within a full charge's (6).
+        const state = duel(def, vec2(7, 1))
         expect(breathe(state, state.players[0], MAX_CHARGE)).toBe(true)
         const p2 = state.players[1]
         expect(p2.stunnedFor).toBe(STUN_SECONDS)

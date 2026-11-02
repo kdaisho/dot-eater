@@ -5,46 +5,45 @@ import type {
     PlayerInput,
 } from "./input"
 
-// Touch source: dragging on the play area steers player 1 while the finger
-// is down. Touch drives player 1 only; 2-player modes stay on keyboard and
-// pads. Punch and breath are on-screen buttons (dpad.ts), so a tap on the
-// board does nothing.
+// Touch source: flicks on the play area steer player 1, who keeps going
+// the way flicked without a finger on the screen, and stops at a flick back
+// the way it is going. Touch drives player 1 only; 2-player modes stay on
+// keyboard and pads. Punch and breath are on-screen buttons (dpad.ts), so a
+// tap on the board does nothing.
 //
-// A finger that touches the board and drags SWIPE_DISTANCE holds the way it
-// went, by its stronger axis, as an arrow key is held: the direction is
-// pressed when it changes, so a turn made just before a junction is
-// buffered like a key tap, and released when the finger lifts, so the
-// player stops at the next cell like letting go of a key.
+// A finger that touches the board and drags SWIPE_DISTANCE (a flick, or a
+// drag that is still down) presses the way it went, by its stronger axis,
+// and holds it after the lift, so the player runs on until it meets a wall
+// or another flick:
+// - The opposite of the way the player is going (see follow) lets go of
+//   everything, so the player stops at the next cell: moving left, a flick
+//   right stops it. Standing still, any way goes that way, the way back
+//   from a wall included.
+// - Any other way turns. A turn flicked before a junction is pressed like a
+//   key tap, and the way the player is going stays held behind it as a
+//   fallback until the player takes the turn, so it waits for the junction
+//   while the player carries on rather than stopping against the wall:
+//   moving left, a flick up turns up at the next opening.
 //
-// While the finger stays down, the direction held before the latest turn
-// stays held behind it as a fallback, the way a keyboard player holds the
-// old arrow while pressing the new one: a turn dragged before a junction
-// waits for it while the player carries on, rather than stopping the player
-// against the wall. Only one fallback is kept. Reversing the latest turn
-// drops that turn but keeps the fallback (moving right, an early up then
-// down holds down and right, as holding → and pressing ↓ would); reversing
-// the way the player goes drops it, so the player never bounces back. The
-// lift lets go of both.
-//
-// Dragging another way re-steers without lifting. The distance is measured
-// from an anchor that keeps up with the finger while it moves on the way
-// held (and stays put while it moves any other way), so a turn or a
-// reversal always takes SWIPE_DISTANCE from where the finger last went the
-// held way, however long the drag has been, and a wobble across the way
-// held is forgotten once the finger moves on.
+// Dragging another way re-steers without lifting, by the same rules. The
+// distance is measured from an anchor that keeps up with the finger while
+// it moves on the way held (and stays put while it moves any other way), so
+// a turn or a stop always takes SWIPE_DISTANCE from where the finger last
+// went the held way, however long the drag has been, and a wobble across
+// the way held is forgotten once the finger moves on.
 //
 // One finger steers at a time. Another finger on the board takes over only
 // once it has dragged SWIPE_DISTANCE, so a stray tap (a thumb that misses a
 // button) changes nothing. When the steering finger lifts while an older
-// one is still down, that one steers again from where it is now, holding
-// nothing until it drags SWIPE_DISTANCE, so the player doesn't jump.
+// one is still down, that one steers next, measured from where it is now,
+// so it changes nothing until it drags SWIPE_DISTANCE.
 //
 // A direction pressed by any other control (a key, a pad, the D-pad) drops
-// the drag's directions (PlayerInput.latch), so the newest input wins; the
-// finger then has to drag SWIPE_DISTANCE again to steer. The window losing
-// focus or the page being hidden forgets every finger, since their lifts
-// may never come. It has no DOM access beyond the injected event targets,
-// so tests drive it with plain events.
+// the flick's directions (PlayerInput.latch), so the newest input wins.
+// main lets go too when a game starts or ends, and the window losing focus
+// or the page being hidden lets go and forgets every finger, since their
+// lifts may never come. It has no DOM access beyond the injected event
+// targets, so tests drive it with plain events.
 
 // How far (CSS pixels) a finger must drag before it steers, or steers
 // another way.
@@ -69,22 +68,18 @@ const OPPOSITE: Record<DirectionAction, DirectionAction> = {
     right: "left",
 }
 
-// The directions a drag holds after turning `turned`, given the way it held
-// (`direction`) and that one's fallback: the turn, and as its fallback the
-// way it held, unless that is the turn's opposite (a reversal). A reversal
-// keeps the older fallback instead, unless that is the turn's opposite too.
-export function dragHeld(
-    direction: DirectionAction | undefined,
-    fallback: DirectionAction | undefined,
-    turned: DirectionAction
-): { direction: DirectionAction; fallback?: DirectionAction } {
-    const kept =
-        direction && direction !== OPPOSITE[turned]
-            ? direction
-            : fallback && fallback !== OPPOSITE[turned] && fallback !== turned
-              ? fallback
-              : undefined
-    return kept ? { direction: turned, fallback: kept } : { direction: turned }
+// The way the player is going, for follow: the way it faces while it is
+// on its way to the next cell, or undefined while it stands still (waiting
+// at 1, see wait in game.ts).
+export function heading(player: {
+    character: { moveProgress: number }
+    breather: { facing: { x: number; y: number } }
+}): DirectionAction | undefined {
+    if (player.character.moveProgress >= 1) return undefined
+    const { x, y } = player.breather.facing
+    if (x !== 0) return x < 0 ? "left" : "right"
+    if (y !== 0) return y < 0 ? "up" : "down"
+    return undefined
 }
 
 // The parts of a PointerEvent the source reads.
@@ -121,10 +116,14 @@ export class TouchSource implements InputSource {
     private input: InputState | undefined
     // The fingers on the board, oldest first.
     private readonly fingers = new Map<number, Finger>()
-    // The one steering, if any, and what it holds.
+    // The one steering, if any.
     private steering: number | undefined
+    // What the flicks hold: the way flicked, and behind it the way the
+    // player was going until it takes the turn.
     private direction: DirectionAction | undefined
     private fallback: DirectionAction | undefined
+    // The way the player is going (see follow).
+    private going: DirectionAction | undefined
     private readonly pointerTypes: readonly string[]
     private readonly view: EventTarget | undefined
     private readonly doc: (EventTarget & { hidden?: boolean }) | undefined
@@ -166,7 +165,18 @@ export class TouchSource implements InputSource {
         this.input = undefined
     }
 
-    // Let go of the dragged direction and its fallback, so the player
+    // Tell the source the way player 1 is going now (see heading), or
+    // undefined while it stands still, once a tick: a flick back that way
+    // stops it, and a turn it has taken lets go of the way it went before.
+    follow(going: DirectionAction | undefined): void {
+        this.going = going
+        if (this.fallback && going === this.direction) {
+            this.player()?.release(this.fallback, DRAG)
+            this.fallback = undefined
+        }
+    }
+
+    // Let go of the flicked direction and its fallback, so the player
     // stops. Every finger still down is measured from where it is now, so
     // one only steers (or takes over) once it drags SWIPE_DISTANCE from
     // there, not because it drifted before.
@@ -244,7 +254,6 @@ export class TouchSource implements InputSource {
             // Another finger takes over once it drags.
             const direction = swipeDirection(dx, dy)
             if (!direction) return
-            this.release()
             this.steering = p.pointerId
             reanchor(finger)
             this.turn(direction)
@@ -265,8 +274,7 @@ export class TouchSource implements InputSource {
     private readonly onUp = (event: Event) => {
         const p = this.pointer(event)
         if (!p || !this.fingers.has(p.pointerId)) return
-        // A flick whose movement only shows on the lift still presses (and
-        // so moves a cell, like a key tap).
+        // A flick whose movement only shows on the lift still steers.
         this.onMove(event)
         this.lift(p.pointerId)
     }
@@ -276,28 +284,37 @@ export class TouchSource implements InputSource {
         if (p) this.lift(p.pointerId)
     }
 
-    // Steer the new way `direction` (see dragHeld).
+    // Steer the new way `direction` (see the top of the file): stop on the
+    // way back, else hold it, with the way the player is going behind it.
     private turn(direction: DirectionAction) {
-        const player = this.player()
-        const next = dragHeld(this.direction, this.fallback, direction)
-        // Let go of the rest, the new direction included, so pressing it
-        // is a fresh press edge (it may have been the old fallback).
-        for (const held of [this.fallback, this.direction]) {
-            if (held && held !== next.fallback) player?.release(held, DRAG)
+        if (this.going && direction === OPPOSITE[this.going]) {
+            this.release()
+            return
         }
-        this.direction = next.direction
-        this.fallback = next.fallback
+        const player = this.player()
+        const fallback =
+            this.going && this.going !== direction ? this.going : undefined
+        // Let go of the rest, the new direction included, so pressing it
+        // is a fresh press edge (it may have been held already).
+        for (const held of [this.fallback, this.direction]) {
+            if (held && held !== fallback) player?.release(held, DRAG)
+        }
+        this.direction = direction
+        this.fallback = fallback
+        // The fallback first, so the turn is the newest press and is tried
+        // first (a fallback already held keeps its place).
+        if (fallback) player?.press(fallback, DRAG)
         player?.press(direction, DRAG)
     }
 
-    // A finger is gone. If it steered, let go of what it held and give the
-    // steering back to the newest finger left, from where it is now (see
-    // release).
+    // A finger is gone; what it flicked stays held. If it steered, the
+    // newest finger left steers next, and every finger left is measured
+    // from where it is now, so none steers or takes over for a drift.
     private lift(pointerId: number) {
         if (!this.fingers.delete(pointerId)) return
         if (pointerId !== this.steering) return
-        this.release()
         this.steering = [...this.fingers.keys()].at(-1)
+        for (const finger of this.fingers.values()) reanchor(finger)
     }
 }
 

@@ -59,7 +59,7 @@ const kinds = (moments: readonly Moment[]) => moments.map((m) => m.kind)
 describe("momentsOf", () => {
     it("reports a breath and the enemy it defeats, framed between them", () => {
         const state = ready(
-            makeState(CORRIDORS, { x: 1, y: 1 }, [makeEnemy(4, 1)]),
+            makeState(CORRIDORS, { x: 1, y: 1 }, [makeEnemy(3, 1)]),
             BREATHS.dragon,
             vec2(1, 0)
         )
@@ -74,9 +74,9 @@ describe("momentsOf", () => {
         expect(moments[1]).toMatchObject({
             player: 0,
             enemy: 0,
-            at: vec2(4, 1),
+            at: vec2(3, 1),
             // Halfway from the dragon's centre to the enemy's.
-            focus: vec2(3, 1.5),
+            focus: vec2(2.5, 1.5),
         })
     })
 

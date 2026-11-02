@@ -1,6 +1,7 @@
 import { createBoss, type Boss } from "../boss"
 import type { BreathDef } from "../breath"
 import { BREATHS } from "../breaths"
+import { fireRange } from "../breaths/dragon"
 import {
     AiType,
     Cell,
@@ -9,7 +10,7 @@ import {
     RESPAWN_DELAY,
     TICK_RATE,
 } from "../constants"
-import { DEFAULT_ANIMAL } from "../roster"
+import { AnimalId, DEFAULT_ANIMAL } from "../roster"
 import { createCharacter, type Character } from "../character"
 import {
     drawnPos,
@@ -304,6 +305,16 @@ export function testBreath(overrides: Partial<BreathDef> = {}): BreathDef {
         speedScale: 1,
         fire() {},
         ...overrides,
+    }
+}
+
+// The Dragon's fire as a straight line, as it was before it spread
+// (fireRange cells ahead): for tests of how a line meets walls, bosses and
+// charge levels, which the spreading fire would blur.
+export function lineFire(): BreathDef {
+    return {
+        ...BREATHS[AnimalId.dragon],
+        shape: (level) => ({ kind: "line", range: fireRange(level) }),
     }
 }
 

@@ -5,8 +5,11 @@ import {
     FIXED_PAUSE_KEY,
     sameBindings,
 } from "./bindings"
-import { browserAudioContext, createAudio } from "./audio"
+import { adminScreen, loadAdmin, saveAdmin, unlockAll } from "./admin"
+import { createAdminPanel } from "./adminPanel"
+import { browserAudioContext, createAudio, volumesOf } from "./audio"
 import { RECORDED_TRACKS } from "./recorded"
+import { createMuteButton } from "./muteButton"
 import { playEventSounds, screenSound } from "./sound"
 import { energyHud } from "./breath"
 import {
@@ -142,7 +145,7 @@ import {
     showToast,
     type EndScreenView,
 } from "./ui"
-import { isTouchDevice, isTouchFirst, TouchSource } from "./touch"
+import { heading, isTouchDevice, isTouchFirst, TouchSource } from "./touch"
 import { OPENING_DRUM } from "./opening"
 import { createOpeningLayer, openingItemAt } from "./openingView"
 import { roundWins } from "./versus"
@@ -172,6 +175,35 @@ let lastAnimal: AnimalId = loadLastPick(storage)
 let lastDifficulty: Difficulty = loadLastDifficulty(storage)
 // Likewise the settings: saved on every change on the settings screen.
 let settings: Settings = loadSettings(storage)
+// The mute button (muteButton.ts) flips the settings' mute from any
+// screen. On the settings and controls screens, which keep their own
+// copy of the settings, it goes through that screen so the copy agrees.
+const muteButton = createMuteButton(document, {
+    isMuted: () => settings.muted,
+    toggle() {
+        const muted = !settings.muted
+        if (screen.kind === "settings" || screen.kind === "controls") {
+            enter(screen, {
+                ...screen,
+                settings: { ...screen.settings, muted },
+            })
+            return
+        }
+        settings = { ...settings, muted }
+        saveSettings(storage, settings)
+        audio.setVolumes(volumesOf(settings))
+    },
+})
+// Debug mode (admin.ts): on while this browser holds the hash of the
+// passphrase the build was given. Tests set their own (main.admin.test.ts).
+const adminHash =
+    (globalThis as { adminHash?: string }).adminHash ?? __ADMIN_HASH__
+let admin = loadAdmin(storage, adminHash)
+
+// Progress as the menus see it: in debug mode, every stage open.
+function shownProgress(): Progress {
+    return admin ? unlockAll(progress) : progress
+}
 
 // The system's reduced motion setting, read as it is now on every tick (it
 // can change while the game runs), and whether this is a touch device:
@@ -450,12 +482,16 @@ function tick(dt: number) {
         (screen.kind === "playing" && next.kind !== "paused")
     if (next !== screen) enter(screen, next)
     if (moved) effects.tick(dt)
+    // The way player 1 is going, for the flicks (see TouchSource.follow).
+    const player =
+        next.kind === "playing" ? gameOf(next)?.players[0] : undefined
+    touchSource.follow(player && heading(player))
 }
 
 function flowDeps(dt: number): FlowDeps {
     return {
         levels: stages,
-        progress,
+        progress: shownProgress(),
         lastAnimal,
         lastDifficulty,
         dt,
@@ -556,8 +592,8 @@ function enter(prev: Screen, next: Screen) {
         next.kind === "storyClear" ||
         next.kind === "storyEnd"
     if (cleared && prev.kind === "ending") {
-        // 2-player games leave saved progress alone.
-        if (recordsProgress(next.mode)) {
+        // 2-player games, and debug mode, leave saved progress alone.
+        if (recordsProgress(next.mode) && !admin) {
             const { stars, ticks } = next.rating
             const clear = { difficulty: next.difficulty, stars, ticks }
             progress = recordClear(progress, storage, next.level, clear, {
@@ -594,6 +630,7 @@ function enter(prev: Screen, next: Screen) {
         effects.motion()
     }
     screenSound(audio, prev, next, settings)
+    muteButton.update()
     showOverlay(next)
 }
 
@@ -754,7 +791,7 @@ function showOverlay(s: Screen) {
                 STORY_CHOICES.map((c) => ({
                     label: storyLabel(c),
                     selected: c === s.choice,
-                    ...(storyStart(c, progress) >= levels.length
+                    ...(storyStart(c, shownProgress()) >= levels.length
                         ? { locked: true }
                         : {}),
                 }))
@@ -762,7 +799,7 @@ function showOverlay(s: Screen) {
         case "stageSelect":
             return showStageSelect(
                 stageSlots(
-                    progress,
+                    shownProgress(),
                     levels.map((level) => level.name),
                     lastDifficulty
                 ),
@@ -881,7 +918,7 @@ const PLAY_LABELS: Record<PlayChoice, string> = {
 // isn't built yet.
 function storyLabel(choice: StoryChoice): string {
     if (choice === "newStory") return "New story"
-    const index = storyStart(choice, progress)
+    const index = storyStart(choice, shownProgress())
     const name = levels[index]?.name ?? "coming soon"
     return `Continue (stage ${index + 1}: ${name})`
 }
@@ -1028,6 +1065,36 @@ setHintBindings(bindingsOf(settings))
 pads.attach(input)
 touchSource.attach(input)
 new DpadSource(touchControls).attach(input)
+// The admin panel (adminPanel.ts) opens at #admin, on load or when the
+// address changes to it; closing it takes #admin off the address again.
+const adminPanel = createAdminPanel(document, {
+    hash: adminHash,
+    stageNames: levels.map((level) => level.name),
+    isOn: () => admin,
+    turnOn() {
+        admin = true
+        saveAdmin(storage, adminHash)
+        showOverlay(screen)
+    },
+    turnOff() {
+        admin = false
+        saveAdmin(storage)
+        showOverlay(screen)
+    },
+    jump(target) {
+        enter(screen, adminScreen(target, flowDeps(0)))
+    },
+    closed() {
+        if (location.hash === "#admin")
+            history.replaceState(null, "", location.pathname + location.search)
+    },
+})
+function openAdminAtHash() {
+    if (location.hash === "#admin") adminPanel.open()
+}
+addEventListener("hashchange", openAdminAtHash)
+openAdminAtHash()
+
 // The (empty) toast live region goes in at once, so screen readers already
 // watch it when the first toast shows.
 hideToast()

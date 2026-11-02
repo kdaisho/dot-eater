@@ -16,7 +16,13 @@ import { createJabs } from "./jab"
 import { BURSTS, createParticles, type ParticleLook } from "./particles"
 import { defaultSettings } from "./settings"
 import { createShake, SHAKES } from "./shake"
-import { fixedRandom, makeBoss, makeState, testBreath } from "./test/helpers"
+import {
+    fixedRandom,
+    lineFire,
+    makeBoss,
+    makeState,
+    testBreath,
+} from "./test/helpers"
 import { vec2, type Vec2 } from "./vec2"
 
 // Records what the effects asked for.
@@ -392,7 +398,7 @@ describe("effectsForEvent", () => {
                 ],
                 { x: 1, y: 1 },
                 [],
-                { breath: BREATHS.dragon, boss }
+                { breath: lineFire(), boss }
             )
             state.players[0].breather.energy = 100
             return state

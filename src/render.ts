@@ -2,11 +2,15 @@ import { footprint } from "./boss"
 import { bossLooks, bossWarning } from "./bossBreath"
 import { enemyBreathLooks, enemyWarnings } from "./enemyBreath"
 import {
+    affordable,
     aimPreviews,
     canBreathe,
+    chargeLevel,
     enemyVisible,
     hasStatus,
+    MAX_CHARGE,
     type AimPreview,
+    type Breather,
     type EnergyHud,
     type Look,
 } from "./breath"
@@ -200,6 +204,19 @@ const LABEL_SCALE = 0.4
 // cells.
 const ARROW_TIP = 0.7
 const ARROW_WIDTH = 0.3
+
+// A player charging its breath (KDA-289) glows (user feedback 2026-11-01:
+// the meter alone was hard to watch while playing): a disc behind its
+// sprite, CHARGE_AURA_BASE times as wide as the sprite at level 1 and
+// CHARGE_AURA_GROWTH of the sprite wider each level. In amber like a ready meter, then in the
+// meter's charge red, flickering CHARGE_FLICKER_HZ times a second, once
+// it is fully charged (MAX_CHARGE, or all the meter pays for). With reduced
+// motion it doesn't flicker. Placeholders to tune at preview.
+export const CHARGE_AURA_BASE = 1.2
+export const CHARGE_AURA_GROWTH = 0.15
+export const CHARGE_AURA_ALPHA = 0.45
+export const CHARGE_AURA_FULL_ALPHA = 0.6
+export const CHARGE_FLICKER_HZ = 8
 
 // A jab (see jab.ts) shows a fist this far ahead of the sprite's centre and
 // this wide, in cells: just past the sprite's front, where the punch
@@ -475,12 +492,14 @@ export function createRenderer(
     }
 }
 
-// The fog for one frame: the light is centred on where each player is
-// drawn (mid-glide), and anything wholly outside `radius` cells of every
-// player is hidden.
+// The fog for one frame: each player's light is centred on where it is
+// drawn (mid-glide), `radius` cells across times its breath's sightScale
+// (the Owl sees further), and anything wholly outside every light is
+// hidden.
+type Light = { pos: Vec2; radius: number }
+
 type Fog = {
-    players: Vec2[]
-    radius: number
+    lights: Light[]
     wrap: FogWrap
     // Whether something centred at `p` (cell units) reaches into the light.
     visible(p: Vec2): boolean
@@ -497,19 +516,19 @@ function createFog(
     // the light stays where they went out.
     const inPlay = state.players.filter((p) => !p.out)
     const lit = inPlay.length > 0 ? inPlay : state.players
-    const players = lit.map((p) =>
-        glidePos(p.character, alpha, cols, rows, p.rate)
-    )
+    const lights = lit.map((p) => ({
+        pos: glidePos(p.character, alpha, cols, rows, p.rate),
+        radius: radius * (p.breather.breath.sightScale ?? 1),
+    }))
     const wrap = fogWrap(state.cells)
     return {
-        players,
-        radius,
+        lights,
         wrap,
         visible: (p) =>
-            players.some(
-                (player) =>
-                    fogDistance(p, player, cols, rows, wrap) <=
-                    radius + FOG_REACH
+            lights.some(
+                (light) =>
+                    fogDistance(p, light.pos, cols, rows, wrap) <=
+                    light.radius + FOG_REACH
             ),
     }
 }
@@ -557,13 +576,14 @@ function drawDarkness(
     dpr: number,
     screen: Rect
 ) {
-    const outer = fog.radius * cell
-    const inner = Math.max(0, fog.radius - FOG_SOFT_EDGE) * cell
-    if (fog.players.length > 1) {
+    if (fog.lights.length > 1) {
         drawSharedDarkness(ctx, fog, cell, cols, rows, layer(), dpr, screen)
         return
     }
-    for (const c of lightCentres(fog.players[0], cols, rows, fog.wrap)) {
+    const [{ pos, radius }] = fog.lights
+    const outer = radius * cell
+    const inner = Math.max(0, radius - FOG_SOFT_EDGE) * cell
+    for (const c of lightCentres(pos, cols, rows, fog.wrap)) {
         const band = lightBand(c, cols, rows, fog.wrap)
         if (!band) continue
         const x = (c.x + 0.5) * cell
@@ -611,8 +631,6 @@ function drawSharedDarkness(
     const pixelHeight = Math.ceil(screen.height * dpr)
     if (layer.canvas.width !== pixelWidth) layer.canvas.width = pixelWidth
     if (layer.canvas.height !== pixelHeight) layer.canvas.height = pixelHeight
-    const outer = fog.radius * cell
-    const inner = Math.max(0, fog.radius - FOG_SOFT_EDGE) * cell
     // Last frame's darkness is still there: start from a clear layer.
     dark.setTransform(1, 0, 0, 1, 0, 0)
     dark.globalCompositeOperation = "source-over"
@@ -622,8 +640,10 @@ function drawSharedDarkness(
     dark.fillStyle = `rgb(${COLORS.fog})`
     dark.fillRect(0, 0, cols * cell, rows * cell)
     dark.globalCompositeOperation = "destination-out"
-    for (const player of fog.players) {
-        for (const c of lightCentres(player, cols, rows, fog.wrap)) {
+    for (const { pos, radius } of fog.lights) {
+        const outer = radius * cell
+        const inner = Math.max(0, radius - FOG_SOFT_EDGE) * cell
+        for (const c of lightCentres(pos, cols, rows, fog.wrap)) {
             const x = (c.x + 0.5) * cell
             const y = (c.y + 0.5) * cell
             // A light wholly off screen clears nothing that shows.
@@ -943,6 +963,7 @@ function drawCharacters(
         arrow: null,
         jab: null,
         stance: stanceLook(enemy, reducedMotion),
+        aura: null,
     })
     const held = state.enemies.filter((e) => hasStatus(e, "holds"))
     const free = state.enemies.filter((e) => !hasStatus(e, "holds"))
@@ -968,6 +989,9 @@ function drawCharacters(
                                   : null,
                           jab: jabs.find((j) => j.player === i) ?? null,
                           stance: null,
+                          aura: stunned(player)
+                              ? null
+                              : chargeAura(player.breather, reducedMotion),
                       },
                   ]
         ),
@@ -978,7 +1002,8 @@ function drawCharacters(
     // drawn on top.
     const fists: { x: number; y: number; facing: Vec2; back: number }[] = []
     for (const sprite of sprites) {
-        const { character, rate, marker, badge, arrow, jab, stance } = sprite
+        const { character, rate, marker, badge, arrow, jab, stance, aura } =
+            sprite
         const isPlayer = character.id === CharacterId.player
         if (!isPlayer && !enemyVisible(character)) continue
         const held = !isPlayer && hasStatus(character, "holds")
@@ -1007,6 +1032,14 @@ function drawCharacters(
             ctx.font = `${Math.round(size)}px sans-serif`
             const x = (p.x + 0.5) * cell
             const y = (p.y + 0.5) * cell
+            if (aura) {
+                ctx.globalAlpha = aura.alpha
+                ctx.fillStyle = aura.color
+                ctx.beginPath()
+                ctx.arc(x, y, (size / 2) * aura.scale, 0, Math.PI * 2)
+                ctx.fill()
+                ctx.globalAlpha = 1
+            }
             for (const look of looks) {
                 if (!look.color) continue
                 ctx.fillStyle = look.color
@@ -1051,6 +1084,32 @@ function drawCharacters(
     }
     for (const fist of fists) {
         drawFist(ctx, fist.facing, fist.x, fist.y, cell, fist.back)
+    }
+}
+
+// The glow round a player charging its breath (see CHARGE_AURA_GROWTH):
+// its colour, its alpha and its size as a factor of the sprite's, or null
+// while the breath isn't charging.
+export type ChargeAura = { color: string; alpha: number; scale: number }
+
+export function chargeAura(
+    breather: Breather,
+    reducedMotion: boolean
+): ChargeAura | null {
+    if (breather.charge === null) return null
+    const level = chargeLevel(breather)
+    const scale = CHARGE_AURA_BASE + (level - 1) * CHARGE_AURA_GROWTH
+    const full = level >= MAX_CHARGE || level >= affordable(breather)
+    if (!full) {
+        return { color: COLORS.meterReady, alpha: CHARGE_AURA_ALPHA, scale }
+    }
+    // Bright on the first half of each flicker, faint on the second.
+    const bright =
+        reducedMotion || (breather.charge * CHARGE_FLICKER_HZ) % 1 < 0.5
+    return {
+        color: COLORS.meterCharge,
+        alpha: bright ? CHARGE_AURA_FULL_ALPHA : CHARGE_AURA_ALPHA / 2,
+        scale,
     }
 }
 

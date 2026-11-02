@@ -51,6 +51,12 @@ import {
     type Effects,
     CROUCH_HEIGHT,
     CROUCH_WIDTH,
+    CHARGE_AURA_ALPHA,
+    CHARGE_AURA_BASE,
+    CHARGE_AURA_FULL_ALPHA,
+    CHARGE_AURA_GROWTH,
+    CHARGE_FLICKER_HZ,
+    chargeAura,
 } from "./render"
 import { GUARD_STANCE } from "./guard"
 import { SNEAK_ALPHA, SNEAK_FAR, SNEAK_NEAR, sneakAlpha } from "./intercept"
@@ -534,6 +540,35 @@ describe("createRenderer", () => {
             expect(walls.has("2,0")).toBe(true)
             expect(walls.has("6,0")).toBe(false)
             expect(walls.has("12,1")).toBe(false)
+        })
+
+        // User feedback 2026-11-01: the Owl sees 1.5 times as far.
+        it("lights 1.5 times the radius round the Owl", () => {
+            const fogged = (breath = BREATHS.dragon) => {
+                const { calls, canvas, renderer, texts } = setup()
+                const state = makeState(
+                    corridor(),
+                    { x: 2, y: 1 },
+                    [makeEnemy(8, 1, AiType.chase, undefined, ENEMY_IDS[0])],
+                    { breath }
+                )
+                renderer.draw(state, 0, {}, { fog: { radius: 4 } })
+                const cell = parseFloat(canvas.style.width) / 13
+                const [light] = calls.filter(
+                    (c) => c.name === "createRadialGradient"
+                )
+                // The light's inner and outer radius, in cells.
+                const radii = [light.args[2], light.args[5]].map(
+                    (r) => (r as number) / cell
+                )
+                return { texts: texts(), radii }
+            }
+            // The chaser is 6 cells off: out of a radius of 4, in one of 6.
+            expect(fogged()).toEqual({ texts: ["🐉"], radii: [2.5, 4] })
+            expect(fogged(BREATHS.owl)).toEqual({
+                texts: ["🦉", "👹"],
+                radii: [4.5, 6],
+            })
         })
 
         // Regression: only things whose centre was inside the radius were
@@ -1426,6 +1461,31 @@ describe("createRenderer with two players", () => {
             expect(images[0].args.slice(1)).toEqual([0, 0, 13 * cell, 3 * cell])
         })
 
+        it("gives each player its own light: the Owl's 1.5 times as wide", () => {
+            const { canvas, renderer } = setup()
+            const layerCanvas = document.createElement("canvas")
+            const layer = stubContext()
+            vi.spyOn(layerCanvas, "getContext").mockReturnValue(
+                layer.ctx as never
+            )
+            vi.spyOn(document, "createElement").mockReturnValue(layerCanvas)
+            const state = makeState(
+                corridor,
+                [
+                    { x: 1, y: 1 },
+                    { x: 11, y: 1 },
+                ],
+                [],
+                { breath: [BREATHS.dragon, BREATHS.owl] }
+            )
+            renderer.draw(state, 0, {}, { fog: { radius: 2 } })
+            const cell = parseFloat(canvas.style.width) / 13
+            const outer = layer.calls
+                .filter((c) => c.name === "createRadialGradient")
+                .map((c) => (c.args[5] as number) / cell)
+            expect(outer).toEqual([2, 3])
+        })
+
         // Resizing a canvas reallocates it: the layer is sized, and its
         // context taken, once, and again only when the size changes.
         it("reuses the layer from frame to frame", () => {
@@ -2035,6 +2095,120 @@ describe("stanceLook (KDA-293)", () => {
     })
 })
 
+// User feedback 2026-11-01: a charging breath shows on the character, so
+// the player needn't watch the meter.
+describe("chargeAura", () => {
+    // Amber while charging, the meter's charge red once full.
+    const AMBER = "#f59e0b"
+    const RED = "#dc2626"
+
+    function breather(energy = 100) {
+        const { breather } = makeState(textMap(["#.#"]).map, { x: 1, y: 0 })
+            .players[0]
+        breather.energy = energy
+        return breather
+    }
+
+    it("is null while the breath isn't charging", () => {
+        expect(chargeAura(breather(), false)).toBeNull()
+    })
+
+    it("grows a step each level, in amber", () => {
+        const b = breather()
+        const scales = [1, 2, 3, 4].map((level) => {
+            b.charge = (level - 1) * CHARGE_SECONDS
+            const aura = chargeAura(b, false)!
+            expect(aura.color).toBe(AMBER)
+            expect(aura.alpha).toBe(CHARGE_AURA_ALPHA)
+            return aura.scale
+        })
+        expect(scales).toEqual(
+            [0, 1, 2, 3].map((n) => CHARGE_AURA_BASE + n * CHARGE_AURA_GROWTH)
+        )
+    })
+
+    it("turns red and flickers once fully charged", () => {
+        const b = breather()
+        b.charge = 4 * CHARGE_SECONDS
+        const bright = chargeAura(b, false)!
+        expect(bright).toEqual({
+            color: RED,
+            alpha: CHARGE_AURA_FULL_ALPHA,
+            scale: CHARGE_AURA_BASE + 4 * CHARGE_AURA_GROWTH,
+        })
+        // Half a flicker on: faint.
+        b.charge += 0.5 / CHARGE_FLICKER_HZ
+        expect(chargeAura(b, false)!.alpha).toBe(CHARGE_AURA_ALPHA / 2)
+        // Reduced motion: steady.
+        expect(chargeAura(b, true)!.alpha).toBe(CHARGE_AURA_FULL_ALPHA)
+    })
+
+    it("is full at the level the meter pays for", () => {
+        // 40 energy pays for the Dragon's level 2.
+        const b = breather(40)
+        b.charge = CHARGE_SECONDS
+        expect(chargeAura(b, false)!.color).toBe(RED)
+        b.charge = 0
+        expect(chargeAura(b, false)!.color).toBe(AMBER)
+    })
+})
+
+describe("createRenderer with a charging breath", () => {
+    afterEach(() => {
+        vi.restoreAllMocks()
+    })
+
+    const discs = (calls: ReturnType<typeof setup>["calls"]) =>
+        calls.filter((c) => c.name === "arc")
+
+    function charging() {
+        const state = makeState(textMap(["#####", "#. .#", "#####"]).map, {
+            x: 2,
+            y: 1,
+        })
+        state.players[0].breather.energy = 100
+        return state
+    }
+
+    it("draws the aura behind the player's sprite", () => {
+        const { calls, canvas, renderer } = setup()
+        const state = charging()
+        state.players[0].breather.charge = CHARGE_SECONDS
+        renderer.draw(state, 0)
+        const cell = parseFloat(canvas.style.width) / 5
+        const [disc] = discs(calls)
+        const [x, y, r] = disc.args as number[]
+        expect(x).toBeCloseTo(2.5 * cell)
+        expect(y).toBeCloseTo(1.5 * cell)
+        expect(r).toBeCloseTo(
+            ((SPRITE_SCALE * cell) / 2) *
+                (CHARGE_AURA_BASE + CHARGE_AURA_GROWTH)
+        )
+        const fill = calls.findIndex((c) => c.name === "fill")
+        expect(calls[fill]).toMatchObject({
+            fillStyle: "#f59e0b",
+            globalAlpha: CHARGE_AURA_ALPHA,
+        })
+        const sprite = calls.findIndex(
+            (c) => c.name === "fillText" && c.args[0] === "🐉"
+        )
+        expect(sprite).toBeGreaterThan(fill)
+        expect(calls[sprite].globalAlpha).toBe(1)
+    })
+
+    it("draws none while not charging, or while stunned", () => {
+        const idle = setup()
+        idle.renderer.draw(charging(), 0)
+        expect(discs(idle.calls)).toEqual([])
+        const dazed = setup()
+        const state = charging()
+        state.players[0].breather.charge = 0
+        stun(state.players[0])
+        dazed.renderer.draw(state, 0)
+        expect(discs(dazed.calls)).toEqual([])
+    })
+})
+
 describe("createRenderer with the facing guide", () => {
     afterEach(() => {
         vi.restoreAllMocks()
@@ -2045,7 +2219,7 @@ describe("createRenderer with the facing guide", () => {
 
     // A dotted corridor 9 cells long: player 1 at (1, 1) and, with two
     // players, player 2 at (7, 1) facing it. Both breathe the Dragon's
-    // line, 3 cells for a tap (level 1).
+    // line, 2 cells for a tap (level 1).
     const corridor = [
         Array(9).fill(1),
         [1, ...Array(7).fill(2), 1],
@@ -2092,20 +2266,20 @@ describe("createRenderer with the facing guide", () => {
         const state = game()
         charge(state)
         renderer.draw(state, 0, {}, {}, AIM)
-        expect(tinted(calls, canvas)).toEqual([2, 3, 4])
+        expect(tinted(calls, canvas)).toEqual([2, 3])
         // An edge round the line: its top and bottom along each cell, and
         // its two ends.
-        expect(edges(calls)).toBe(3 * 2 + 2)
+        expect(edges(calls)).toBe(2 * 2 + 2)
     })
 
     it("tints the cells of the level a held breath has charged to", () => {
         const { calls, canvas, renderer } = setup()
         const state = game()
         charge(state)
-        // Held long enough for level 3: the Dragon's line is 5 cells.
+        // Held long enough for level 3: the Dragon's line is 4 cells.
         state.players[0].breather.charge = CHARGE_SECONDS * 2
         renderer.draw(state, 0, {}, {}, AIM)
-        expect(tinted(calls, canvas)).toEqual([2, 3, 4, 5, 6])
+        expect(tinted(calls, canvas)).toEqual([2, 3, 4, 5])
     })
 
     it("draws the tint under the dots and the characters", () => {
@@ -2153,8 +2327,8 @@ describe("createRenderer with the facing guide", () => {
         const state = game(2)
         charge(state)
         renderer.draw(state, 0, {}, {}, AIM)
-        expect(tinted(calls, canvas, 0)).toEqual([2, 3, 4])
-        expect(tinted(calls, canvas, 1)).toEqual([4, 5, 6])
+        expect(tinted(calls, canvas, 0)).toEqual([2, 3])
+        expect(tinted(calls, canvas, 1)).toEqual([5, 6])
     })
 
     it("draws no aim for a player out of play", () => {
@@ -2164,7 +2338,7 @@ describe("createRenderer with the facing guide", () => {
         takeOut(state.players[0], 3)
         renderer.draw(state, 0, {}, {}, AIM)
         expect(tinted(calls, canvas, 0)).toEqual([])
-        expect(tinted(calls, canvas, 1)).toEqual([4, 5, 6])
+        expect(tinted(calls, canvas, 1)).toEqual([5, 6])
     })
 
     it("draws no aim for a stunned player", () => {
@@ -2173,7 +2347,7 @@ describe("createRenderer with the facing guide", () => {
         charge(state)
         stun(state.players[1])
         renderer.draw(state, 0, {}, {}, AIM)
-        expect(tinted(calls, canvas, 0)).toEqual([2, 3, 4])
+        expect(tinted(calls, canvas, 0)).toEqual([2, 3])
         expect(tinted(calls, canvas, 1)).toEqual([])
     })
 
@@ -2181,6 +2355,8 @@ describe("createRenderer with the facing guide", () => {
         const { calls, canvas, renderer } = setup()
         const state = game()
         charge(state)
+        // Held for level 2: 3 cells, the last out of the light.
+        state.players[0].breather.charge = CHARGE_SECONDS
         renderer.draw(state, 0, {}, { fog: { radius: 1.5 } }, AIM)
         expect(tinted(calls, canvas)).toEqual([2, 3])
         // The edge of those two cells only: top and bottom of each, and

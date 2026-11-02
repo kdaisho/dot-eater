@@ -1,5 +1,5 @@
 // Draws the end roll (endRoll.ts) on its own 256x224 canvas, in the look
-// of the title's Gold style: a night sky with a purple disc, thick gold
+// of the title's Gold style: a night sky, a UFO spotlighting each card, thick gold
 // cards whose portraits are mosaics of raised tiles, speed lines, and
 // THE END in extruded block letters. Every frame is drawn from the time
 // alone, so it can be paused, skipped or redrawn anywhere. DOM: it makes
@@ -16,6 +16,8 @@ import {
     FINALE_AT,
     scale2x,
     staffAt,
+    lampPower,
+    ufoAt,
     STAFF,
     type CastCard,
 } from "./endRoll"
@@ -38,7 +40,7 @@ const C = {
     lime: "#b8f818",
     menu: "#fca044",
     copy: "#f878f8",
-    disc: "#2c1858",
+    beam: "#fcd880",
     cream: "#fcf0d0",
 }
 // The title's Gold logo colours.
@@ -204,6 +206,33 @@ const SPRITES: Record<string, readonly string[]> = {
         "V..VV.VVVV.VV..V",
         "...V...VV...V...",
     ],
+    // Claude Code's mascot, for the staff credit.
+    claude: [
+        ".CCCCCCCC.",
+        ".CKCCCCKC.",
+        "CCCCCCCCCC",
+        ".CCCCCCCC.",
+        ".C.C..C.C.",
+    ],
+    ufo: ["...FFF...", ".SSSSSSS.", "SESYSESYS", ".SSSSSSS."],
+    // The spotlight's UFO: a classic flying saucer, its dome with portholes
+    // on a wide disc, red pods underneath and the lamp in the middle.
+    saucer: [
+        "...........KK...........",
+        "..........KFSK..........",
+        "........KKHHSSKK........",
+        ".......KHFHSSSSNK.......",
+        "......KHHKSSKSSNNK......",
+        "......KSSKSSKSSKNK......",
+        "....KKSSSSSSSSSSNNKK....",
+        "..KKHHHHHHSSSSSSSSNNKK..",
+        ".KHFFHHHHHHSSSSSSSSSNNK.",
+        "KNNNNNNNNNNNNNNNNNNNNNNK",
+        ".KKMMMMMMMMMMMMMMMMMMKK.",
+        "...KKEEK..KNNK..KEEKK...",
+        "....KEEK...KK...KEEK....",
+        ".....KK..........KK.....",
+    ],
     crown: [
         "........",
         "........",
@@ -222,6 +251,7 @@ const PALETTE: Record<string, string> = {
     Y: C.gold,
     R: C.red,
     O: C.tan,
+    C: "#d97757",
     B: "#ac7c00",
     T: C.tan,
     D: "#503000",
@@ -232,6 +262,8 @@ const PALETTE: Record<string, string> = {
     M: C.grey,
     E: C.red,
     F: C.white,
+    H: "#e4e4e4",
+    N: "#4c4c4c",
 }
 const HERO_SPRITES = CAST.filter((c) => c.who.kind === "animal").map(
     (c) => c.sprite
@@ -562,8 +594,8 @@ const STARS = (() => {
     return Array.from({ length: 60 }, () => [r() * W, r() * H, r()] as const)
 })()
 
-// The night sky, with the big disc behind the card (radius 0 for none).
-function backdrop(g: Ctx, t: number, disc = 62) {
+// The night sky; with `ufo`, the UFO passes at their times.
+function backdrop(g: Ctx, t: number, withUfo = true) {
     rect(g, 0, 0, W, H, GOLD.bg)
     for (const [x, y, p] of STARS) {
         if ((t * 2 + p * 9) % 3 <= 0.5) continue
@@ -571,10 +603,76 @@ function backdrop(g: Ctx, t: number, disc = 62) {
         rect(g, x, y, 1, 1, p > 0.75 ? C.gold : C.white)
     }
     g.globalAlpha = 1
-    for (let dy = -disc; dy < disc; dy += 2) {
-        const hw = Math.round(Math.sqrt(disc * disc - dy * dy) / 2) * 2
-        rect(g, W / 2 - hw, 78 + dy, hw * 2, 2, C.disc)
+    if (withUfo) ufo(g, t)
+}
+
+// A beam from a lamp at (lx, ly) to a pool of light on the floor at tx, in
+// 2 px steps. The bands add light, so the stars show through and the sky
+// brightens instead of greying.
+const POOL_Y = 136
+function beam(g: Ctx, lx: number, ly: number, tx: number, power = 1) {
+    const band = (alpha: number, scale: number) => {
+        g.globalAlpha = alpha * power
+        for (let y = ly; y < POOL_Y; y += 2) {
+            const f = (y - ly) / (POOL_Y - ly)
+            const cx = lx + (tx - lx) * f
+            const hw = Math.round(((4 + f * 72) * scale) / 2) * 2
+            rect(g, cx - hw, y, hw * 2, 2, C.beam)
+        }
+        for (let dy = -6; dy < 6; dy += 2) {
+            const hw =
+                Math.round((84 * scale * Math.sqrt(1 - (dy / 7) ** 2)) / 2) * 2
+            rect(g, tx - hw, POOL_Y + dy, hw * 2, 2, C.beam)
+        }
     }
+    g.globalCompositeOperation = "lighter"
+    band(0.13, 1)
+    band(0.13, 0.75)
+    band(0.12, 0.45)
+    g.globalCompositeOperation = "source-over"
+    g.globalAlpha = 1
+}
+
+// A lamp housing with its lit face, at the top of the screen.
+// Specks of dust drifting through a corner beam.
+function dust(g: Ctx, lx: number, tx: number, t: number) {
+    const r = seeded(11)
+    for (let i = 0; i < 18; i++) {
+        const f = (r() + t * (0.03 + r() * 0.03)) % 1
+        const y = 8 + f * (POOL_Y - 12)
+        const cx = lx + (tx - lx) * (y / POOL_Y)
+        const x = cx + (r() - 0.5) * (8 + f * 120) + Math.sin(t * 2 + i) * 3
+        if ((t * 3 + i) % 2 < 0.4) continue
+        g.globalAlpha = 0.5 + r() * 0.4
+        rect(g, x, y, 1, 1, i % 3 ? C.cream : C.gold)
+    }
+    g.globalAlpha = 1
+}
+
+// The spotlight: a UFO hovering in the top-left corner shines its beam on
+// the card at `cardX`, with dust in the beam. The beam stutters now and
+// then (lampPower), as if the UFO's light were on the blink.
+const LAMP_X = 28
+function spotlight(g: Ctx, cardX: number, t: number) {
+    const power = lampPower(t)
+    const y = 1 + Math.round(Math.sin(t * Math.PI * 0.8)) * 2
+    beam(g, LAMP_X, y + 26, cardX, power)
+    if (power === 1) dust(g, LAMP_X, cardX, t)
+    sprite(g, "saucer", LAMP_X - 24, y, 2)
+    // The lamp under the middle: lit, or grey while it cuts out.
+    rect(g, LAMP_X - 2, y + 24, 4, 2, power < 1 ? C.grey : C.white)
+}
+
+// The UFO that zips across now and then (ufoAt), with a short trail.
+function ufo(g: Ctx, t: number) {
+    const p = ufoAt(t)
+    if (p === undefined) return
+    const x = W + 12 - p * (W + 30)
+    const y = 9 + Math.round(Math.sin(p * Math.PI * 3) * 2)
+    g.globalAlpha = 0.5
+    rect(g, x + 10, y + 2, 14, 1, C.sky)
+    g.globalAlpha = 1
+    sprite(g, "ufo", x, y)
 }
 
 // Speed lines trailing a card on the move.
@@ -592,33 +690,36 @@ const CARD_Y = 76
 function castCard(g: Ctx, all: Card[], index: number, u: number, t: number) {
     const { slideIn, slideOut, perCard } = END_ROLL
     const stage = cardStage(u)
-    backdrop(g, t, stage === "rest" && u < slideIn + 0.12 ? 66 : 62)
+    backdrop(g, t)
     const card = CAST[index]
     let x = W / 2
     let shine = -1
+    let trail = false
     if (stage === "in") {
         x = W + 70 + (W / 2 - W - 70) * easeOutBack(u / slideIn)
-        if (u < slideIn * 0.8) streaks(g, x, CARD_Y, t)
+        trail = u < slideIn * 0.8
     } else if (stage === "out") {
         const p = easeIn((u - (perCard - slideOut)) / slideOut)
         x = W / 2 + (-90 - W / 2) * p
-        if (p > 0.15) streaks(g, x, CARD_Y, t)
+        trail = p > 0.15
     } else if (u > slideIn + 0.25 && u < slideIn + 1.05) {
         // At rest the card stays still, so the portrait reads; one shine
         // sweeps across it.
         shine = (u - slideIn - 0.25) / 0.8
     }
+    spotlight(g, x, t)
+    if (trail) streaks(g, x, CARD_Y, t)
     drawCard(g, all[index], x, CARD_Y, shine)
     if (stage !== "rest" || u < slideIn + 0.05) return
     const v = u - slideIn - 0.05
     const boss = card.who.kind === "boss"
-    text(g, typed(card.name, v), W / 2, 152, boss ? C.red : C.gold)
-    text(g, typed(card.ability, v - 0.2), W / 2, 168, C.menu)
-    text(g, typed(card.line, v - 0.5), W / 2, 188, C.white)
+    text(g, typed(card.name, v), W / 2, 156, boss ? C.red : C.gold)
+    text(g, typed(card.ability, v - 0.2), W / 2, 172, C.menu)
+    text(g, typed(card.line, v - 0.5), W / 2, 190, C.white)
 }
 
 function finale(g: Ctx, all: Card[], v: number, t: number) {
-    backdrop(g, t, 0)
+    backdrop(g, t)
     // The cards are dealt into two rows of 7, each flying in from the
     // right; then a wave runs along the rows.
     all.forEach((card, i) => {
@@ -633,9 +734,22 @@ function finale(g: Ctx, all: Card[], v: number, t: number) {
     })
     const staff = staffAt(v)
     if (staff) {
-        const [role, name] = STAFF[staff.index]
+        const { role, names, icon } = STAFF[staff.index]
         text(g, typed(role, staff.shown, 30), W / 2, 140, C.menu)
-        text(g, typed(name, staff.shown - 0.3, 30), W / 2, 158, C.white)
+        names.forEach((name, i) => {
+            const y = 158 + i * 16
+            const last = i === names.length - 1
+            const shown = staff.shown - 0.3 - i * 0.5
+            // With an icon, the name and the icon are centred together.
+            const withIcon = last ? icon : undefined
+            const iconW = withIcon ? SPRITES[withIcon][0].length * 2 + 6 : 0
+            const x = W / 2 - iconW / 2
+            text(g, typed(name, shown, 30), x, y, C.white)
+            if (withIcon && shown * 30 >= name.length) {
+                const left = x + (name.length * 8) / 2 + 6
+                sprite(g, withIcon, left, y - 1 - hop(shown, 2, 2), 2)
+            }
+        })
     }
     // The heroes run along the bottom.
     if (v > 2) {
@@ -651,7 +765,7 @@ function theEnd(g: Ctx, u: number, y: number) {
 }
 
 function ending(g: Ctx, all: Card[], u: number, difficulty: Difficulty) {
-    backdrop(g, u, 0)
+    backdrop(g, u, false)
     const kind = endingKind(difficulty)
     if (kind === "true") {
         // Super Hard: gold rain and the five hero cards wearing crowns.
@@ -714,7 +828,8 @@ export function drawEndRoll(g: Ctx, t: number, difficulty: Difficulty) {
     const phase = endRollPhase(t)
     switch (phase.kind) {
         case "opening":
-            return backdrop(g, t, 62)
+            backdrop(g, t)
+            return spotlight(g, W / 2, t)
         case "card":
             return castCard(g, all, phase.index, phase.u, t)
         case "finale":
