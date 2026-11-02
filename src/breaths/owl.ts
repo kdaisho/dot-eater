@@ -4,7 +4,8 @@ import { AnimalId } from "../roster"
 // Owl 🦉, wind breath (KDA-218): blows every enemy in a line back a few
 // cells, through tunnels; it doesn't defeat. Charging it (KDA-289) makes
 // the line longer and the push further (windRange, windPush), for 10
-// energy a level. Stat: cheap breath, short cooldown.
+// energy a level. Stats: cheap breath, short cooldown, and it sees 1.5
+// times as far as the others in fog (user feedback 2026-11-01).
 
 // The line's range at charge `level`: 4 cells for a tap, one more a level,
 // 8 at the top (KDA-289; placeholders to tune at preview). Level 2 is the
@@ -39,6 +40,7 @@ export const owl: BreathDef = {
     duration: 0,
     maxEnergy: 100,
     speedScale: 1,
+    sightScale: 1.5,
     // Quick blue-grey wisps streaking along the line (pale ones would vanish
     // on the white floor).
     particles: {
