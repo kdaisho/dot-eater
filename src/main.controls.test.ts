@@ -122,7 +122,7 @@ describe("main's controls screen", () => {
         expect(selectedItem()).toBe("Up Space")
         expect(lines()).toEqual([
             "Space ↓ to choose, ↑ to change",
-            "← → for 2P's controls, Esc to go back",
+            "← → for 2P's controls, Esc or B to go back",
         ])
         pressAndTick("ArrowUp")
         expect(capturing()).toBe(true)

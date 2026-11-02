@@ -51,6 +51,8 @@ export const FIXED_PAUSE_KEY = "Escape"
 
 // Standard-mapping buttons.
 export const PAD_A = 0
+// B (Circle): Back on menus, fixed like Escape (see GamepadSource.setMenus).
+export const PAD_B = 1
 export const PAD_X = 2
 export const PAD_START = 9
 // The D-pad (up, down, left, right): fixed to the directions.

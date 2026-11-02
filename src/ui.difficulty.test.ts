@@ -47,7 +47,7 @@ describe("showDifficultySelect", () => {
         expect(overlay()?.dataset.screen).toBe("difficulty-select")
         expect(title()).toBe("Select a difficulty")
         expect(hints()).toEqual([
-            "↑ ↓ to choose, Space to pick a character, Esc to go back",
+            "↑ ↓ to choose, Space to pick a character, Esc or B to go back",
         ])
         const li = [...(overlay()?.querySelectorAll("li") ?? [])]
         expect(li.map((l) => l.firstChild?.textContent)).toEqual([
@@ -80,11 +80,11 @@ describe("showStageSelect's difficulty", () => {
         )
         expect(lines()).toEqual([
             "Bests on Hard",
-            "↑ ↓ to choose, Space to pick a difficulty, Esc to go back",
+            "↑ ↓ to choose, Space to pick a difficulty, Esc or B to go back",
         ])
         // Only the key line is a hint (hidden on phones).
         expect(hints()).toEqual([
-            "↑ ↓ to choose, Space to pick a difficulty, Esc to go back",
+            "↑ ↓ to choose, Space to pick a difficulty, Esc or B to go back",
         ])
     })
 })

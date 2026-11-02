@@ -63,22 +63,22 @@ describe("hints follow the bindings", () => {
         expect(lines()).toEqual(["Press Enter to start"])
         showStageSelect([], 0)
         expect(lines()).toEqual([
-            "I K to choose, Enter to pick a difficulty, Esc to go back",
+            "I K to choose, Enter to pick a difficulty, Esc or B to go back",
         ])
         showDifficultySelect([])
         expect(lines()).toEqual([
-            "I K to choose, Enter to pick a character, Esc to go back",
+            "I K to choose, Enter to pick a character, Esc or B to go back",
         ])
         const animals = ANIMAL_IDS.map((id) => ANIMALS[id])
         showCharacterSelect(animals, AnimalId.dragon)
         expect(lines()).toEqual([
-            "J L to choose, Enter to play, Esc to go back",
+            "J L to choose, Enter to play, Esc or B to go back",
         ])
         showCharacterSelect(animals, [AnimalId.dragon, AnimalId.owl])
         expect(lines()).toEqual([
             "1P: J L to choose, Enter to confirm",
             "2P: Z X to choose, F to confirm",
-            "Esc or R to go back",
+            "Esc, B or R to go back",
         ])
         showPause()
         expect(lines()).toEqual(["I K to choose, Enter to pick, Esc to resume"])
@@ -89,7 +89,7 @@ describe("hints follow the bindings", () => {
         ])
         showSettings([])
         expect(lines()).toEqual([
-            "I K to choose, J L to change, Esc to go back",
+            "I K to choose, J L to change, Esc or B to go back",
         ])
     })
 
@@ -115,7 +115,7 @@ describe("showControls", () => {
         expect(items()).toEqual(["Up ↑", "Back"])
         expect(lines()).toEqual([
             "↑ ↓ to choose, Space to change",
-            "← → for 2P's controls, Esc to go back",
+            "← → for 2P's controls, Esc or B to go back",
         ])
         // Key hints, hidden on phones.
         expect(overlay()?.querySelectorAll("p.overlay-hint")).toHaveLength(2)
