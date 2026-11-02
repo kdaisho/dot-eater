@@ -2,11 +2,15 @@ import { footprint } from "./boss"
 import { bossLooks, bossWarning } from "./bossBreath"
 import { enemyBreathLooks, enemyWarnings } from "./enemyBreath"
 import {
+    affordable,
     aimPreviews,
     canBreathe,
+    chargeLevel,
     enemyVisible,
     hasStatus,
+    MAX_CHARGE,
     type AimPreview,
+    type Breather,
     type EnergyHud,
     type Look,
 } from "./breath"
@@ -200,6 +204,19 @@ const LABEL_SCALE = 0.4
 // cells.
 const ARROW_TIP = 0.7
 const ARROW_WIDTH = 0.3
+
+// A player charging its breath (KDA-289) glows (user feedback 2026-11-01:
+// the meter alone was hard to watch while playing): a disc behind its
+// sprite, CHARGE_AURA_BASE times as wide as the sprite at level 1 and
+// CHARGE_AURA_GROWTH of the sprite wider each level. In amber like a ready meter, then in the
+// meter's charge red, flickering CHARGE_FLICKER_HZ times a second, once
+// it is fully charged (MAX_CHARGE, or all the meter pays for). With reduced
+// motion it doesn't flicker. Placeholders to tune at preview.
+export const CHARGE_AURA_BASE = 1.2
+export const CHARGE_AURA_GROWTH = 0.15
+export const CHARGE_AURA_ALPHA = 0.45
+export const CHARGE_AURA_FULL_ALPHA = 0.6
+export const CHARGE_FLICKER_HZ = 8
 
 // A jab (see jab.ts) shows a fist this far ahead of the sprite's centre and
 // this wide, in cells: just past the sprite's front, where the punch
@@ -946,6 +963,7 @@ function drawCharacters(
         arrow: null,
         jab: null,
         stance: stanceLook(enemy, reducedMotion),
+        aura: null,
     })
     const held = state.enemies.filter((e) => hasStatus(e, "holds"))
     const free = state.enemies.filter((e) => !hasStatus(e, "holds"))
@@ -971,6 +989,9 @@ function drawCharacters(
                                   : null,
                           jab: jabs.find((j) => j.player === i) ?? null,
                           stance: null,
+                          aura: stunned(player)
+                              ? null
+                              : chargeAura(player.breather, reducedMotion),
                       },
                   ]
         ),
@@ -981,7 +1002,8 @@ function drawCharacters(
     // drawn on top.
     const fists: { x: number; y: number; facing: Vec2; back: number }[] = []
     for (const sprite of sprites) {
-        const { character, rate, marker, badge, arrow, jab, stance } = sprite
+        const { character, rate, marker, badge, arrow, jab, stance, aura } =
+            sprite
         const isPlayer = character.id === CharacterId.player
         if (!isPlayer && !enemyVisible(character)) continue
         const held = !isPlayer && hasStatus(character, "holds")
@@ -1010,6 +1032,14 @@ function drawCharacters(
             ctx.font = `${Math.round(size)}px sans-serif`
             const x = (p.x + 0.5) * cell
             const y = (p.y + 0.5) * cell
+            if (aura) {
+                ctx.globalAlpha = aura.alpha
+                ctx.fillStyle = aura.color
+                ctx.beginPath()
+                ctx.arc(x, y, (size / 2) * aura.scale, 0, Math.PI * 2)
+                ctx.fill()
+                ctx.globalAlpha = 1
+            }
             for (const look of looks) {
                 if (!look.color) continue
                 ctx.fillStyle = look.color
@@ -1054,6 +1084,32 @@ function drawCharacters(
     }
     for (const fist of fists) {
         drawFist(ctx, fist.facing, fist.x, fist.y, cell, fist.back)
+    }
+}
+
+// The glow round a player charging its breath (see CHARGE_AURA_GROWTH):
+// its colour, its alpha and its size as a factor of the sprite's, or null
+// while the breath isn't charging.
+export type ChargeAura = { color: string; alpha: number; scale: number }
+
+export function chargeAura(
+    breather: Breather,
+    reducedMotion: boolean
+): ChargeAura | null {
+    if (breather.charge === null) return null
+    const level = chargeLevel(breather)
+    const scale = CHARGE_AURA_BASE + (level - 1) * CHARGE_AURA_GROWTH
+    const full = level >= MAX_CHARGE || level >= affordable(breather)
+    if (!full) {
+        return { color: COLORS.meterReady, alpha: CHARGE_AURA_ALPHA, scale }
+    }
+    // Bright on the first half of each flicker, faint on the second.
+    const bright =
+        reducedMotion || (breather.charge * CHARGE_FLICKER_HZ) % 1 < 0.5
+    return {
+        color: COLORS.meterCharge,
+        alpha: bright ? CHARGE_AURA_FULL_ALPHA : CHARGE_AURA_ALPHA / 2,
+        scale,
     }
 }
 
