@@ -5,6 +5,7 @@ import {
     sameBindings,
 } from "./bindings"
 import { adminScreen, loadAdmin, saveAdmin, unlockAll } from "./admin"
+import { createAdminBadge } from "./adminBadge"
 import { createAdminPanel } from "./adminPanel"
 import { browserAudioContext, createAudio, volumesOf } from "./audio"
 import { RECORDED_TRACKS } from "./recorded"
@@ -1084,22 +1085,27 @@ setHintBindings(bindingsOf(settings))
 pads.attach(input)
 touchSource.attach(input)
 new DpadSource(touchControls).attach(input)
+// Turn debug mode on or off, remembered in this browser, and show it.
+function setAdmin(on: boolean) {
+    admin = on
+    saveAdmin(storage, on ? adminHash : undefined)
+    adminBadge.update()
+    showOverlay(screen)
+}
+// The debug mode badge (adminBadge.ts): shows debug mode is on, and clears
+// it, from any screen.
+const adminBadge = createAdminBadge(document, {
+    isOn: () => admin,
+    clear: () => setAdmin(false),
+})
 // The admin panel (adminPanel.ts) opens at #admin, on load or when the
 // address changes to it; closing it takes #admin off the address again.
 const adminPanel = createAdminPanel(document, {
     hash: adminHash,
     stageNames: levels.map((level) => level.name),
     isOn: () => admin,
-    turnOn() {
-        admin = true
-        saveAdmin(storage, adminHash)
-        showOverlay(screen)
-    },
-    turnOff() {
-        admin = false
-        saveAdmin(storage)
-        showOverlay(screen)
-    },
+    turnOn: () => setAdmin(true),
+    turnOff: () => setAdmin(false),
     jump(target) {
         enter(screen, adminScreen(target, flowDeps(0)))
     },
