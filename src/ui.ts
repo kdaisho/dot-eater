@@ -773,3 +773,35 @@ function toastRegion(): HTMLElement {
     document.body.appendChild(toast)
     return toast
 }
+
+// A small "● REC" badge in the top corner while gameplay recording is on
+// (?record, see replay.ts). It stays up for the whole session.
+export function showRecordingBadge() {
+    if (document.getElementById("rec-badge")) return
+    const badge = document.createElement("div")
+    badge.id = "rec-badge"
+    badge.className = "rec-badge"
+    badge.textContent = "● REC"
+    badge.title = "Recording gameplay: each run downloads when it ends"
+    document.body.appendChild(badge)
+}
+
+// How long a download's object URL stays valid after its click.
+export const DOWNLOAD_REVOKE_MS = 1000
+
+// Hand the player `text` as a file named `name` to save. The link goes in
+// the document for its click (Firefox ignores clicks on detached links),
+// and its URL is revoked only a while later: Safari and some Firefox
+// setups start the download after the click returns, and lose it if the
+// URL is already gone.
+export function downloadFile(name: string, text: string, type: string) {
+    const url = URL.createObjectURL(new Blob([text], { type }))
+    const link = document.createElement("a")
+    link.href = url
+    link.download = name
+    link.hidden = true
+    document.body.appendChild(link)
+    link.click()
+    link.remove()
+    setTimeout(() => URL.revokeObjectURL(url), DOWNLOAD_REVOKE_MS)
+}

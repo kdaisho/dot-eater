@@ -3,6 +3,8 @@ import confetti from "canvas-confetti"
 import { afterEach, describe, expect, it, vi } from "vite-plus/test"
 import {
     celebrate,
+    downloadFile,
+    DOWNLOAD_REVOKE_MS,
     hideOverlay,
     hideToast,
     overlayTap,
@@ -628,5 +630,42 @@ describe("overlayTap", () => {
         expect(document.querySelector("#overlay p.overlay-hint")).not.toBeNull()
         showGameOver({ score: 10, items: [] })
         expect(document.querySelector("#overlay p.overlay-hint")).toBeNull()
+    })
+})
+
+describe("downloadFile", () => {
+    it("clicks a link in the document, and revokes its URL only later", () => {
+        vi.useFakeTimers()
+        try {
+            URL.createObjectURL = vi.fn(() => "blob:file")
+            const revoke = vi.fn()
+            URL.revokeObjectURL = revoke
+            const clicked: { name: string; href: string; inDoc: boolean }[] = []
+            const click = vi
+                .spyOn(HTMLAnchorElement.prototype, "click")
+                .mockImplementation(function (this: HTMLAnchorElement) {
+                    clicked.push({
+                        name: this.download,
+                        href: this.href,
+                        inDoc: document.body.contains(this),
+                    })
+                })
+
+            downloadFile("run.json", "{}", "application/json")
+            click.mockRestore()
+
+            expect(clicked).toEqual([
+                { name: "run.json", href: "blob:file", inDoc: true },
+            ])
+            // Taken out again at once.
+            expect(document.querySelector("a")).toBeNull()
+            // The URL lasts until the browser has started the download.
+            vi.advanceTimersByTime(DOWNLOAD_REVOKE_MS - 1)
+            expect(revoke).not.toHaveBeenCalled()
+            vi.advanceTimersByTime(1)
+            expect(revoke).toHaveBeenCalledWith("blob:file")
+        } finally {
+            vi.useRealTimers()
+        }
     })
 })

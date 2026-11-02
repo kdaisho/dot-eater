@@ -523,6 +523,21 @@ body[data-dpad="on"] .touch-breath {
     z-index: 50;
 }
 
+/* While gameplay recording is on (?record): small, in the top left corner,
+   out of the way of the board and of the touch pause button (top right). */
+.rec-badge {
+    background: rgba(0, 0, 0, 0.8);
+    border-radius: 6px;
+    color: #ff5a5a;
+    font-size: 12px;
+    left: 8px;
+    padding: 4px 8px;
+    pointer-events: none;
+    position: fixed;
+    top: 8px;
+    z-index: 40;
+}
+
 /* The admin panel (src/adminPanel.ts), over everything, the opening
    included. */
 #admin {
