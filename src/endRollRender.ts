@@ -10,7 +10,9 @@ import { DIFFICULTY_LABELS, type Difficulty } from "./difficulty"
 import {
     CAST,
     END_ROLL,
+    beamX,
     cardStage,
+    cardX,
     endingKind,
     endRollPhase,
     FINALE_AT,
@@ -299,7 +301,6 @@ const hop = (t: number, hz = 2, h = 6) =>
     Math.round((Math.abs(Math.sin(t * Math.PI * hz)) * h) / 2) * 2
 const blink = (t: number, hz = 1.6) => Math.floor(t * hz * 2) % 2 === 0
 const easeOutBack = (p: number) => 1 + 2.2 * (p - 1) ** 3 + 1.2 * (p - 1) ** 2
-const easeIn = (p: number) => p * p * p
 
 // The same "random" numbers every frame, so a scene doesn't flicker.
 function seeded(seed: number) {
@@ -609,19 +610,29 @@ function backdrop(g: Ctx, t: number, withUfo = true) {
 // A beam from a lamp at (lx, ly) to a pool of light on the floor at tx, in
 // 2 px steps. The bands add light, so the stars show through and the sky
 // brightens instead of greying.
-const POOL_Y = 136
+// The card's bottom edge (with its depth) stands on the floor here, in the
+// middle of the pool of light.
+const POOL_Y = 141
+const POOL_H = 14
+// The pool of light's half width `dy` px above or below its middle: about
+// one and a half cards wide.
+const POOL_W = 80
+const poolHalf = (dy: number) =>
+    POOL_W * Math.sqrt(Math.max(0, 1 - ((dy + 1) / (POOL_H + 1)) ** 2))
+
 function beam(g: Ctx, lx: number, ly: number, tx: number, power = 1) {
     const band = (alpha: number, scale: number) => {
         g.globalAlpha = alpha * power
         for (let y = ly; y < POOL_Y; y += 2) {
             const f = (y - ly) / (POOL_Y - ly)
             const cx = lx + (tx - lx) * f
-            const hw = Math.round(((4 + f * 72) * scale) / 2) * 2
+            const hw = Math.round(((4 + f * 78) * scale) / 2) * 2
             rect(g, cx - hw, y, hw * 2, 2, C.beam)
         }
-        for (let dy = -6; dy < 6; dy += 2) {
-            const hw =
-                Math.round((84 * scale * Math.sqrt(1 - (dy / 7) ** 2)) / 2) * 2
+        // The floor catches more light than the air.
+        g.globalAlpha = Math.min(1, alpha * power * 2.4)
+        for (let dy = -POOL_H; dy < POOL_H; dy += 2) {
+            const hw = Math.round((poolHalf(dy) * scale) / 2) * 2
             rect(g, tx - hw, POOL_Y + dy, hw * 2, 2, C.beam)
         }
     }
@@ -633,7 +644,6 @@ function beam(g: Ctx, lx: number, ly: number, tx: number, power = 1) {
     g.globalAlpha = 1
 }
 
-// A lamp housing with its lit face, at the top of the screen.
 // Specks of dust drifting through a corner beam.
 function dust(g: Ctx, lx: number, tx: number, t: number) {
     const r = seeded(11)
@@ -653,14 +663,33 @@ function dust(g: Ctx, lx: number, tx: number, t: number) {
 // the card at `cardX`, with dust in the beam. The beam stutters now and
 // then (lampPower), as if the UFO's light were on the blink.
 const LAMP_X = 28
-function spotlight(g: Ctx, cardX: number, t: number) {
+const LAMP_Y = 27
+// `beamTo` is where the beam points; a card at `cardX` casts its shadow.
+function spotlight(g: Ctx, beamTo: number, t: number, cardX?: number) {
     const power = lampPower(t)
     const y = 1 + Math.round(Math.sin(t * Math.PI * 0.8)) * 2
-    beam(g, LAMP_X, y + 26, cardX, power)
-    if (power === 1) dust(g, LAMP_X, cardX, t)
+    beam(g, LAMP_X, y + 26, beamTo, power)
+    if (cardX !== undefined && power > 0.5) shadow(g, cardX)
+    if (power === 1) dust(g, LAMP_X, beamTo, t)
     sprite(g, "saucer", LAMP_X - 24, y, 2)
     // The lamp under the middle: lit, or grey while it cuts out.
     rect(g, LAMP_X - 2, y + 24, 4, 2, power < 1 ? C.grey : C.white)
+}
+
+// The card's shadow on the floor: the light comes from the UFO at the top
+// left, so it falls from the card's bottom edge down and to the right, both
+// edges slanting the same way, and fades as it goes.
+const SHADOW_ROWS = 18
+function shadow(g: Ctx, cardX: number) {
+    const left = cardX - CW / 2 + 2
+    const right = cardX + CW / 2 + CARD_DEPTH
+    const slope = ((cardX - LAMP_X) / (POOL_Y - LAMP_Y)) * 1.4
+    for (let d = 0; d < SHADOW_ROWS; d += 2) {
+        g.globalAlpha = 0.8 - (d / SHADOW_ROWS) * 0.5
+        const shift = slope * (d + 2)
+        rect(g, left + shift, POOL_Y + d, right - left, 2, GOLD.bg)
+    }
+    g.globalAlpha = 1
 }
 
 // The UFO that zips across now and then (ufoAt), with a short trail.
@@ -688,34 +717,29 @@ function streaks(g: Ctx, cx: number, cy: number, t: number) {
 const CARD_Y = 76
 
 function castCard(g: Ctx, all: Card[], index: number, u: number, t: number) {
-    const { slideIn, slideOut, perCard } = END_ROLL
+    const { slideIn, slideOut, perCard, fetch } = END_ROLL
     const stage = cardStage(u)
     backdrop(g, t)
     const card = CAST[index]
-    let x = W / 2
+    const x = cardX(u)
+    spotlight(g, beamX(t), t, x)
+    if (x === undefined) return
     let shine = -1
-    let trail = false
-    if (stage === "in") {
-        x = W + 70 + (W / 2 - W - 70) * easeOutBack(u / slideIn)
-        trail = u < slideIn * 0.8
-    } else if (stage === "out") {
-        const p = easeIn((u - (perCard - slideOut)) / slideOut)
-        x = W / 2 + (-90 - W / 2) * p
-        trail = p > 0.15
-    } else if (u > slideIn + 0.25 && u < slideIn + 1.05) {
+    if (stage === "in" && u < slideIn * 0.8) streaks(g, x, CARD_Y, t)
+    if (stage === "out" && u - (perCard - fetch - slideOut) > slideOut * 0.5)
+        streaks(g, x, CARD_Y, t)
+    if (stage === "rest" && u > slideIn + 0.25 && u < slideIn + 1.05) {
         // At rest the card stays still, so the portrait reads; one shine
         // sweeps across it.
         shine = (u - slideIn - 0.25) / 0.8
     }
-    spotlight(g, x, t)
-    if (trail) streaks(g, x, CARD_Y, t)
     drawCard(g, all[index], x, CARD_Y, shine)
     if (stage !== "rest" || u < slideIn + 0.05) return
     const v = u - slideIn - 0.05
     const boss = card.who.kind === "boss"
-    text(g, typed(card.name, v), W / 2, 156, boss ? C.red : C.gold)
-    text(g, typed(card.ability, v - 0.2), W / 2, 172, C.menu)
-    text(g, typed(card.line, v - 0.5), W / 2, 190, C.white)
+    text(g, typed(card.name, v), W / 2, 166, boss ? C.red : C.gold)
+    text(g, typed(card.ability, v - 0.2), W / 2, 182, C.menu)
+    text(g, typed(card.line, v - 0.5), W / 2, 200, C.white)
 }
 
 function finale(g: Ctx, all: Card[], v: number, t: number) {
@@ -829,7 +853,7 @@ export function drawEndRoll(g: Ctx, t: number, difficulty: Difficulty) {
     switch (phase.kind) {
         case "opening":
             backdrop(g, t)
-            return spotlight(g, W / 2, t)
+            return spotlight(g, beamX(t), t)
         case "card":
             return castCard(g, all, phase.index, phase.u, t)
         case "finale":

@@ -2,7 +2,13 @@ import { describe, expect, it } from "vite-plus/test"
 import { AiType } from "./constants"
 import {
     CAST,
+    beamX,
     cardStage,
+    cardX,
+    ENTER_X,
+    EXIT_X,
+    OPENING_FETCH,
+    STAGE_X,
     END_ROLL,
     endingKind,
     endRollPhase,
@@ -82,11 +88,53 @@ describe("endRollPhase", () => {
 })
 
 describe("cardStage", () => {
-    it("slides in, rests, then slides out", () => {
+    const { slideIn, slideOut, perCard, fetch } = END_ROLL
+    it("slides in, rests, slides out, then is gone while the beam fetches", () => {
         expect(cardStage(0)).toBe("in")
-        expect(cardStage(END_ROLL.slideIn)).toBe("rest")
-        expect(cardStage(END_ROLL.perCard - END_ROLL.slideOut)).toBe("rest")
-        expect(cardStage(END_ROLL.perCard - 0.01)).toBe("out")
+        expect(cardStage(slideIn)).toBe("rest")
+        expect(cardStage(perCard - fetch - slideOut)).toBe("rest")
+        expect(cardStage(perCard - fetch - 0.01)).toBe("out")
+        expect(cardStage(perCard - fetch)).toBe("gone")
+        expect(cardStage(perCard - 0.01)).toBe("gone")
+    })
+})
+
+describe("cardX", () => {
+    const { slideIn, perCard, fetch } = END_ROLL
+    it("comes in from the right, rests in the middle, leaves to the left", () => {
+        expect(cardX(0)).toBeCloseTo(ENTER_X)
+        expect(cardX(slideIn)).toBe(STAGE_X)
+        expect(cardX(perCard - fetch - 0.0001)).toBeLessThan(EXIT_X + 1)
+        expect(cardX(perCard - fetch)).toBeUndefined()
+    })
+})
+
+describe("beamX", () => {
+    const { start, perCard, fetch } = END_ROLL
+    it("lights the empty stage, then swings right to fetch the first card", () => {
+        expect(beamX(0)).toBe(STAGE_X)
+        expect(beamX(start - OPENING_FETCH)).toBe(STAGE_X)
+        expect(beamX(start - 0.001)).toBeCloseTo(ENTER_X, 0)
+        expect(beamX(start)).toBeCloseTo(ENTER_X)
+    })
+    it("follows each card, then sweeps left to right for the next", () => {
+        const turn = start + perCard
+        expect(beamX(turn - fetch)).toBe(EXIT_X)
+        expect(beamX(turn - fetch / 2)).toBeCloseTo((EXIT_X + ENTER_X) / 2, 0)
+        expect(beamX(turn)).toBeCloseTo(ENTER_X)
+        expect(beamX(turn + END_ROLL.slideIn)).toBe(STAGE_X)
+    })
+    it("moves without jumps all through the cards", () => {
+        for (let t = 0; t < FINALE_AT - fetch; t += 0.005) {
+            expect(
+                Math.abs(beamX(t + 0.005) - beamX(t)),
+                String(t)
+            ).toBeLessThan(40)
+        }
+    })
+    it("stays off to the left after the last card", () => {
+        expect(beamX(FINALE_AT - END_ROLL.fetch)).toBe(EXIT_X)
+        expect(beamX(FINALE_AT - 0.0001)).toBe(EXIT_X)
     })
 })
 
