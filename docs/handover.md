@@ -13,17 +13,19 @@ Last updated: 2026-11-01. Read `CLAUDE.md` first for project conventions.
     - User feedback round (#115, #116):
         - Dragon fire is a forward **spread**: round corners, split at junctions, each branch stops at the first enemy it defeats. Reach 2 for a tap, +1 a level, 6 at level 5 (`fireRange`; the user found 3–7 too strong).
         - Touch: a flick keeps the player running with no finger down; a flick opposite the motion stops it; a flick to the side turns at the next opening. Keys, pads and the D-pad still move only while held.
-- **State:** `main` at `95e09b6`, deploy green, 3213 tests passing (run 2026-11-01 on #115 + #116 combined).
-- **Open PRs:**
-    - [#117](https://github.com/kdaisho/dot-eater/pull/117) `chore/let-the-owl-see-further-in-fog`: each player has its own fog light (`BreathDef.sightScale`); the Owl's is 1.5×, so 6 cells on stages 4 and 8. CI green.
-    - [#118](https://github.com/kdaisho/dot-eater/pull/118) `chore/show-a-charging-breath-on-the-character`: a charging player glows (`chargeAura` in `render.ts`): amber, growing per level, red and flickering at full charge. CI green.
-    - #63 → #64 → #66 and #112: promo video, another session's. Don't touch.
+    - Second feedback round (#117, #118, #120, #121):
+        - The Owl sees 1.5× as far in fog (`BreathDef.sightScale`; each player has its own fog light), so 6 cells on stages 4 and 8.
+        - A charging player glows (`chargeAura` in `render.ts`): amber, growing per level, red and flickering at full charge.
+        - Debug mode shows a red **DEBUG MODE** badge top left (`adminBadge.ts`) with a Clear button that turns it off and forgets it.
+        - On a controller, B goes back on every menu (`GamepadSource.setMenus`, `menuButtonsFor`); Start still does. Hints say "Esc or B to go back".
+- **State:** `main` at `b9d4690`, deploy green, 3229 tests passing (run 2026-11-01 on #120 + #121 combined).
+- **Open PRs:** only [#122](https://github.com/kdaisho/dot-eater/pull/122) (the end roll's UFO spotlight), opened by another session. Don't touch it unless the user asks. The promo PRs (#63, #64, #66, #112) are no longer open.
 
 ### Start here (new session)
 
-1. Ask the user for their verdict on #117 and #118. A combined preview is at `.claude/worktrees/preview-117-118` on port 5201 (`http://127.0.0.1:5201/`, iPad `http://192.168.25.55:5201/`); if it's gone, rebuild it (see "Previews"). Tune what they ask, then merge both (they touch different parts of `render.ts` and merged cleanly together; 3221 tests passed combined).
-2. After merging: delete the branches, pull `main`, wait for the deploy, stop the preview, remove worktrees `owl-sight`, `charge-aura`, `preview-117-118`, `handover`.
-3. Ask the three open questions below if the user hasn't answered them.
+1. Ask the three open questions below if the user hasn't answered them.
+2. Offer a preview of `main` for tuning (see "Previews"), and collect feedback on the placeholders listed below.
+3. Ship each piece of feedback as its own small PR, preview it, and merge on the user's go-ahead.
 
 ## Code map
 
@@ -43,7 +45,7 @@ The older modules are listed in `CLAUDE.md`. Newer or reshaped ones:
 | `muteButton.ts`                              | The 🔊/🔇 button; its toggle saves `settings.muted`                                                                              |
 | `opening.ts`, `openingView.ts`               | The Gold opening before the title                                                                                                |
 | `endRoll.ts`, `endRollRender.ts`             | The end roll after the story ending                                                                                              |
-| `admin.ts`, `adminPanel.ts`, `adminHash.ts`  | Debug mode behind the passphrase hash                                                                                            |
+| `admin.ts`, `adminPanel.ts`, `adminHash.ts`  | Debug mode behind the passphrase hash; `adminBadge.ts` is its on-screen label and Clear button                                   |
 | `flow.ts`, `progress.ts`                     | Difficulty select, story and stage modes; bests by difficulty                                                                    |
 
 ## Open questions and follow-ups
@@ -52,7 +54,7 @@ The older modules are listed in `CLAUDE.md`. Newer or reshaped ones:
     - **Boar charge cost:** a full charge at a single wall spends all 100 energy. Recommend paying only for walls broken.
     - **Touch Breath button:** show the charge level while held? (#118's glow may answer this; ask.)
     - **Boar breaking the outer wall:** A (dead-end notch, easy) or B (bores through and wraps, medium). Recommend B, own PR.
-- **Tuning to judge at preview** (all placeholders): Dragon spread reach and cost (20 a level); the charge glow's size, colours, flicker; damage numbers; knockback decay; guard odds; charge 0.25 s per level; enemy speed scale; breather and interceptor numbers.
+- **Tuning to judge at preview** (all placeholders): Dragon spread reach and cost (20 a level); the charge glow's size, colours, flicker (`CHARGE_AURA_*`); damage numbers; knockback decay; guard odds; charge 0.25 s per level; enemy speed scale; breather and interceptor numbers.
 - **Known gaps:**
     - iOS before 17 has no `audioSession`, so silent mode still mutes the game there.
     - A tab open on an old build during a deploy can cut stage 6+ progress from the save.
@@ -65,7 +67,7 @@ All are in `docs/decisions.md` by topic (Breaths: Energy, Charge, the five breat
 - **Dragon:** spreading fire that can't pass enemies (each branch stops at one), reach 2–6. Settled after play.
 - **Touch:** flick to run, flick opposite to stop, flick sideways to turn. Only touch latches; other inputs are hold-to-move.
 - **Mute button:** on every screen, default unmuted.
-- **Owl:** sees 1.5× as far in fog (#117, awaiting play). **Charge glow:** visual on the character so players needn't watch the meter (#118, design was our call).
+- **Owl:** sees 1.5× as far in fog. **Charge glow:** a visual on the character so players needn't watch the meter (look was our call; the user approved the merge). **Debug badge:** clearly labelled, with Clear. **Pad Back:** B, as on consoles (our call over a cursor-reachable Back button; offered, not asked for).
 
 ## How we work
 
@@ -81,3 +83,4 @@ All are in `docs/decisions.md` by topic (Breaths: Energy, Charge, the five breat
     - A fresh worktree needs `pnpm install` before `pnpm check`, or check prints nothing.
     - Tests that are about line mechanics use `lineFire()` (`src/test/helpers.ts`), since the Dragon no longer fires a line.
     - Disk is tight: remove worktrees when done.
+    - To check a regression test fails without the fix, commit (or copy the file) first: `git checkout <file>` to undo the mutation also wipes uncommitted work.
