@@ -167,10 +167,12 @@ export const STAFF: readonly StaffCredit[] = [
 export const END_ROLL = {
     // The first card comes in.
     start: 1.2,
-    // Each card's turn: slide in, rest, slide out.
+    // Each card's turn: slide in, rest, slide out, then the spotlight
+    // sweeps back across to fetch the next card.
     perCard: 4,
     slideIn: 0.35,
     slideOut: 0.3,
+    fetch: 0.3,
     // THE END fades in here.
     ending: 78,
     // The fade from the finale to THE END.
@@ -208,11 +210,65 @@ export function endRollPhase(t: number): EndRollPhase {
     return { kind: "ending", u: t - ending - fade }
 }
 
-// Where a card is in its turn: sliding in, resting, or sliding out.
-export function cardStage(u: number): "in" | "rest" | "out" {
-    if (u < END_ROLL.slideIn) return "in"
-    if (u > END_ROLL.perCard - END_ROLL.slideOut) return "out"
+// Where a card is in its turn: sliding in, resting, sliding out, or gone
+// while the spotlight fetches the next one.
+export function cardStage(u: number): "in" | "rest" | "out" | "gone" {
+    const { slideIn, slideOut, perCard, fetch } = END_ROLL
+    if (u < slideIn) return "in"
+    if (u >= perCard - fetch) return "gone"
+    if (u > perCard - fetch - slideOut) return "out"
     return "rest"
+}
+
+// The cards' stage, on the 256 px wide screen: a card comes in from
+// ENTER_X, rests at STAGE_X and leaves to EXIT_X, off either side.
+export const STAGE_X = 128
+export const ENTER_X = 326
+export const EXIT_X = -90
+
+const easeOutBack = (p: number) => 1 + 2.2 * (p - 1) ** 3 + 1.2 * (p - 1) ** 2
+const easeIn = (p: number) => p * p * p
+const easeInOut = (p: number) =>
+    p < 0.5 ? 4 * p * p * p : 1 - (-2 * p + 2) ** 3 / 2
+const clamp01 = (v: number) => Math.min(1, Math.max(0, v))
+
+// Where the card is `u` seconds into its turn, and how far through its
+// slide out it is (for the speed lines); undefined once it is gone.
+export function cardX(u: number): number | undefined {
+    const { slideIn, slideOut, perCard, fetch } = END_ROLL
+    switch (cardStage(u)) {
+        case "in":
+            return ENTER_X + (STAGE_X - ENTER_X) * easeOutBack(u / slideIn)
+        case "rest":
+            return STAGE_X
+        case "out": {
+            const p = (u - (perCard - fetch - slideOut)) / slideOut
+            return STAGE_X + (EXIT_X - STAGE_X) * easeIn(p)
+        }
+        case "gone":
+            return undefined
+    }
+}
+
+// Where the spotlight points at `t` seconds, through the opening and the
+// cards (the finale has none). It lights the empty stage, swings off to
+// the right to fetch the first card and comes back with it, follows each
+// card out to the left, then sweeps back across to fetch the next. After
+// the last card it stays off to the left; there is nothing left to fetch.
+export const OPENING_FETCH = 0.5
+export function beamX(t: number): number {
+    const { start, perCard, fetch } = END_ROLL
+    if (t < start) {
+        const p = clamp01((t - (start - OPENING_FETCH)) / OPENING_FETCH)
+        return STAGE_X + (ENTER_X - STAGE_X) * easeInOut(p)
+    }
+    const index = Math.min(CAST.length - 1, Math.floor((t - start) / perCard))
+    const u = t - start - index * perCard
+    const x = cardX(u)
+    if (x !== undefined) return x
+    if (index === CAST.length - 1) return EXIT_X
+    const p = clamp01((u - (perCard - fetch)) / fetch)
+    return EXIT_X + (ENTER_X - EXIT_X) * easeInOut(p)
 }
 
 // The staff credit showing `v` seconds into the finale (index into STAFF),
