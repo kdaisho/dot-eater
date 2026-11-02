@@ -18,6 +18,8 @@ Planning lives in Linear: project **Dot Eater** (P-KDA-8), team **KDA**. For the
 | `pnpm test`    | Vitest                                                           |
 | `pnpm fmt`     | Format (4 spaces, no semicolons, double quotes)                  |
 
+The admin debug mode's passphrase is the env var `ADMIN_PASSPHRASE` (in the untracked `.env.local`, and a repo secret for the deploy). Only its salted hash goes into the bundle; never write the passphrase into code, docs or commits.
+
 ## Code layout
 
 `src/main.ts` is the entry and the only place that adds listeners and starts timers. Game logic (`game.ts`, `ai.ts`, `path.ts`, `level.ts`, `flow.ts`, `loop.ts`, `glide.ts`, `layout.ts`) has no DOM access and takes randomness, time and input as parameters, so it is unit-tested directly. `input.ts` attaches to an injected `EventTarget`. `render.ts` (canvas) and `ui.ts` (overlays) touch the DOM. Levels live in `src/levels/`. See `docs/handover.md` for a module map.
