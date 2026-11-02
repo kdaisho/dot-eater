@@ -53,7 +53,7 @@ describe("showPlaySelect", () => {
         expect(overlay()?.dataset.screen).toBe("play-select")
         expect(title()).toBe("Co-op")
         expect(hints()).toEqual([
-            "↑ ↓ to choose, Space to pick, Esc to go back",
+            "↑ ↓ to choose, Space to pick, Esc or B to go back",
         ])
         expect(items().map((i) => i.label)).toEqual(["Story", "Stage select"])
         expect(items()[0].selected).toBe(true)

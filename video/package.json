@@ -1,0 +1,26 @@
+{
+    "name": "dot-eater-video",
+    "version": "0.0.0",
+    "private": true,
+    "description": "Promo video for dot-eater, made with Remotion from real recorded play.",
+    "type": "module",
+    "scripts": {
+        "studio": "pnpm render-audio && remotion studio",
+        "render": "pnpm render-audio && remotion render Promo out/promo.mp4",
+        "render-audio": "node --experimental-transform-types --no-warnings=ExperimentalWarning --import ./scripts/ts-resolve.mjs scripts/render-audio.ts",
+        "analyze-track": "node --experimental-transform-types --no-warnings=ExperimentalWarning --import ./scripts/ts-resolve.mjs scripts/analyze-track.ts",
+        "record-demo": "node --experimental-transform-types --no-warnings=ExperimentalWarning --import ./scripts/ts-resolve.mjs scripts/record-demo.ts",
+        "record-scenes": "node --experimental-transform-types --no-warnings=ExperimentalWarning --import ./scripts/ts-resolve.mjs scripts/record-scenes.ts"
+    },
+    "dependencies": {
+        "@remotion/cli": "4.0.539",
+        "react": "19.3.1",
+        "react-dom": "19.3.1",
+        "remotion": "4.0.539"
+    },
+    "devDependencies": {
+        "@types/react": "19.3.0",
+        "@types/react-dom": "^19.3.0",
+        "node-web-audio-api": "2.2.0"
+    }
+}

@@ -32,6 +32,7 @@ function padEvent(type: string, index = 0) {
 }
 
 const A = 0
+const B = 1
 const START = 9
 const UP = 12
 const DOWN = 13
@@ -113,6 +114,20 @@ describe("main with a gamepad", () => {
         expect(toast()).toBe("Controller disconnected")
         expect(screen()).toBe("title")
         connect()
+    })
+
+    // User feedback 2026-11-01: B goes back on the menus, as on a console.
+    it("goes back with B", () => {
+        expect(screen()).toBe("title")
+        tap(A)
+        expect(screen()).toBe("play-select")
+        tap(DOWN)
+        tap(A)
+        expect(screen()).toBe("stage-select")
+        tap(B)
+        expect(screen()).toBe("play-select")
+        tap(B)
+        expect(screen()).toBe("title")
     })
 
     // In 1-player any pad drives player 1; in a 2-player mode pads take

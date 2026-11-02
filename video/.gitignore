@@ -1,0 +1,6 @@
+# Rendered videos and stills.
+out/
+# Rendered game sound (pnpm render-audio).
+public/audio/
+# Your own song: never commit it (see src/music.ts).
+public/music/

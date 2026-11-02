@@ -1,6 +1,7 @@
 import {
     DEFAULT_BINDINGS,
     PAD_ACTIONS,
+    PAD_B,
     PAD_DPAD,
     type Bindings,
     type PlayerBindings,
@@ -86,6 +87,16 @@ export function padButtonsFor(player: PlayerBindings): PadButtonMap {
     return map
 }
 
+// `buttons` on a menu: B (PAD_B) is Back there too, the pause action (as
+// Escape is on the keyboard), unless it is bound to confirm, which wins. A
+// console player expects B to go back; Start does too, but nobody guesses
+// it.
+export function menuButtonsFor(buttons: PadButtonMap): PadButtonMap {
+    const actions = buttons[PAD_B] ?? []
+    if (actions.includes("confirm") || actions.includes("pause")) return buttons
+    return { ...buttons, [PAD_B]: [...actions, "pause"] }
+}
+
 // The default buttons: A (Cross) breath in play and confirm in menus, X
 // (Square) punch, Start (Options) pause, and the D-pad.
 export const PAD_BUTTONS: PadButtonMap = padButtonsFor(
@@ -155,6 +166,8 @@ type Held = { player: number; actions: readonly Action[] }
 export class GamepadSource implements InputSource {
     private input: InputState | undefined
     private assignment: PadAssignment = "shared"
+    // Whether a menu shows (not play), where B goes back (menuButtonsFor).
+    private menus = true
     // Connected pads by index, each with its player slot in perPad mode (the
     // lowest slot free when it connected), what it holds for a player, every
     // control down at the last poll (bound or not, with a player or not),
@@ -176,8 +189,9 @@ export class GamepadSource implements InputSource {
     // the change doesn't press for the new player, and the press that woke
     // a pad up doesn't press at all.
     private readonly latched = new Set<string>()
-    // Each player's buttons.
+    // Each player's buttons, in play and on menus.
     private buttons: readonly PadButtonMap[]
+    private menuButtons: readonly PadButtonMap[]
 
     constructor(
         private readonly padList: PadList,
@@ -188,6 +202,7 @@ export class GamepadSource implements InputSource {
         bindings: Bindings = DEFAULT_BINDINGS
     ) {
         this.buttons = bindings.players.map(padButtonsFor)
+        this.menuButtons = this.buttons.map(menuButtonsFor)
     }
 
     attach(input: InputState): void {
@@ -221,7 +236,22 @@ export class GamepadSource implements InputSource {
     // button just bound in a remap prompt doesn't fire.
     setBindings(bindings: Bindings): void {
         this.buttons = bindings.players.map(padButtonsFor)
+        this.menuButtons = this.buttons.map(menuButtonsFor)
         this.latchAll()
+    }
+
+    // Whether a menu shows (true) or play (false): on menus B goes back. A
+    // B held through the change counts only once released, so a B held
+    // into a menu (bound to punch, say) doesn't go back at once. Nothing
+    // else is let go: a direction held from a menu into play still moves.
+    setMenus(menus: boolean): void {
+        if (menus === this.menus) return
+        this.menus = menus
+        for (const pad of this.pads.values()) {
+            for (const control of pad.down) {
+                if (control.endsWith(`:${PAD_B}`)) this.latched.add(control)
+            }
+        }
     }
 
     // Release every pad, and latch every control down.
@@ -272,7 +302,10 @@ export class GamepadSource implements InputSource {
         const player = this.playerOf(pad.index)
         // A pad with no player reads player 1's buttons: the player it gets
         // if the assignment turns shared.
-        const now = padControls(pad, this.buttons[player ?? 0])
+        const now = padControls(
+            pad,
+            (this.menus ? this.menuButtons : this.buttons)[player ?? 0]
+        )
         const down = downControls(pad)
         // Some browsers list a pad only once a button on it is pressed.
         // Whatever it holds when first listed counts only after a release,

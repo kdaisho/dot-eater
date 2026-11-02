@@ -134,7 +134,7 @@ export const LOOKAHEAD = 0.1
 export const MUSIC_START_DELAY = 0.05
 
 // Seconds of white noise the noise tones loop over.
-const NOISE_SECONDS = 1
+export const NOISE_SECONDS = 1
 
 // A 0–10 volume setting as a gain, 0–1. Squared, so the steps sound about
 // even to the ear. Out-of-range values are clamped; anything not a finite
@@ -156,15 +156,32 @@ export function busGains(volumes: Volumes): BusGains {
     }
 }
 
+// The white noise the noise tones loop over: NOISE_SECONDS of `random`
+// numbers scaled to -1–1, at the context's sample rate. Pass a seeded
+// `random` for the same noise every time (the video's offline render).
+export function createNoise(
+    context: Pick<AudioContextLike, "sampleRate" | "createBuffer">,
+    random: () => number
+): AudioBuffer {
+    const length = Math.round(context.sampleRate * NOISE_SECONDS)
+    const noise = context.createBuffer(1, length, context.sampleRate)
+    const data = noise.getChannelData(0)
+    for (let i = 0; i < length; i++) data[i] = random() * 2 - 1
+    return noise
+}
+
 // Schedule one tone to start at `start` + `tone.at` (AudioContext time) into
-// `destination`. Noise tones loop `noise` through a band-pass filter.
-export function playTone(
+// `destination`, and leave its nodes connected; playTone also cleans them
+// up. For an OfflineAudioContext, whose whole graph is thrown away after
+// one render: there, a disconnect from the main thread lands at a render
+// quantum that varies from run to run, and so does the output.
+export function scheduleTone(
     context: AudioContextLike,
     tone: Tone,
     start: number,
     destination: AudioNode,
     noise: AudioBuffer
-): void {
+): { source: AudioScheduledSourceNode; envelope: GainNode } {
     const begin = start + tone.at
     const end = begin + tone.duration
     const attack = Math.min(tone.attack ?? DEFAULT_ATTACK, tone.duration)
@@ -206,9 +223,29 @@ export function playTone(
     pitch.setValueAtTime(tone.freq, begin)
     if (tone.freqEnd !== undefined)
         pitch.exponentialRampToValueAtTime(tone.freqEnd, end)
-    source.onended = () => envelope.disconnect()
     source.start(begin)
     source.stop(end)
+    return { source, envelope }
+}
+
+// Schedule one tone to start at `start` + `tone.at` (AudioContext time) into
+// `destination`. Noise tones loop `noise` through a band-pass filter. Its
+// nodes disconnect once it has played.
+export function playTone(
+    context: AudioContextLike,
+    tone: Tone,
+    start: number,
+    destination: AudioNode,
+    noise: AudioBuffer
+): void {
+    const { source, envelope } = scheduleTone(
+        context,
+        tone,
+        start,
+        destination,
+        noise
+    )
+    source.onended = () => envelope.disconnect()
 }
 
 export type AudioOptions = {
@@ -340,10 +377,7 @@ export function createAudio(options: AudioOptions): Audio {
         const effects = ctx.createGain()
         effects.connect(master)
         buses = { master, music: musicBus, effects }
-        const length = Math.round(ctx.sampleRate * NOISE_SECONDS)
-        noise = ctx.createBuffer(1, length, ctx.sampleRate)
-        const data = noise.getChannelData(0)
-        for (let i = 0; i < length; i++) data[i] = random() * 2 - 1
+        noise = createNoise(ctx, random)
         context = ctx
         applyVolumes()
     }

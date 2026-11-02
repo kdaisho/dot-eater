@@ -1,3 +1,4 @@
+import type { Random } from "./ai"
 import {
     captureButton,
     captureKey,
@@ -5,6 +6,7 @@ import {
     sameBindings,
 } from "./bindings"
 import { adminScreen, loadAdmin, saveAdmin, unlockAll } from "./admin"
+import { createAdminBadge } from "./adminBadge"
 import { createAdminPanel } from "./adminPanel"
 import { browserAudioContext, createAudio, volumesOf } from "./audio"
 import { RECORDED_TRACKS } from "./recorded"
@@ -65,7 +67,7 @@ import {
     type TickInput,
     type TitleChoice,
 } from "./flow"
-import { bossHud, healthHud, totalScore, type GameState } from "./game"
+import { totalScore, type GameState } from "./game"
 import {
     CONTROLS_ROWS,
     controlsRowLabel,
@@ -97,7 +99,15 @@ import {
 } from "./progress"
 import { createJabs } from "./jab"
 import { createParticles } from "./particles"
-import { createRenderer, type Effects, type Hud } from "./render"
+import { createRenderer, type Effects } from "./render"
+import {
+    createRecorder,
+    newSeed,
+    seededRandom,
+    shouldRecord,
+    type Recorder,
+    type Recording,
+} from "./replay"
 import { ANIMAL_IDS, ANIMALS, type AnimalId } from "./roster"
 import {
     bindingsOf,
@@ -105,11 +115,13 @@ import {
     saveSettings,
     type Settings,
 } from "./settings"
+import { hudOf, rulesOf, screenEffects } from "./scene"
 import { rowValue, settingsRows } from "./settingsMenu"
 import { createShake } from "./shake"
 import {
     burst,
     celebrate,
+    downloadFile,
     hideOverlay,
     hideToast,
     overlayTap,
@@ -119,6 +131,7 @@ import {
     showGameOver,
     showMatchResult,
     showPause,
+    showRecordingBadge,
     showPlaySelect,
     showRoundResult,
     showSettings,
@@ -136,7 +149,7 @@ import {
 import { heading, isTouchDevice, isTouchFirst, TouchSource } from "./touch"
 import { OPENING_DRUM } from "./opening"
 import { createOpeningLayer, openingItemAt } from "./openingView"
-import { roundWins, stunned, tallyText } from "./versus"
+import { roundWins } from "./versus"
 
 // The game opens on the opening (opening.ts) on every load. Tests of the
 // rest of the game start on the title instead: their setup file sets
@@ -211,6 +224,16 @@ let focused = !document.hidden
 // Touch is the main input (a phone or tablet, not a laptop's touch screen):
 // the punch and breath buttons show, with room kept for them.
 const touchFirst = isTouchFirst(window)
+
+// Gameplay recording, for videos (see replay.ts), on with ?record in the
+// URL. Each run (a game from its start in `playing` to its end screen; in
+// versus, each round) gets a fresh seed, and its game randomness comes from
+// that seed; its ticks are recorded, and the recording downloads when the
+// run reaches its end screen. Without ?record nothing is recorded and the
+// game uses Math.random as always.
+const recordingOn = new URLSearchParams(location.search).has("record")
+let recorder: Recorder | undefined
+let gameRandom: Random = Math.random
 
 const canvas = document.getElementById("game")
 if (!(canvas instanceof HTMLCanvasElement)) throw new Error("No #game canvas")
@@ -299,29 +322,14 @@ const effects = {
         jabs.clear()
     },
     of(s: Screen): Effects {
-        if (
-            s.kind !== "playing" &&
-            s.kind !== "ending" &&
-            s.kind !== "paused"
-        ) {
-            return {}
-        }
-        const moving = s.kind !== "paused"
-        return {
+        // The facing guide the settings pick (KDA-247); see screenEffects.
+        return screenEffects(s, {
             particles: particles.list,
             jabs: jabs.list,
-            // A guarding enemy doesn't crouch with reduced motion.
-            reducedMotion: reducedMotion?.matches ?? false,
-            ...(moving ? { shake: shake.offset(Math.random) } : {}),
-            // The facing guide the settings pick (KDA-247). The arrow shows
-            // with the rings, paused and ending too; the aim preview only
-            // while playing.
+            shake: () => shake.offset(Math.random),
             guide: settings.facingGuide,
-            ...(s.kind === "playing" ? { aim: true } : {}),
-            // The boss's wind-up (its glow and warning tint), on the board
-            // in play, paused and ending, as the rings are.
-            bossBreath: true,
-        }
+            reducedMotion: reducedMotion?.matches ?? false,
+        })
     },
 }
 effects.motion()
@@ -418,6 +426,7 @@ const pads = new GamepadSource(
     bindingsOf(settings)
 )
 pads.setAssignment(padAssignment(screen))
+pads.setMenus(screen.kind !== "playing")
 let padPollFailed = false
 let padCaptureFailed = false
 
@@ -462,6 +471,8 @@ function tick(dt: number) {
     const boss = game?.boss
     const wasDefeated = boss?.defeated ?? true
     const next = update(screen, tickInput, flowDeps(dt))
+    // Before endTick, which clears the presses the recorder reads.
+    if (recorder && shouldRecord(screen, next)) recorder.add(tickInput)
     input.endTick()
     pendingCapture = {}
     if (game) onGameEvents(takeEvents(game), game)
@@ -486,7 +497,8 @@ function flowDeps(dt: number): FlowDeps {
         lastAnimal,
         lastDifficulty,
         dt,
-        random: Math.random,
+        // Seeded while recording (see recordRuns).
+        random: gameRandom,
         settings,
         touch,
         focused,
@@ -533,6 +545,7 @@ function padAssignment(shown: Screen): PadAssignment {
 function enter(prev: Screen, next: Screen) {
     screen = next
     pads.setAssignment(padAssignment(next))
+    pads.setMenus(next.kind !== "playing")
     setControls(document, { playing: next.kind === "playing" })
     // A drag holds its direction while the finger is down; a game starting
     // or ending (not a pause or resume) lets go of it, so it neither steers
@@ -605,6 +618,7 @@ function enter(prev: Screen, next: Screen) {
         if (next.kind === "storyEnd") burst()
     }
     if (next.kind === "matchResult" && prev.kind === "ending") celebrate(10)
+    if (recordingOn) recordRuns(prev, next)
     // Every change on the settings and controls screens is saved, and
     // applied, at once.
     const changed = screenSettings(next)
@@ -657,38 +671,51 @@ function render(alpha: number) {
     if (shown.kind === "playing" || shown.kind === "ending") {
         lastAlpha = alpha
     }
-    // Every screen with a game also says which level it is.
-    const rules = "level" in shown ? levels[shown.level]?.rules : undefined
-    const hud = game.mode === "versus" ? versusHud(game, shown) : hudOf(game)
-    const boss = bossHud(game)
-    if (boss) hud.boss = boss
-    if ("difficulty" in shown) {
-        hud.difficulty = DIFFICULTY_LABELS[shown.difficulty]
+    renderer.draw(
+        game,
+        lastAlpha,
+        hudOf(game, shown),
+        rulesOf(shown, stages),
+        effects.of(shown)
+    )
+}
+
+// Start a recording when a run starts (play entered other than from
+// pause), and download it when the run leaves its outro for an end screen.
+function recordRuns(prev: Screen, next: Screen) {
+    if (next.kind === "playing" && prev.kind !== "paused") {
+        const seed = newSeed(Math.random)
+        gameRandom = seededRandom(seed)
+        recorder = createRecorder(next, seed)
+    } else if (prev.kind === "ending" && recorder) {
+        const recording = recorder.finish(next)
+        recorder = undefined
+        downloadFile(
+            recordingName(recording, new Date()),
+            JSON.stringify(recording),
+            "application/json"
+        )
     }
-    if ("run" in shown && shown.run) {
-        // On game over, the total Retry plays on from, as the card says:
-        // the failed stage's score is lost.
-        const total =
-            shown.kind === "gameOver"
-                ? shown.run.total
-                : runTotal({ run: shown.run, game })
-        withRunTotal(hud, total)
-    }
-    renderer.draw(game, lastAlpha, hud, rules, effects.of(shown))
+}
+
+// e.g. dot-eater-stage1-solo-dragon-lost-2026-10-28T19-40-05.json: easy to
+// tell apart, and in time order when sorted by name.
+function recordingName(recording: Recording, date: Date): string {
+    const { level, mode, animals, final, match = [] } = recording
+    const outcome =
+        final.kind === "stageClear"
+            ? "won"
+            : final.kind === "gameOver"
+              ? "lost"
+              : `round${match.length + 1}`
+    const time = date.toISOString().slice(0, 19).replaceAll(":", "-")
+    return `dot-eater-stage${level + 1}-${mode}-${animals.join("+")}-${outcome}-${time}.json`
 }
 
 function renderEndRoll(s: Extract<Screen, { kind: "endRoll" }>) {
     const canvas = showEndRoll(END_ROLL_WIDTH, END_ROLL_HEIGHT)
     const context = canvas.getContext("2d")
     if (context) drawEndRoll(context, s.elapsed.seconds, s.difficulty)
-}
-
-// In a story run (KDA-271) the HUD shows the run total so far, this
-// stage's score included: in place of the score with one player, and in
-// the middle (above the difficulty) with two, whose own scores stay.
-function withRunTotal(hud: Hud, total: number) {
-    if (hud.players) hud.round = `Total ${total}`
-    else hud.score = total
 }
 
 // The breath button looks ready while player 1's meter shows ready
@@ -698,49 +725,6 @@ function showBreathReady(ready: boolean) {
     if (ready === breathReady) return
     breathReady = ready
     setBreathReady(touchControls, ready)
-}
-
-// The versus HUD: each player's dots, meter, stun or respawn countdown,
-// health, and the round tally. The result screens keep showing the round
-// just played as it was during play.
-function versusHud(game: GameState, s: Screen): Hud {
-    const match =
-        s.kind === "roundResult" || s.kind === "matchResult"
-            ? s.match.slice(0, -1)
-            : "match" in s
-              ? (s.match ?? [])
-              : []
-    return {
-        round: tallyText(match),
-        players: game.players.map((p, i) => ({
-            score: p.score,
-            dots: p.dots,
-            energy: energyHud(game, i),
-            health: healthHud(p),
-            ...(p.out ? { out: { respawnIn: p.respawnIn } } : {}),
-            ...(stunned(p) ? { stunned: p.stunnedFor } : {}),
-        })),
-    }
-}
-
-// The HUD: with one player its score, meter and health; with two, each
-// one's.
-function hudOf(game: GameState): Hud {
-    if (game.players.length === 1) {
-        return {
-            score: totalScore(game),
-            health: healthHud(game.players[0]),
-            energy: energyHud(game),
-        }
-    }
-    return {
-        players: game.players.map((p, i) => ({
-            score: p.score,
-            energy: energyHud(game, i),
-            health: healthHud(p),
-            ...(p.out ? { out: { respawnIn: p.respawnIn } } : {}),
-        })),
-    }
 }
 
 function showOverlay(s: Screen) {
@@ -1084,22 +1068,27 @@ setHintBindings(bindingsOf(settings))
 pads.attach(input)
 touchSource.attach(input)
 new DpadSource(touchControls).attach(input)
+// Turn debug mode on or off, remembered in this browser, and show it.
+function setAdmin(on: boolean) {
+    admin = on
+    saveAdmin(storage, on ? adminHash : undefined)
+    adminBadge.update()
+    showOverlay(screen)
+}
+// The debug mode badge (adminBadge.ts): shows debug mode is on, and clears
+// it, from any screen.
+const adminBadge = createAdminBadge(document, {
+    isOn: () => admin,
+    clear: () => setAdmin(false),
+})
 // The admin panel (adminPanel.ts) opens at #admin, on load or when the
 // address changes to it; closing it takes #admin off the address again.
 const adminPanel = createAdminPanel(document, {
     hash: adminHash,
     stageNames: levels.map((level) => level.name),
     isOn: () => admin,
-    turnOn() {
-        admin = true
-        saveAdmin(storage, adminHash)
-        showOverlay(screen)
-    },
-    turnOff() {
-        admin = false
-        saveAdmin(storage)
-        showOverlay(screen)
-    },
+    turnOn: () => setAdmin(true),
+    turnOff: () => setAdmin(false),
     jump(target) {
         enter(screen, adminScreen(target, flowDeps(0)))
     },
@@ -1117,5 +1106,6 @@ openAdminAtHash()
 // The (empty) toast live region goes in at once, so screen readers already
 // watch it when the first toast shows.
 hideToast()
+if (recordingOn) showRecordingBadge()
 showOverlay(screen)
 loop.start()

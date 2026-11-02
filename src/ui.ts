@@ -159,7 +159,7 @@ export function showStageSelect(
         title: "Select a stage",
         lines: [
             ...bestsOn,
-            `${keyPair("up", "down")} to choose, ${key("confirm")} to pick a difficulty, Esc to go back`,
+            `${keyPair("up", "down")} to choose, ${key("confirm")} to pick a difficulty, Esc or B to go back`,
         ],
         keyHints: bestsOn.length,
         back: true,
@@ -194,7 +194,7 @@ export function showDifficultySelect(items: readonly MenuItem[]) {
         id: "difficulty-select",
         title: "Select a difficulty",
         lines: [
-            `${keyPair("up", "down")} to choose, ${key("confirm")} to pick a character, Esc to go back`,
+            `${keyPair("up", "down")} to choose, ${key("confirm")} to pick a character, Esc or B to go back`,
         ],
         keyHints: true,
         back: true,
@@ -221,10 +221,10 @@ export function showCharacterSelect(
             ? [
                   `1P: ${keyPair("left", "right")} to choose, ${key("confirm")} to confirm`,
                   `2P: ${keyPair("left", "right", 1)} to choose, ${key("confirm", 1)} to confirm`,
-                  `Esc or ${key("pause", 1)} to go back`,
+                  `Esc, B or ${key("pause", 1)} to go back`,
               ]
             : [
-                  `${keyPair("left", "right")} to choose, ${key("confirm")} to play, Esc to go back`,
+                  `${keyPair("left", "right")} to choose, ${key("confirm")} to play, Esc or B to go back`,
               ],
         keyHints: true,
         back: true,
@@ -270,7 +270,7 @@ export function showSettings(items: readonly MenuItem[]) {
         id: "settings",
         title: "Settings",
         lines: [
-            `${keyPair("up", "down")} to choose, ${keyPair("left", "right")} to change, Esc to go back`,
+            `${keyPair("up", "down")} to choose, ${keyPair("left", "right")} to change, Esc or B to go back`,
         ],
         keyHints: true,
         items,
@@ -309,7 +309,7 @@ export function showControls({ player, items, capturing }: ControlsView) {
               ]
             : [
                   `${keyPair("up", "down")} to choose, ${key("confirm")} to change`,
-                  `${keyPair("left", "right")} for ${other}P's controls, Esc to go back`,
+                  `${keyPair("left", "right")} for ${other}P's controls, Esc or B to go back`,
               ],
         // The prompt shows everywhere, and on touch devices so does how to
         // cancel it; the rest only name keys.
@@ -348,7 +348,7 @@ export function showPlaySelect(heading: string, items: readonly MenuItem[]) {
         id: "play-select",
         title: heading,
         lines: [
-            `${keyPair("up", "down")} to choose, ${key("confirm")} to pick, Esc to go back`,
+            `${keyPair("up", "down")} to choose, ${key("confirm")} to pick, Esc or B to go back`,
         ],
         keyHints: true,
         back: true,
@@ -363,7 +363,7 @@ export function showStoryMenu(items: readonly MenuItem[]) {
         id: "story-menu",
         title: "Story",
         lines: [
-            `${keyPair("up", "down")} to choose, ${key("confirm")} to pick a difficulty, Esc to go back`,
+            `${keyPair("up", "down")} to choose, ${key("confirm")} to pick a difficulty, Esc or B to go back`,
         ],
         keyHints: true,
         back: true,
@@ -772,4 +772,36 @@ function toastRegion(): HTMLElement {
     toast.setAttribute("role", "status")
     document.body.appendChild(toast)
     return toast
+}
+
+// A small "● REC" badge in the top corner while gameplay recording is on
+// (?record, see replay.ts). It stays up for the whole session.
+export function showRecordingBadge() {
+    if (document.getElementById("rec-badge")) return
+    const badge = document.createElement("div")
+    badge.id = "rec-badge"
+    badge.className = "rec-badge"
+    badge.textContent = "● REC"
+    badge.title = "Recording gameplay: each run downloads when it ends"
+    document.body.appendChild(badge)
+}
+
+// How long a download's object URL stays valid after its click.
+export const DOWNLOAD_REVOKE_MS = 1000
+
+// Hand the player `text` as a file named `name` to save. The link goes in
+// the document for its click (Firefox ignores clicks on detached links),
+// and its URL is revoked only a while later: Safari and some Firefox
+// setups start the download after the click returns, and lose it if the
+// URL is already gone.
+export function downloadFile(name: string, text: string, type: string) {
+    const url = URL.createObjectURL(new Blob([text], { type }))
+    const link = document.createElement("a")
+    link.href = url
+    link.download = name
+    link.hidden = true
+    document.body.appendChild(link)
+    link.click()
+    link.remove()
+    setTimeout(() => URL.revokeObjectURL(url), DOWNLOAD_REVOKE_MS)
 }

@@ -33,6 +33,7 @@ function pressAndTick(code: string) {
 }
 
 const admin = () => document.querySelector<HTMLElement>("#admin")
+const badge = () => document.querySelector<HTMLElement>("#admin-badge")!
 const overlay = () => document.querySelector<HTMLElement>("#overlay")
 const screen = () =>
     document.querySelector("#end-roll")
@@ -66,6 +67,7 @@ describe("main's debug mode", () => {
         expect(localStorage.getItem(ADMIN_KEY)).toBe(
             (globalThis as { adminHash?: string }).adminHash
         )
+        expect(badge().hidden).toBe(false)
 
         // The story's ending, then the end roll.
         click("Story ending")
@@ -99,5 +101,10 @@ describe("main's debug mode", () => {
         vi.advanceTimersByTime(1000)
         expect(screen()).toBe("stage-clear")
         expect(localStorage.getItem(PROGRESS_KEY)).toBeNull()
+
+        // The badge's Clear turns debug mode off and forgets it.
+        badge().querySelector("button")!.click()
+        expect(badge().hidden).toBe(true)
+        expect(localStorage.getItem(ADMIN_KEY)).toBeNull()
     })
 })
