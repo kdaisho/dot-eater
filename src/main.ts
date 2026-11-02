@@ -418,6 +418,7 @@ const pads = new GamepadSource(
     bindingsOf(settings)
 )
 pads.setAssignment(padAssignment(screen))
+pads.setMenus(screen.kind !== "playing")
 let padPollFailed = false
 let padCaptureFailed = false
 
@@ -533,6 +534,7 @@ function padAssignment(shown: Screen): PadAssignment {
 function enter(prev: Screen, next: Screen) {
     screen = next
     pads.setAssignment(padAssignment(next))
+    pads.setMenus(next.kind !== "playing")
     setControls(document, { playing: next.kind === "playing" })
     // A drag holds its direction while the finger is down; a game starting
     // or ending (not a pause or resume) lets go of it, so it neither steers

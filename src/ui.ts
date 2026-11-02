@@ -159,7 +159,7 @@ export function showStageSelect(
         title: "Select a stage",
         lines: [
             ...bestsOn,
-            `${keyPair("up", "down")} to choose, ${key("confirm")} to pick a difficulty, Esc to go back`,
+            `${keyPair("up", "down")} to choose, ${key("confirm")} to pick a difficulty, Esc or B to go back`,
         ],
         keyHints: bestsOn.length,
         back: true,
@@ -194,7 +194,7 @@ export function showDifficultySelect(items: readonly MenuItem[]) {
         id: "difficulty-select",
         title: "Select a difficulty",
         lines: [
-            `${keyPair("up", "down")} to choose, ${key("confirm")} to pick a character, Esc to go back`,
+            `${keyPair("up", "down")} to choose, ${key("confirm")} to pick a character, Esc or B to go back`,
         ],
         keyHints: true,
         back: true,
@@ -221,10 +221,10 @@ export function showCharacterSelect(
             ? [
                   `1P: ${keyPair("left", "right")} to choose, ${key("confirm")} to confirm`,
                   `2P: ${keyPair("left", "right", 1)} to choose, ${key("confirm", 1)} to confirm`,
-                  `Esc or ${key("pause", 1)} to go back`,
+                  `Esc, B or ${key("pause", 1)} to go back`,
               ]
             : [
-                  `${keyPair("left", "right")} to choose, ${key("confirm")} to play, Esc to go back`,
+                  `${keyPair("left", "right")} to choose, ${key("confirm")} to play, Esc or B to go back`,
               ],
         keyHints: true,
         back: true,
@@ -270,7 +270,7 @@ export function showSettings(items: readonly MenuItem[]) {
         id: "settings",
         title: "Settings",
         lines: [
-            `${keyPair("up", "down")} to choose, ${keyPair("left", "right")} to change, Esc to go back`,
+            `${keyPair("up", "down")} to choose, ${keyPair("left", "right")} to change, Esc or B to go back`,
         ],
         keyHints: true,
         items,
@@ -309,7 +309,7 @@ export function showControls({ player, items, capturing }: ControlsView) {
               ]
             : [
                   `${keyPair("up", "down")} to choose, ${key("confirm")} to change`,
-                  `${keyPair("left", "right")} for ${other}P's controls, Esc to go back`,
+                  `${keyPair("left", "right")} for ${other}P's controls, Esc or B to go back`,
               ],
         // The prompt shows everywhere, and on touch devices so does how to
         // cancel it; the rest only name keys.
@@ -348,7 +348,7 @@ export function showPlaySelect(heading: string, items: readonly MenuItem[]) {
         id: "play-select",
         title: heading,
         lines: [
-            `${keyPair("up", "down")} to choose, ${key("confirm")} to pick, Esc to go back`,
+            `${keyPair("up", "down")} to choose, ${key("confirm")} to pick, Esc or B to go back`,
         ],
         keyHints: true,
         back: true,
@@ -363,7 +363,7 @@ export function showStoryMenu(items: readonly MenuItem[]) {
         id: "story-menu",
         title: "Story",
         lines: [
-            `${keyPair("up", "down")} to choose, ${key("confirm")} to pick a difficulty, Esc to go back`,
+            `${keyPair("up", "down")} to choose, ${key("confirm")} to pick a difficulty, Esc or B to go back`,
         ],
         keyHints: true,
         back: true,

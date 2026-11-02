@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vite-plus/test"
 import {
     browserPadList,
     GamepadSource,
+    menuButtonsFor,
     PAD_BUTTONS,
     padButtonsFor,
     padControls,
@@ -28,6 +29,7 @@ function pad(index: number, buttons: number[] = [], x = 0, y = 0): Pad {
 }
 
 const A = 0
+const B = 1
 const X = 2
 const RB = 5
 const Y = 3
@@ -256,6 +258,53 @@ describe("GamepadSource", () => {
         plugIn()
         pads = [pad(0, [A, START])]
         expect(tick().pressed).toEqual(["breath", "confirm", "pause"])
+    })
+
+    // User feedback 2026-11-01: a controller couldn't go back on menus
+    // without the keyboard (only Start did, which nobody guesses).
+    describe("B on menus", () => {
+        it("goes back (pause) on menus, and does nothing in play", () => {
+            plugIn()
+            pads = [pad(0, [B])]
+            expect(tick().pressed).toEqual(["pause"])
+            pads = [pad(0)]
+            tick()
+            source.setMenus(false)
+            pads = [pad(0, [B])]
+            expect(tick()).toEqual({ pressed: [], down: [] })
+        })
+
+        it("counts a B held into a menu only once it is released", () => {
+            plugIn()
+            source.setMenus(false)
+            pads = [pad(0, [B, LEFT])]
+            expect(tick().pressed).toEqual(["left"])
+            source.setMenus(true)
+            // The direction held into the menu stays held.
+            expect(tick()).toEqual({ pressed: [], down: ["left"] })
+            pads = [pad(0)]
+            tick()
+            pads = [pad(0, [B])]
+            expect(tick().pressed).toEqual(["pause"])
+        })
+
+        it("keeps B as confirm when it is bound to confirm", () => {
+            const bound = rebind(DEFAULT_BINDINGS, 0, "confirm", B)
+            const buttons = padButtonsFor(bound.players[0])
+            expect(menuButtonsFor(buttons)).toBe(buttons)
+            source.setBindings(bound)
+            plugIn()
+            pads = [pad(0, [B])]
+            expect(tick().pressed).toEqual(["confirm"])
+        })
+
+        it("adds Back to what else B is bound to", () => {
+            const bound = rebind(DEFAULT_BINDINGS, 0, "punch", B)
+            expect(menuButtonsFor(padButtonsFor(bound.players[0]))[B]).toEqual([
+                "punch",
+                "pause",
+            ])
+        })
     })
 
     it("holding never presses again", () => {

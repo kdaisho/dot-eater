@@ -91,7 +91,7 @@ describe("showStageSelect", () => {
         expectSingle()
         expect(overlay()?.dataset.screen).toBe("stage-select")
         expect(lines()).toEqual([
-            "↑ ↓ to choose, Space to pick a difficulty, Esc to go back",
+            "↑ ↓ to choose, Space to pick a difficulty, Esc or B to go back",
         ])
         expect(items()).toEqual([
             "Level 1",
@@ -174,7 +174,7 @@ describe("showCharacterSelect", () => {
         expect(overlay()?.dataset.screen).toBe("character-select")
         expect(title()).toBe("Pick a character")
         expect(lines()).toEqual([
-            "← → to choose, Space to play, Esc to go back",
+            "← → to choose, Space to play, Esc or B to go back",
         ])
         expect(cards().map((card) => card.dataset.animal)).toEqual(ANIMAL_IDS)
     })
@@ -275,7 +275,7 @@ describe("showSettings", () => {
         expect(overlay()?.dataset.screen).toBe("settings")
         expect(title()).toBe("Settings")
         expect(lines()).toEqual([
-            "↑ ↓ to choose, ← → to change, Esc to go back",
+            "↑ ↓ to choose, ← → to change, Esc or B to go back",
         ])
         expect(items()).toEqual(["Music volume ◀ 7 ▶", "Mute Off", "Back"])
         expect(selected()).toEqual(["Music volume ◀ 7 ▶"])
@@ -424,7 +424,7 @@ describe("two players", () => {
             expect(lines()).toEqual([
                 "1P: ← → to choose, Space to confirm",
                 "2P: A D to choose, E to confirm",
-                "Esc or Q to go back",
+                "Esc, B or Q to go back",
             ])
             expect(tags(AnimalId.owl)).toEqual(["1P ✓"])
             expect(tags(AnimalId.boar)).toEqual(["2P"])
