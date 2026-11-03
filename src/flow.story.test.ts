@@ -3,7 +3,7 @@ import { MAX_HEALTH } from "./constants"
 import {
     END_CONFIRM_DELAY,
     initialScreen,
-    pauseChoices,
+    PAUSE_CHOICES,
     selectItem,
     startLevel,
     STORY_CARD_SECONDS,
@@ -11,6 +11,7 @@ import {
     update,
     type FlowDeps,
     type Mode,
+    type Picks,
     type Run,
     type Screen,
     type TickInput,
@@ -615,7 +616,7 @@ describe("pausing a story run", () => {
 
     it("offers Quit after Resume and Settings", () => {
         const screen = paused()
-        expect(pauseChoices(screen)).toEqual(["resume", "settings", "quit"])
+        expect(PAUSE_CHOICES).toEqual(["resume", "settings", "quit"])
         const onSettings = update(screen, p1("down"), deps())
         expect(onSettings).toMatchObject({ choice: "settings" })
         expect(update(onSettings, p1("down"), deps())).toMatchObject({
@@ -641,11 +642,25 @@ describe("pausing a story run", () => {
         expect(resumed).toMatchObject({ kind: "playing", run: { total: 50 } })
     })
 
-    it("has no Quit in stage mode", () => {
-        const screen = update(startLevel(deps().levels, 0), p1("pause"), deps())
-        expect(pauseChoices(screen)).toEqual(["resume", "settings"])
-        expect(selectItem(screen, 2)).toBe(screen)
-    })
+    // KDA-305: the pause menu has Quit in every mode, to the title on the
+    // mode the game was played in.
+    it.each(["solo", "coop", "versus"] as const)(
+        "has Quit in stage mode too, to the title on %s",
+        (mode) => {
+            const picks: Picks =
+                mode === "solo" ? ["dragon"] : ["dragon", "owl"]
+            const playing = startLevel(deps().levels, 0, picks, mode)
+            const screen = update(playing, p1("pause"), deps())
+            const onSettings = update(screen, p1("down"), deps())
+            const onQuit = update(onSettings, p1("down"), deps())
+            expect(onQuit).toMatchObject({ kind: "paused", choice: "quit" })
+            expect(selectItem(screen, 2)).toEqual(onQuit)
+            expect(update(onQuit, p1("confirm"), deps())).toEqual({
+                kind: "title",
+                mode,
+            })
+        }
+    )
 })
 
 describe("taps", () => {

@@ -227,10 +227,10 @@ describe("main in story mode", () => {
     it("quits the run from the pause menu", () => {
         pressAndTick("Escape")
         expect(screen()).toBe("pause")
-        expect(items()).toEqual(["Resume", "Settings", "Quit"])
+        expect(items()).toEqual(["Resume", "Settings", "Quit to title"])
         pressAndTick("ArrowDown")
         pressAndTick("ArrowDown")
-        expect(selectedItem()).toBe("Quit")
+        expect(selectedItem()).toBe("Quit to title")
         pressAndTick("Space")
         expect(screen()).toBe("title")
     })

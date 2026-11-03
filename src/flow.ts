@@ -196,8 +196,8 @@ import { matchWinner, roundResult, type RoundResult } from "./versus"
 // roll (endRoll.ts): the credits, timed to their music. A press during the
 // roll skips to its THE END, and a press there goes to the title. A lost stage goes to gameOver, whose menu in a run is
 // STORY_END_CHOICES: Retry plays the stage again from the run total it
-// started with, Quit goes to the title. The pause menu in a run has Quit
-// too (STORY_PAUSE_CHOICES).
+// started with, Quit goes to the title, as the pause menu's Quit does in
+// every mode (PAUSE_CHOICES).
 //
 //   playing -> ending -> storyClear -> playing (next stage) / title
 //                    \-> storyEnd -> endRoll -> title
@@ -278,17 +278,11 @@ export const TITLE_CHOICES: readonly TitleChoice[] = [
     "settings",
 ]
 
-// What the pause screen offers, in menu order. Resume is selected on
-// entry, so confirm resumes as the pause action does.
-export const PAUSE_CHOICES = ["resume", "settings"] as const
-// In a story run the pause menu also offers Quit (to the title).
-export const STORY_PAUSE_CHOICES = ["resume", "settings", "quit"] as const
-export type PauseChoice = (typeof STORY_PAUSE_CHOICES)[number]
-
-// The pause menu for a game screen.
-export function pauseChoices(screen: Screen): readonly PauseChoice[] {
-    return "run" in screen && screen.run ? STORY_PAUSE_CHOICES : PAUSE_CHOICES
-}
+// What the pause screen offers, in menu order, in every mode. Resume is
+// selected on entry, so confirm resumes as the pause action does. Quit
+// drops the game for the title (KDA-305).
+export const PAUSE_CHOICES = ["resume", "settings", "quit"] as const
+export type PauseChoice = (typeof PAUSE_CHOICES)[number]
 
 // How many players a mode has.
 export function playerCount(mode: Mode): number {
@@ -425,8 +419,8 @@ export type Screen =
           game: GameState
           match?: Match
           run?: Run
-          // The pause menu's cursor (one of pauseChoices(this screen));
-          // Resume when left out.
+          // The pause menu's cursor (one of PAUSE_CHOICES); Resume when
+          // left out.
           choice?: PauseChoice
       }
     | {
@@ -791,10 +785,9 @@ export function selectItem(
                 ? { ...screen, choice: STORY_CHOICES[index] }
                 : screen
         case "paused": {
-            const choices = pauseChoices(screen)
-            return within(choices.length) &&
-                choices[index] !== (screen.choice ?? "resume")
-                ? { ...screen, choice: choices[index] }
+            return within(PAUSE_CHOICES.length) &&
+                PAUSE_CHOICES[index] !== (screen.choice ?? "resume")
+                ? { ...screen, choice: PAUSE_CHOICES[index] }
                 : screen
         }
         case "settings": {
@@ -941,8 +934,9 @@ function updateTitle(
 }
 
 // The pause action resumes, as does confirm on Resume (either player's, in
-// a 2-player game); confirm on Settings opens them, and on Quit (a story
-// run's) drops the run for the title. Player 1 moves the cursor.
+// a 2-player game); confirm on Settings opens them, and on Quit drops the
+// game (and a story run) for the title on its mode, saving nothing for the
+// stage. Player 1 moves the cursor.
 function updatePaused(
     screen: PausedScreen,
     input: TickInput,
@@ -958,10 +952,9 @@ function updatePaused(
         const { choice: _, ...game } = screen
         return { ...game, kind: "playing" }
     }
-    const choices = pauseChoices(screen)
-    const index = choices.indexOf(screen.choice ?? "resume")
-    const next = moveCursor(index, choices.length, input)
-    return next === index ? screen : { ...screen, choice: choices[next] }
+    const index = PAUSE_CHOICES.indexOf(screen.choice ?? "resume")
+    const next = moveCursor(index, PAUSE_CHOICES.length, input)
+    return next === index ? screen : { ...screen, choice: PAUSE_CHOICES[next] }
 }
 
 // Up/down move between story and stage mode; confirm goes on to the story
