@@ -63,6 +63,7 @@ import {
     GUARD,
     KNOCK_DECAY,
     RESPAWN_SCALE,
+    tenguSpeed,
     USUAL_KNOCK,
     type Difficulty,
     type GuardOdds,
@@ -340,10 +341,14 @@ export function createGameState(
     }
 }
 
-// An enemy slot's speeds at `difficulty` (see enemySpeed): its own and, for
-// a Splitter's slot, the whole Splitter's and its halves'.
+// An enemy slot's speeds at `difficulty` (see enemySpeed, and tenguSpeed
+// for a Tengu): its own and, for a Splitter's slot, the whole Splitter's
+// and its halves'.
 function speedUp(enemy: Character, difficulty: Difficulty) {
-    enemy.speed = enemySpeed(enemy.speed, difficulty)
+    enemy.speed =
+        enemy.ai === AiType.random
+            ? tenguSpeed(enemy.speed, difficulty)
+            : enemySpeed(enemy.speed, difficulty)
     const { part } = enemy
     if (!part) return
     part.wholeSpeed = enemySpeed(part.wholeSpeed, difficulty)

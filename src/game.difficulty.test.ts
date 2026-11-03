@@ -15,9 +15,11 @@ import {
     ENEMY_SPEED_CAP,
     enemySpeed,
     KNOCK_DECAY,
+    TENGU_SPEED,
     USUAL_KNOCK,
 } from "./difficulty"
 import { createGameState, IDLE, step } from "./game"
+import { parseLevel, sameForBoth } from "./level"
 import { stages } from "./levels"
 import { makeEnemy, makeState, seededRandom, textMap } from "./test/helpers"
 
@@ -26,6 +28,7 @@ import { makeEnemy, makeState, seededRandom, textMap } from "./test/helpers"
 
 const TICK = 1 / TICK_RATE
 
+const stage1 = stages[0]
 const stage5 = stages[4]
 const stage9 = stages[8]
 const stage10 = stages[9]
@@ -61,6 +64,54 @@ describe("createGameState at a difficulty", () => {
             if (speed === 2.25) expect(enemy.speed).toBe(ENEMY_SPEED_CAP)
             expect(enemy.speed).toBeLessThanOrEqual(ENEMY_SPEED_CAP)
         })
+    })
+
+    it("gives Tengus their own speed, uncapped, and the others theirs", () => {
+        for (const d of DIFFICULTIES) {
+            const game = createGameState(stage1[d], "dragon", "solo", d)
+            const tengus = game.enemies.filter((e) => e.ai === AiType.random)
+            const others = game.enemies.filter((e) => e.ai !== AiType.random)
+            expect(tengus.length).toBeGreaterThan(0)
+            expect(others.length).toBeGreaterThan(0)
+            for (const tengu of tengus) {
+                expect(tengu.speed).toBe(TENGU_SPEED[d])
+                expect(tengu.speed).toBeGreaterThan(ENEMY_SPEED_CAP)
+            }
+            for (const enemy of others) {
+                expect(enemy.speed).toBeCloseTo(enemySpeed(ENEMY_SPEED, d))
+                expect(enemy.speed).toBeLessThanOrEqual(ENEMY_SPEED_CAP)
+            }
+        }
+    })
+
+    it("scales a Tengu's level speed, and leaves it without a difficulty", () => {
+        const level = parseLevel({
+            name: "Fast Tengu",
+            ...sameForBoth({
+                parTime: 30,
+                map: [
+                    "#########",
+                    "#E.....E#",
+                    "#.#####.#",
+                    "#...P...#",
+                    "#########",
+                ],
+                enemies: [
+                    { ai: "random", speed: 3 },
+                    { ai: "chase", speed: 3 },
+                ],
+            }),
+        })
+        const [tengu, chaser] = createGameState(
+            level,
+            "dragon",
+            "solo",
+            "superHard"
+        ).enemies
+        expect(tengu.speed).toBe(6)
+        expect(chaser.speed).toBe(ENEMY_SPEED_CAP)
+        const plain = createGameState(level).enemies
+        expect(plain.map((e) => e.speed)).toEqual([3, 3])
     })
 
     it("speeds up a Splitter whole and split, and whole again", () => {
