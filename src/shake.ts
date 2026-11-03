@@ -32,8 +32,12 @@ export const SHAKES = {
     enemyBreath: 0.12,
     // A player knocked out: its health gone.
     caught: 0.7,
-    // The boss going down.
-    bossDefeat: 0.8,
+    // The boss's defeat (KDA-301, see bossDefeat.ts): the burst's shatter,
+    // each small blast of the final boss's chain, and its big blast. The
+    // killing blow itself doesn't shake: it is the hit-stop.
+    shatter: 0.8,
+    blast: 0.16,
+    bigBlast: 1,
 } as const
 
 export type ShakeOptions = {

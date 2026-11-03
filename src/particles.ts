@@ -172,17 +172,18 @@ export const BURSTS: Readonly<Record<BurstKind, ParticleLook>> = {
         jitter: 0.3,
         drag: 3,
     },
-    // A big, colourful blast when the boss goes down.
+    // The debris of the final boss's big blast (KDA-301, the end of its
+    // explosion chain): fire and smoke squares flung out all round, slowing
+    // fast, as on the design page.
     bossDefeat: {
-        colors: ["#dc2626", "#f59e0b", "#fbbf24", "#a855f7", "#16a34a"],
-        count: 60,
-        life: 1.2,
-        speed: 5,
+        colors: ["#f8d838", "#f87818", "#d82800", "#8a8a8a"],
+        count: 34,
+        life: 0.9,
+        speed: 7,
         spread: Math.PI * 2,
-        size: 0.18,
-        jitter: 0.5,
-        gravity: 3,
-        drag: 1.5,
+        size: 0.15,
+        jitter: 0.6,
+        drag: 3,
     },
 }
 

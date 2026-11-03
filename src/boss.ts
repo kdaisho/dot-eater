@@ -65,15 +65,20 @@ export type Boss = {
     defeated: boolean
     // Its breath attack (see bossBreath.ts).
     breath: BossBreath
+    // Whether it is the game's last boss (BossData.finale): its defeat is
+    // the explosion chain, then everyone hops for joy (see bossDefeat.ts).
+    finale: boolean
 }
 
 // A boss on `pos` at `speed` with `health`, its breath tuned by `breath`
-// (the level's; the defaults for anything it leaves out).
+// (the level's; the defaults for anything it leaves out); `finale` for the
+// game's last boss (see Boss.finale).
 export function createBoss(
     pos: Vec2,
     speed: number = BOSS_SPEED,
     breath?: BossBreathData,
-    health: number = BOSS_HEALTH
+    health: number = BOSS_HEALTH,
+    finale = false
 ): Boss {
     return {
         pos: vec2(pos.x, pos.y),
@@ -88,6 +93,7 @@ export function createBoss(
         stagger: 0,
         defeated: false,
         breath: createBossBreath(breath),
+        finale,
     }
 }
 

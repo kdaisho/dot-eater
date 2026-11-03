@@ -107,10 +107,25 @@ describe("effectsForEvent", () => {
         expect(r.shakes).toEqual([SHAKES.hit])
     })
 
-    it("a big burst and shake when the boss is defeated", () => {
+    it("neither bursts nor shakes on the killing blow: it is a hit-stop", () => {
         const r = run({ type: "bossDefeated", player: 1, at: vec2(2, 2) })
-        expect(r.bursts).toEqual([{ kind: "bossDefeat", at: vec2(2.5, 2.5) }])
-        expect(r.shakes).toEqual([SHAKES.bossDefeat])
+        expect(r.bursts).toEqual([])
+        expect(r.shakes).toEqual([])
+    })
+
+    it("shakes hard as the boss shatters (KDA-301)", () => {
+        const r = run({ type: "bossShattered", at: vec2(2.5, 2.5) })
+        expect(r.bursts).toEqual([])
+        expect(r.shakes).toEqual([SHAKES.shatter])
+    })
+
+    it("a jolt for each small blast of the chain, debris and a big shake for the big one", () => {
+        const small = run({ type: "bossBlast", at: vec2(2.2, 2.9), big: false })
+        expect(small.bursts).toEqual([])
+        expect(small.shakes).toEqual([SHAKES.blast])
+        const big = run({ type: "bossBlast", at: vec2(2.5, 2.5), big: true })
+        expect(big.bursts).toEqual([{ kind: "bossDefeat", at: vec2(2.5, 2.5) }])
+        expect(big.shakes).toEqual([SHAKES.bigBlast])
     })
 
     it("the boss's breath look on every cell it struck, and a small shake", () => {

@@ -83,6 +83,10 @@ export type BossData = {
     // Its breath attack's tuning (see bossBreath.ts). Omitted, or any part
     // of it, means the defaults.
     breath?: BossBreathData
+    // True for the game's last boss (stage 10): its defeat is the explosion
+    // chain, then everyone left hops for joy (KDA-301, KDA-303; see
+    // bossDefeat.ts). Omitted or false, it shatters (the burst).
+    finale?: boolean
 }
 
 // The boss's breath (KDA-268), each part optional (see bossBreathProblems
@@ -238,6 +242,7 @@ export type Level = {
         speed?: number
         health?: number
         breath?: Readonly<BossBreathData>
+        finale?: boolean
     } | null
     rules: LevelRules
 }
@@ -658,12 +663,20 @@ function toLevel(data: LevelData, variant: LevelVariant, map: BuiltMap): Level {
                       ...(data.boss?.breath === undefined
                           ? {}
                           : { breath: { ...data.boss.breath } }),
+                      ...(data.boss?.finale === undefined
+                          ? {}
+                          : { finale: data.boss.finale }),
                   },
         rules: copyRules(data.rules),
     }
 }
 
-const BOSS_KEYS: ReadonlySet<string> = new Set(["speed", "health", "breath"])
+const BOSS_KEYS: ReadonlySet<string> = new Set([
+    "speed",
+    "health",
+    "breath",
+    "finale",
+])
 
 // The most health a level may give its boss (BossData.health).
 export const MAX_BOSS_HEALTH = 99
@@ -693,6 +706,11 @@ function bossDataProblems(boss: BossData | undefined): string[] {
         )
     }
     problems.push(...bossBreathProblems(boss.breath))
+    if (boss.finale !== undefined && typeof boss.finale !== "boolean") {
+        problems.push(
+            `boss.finale must be true or false, got ${JSON.stringify(boss.finale)}`
+        )
+    }
     return problems
 }
 

@@ -73,8 +73,19 @@ export function effectsForEvent(
             shake.add(SHAKES.hit)
             return
         case "bossDefeated":
-            particles.burst("bossDefeat", bossCentre(event.at))
-            shake.add(SHAKES.bossDefeat)
+            // The killing blow freezes the frame (KDA-301): its effect is
+            // drawn from GameState.defeat, and its shakes come with the
+            // cues below.
+            return
+        case "bossShattered":
+            // Its shards are drawn from the defeat (see render.ts).
+            shake.add(SHAKES.shatter)
+            return
+        case "bossBlast":
+            // The blasts are drawn from the defeat; the big one flings
+            // debris too.
+            if (event.big) particles.burst("bossDefeat", event.at)
+            shake.add(event.big ? SHAKES.bigBlast : SHAKES.blast)
             return
         case "bossBreathed":
             // Its look (BOSS_BREATH.particles) on every cell it struck,

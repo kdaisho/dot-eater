@@ -100,7 +100,10 @@ export const stage10: LevelData = {
     },
     // The same boss on both maps: the large map is harder by its arena and
     // enemies, as every stage's is.
+    // The game's last boss: it goes down in a chain of explosions, and then
+    // everyone left hops for joy (KDA-301, KDA-303).
     boss: {
+        finale: true,
         health: 18,
         breath: { every: 2.5, windUp: 0.8, range: 9, damage: 35 },
     },

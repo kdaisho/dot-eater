@@ -106,6 +106,9 @@ describe("soundForEvent", () => {
             ],
             [{ type: "bossHit", player: 0, at, health: 3 }, "bossHit"],
             [{ type: "bossDefeated", player: 1, at }, "bossDefeated"],
+            [{ type: "bossShattered", at }, "boss.shatter"],
+            [{ type: "bossBlast", at, big: false }, "boss.blast"],
+            [{ type: "bossBlast", at, big: true }, "boss.bigBlast"],
             [{ type: "bossWindUp", at, facing: at }, "boss.windUp"],
             [
                 { type: "bossBreathed", at, facing: at, cells: [at] },

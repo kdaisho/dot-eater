@@ -19,7 +19,13 @@ export const SfxId = {
     ram: "ram",
     enemyDefeated: "enemyDefeated",
     bossHit: "bossHit",
+    // The boss's defeat (KDA-301): the killing blow's heavy hit, as the
+    // music cuts; the burst's shatter; the chain's small blasts and its big
+    // one. The clear jingle follows (stageClear).
     bossDefeated: "bossDefeated",
+    bossShatter: "boss.shatter",
+    bossBlast: "boss.blast",
+    bossBigBlast: "boss.bigBlast",
     // The boss's breath (KDA-268): a low rumble as it winds up, then a roar.
     bossWindUp: "boss.windUp",
     bossBreath: "boss.breath",
@@ -236,27 +242,88 @@ export const SFX: Readonly<Record<SfxId, readonly Tone[]>> = {
             volume: 0.3,
         },
     ],
-    // A rising fanfare, then a boom.
+    // A heavy hit (KDA-301): a sharp crack over a deep thump that drops
+    // away, in the silence of the music cut. No fanfare: the clear jingle
+    // comes once the defeat has played out.
     bossDefeated: [
-        ...arpeggio(["C5", "E5", "G5", "C6", "E6", "G6", "C7"], 0.07, 0.1, {
-            wave: "square",
-            volume: 0.2,
-        }),
         {
             wave: "noise",
-            at: 0.5,
-            duration: 0.8,
-            freq: 600,
-            freqEnd: 80,
+            at: 0,
+            duration: 0.25,
+            freq: 2400,
+            freqEnd: 400,
+            volume: 0.7,
+        },
+        {
+            wave: "square",
+            at: 0,
+            duration: 0.35,
+            freq: 140,
+            freqEnd: 40,
+            volume: 0.4,
+        },
+        {
+            wave: "sine",
+            at: 0,
+            duration: 0.6,
+            freq: 90,
+            freqEnd: 30,
+            volume: 0.6,
+        },
+    ],
+    // Glass-like shards: a bright crash and a falling sprinkle of high
+    // notes, as the burst's boss breaks into its pixels.
+    "boss.shatter": [
+        {
+            wave: "noise",
+            at: 0,
+            duration: 0.5,
+            freq: 5000,
+            freqEnd: 1500,
+            volume: 0.55,
+        },
+        ...arpeggio(["E7", "B6", "G6", "E6", "B5"], 0.06, 0.12, {
+            wave: "triangle",
+            volume: 0.2,
+        }),
+    ],
+    // One small blast of the chain: a short pop. Up to 14 of them close
+    // together, so short and not loud.
+    "boss.blast": [
+        {
+            wave: "noise",
+            at: 0,
+            duration: 0.14,
+            freq: 900,
+            freqEnd: 250,
+            volume: 0.45,
+        },
+        {
+            wave: "square",
+            at: 0,
+            duration: 0.08,
+            freq: 110,
+            freqEnd: 55,
+            volume: 0.2,
+        },
+    ],
+    // The chain's big blast: a long roaring boom.
+    "boss.bigBlast": [
+        {
+            wave: "noise",
+            at: 0,
+            duration: 1.1,
+            freq: 700,
+            freqEnd: 60,
             volume: 0.7,
         },
         {
             wave: "sine",
-            at: 0.5,
-            duration: 0.6,
-            freq: 120,
-            freqEnd: 35,
-            volume: 0.5,
+            at: 0,
+            duration: 0.9,
+            freq: 110,
+            freqEnd: 28,
+            volume: 0.6,
         },
     ],
     // A low rumble swelling over the wind-up (about as long as the default

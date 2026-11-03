@@ -56,6 +56,13 @@ import {
     type Boss,
 } from "./boss"
 import { tickBossBreath } from "./bossBreath"
+import {
+    advanceDefeat,
+    defeatOver,
+    defeatTimeScale,
+    startDefeat,
+    type BossDefeat,
+} from "./bossDefeat"
 import { createCharacter, type Character } from "./character"
 import {
     BOSS_BREATH_SCALE,
@@ -128,8 +135,13 @@ export type GameState = {
     // Whether the game was won by eating the last dot and its gameWon event
     // waits for the outro (see settle), so the stage clear sound comes as
     // the players are drawn on their last cells, not as the last move
-    // starts. False otherwise: a boss defeat reports gameWon at once.
+    // starts. Won by defeating the boss, it is held too, for the defeat's
+    // effect (see `defeat`). False otherwise.
     winHeld: boolean
+    // The boss's defeat as it plays out in the outro (KDA-301, see
+    // bossDefeat.ts), from the tick it falls; null before, and on a level
+    // without a boss.
+    defeat: BossDefeat | null
     // The eaten dots growing back, on a level with rules.regrowDots (see
     // regrow.ts); null on one without.
     regrow: Regrow | null
@@ -306,7 +318,8 @@ export function createGameState(
                   difficulty
                       ? bossBreathAt(level.boss.breath, difficulty)
                       : level.boss.breath,
-                  level.boss.health
+                  level.boss.health,
+                  level.boss.finale ?? false
               )
             : null,
         ticks: 0,
@@ -316,6 +329,7 @@ export function createGameState(
         },
         events: [],
         winHeld: false,
+        defeat: null,
         regrow: createRegrow(level.rules.regrowDots, cells),
         splitterDrops: level.rules.splitterDrops ?? false,
         respawnDelay:
@@ -1174,11 +1188,14 @@ export function step(
 
     const outcome = checkEnd(state, start)
     // The last dot is eaten as the move into its cell starts, a glide
-    // before the eater is drawn there: its gameWon waits for settle.
-    if (outcome === "won" && boss === null) state.winHeld = true
-    else if (outcome) {
-        emit(state, { type: outcome === "won" ? "gameWon" : "gameLost" })
-    }
+    // before the eater is drawn there: its gameWon waits for settle. The
+    // boss's fall starts its defeat (KDA-301), and its gameWon waits for
+    // the effect, which settle plays out.
+    if (outcome === "won" && boss !== null) {
+        state.defeat = startDefeat(state, boss.finale)
+        state.winHeld = true
+    } else if (outcome === "won") state.winHeld = true
+    else if (outcome) emit(state, { type: "gameLost" })
     return outcome
 }
 
@@ -1202,25 +1219,37 @@ function bossChaseStep(
 // positions). Returns true once every player's glide is complete, i.e. the
 // players are drawn on their cells; a gameWon held back for the last dot
 // (GameState.winHeld) is reported then, once.
+//
+// After a boss's fall (GameState.defeat, KDA-301) the outro is its defeat
+// as well: the timeline moves on by `dt` (see advanceDefeat, which reports
+// the held gameWon when the jingle is due), the glides stand still in its
+// hit-stop (defeatTimeScale) and the boss's own glide stays where it fell,
+// and it returns true only once the timeline is over too.
 export function settle(state: GameState, dt: number): boolean {
-    const boss = state.boss ? [state.boss] : []
+    const { defeat } = state
+    const scale = defeat ? defeatTimeScale(defeat) : 1
+    const boss = state.boss && !defeat ? [state.boss] : []
     const gliders = [
         ...state.players.map((p) => ({ c: p.character, rate: p.rate })),
         ...[...state.enemies, ...boss].map((c) => ({ c, rate: 1 })),
     ]
     for (const { c, rate } of gliders) {
         if (c.moveProgress >= 1) continue
-        const progress = c.moveProgress + c.speed * dt * rate
+        const progress = c.moveProgress + c.speed * dt * scale * rate
         c.moveProgress = progress >= 1 - EPSILON ? 1 : progress
     }
-    const done = state.players.every(
+    const glided = state.players.every(
         (p) => p.character.moveProgress >= 1 - EPSILON
     )
-    if (done && state.winHeld) {
+    if (defeat) {
+        advanceDefeat(state, dt)
+        return glided && defeatOver(defeat)
+    }
+    if (glided && state.winHeld) {
         state.winHeld = false
         emit(state, { type: "gameWon" })
     }
-    return done
+    return glided
 }
 
 // `player`'s turn to move this tick (see step), with `move` its input and
