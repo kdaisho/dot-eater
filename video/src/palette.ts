@@ -1,4 +1,4 @@
-import { ANIMALS, type AnimalId } from "../../src/roster"
+import type { AnimalId } from "../../src/roster"
 
 // The v2 look: the game's clean black and white, plus one bold colour per
 // character for its slams, flashes and wipes.
@@ -15,6 +15,8 @@ export const MONO =
 
 export type CharacterLook = {
     id: AnimalId
+    // The promo's own emoji for the character (the game draws pixel
+    // sprites, see sprites.ts).
     emoji: string
     // The name and ability word as the slam card shows them.
     name: string
@@ -31,7 +33,7 @@ export type CharacterLook = {
 export const LOOKS: Readonly<Record<AnimalId, CharacterLook>> = {
     dragon: {
         id: "dragon",
-        emoji: ANIMALS.dragon.emoji,
+        emoji: "🐉",
         name: "DRAGON",
         ability: "FIRE.",
         sound: "FWOOOSH!",
@@ -40,7 +42,7 @@ export const LOOKS: Readonly<Record<AnimalId, CharacterLook>> = {
     },
     penguin: {
         id: "penguin",
-        emoji: ANIMALS.penguin.emoji,
+        emoji: "🐧",
         name: "PENGUIN",
         ability: "ICE.",
         sound: "BRRR... CLONK!",
@@ -49,7 +51,7 @@ export const LOOKS: Readonly<Record<AnimalId, CharacterLook>> = {
     },
     owl: {
         id: "owl",
-        emoji: ANIMALS.owl.emoji,
+        emoji: "🦉",
         name: "OWL",
         ability: "WIND.",
         sound: "HOO-WHOOOSH!",
@@ -58,7 +60,7 @@ export const LOOKS: Readonly<Record<AnimalId, CharacterLook>> = {
     },
     skunk: {
         id: "skunk",
-        emoji: ANIMALS.skunk.emoji,
+        emoji: "🦨",
         name: "SKUNK",
         ability: "STINK.",
         sound: "PFFFRRRT!",
@@ -67,7 +69,7 @@ export const LOOKS: Readonly<Record<AnimalId, CharacterLook>> = {
     },
     boar: {
         id: "boar",
-        emoji: ANIMALS.boar.emoji,
+        emoji: "🐗",
         name: "BOAR",
         ability: "SMASH.",
         sound: "OINK-KABLAM!",

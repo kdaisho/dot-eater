@@ -1,25 +1,28 @@
 // The end roll: the credits after a story run's ending (flow.ts's endRoll
-// screen). The cast comes on card by card (heroes, enemies, the Phantom
-// Lord), each sliding in from the right, resting for its name, ability and
+// screen). The cast comes on card by card (heroes, enemies, the Kitsune
+// and the Phantom Lord), each sliding in from the right, resting for its name, ability and
 // one line, then sliding out to the left. Then all the cards lie in a
 // grid while the staff credits run, and it closes on THE END, which
 // changes with the difficulty the run was cleared on. It is timed to the
 // end roll music (recorded.ts) and drawn by endRollRender.ts. No DOM
 // access here.
 
-import { AiType } from "./constants"
+import { AiType, BossKind } from "./constants"
 import type { Difficulty } from "./difficulty"
 import { AnimalId } from "./roster"
+import { SpriteId } from "./sprites"
 
-// One cast card: who, the sprite its portrait shows, and its three lines.
-// A hero's line is about them; an enemy's is a quote from it.
+// One cast card: who, the sprite its portrait shows (the game's, see
+// sprites.ts), and its three lines. A hero's line is about them; an
+// enemy's is a quote from it.
 export type CastCard = {
-    // An animal or an enemy's AI; the Phantom Lord is the boss.
+    // An animal, an enemy's AI or a boss: the Kitsune (stage 5) or the
+    // Phantom Lord (stage 10, the final boss).
     who:
         | { kind: "animal"; id: AnimalId }
         | { kind: "enemy"; ai: AiType }
-        | { kind: "boss" }
-    sprite: string
+        | { kind: "boss"; boss: BossKind }
+    sprite: SpriteId
     name: string
     ability: string
     line: string
@@ -32,7 +35,7 @@ const ENEMY_TILE = "#4428bc"
 export const CAST: readonly CastCard[] = [
     {
         who: { kind: "animal", id: AnimalId.dragon },
-        sprite: "dragon",
+        sprite: SpriteId.dragon,
         name: "DRAGON",
         ability: "FIRE BREATH",
         line: "Hot-headed and brave.",
@@ -40,7 +43,7 @@ export const CAST: readonly CastCard[] = [
     },
     {
         who: { kind: "animal", id: AnimalId.penguin },
-        sprite: "penguin",
+        sprite: SpriteId.penguin,
         name: "PENGUIN",
         ability: "ICE BREATH",
         line: "Cool on any floor.",
@@ -48,7 +51,7 @@ export const CAST: readonly CastCard[] = [
     },
     {
         who: { kind: "animal", id: AnimalId.owl },
-        sprite: "owl",
+        sprite: SpriteId.owl,
         name: "OWL",
         ability: "WIND BREATH",
         line: "Quick to breathe again.",
@@ -56,7 +59,7 @@ export const CAST: readonly CastCard[] = [
     },
     {
         who: { kind: "animal", id: AnimalId.skunk },
-        sprite: "skunk",
+        sprite: SpriteId.skunk,
         name: "SKUNK",
         ability: "SMELLY BREATH",
         line: "Floods the halls. Phew!",
@@ -64,7 +67,7 @@ export const CAST: readonly CastCard[] = [
     },
     {
         who: { kind: "animal", id: AnimalId.boar },
-        sprite: "boar",
+        sprite: SpriteId.boar,
         name: "BOAR",
         ability: "WALL BREAK",
         line: "Bores right through walls.",
@@ -72,7 +75,7 @@ export const CAST: readonly CastCard[] = [
     },
     {
         who: { kind: "enemy", ai: AiType.random },
-        sprite: "tengu",
+        sprite: SpriteId.tengu,
         name: "TENGU",
         ability: "THE WANDERER",
         line: '"I took a wrong turn. Again."',
@@ -80,7 +83,7 @@ export const CAST: readonly CastCard[] = [
     },
     {
         who: { kind: "enemy", ai: AiType.chase },
-        sprite: "oni",
+        sprite: SpriteId.oni,
         name: "ONI",
         ability: "THE CHASER",
         line: '"I never stop chasing you!"',
@@ -88,7 +91,7 @@ export const CAST: readonly CastCard[] = [
     },
     {
         who: { kind: "enemy", ai: AiType.ambusher },
-        sprite: "fox",
+        sprite: SpriteId.fox,
         name: "FOX",
         ability: "THE AMBUSHER",
         line: '"Peekaboo! Got you!"',
@@ -96,7 +99,7 @@ export const CAST: readonly CastCard[] = [
     },
     {
         who: { kind: "enemy", ai: AiType.patroller },
-        sprite: "robot",
+        sprite: SpriteId.robot,
         name: "ROBOT",
         ability: "THE PATROLLER",
         line: '"Beep. Same route. Always."',
@@ -104,7 +107,7 @@ export const CAST: readonly CastCard[] = [
     },
     {
         who: { kind: "enemy", ai: AiType.phantom },
-        sprite: "ghost",
+        sprite: SpriteId.ghost,
         name: "GHOST",
         ability: "THE PHANTOM",
         line: '"Walls? What walls?"',
@@ -112,7 +115,7 @@ export const CAST: readonly CastCard[] = [
     },
     {
         who: { kind: "enemy", ai: AiType.splitter },
-        sprite: "germ",
+        sprite: SpriteId.splitter,
         name: "GERM",
         ability: "THE SPLITTER",
         line: '"Hit me and meet my twin!"',
@@ -120,7 +123,7 @@ export const CAST: readonly CastCard[] = [
     },
     {
         who: { kind: "enemy", ai: AiType.breather },
-        sprite: "snake",
+        sprite: SpriteId.snake,
         name: "SNAKE",
         ability: "THE BREATHER",
         line: '"Sss... Sssss! SSSSSSS!!"',
@@ -128,15 +131,23 @@ export const CAST: readonly CastCard[] = [
     },
     {
         who: { kind: "enemy", ai: AiType.interceptor },
-        sprite: "wolf",
+        sprite: SpriteId.wolf,
         name: "WOLF",
         ability: "THE INTERCEPTOR",
         line: '"I know where you\'re going."',
         tile: ENEMY_TILE,
     },
     {
-        who: { kind: "boss" },
-        sprite: "boss",
+        who: { kind: "boss", boss: BossKind.kitsune },
+        sprite: SpriteId.kitsune,
+        name: "KITSUNE",
+        ability: "NINE TAILS",
+        line: '"Nine tails, nine lives!"',
+        tile: "#0c2c5c",
+    },
+    {
+        who: { kind: "boss", boss: BossKind.final },
+        sprite: SpriteId.finalBoss,
         name: "PHANTOM LORD",
         ability: "FINAL BOSS",
         line: '"Shall we dance instead?"',
@@ -334,29 +345,4 @@ export function endingKind(difficulty: Difficulty): "plain" | "party" | "true" {
     if (difficulty === "superHard") return "true"
     if (difficulty === "hard") return "party"
     return "plain"
-}
-
-// Scale2x (EPX): doubles a sprite (rows of palette letters, "." clear) and
-// rounds its diagonals, the classic pixel-art upscale. The portraits use
-// it so 8x8 sprites read at card size.
-export function scale2x(rows: readonly string[]): string[] {
-    const h = rows.length
-    const w = rows[0]?.length ?? 0
-    const at = (x: number, y: number) =>
-        x < 0 || y < 0 || x >= w || y >= h ? "." : rows[y][x]
-    const out: string[][] = Array.from({ length: h * 2 }, () => [])
-    for (let y = 0; y < h; y++) {
-        for (let x = 0; x < w; x++) {
-            const p = at(x, y)
-            const a = at(x, y - 1)
-            const b = at(x + 1, y)
-            const c = at(x - 1, y)
-            const d = at(x, y + 1)
-            out[2 * y][2 * x] = c === a && c !== d && a !== b ? a : p
-            out[2 * y][2 * x + 1] = a === b && a !== c && b !== d ? b : p
-            out[2 * y + 1][2 * x] = d === c && d !== b && c !== a ? c : p
-            out[2 * y + 1][2 * x + 1] = b === d && b !== a && d !== c ? d : p
-        }
-    }
-    return out.map((r) => r.join(""))
 }

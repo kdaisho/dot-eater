@@ -16,13 +16,19 @@ import {
     endingKind,
     endRollPhase,
     FINALE_AT,
-    scale2x,
     staffAt,
     lampPower,
     ufoAt,
     STAFF,
     type CastCard,
 } from "./endRoll"
+import {
+    drawPixels,
+    SpriteId,
+    SPRITES,
+    spritePixels,
+    type Dots,
+} from "./sprites"
 
 export const END_ROLL_WIDTH = 256
 export const END_ROLL_HEIGHT = 224
@@ -58,156 +64,9 @@ type Ctx = CanvasRenderingContext2D
 
 // ---------- sprites ----------
 
-// Rows of palette letters, "." clear. The heroes and the boss are the
-// title's; the enemies are pixel takes on their emoji.
-const SPRITES: Record<string, readonly string[]> = {
-    dragon: [
-        "...GGG..",
-        "..GGWKG.",
-        "..GGGGGR",
-        "GGGGYY..",
-        ".GGGYYG.",
-        "..GGGGG.",
-        "..G..G..",
-        "........",
-    ],
-    penguin: [
-        "..KKKK..",
-        ".KKWWKK.",
-        ".KWKKWK.",
-        ".KWWOWK.",
-        "KKWWWWKK",
-        ".KWWWWK.",
-        ".KWWWWK.",
-        "..O..O..",
-    ],
-    owl: [
-        ".B....B.",
-        ".BBBBBB.",
-        "BWWBBWWB",
-        "BWKBBKWB",
-        "BBBYYBBB",
-        ".BTTTTB.",
-        ".BTTTTB.",
-        "..Y..Y..",
-    ],
-    skunk: [
-        "......KK",
-        ".....KWK",
-        "..KKKWKK",
-        ".KWWWWK.",
-        "KKWKKKK.",
-        "KKKKKK..",
-        ".K..K...",
-        "........",
-    ],
-    boar: [
-        "........",
-        ".D.DD...",
-        "DBBBBBD.",
-        "BBKBBBBB",
-        "PPBBBBBB",
-        "WBBBBBBB",
-        ".BBBBBB.",
-        ".D.D.D.D",
-    ],
-    tengu: [
-        "..RRRR..",
-        ".RRRRRR.",
-        "RKWRRWKR",
-        "RRRPPRRR",
-        "RRRRPPPP",
-        ".RRRRRR.",
-        "..RKKR..",
-        "...RR...",
-    ],
-    oni: [
-        ".W....W.",
-        ".RRRRRR.",
-        "RRKRRKRR",
-        "RRRRRRRR",
-        "RWRWWRWR",
-        ".RRRRRR.",
-        ".R.RR.R.",
-        "RR....RR",
-    ],
-    fox: [
-        ".O.O....",
-        ".OOO....",
-        "KOOOOOO.",
-        "WWOOOOOO",
-        "..OOOOOO",
-        "..OOOOWO",
-        "..O.O..W",
-        "........",
-    ],
-    robot: [
-        "...S....",
-        ".SSSSSS.",
-        ".SRSSRS.",
-        ".SSSSSS.",
-        "SSKKKKSS",
-        ".SSSSSS.",
-        ".S....S.",
-        "SS....SS",
-    ],
-    ghost: [
-        "..WWWW..",
-        ".WWWWWW.",
-        "WWKWWKWW",
-        "WWKWWKWW",
-        "WWWWWWWW",
-        "WWWWWWWW",
-        "WWWWWWWW",
-        "W.WW.WW.",
-    ],
-    germ: [
-        "L..L...L",
-        ".LLLLLL.",
-        "LLKLLKLL",
-        "LLLLLLLL",
-        "LLLKKLLL",
-        ".LLLLLL.",
-        "L..LL..L",
-        "........",
-    ],
-    snake: [
-        "........",
-        ".GG.....",
-        "GKGG....",
-        "GGGG..G.",
-        "RGGG.GGG",
-        "..GGGG.G",
-        "...GG...",
-        "........",
-    ],
-    wolf: [
-        "M.M.....",
-        "MMM.....",
-        "KMMMMMM.",
-        "MMMMMMMM",
-        "..MMMMMM",
-        "..MMMMM.",
-        "..M.M.M.",
-        "........",
-    ],
-    boss: [
-        "V..............V",
-        "VV............VV",
-        ".VV..VVVVVV..VV.",
-        "..VVVVVVVVVVVV..",
-        "...VVVVVVVVVV...",
-        "..VEVVVVVVVVEV..",
-        "..VVEEVVVVEEVV..",
-        "..VVVEVVVVEVVV..",
-        "...VVVVVVVVVV...",
-        "..VVFVFVVFVFVV..",
-        "..VVVVVVVVVVVV..",
-        ".VVVVVVVVVVVVVV.",
-        "VV.VVVVVVVVVV.VV",
-        "V..VV.VVVV.VV..V",
-        "...V...VV...V...",
-    ],
+// The characters are the game's sprites (sprites.ts). These are the end
+// roll's own props: rows of palette letters, "." clear.
+const PROPS: Record<string, readonly string[]> = {
     // Claude Code's mascot, for the staff credit.
     claude: [
         ".CCCCCCCC.",
@@ -247,20 +106,11 @@ const SPRITES: Record<string, readonly string[]> = {
     ],
 }
 const PALETTE: Record<string, string> = {
-    G: "#00a800",
-    W: C.white,
     K: C.black,
     Y: C.gold,
     R: C.red,
-    O: C.tan,
     C: "#d97757",
-    B: "#ac7c00",
-    T: C.tan,
-    D: "#503000",
-    P: C.pink,
-    V: "#9878f8",
     S: "#bcbcbc",
-    L: C.lime,
     M: C.grey,
     E: C.red,
     F: C.white,
@@ -320,22 +170,14 @@ function shade(hex: string, f: number): string {
     return `rgb(${ch.join(",")})`
 }
 
-function sprite(
-    g: Ctx,
-    name: string,
-    x: number,
-    y: number,
-    s = 1,
-    flip = false
-) {
-    for (const [j, row] of SPRITES[name].entries()) {
+function prop(g: Ctx, name: string, x: number, y: number, s = 1) {
+    for (const [j, row] of PROPS[name].entries()) {
         for (let i = 0; i < row.length; i++) {
             const ch = row[i]
             if (ch === ".") continue
-            const col = flip ? row.length - 1 - i : i
             rect(
                 g,
-                Math.round(x) + col * s,
+                Math.round(x) + i * s,
                 Math.round(y) + j * s,
                 s,
                 s,
@@ -452,16 +294,30 @@ function side(w: number, h: number, small: boolean): HTMLCanvasElement {
     return canvas
 }
 
-// The portrait as a grid of palette letters: 8x8 sprites doubled by
-// Scale2x, the boss (already 16 wide) as it is.
-function portrait(name: string): readonly string[] {
-    const rows = SPRITES[name]
-    return rows[0].length >= 16 ? rows : scale2x(rows)
+// The portrait: the sprite's dots (no outline) less any clear rows at the
+// top and bottom (the Kitsune's head room), and how many pixels a mosaic
+// tile is: 4 for the 16x16 sprites, 3 for the bigger bosses, so every
+// portrait fits the card's 64 px window.
+function portrait(id: SpriteId): { rows: Dots; px: number } {
+    const dots = spritePixels({ id }, false)
+    const filled = (row: Dots[number]) => row.some((c) => c !== null)
+    const first = dots.findIndex(filled)
+    const last = dots.length - 1 - [...dots].reverse().findIndex(filled)
+    const rows = dots.slice(first, last + 1)
+    const span = Math.max(rows.length, rows[0]?.length ?? 0)
+    return { rows, px: span > 16 ? 3 : 4 }
 }
 
+// A side-view sprite faces left as drawn; mirrored, it runs right.
+const runningRight = (id: SpriteId, frame = 0) => ({
+    id,
+    frame,
+    mirror: SPRITES[id].side,
+})
+
 function makeCard(card: CastCard, n: number): Card {
-    const rows = portrait(card.sprite)
-    const pw = rows[0].length
+    const { rows, px } = portrait(card.sprite)
+    const pw = rows[0]!.length
     const [face, f] = canvasOf(CW, CH)
     rounded(f, 0, 0, CW, CH, GOLD.dark)
     rounded(f, 1, 1, CW - 2, CH - 2, GOLD.side)
@@ -469,16 +325,16 @@ function makeCard(card: CastCard, n: number): Card {
     rounded(f, 2, 2, CW - 4, CH - 4, GOLD.face)
     rounded(f, 6, 6, CW - 12, CH - 12, GOLD.dark)
     rounded(f, 7, 7, CW - 14, CH - 14, C.cream)
-    // The mosaic: 4 px blocks, each a 3 px tile with a seam, the
+    // The mosaic: px blocks, each a tile with a 1 px seam, the
     // character's with a lit corner.
-    const px = 4
     const ox = (CW - pw * px) / 2
     const oy = 12 + (64 - rows.length * px) / 2
     rect(f, ox - 2, oy - 2, pw * px + 4, rows.length * px + 4, GOLD.dark)
     rows.forEach((row, j) => {
         for (let i = 0; i < row.length; i++) {
-            const empty = row[i] === "."
-            const col = empty ? card.tile : PALETTE[row[i]]
+            const dot = row[i]
+            const empty = dot === null || dot === undefined
+            const col = empty ? card.tile : dot
             const x = ox + i * px
             const y = oy + j * px
             rect(f, x, y, px, px, shade(col, empty ? -0.18 : -0.3))
@@ -492,26 +348,29 @@ function makeCard(card: CastCard, n: number): Card {
     rect(f, 15, py + 1, CW - 30, 12, GOLD.face)
     rect(f, 15, py + 1, CW - 30, 1, GOLD.light)
     text(f, `No.${String(n + 1).padStart(2, "0")}`, CW / 2, py + 4, GOLD.dark)
-    // The small card for the finale grid: 1 px per portrait cell.
+    // The small card for the finale grid: 1 px per portrait cell, its
+    // window 16 px tall or as tall as a boss.
     const [mini, m] = canvasOf(MW, MH)
+    const mh = Math.max(16, rows.length)
     rounded(m, 0, 0, MW, MH, GOLD.dark, true)
     rounded(m, 1, 1, MW - 2, MH - 2, GOLD.face, true)
     rect(m, 1, 1, MW - 2, 1, GOLD.light)
     rect(m, 3, 3, MW - 6, MH - 6, C.cream)
     const mx = (MW - pw) / 2
     const my = 6
-    rect(m, mx - 1, my - 1, pw + 2, 18, GOLD.dark)
-    rect(m, mx, my, pw, 16, card.tile)
+    rect(m, mx - 1, my - 1, pw + 2, mh + 2, GOLD.dark)
+    rect(m, mx, my, pw, mh, card.tile)
     rows.forEach((row, j) => {
         for (let i = 0; i < row.length; i++) {
-            if (row[i] !== ".")
+            const dot = row[i]
+            if (dot)
                 rect(
                     m,
                     mx + i,
-                    my + j + (16 - rows.length) / 2,
+                    my + j + Math.floor((mh - rows.length) / 2),
                     1,
                     1,
-                    PALETTE[row[i]]
+                    dot
                 )
         }
     })
@@ -671,7 +530,7 @@ function spotlight(g: Ctx, beamTo: number, t: number, cardX?: number) {
     beam(g, LAMP_X, y + 26, beamTo, power)
     if (cardX !== undefined && power > 0.5) shadow(g, cardX)
     if (power === 1) dust(g, LAMP_X, beamTo, t)
-    sprite(g, "saucer", LAMP_X - 24, y, 2)
+    prop(g, "saucer", LAMP_X - 24, y, 2)
     // The lamp under the middle: lit, or grey while it cuts out.
     rect(g, LAMP_X - 2, y + 24, 4, 2, power < 1 ? C.grey : C.white)
 }
@@ -701,7 +560,7 @@ function ufo(g: Ctx, t: number) {
     g.globalAlpha = 0.5
     rect(g, x + 10, y + 2, 14, 1, C.sky)
     g.globalAlpha = 1
-    sprite(g, "ufo", x, y)
+    prop(g, "ufo", x, y)
 }
 
 // Speed lines trailing a card on the move.
@@ -744,17 +603,18 @@ function castCard(g: Ctx, all: Card[], index: number, u: number, t: number) {
 
 function finale(g: Ctx, all: Card[], v: number, t: number) {
     backdrop(g, t)
-    // The cards are dealt into two rows of 7, each flying in from the
-    // right; then a wave runs along the rows.
+    // The cards are dealt into three rows of 5 (the heroes, then the
+    // enemies and the bosses), each flying in from the right; then a wave
+    // runs along the rows.
     all.forEach((card, i) => {
         const p = clamp01((v - 0.4 - i * 0.16) / 0.3)
         if (p <= 0) return
-        const col = i % 7
-        const row = Math.floor(i / 7)
-        const tx = W / 2 + (col - 3) * 35
+        const col = i % 5
+        const row = Math.floor(i / 5)
+        const tx = W / 2 + (col - 2) * 40
         const x = W + 40 + (tx - W - 40) * easeOutBack(p)
         const wave = v > 3.2 ? hop(v - col * 0.08 - row * 0.3, 1, 4) : 0
-        drawMini(g, card, x, 44 + row * 50 - wave)
+        drawMini(g, card, x, 24 + row * 43 - wave)
     })
     const staff = staffAt(v)
     if (staff) {
@@ -766,20 +626,26 @@ function finale(g: Ctx, all: Card[], v: number, t: number) {
             const shown = staff.shown - 0.3 - i * 0.5
             // With an icon, the name and the icon are centred together.
             const withIcon = last ? icon : undefined
-            const iconW = withIcon ? SPRITES[withIcon][0].length * 2 + 6 : 0
+            const iconW = withIcon ? PROPS[withIcon][0].length * 2 + 6 : 0
             const x = W / 2 - iconW / 2
             text(g, typed(name, shown, 30), x, y, C.white)
             if (withIcon && shown * 30 >= name.length) {
                 const left = x + (name.length * 8) / 2 + 6
-                sprite(g, withIcon, left, y - 1 - hop(shown, 2, 2), 2)
+                prop(g, withIcon, left, y - 1 - hop(shown, 2, 2), 2)
             }
         })
     }
-    // The heroes run along the bottom.
+    // The heroes run right along the bottom, a step on each hop.
     if (v > 2) {
         HERO_SPRITES.forEach((h, i) => {
             const x = (((v - 2) * 30 - i * 18) % (W + 100)) - 20
-            sprite(g, h, x, 196 - hop(v + i * 0.2, 2, 4), 2)
+            const step = Math.floor((v + i * 0.2) * 4) % 2
+            drawPixels(
+                g,
+                runningRight(h, step),
+                x,
+                196 - hop(v + i * 0.2, 2, 4)
+            )
         })
     }
 }
@@ -805,13 +671,13 @@ function ending(g: Ctx, all: Card[], u: number, difficulty: Difficulty) {
             const x = 48 + i * 40
             const b = hop(u + i * 0.2, 1.5, 4)
             drawMini(g, all[i], x, 70 - b)
-            sprite(g, "crown", x - 12, 30 - b, 3)
+            prop(g, "crown", x - 12, 30 - b, 3)
         })
         if (u > 2.5) theEnd(g, u - 2.5, 112)
         if (u > 5)
             text(g, "SUPER HARD", W / 2, 164, blink(u, 3) ? C.white : C.menu)
     } else if (kind === "party") {
-        // Hard: the secret party. Everyone dances, the Phantom Lord too.
+        // Hard: the secret party. Everyone dances, the bosses too.
         theEnd(g, u, 22)
         const r = seeded(4)
         const colours = [C.pink, C.sky, C.gold, C.lime]
@@ -826,9 +692,15 @@ function ending(g: Ctx, all: Card[], u: number, difficulty: Difficulty) {
             const row = Math.floor(i / 7)
             const flip = Math.floor(u * 2) % 2 === 1
             const y = 84 + row * 30 - hop(u + i * 0.25, 2, 8)
-            sprite(g, c.sprite, 18 + col * 32 + row * 16, y, 2, flip)
+            const look = flip ? runningRight(c.sprite) : { id: c.sprite }
+            drawPixels(g, look, 18 + col * 32 + row * 16, y)
         })
-        if (u > 3) sprite(g, "boss", W / 2 - 24, 146 - hop(u, 2, 10), 3)
+        if (u > 3) {
+            const b = hop(u, 2, 10)
+            const kitsune = { id: SpriteId.kitsune }
+            drawPixels(g, kitsune, W / 2 - 56, 136 - hop(u + 0.25, 2, 10), 2)
+            drawPixels(g, { id: SpriteId.finalBoss }, W / 2 + 8, 146 - b, 2)
+        }
     } else {
         // Easy and Medium: the Dragon's card over THE END.
         if (u > 0.3) drawCard(g, all[0], W / 2, 66)

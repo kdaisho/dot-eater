@@ -1,7 +1,7 @@
 import type { BreathDef, TileEffect } from "../breath"
 import { AnimalId } from "../roster"
 
-// Skunk 🦨, smelly breath (KDA-219): a stink cloud around it for 5 s;
+// Skunk, smelly breath (KDA-219): a stink cloud around it for 5 s;
 // enemies won't go in and turn back inside it. Stat: a bigger meter.
 //
 // The cloud flows along the corridors like a gas (KDA-289, with the user):

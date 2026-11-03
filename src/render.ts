@@ -1,5 +1,5 @@
-import { footprint } from "./boss"
-import { bossLooks, bossWarning } from "./bossBreath"
+import { footprint, type Boss } from "./boss"
+import { bossLooks, bossWarning, windingUp } from "./bossBreath"
 import { enemyBreathLooks, enemyWarnings } from "./enemyBreath"
 import {
     affordable,
@@ -38,14 +38,35 @@ import {
     type HealthHud,
     type Player,
 } from "./game"
-import { eatenDotVisible, glidePos, wrapCopies } from "./glide"
+import {
+    eatenDotVisible,
+    glidePos,
+    glideT,
+    moveStep,
+    wrapCopies,
+} from "./glide"
 import { sneakAlpha } from "./intercept"
 import { computeLayout, type Layout } from "./layout"
 import type { LevelRules } from "./level"
 import { particleAlpha, type Particle } from "./particles"
 import type { FacingGuide } from "./settings"
-import { ANIMALS } from "./roster"
 import { isSplitterHalf } from "./splitter"
+import {
+    ANIMAL_SPRITES,
+    BadgeId,
+    BOSS_SPRITES,
+    createSpriteCache,
+    drawSprite,
+    ENEMY_SPRITES,
+    facesRight,
+    mirrored,
+    SpriteId,
+    SPRITES,
+    visibleTails,
+    walkFrame,
+    type SpriteCache,
+    type SpriteLook,
+} from "./sprites"
 import { vec2, type Vec2 } from "./vec2"
 import { stunImmune, stunned } from "./versus"
 
@@ -137,9 +158,9 @@ export type Renderer = {
 
 const COLORS = {
     background: "#fff",
-    // The fill an emoji sprite or badge is drawn with. Opaque: canvas
-    // draws colour emoji with the fill colour's alpha, so drawing one right
-    // after a translucent look disc would leave it see-through.
+    // The fill a tile's emoji is drawn with. Opaque: canvas draws colour
+    // emoji with the fill colour's alpha, so drawing one right after a
+    // translucent look would leave it see-through.
     sprite: "#000",
     wall: "#000",
     dot: "#000",
@@ -179,9 +200,9 @@ const FOG_SOFT_EDGE = 1.5
 // player nears rather than popping in.
 const FOG_REACH = Math.SQRT1_2
 
-// Each player is drawn as its character's emoji (ANIMALS in roster.ts).
-function playerSprite(player: Player): string {
-    return ANIMALS[player.breather.breath.animal].emoji
+// Each player is drawn as its character's sprite (see sprites.ts).
+function playerSprite(player: Player): SpriteId {
+    return ANIMAL_SPRITES[player.breather.breath.animal]
 }
 
 // With two players, each one's sprite has a ring and a small number in its
@@ -221,27 +242,15 @@ const AIM_FILL_ALPHA = 0.1
 const AIM_EDGE_ALPHA = 0.3
 const AIM_EDGE_WIDTH = 0.05
 
-// Enemies look like what they do: every enemy of one AI type shares a
-// sprite. A Record over AiType, so a new AI type without a sprite is a type
-// error.
-const ENEMY_SPRITES: Record<AiType, string> = {
-    [AiType.random]: "👺",
-    [AiType.chase]: "👹",
-    [AiType.ambusher]: "🦊",
-    [AiType.patroller]: "🤖",
-    [AiType.phantom]: "👻",
-    [AiType.splitter]: "🦠",
-    [AiType.breather]: "🐍",
-    [AiType.interceptor]: "🐺",
-}
-
-// A Splitter's half (see splitter.ts) is drawn at this fraction of the usual
-// sprite size.
+// Enemies look like what they do (ENEMY_SPRITES in sprites.ts, a Record
+// over AiType, so a new AI type without a sprite is a type error). A
+// Splitter's half (see splitter.ts) has a sprite of its own, drawn at this
+// fraction of the usual sprite size.
 export const HALF_SCALE = 0.65
 
-// The boss (see boss.ts): its sprite, drawn at this many times the usual
-// sprite size, so it fills its 2x2 footprint as an enemy fills its cell.
-export const BOSS_SPRITE = "🐙"
+// The boss (see boss.ts): its kind's sprite (BOSS_SPRITES: the Kitsune or
+// the final boss), drawn at this many times the usual sprite size, so it
+// fills its 2x2 footprint as an enemy fills its cell.
 export const BOSS_SCALE = 2
 // Its health bar runs along the top of the footprint, above the sprite: as
 // wide as the sprite and this tall, as a fraction of a cell.
@@ -252,7 +261,8 @@ const BOSS_FLASH_ALPHA = 0.7
 // wider than the sprite, so it shows round it.
 const BOSS_GLOW_SCALE = 1.15
 
-// A status's badge emoji is this size, as a fraction of the sprite's.
+// A status's pixel badge (BADGES in sprites.ts) is this size, as a
+// fraction of the sprite's.
 const BADGE_SCALE = 0.5
 
 // Wall blocks and dots keep the proportions of the old span grid: 30px blocks
@@ -275,6 +285,13 @@ export function createRenderer(
     const view = options.view ?? window
     const now = options.now ?? (() => performance.now())
     const ctx = canvas.getContext("2d")
+    // The sprites' rasters, made on first use per look and size.
+    const sprites = createSpriteCache(() =>
+        canvas.ownerDocument.createElement("canvas")
+    )
+    // Which way each character faced last (see facesRight), so one going
+    // up or down keeps its side; forgotten with the character.
+    const facing = new WeakMap<object, boolean>()
     let layout: Layout | undefined
     // The part of the maze on screen (see camera.ts), the game it follows
     // and when it last moved. A new game or a new layout starts it afresh,
@@ -426,9 +443,11 @@ export function createRenderer(
             effects.aim && effects.guide === "aim" ? aimPreviews(state) : []
         const windUp = effects.bossBreath === true
         drawCells(ctx, state, alpha, cell, seen, tintsFor(state, aims, windUp))
-        drawBoss(ctx, state, alpha, cell, cols, rows, seen, windUp)
+        const art = { sprites, facing, dpr }
+        drawBoss(ctx, art, state, alpha, cell, cols, rows, seen, windUp)
         drawCharacters(
             ctx,
+            art,
             state,
             alpha,
             cell,
@@ -820,13 +839,24 @@ function drawTintEdge(
     ctx.restore()
 }
 
+// What the sprite drawing needs from the renderer: the raster cache, each
+// character's last facing (see facesRight) and the device pixel ratio.
+type Art = {
+    sprites: SpriteCache
+    facing: WeakMap<object, boolean>
+    dpr: number
+}
+
 // The boss, unless it is defeated (gone for good): its sprite centred on
 // its gliding 2x2 footprint, under the other characters, with a thin health
-// bar above the sprite and a white flash over it just after a hit. In fog
-// it is hidden once none of its four cells reaches into the light. Boss
-// levels have no tunnels, so it never needs wrap copies.
+// bar above the sprite and a white flash over it just after a hit. The
+// Kitsune shows a tail per ninth of its health left (visibleTails), and the
+// final boss blazes (its windUp grid) while it winds up its breath, with
+// `windUp`. In fog it is hidden once none of its four cells reaches into
+// the light. Boss levels have no tunnels, so it never needs wrap copies.
 function drawBoss(
     ctx: CanvasRenderingContext2D,
+    art: Art,
     state: GameState,
     alpha: number,
     cell: number,
@@ -852,11 +882,7 @@ function drawBoss(
         ctx.arc(x, y, (size / 2) * BOSS_GLOW_SCALE, 0, Math.PI * 2)
         ctx.fill()
     }
-    ctx.textAlign = "center"
-    ctx.textBaseline = "middle"
-    ctx.font = `${Math.round(size)}px sans-serif`
-    ctx.fillStyle = COLORS.sprite
-    ctx.fillText(BOSS_SPRITE, x, y)
+    drawSprite(ctx, art.sprites, bossLook(boss, windUp), x, y, size, art.dpr)
     if (boss.flash > 0) {
         ctx.save()
         ctx.globalAlpha = BOSS_FLASH_ALPHA
@@ -883,6 +909,7 @@ function drawBoss(
 
 function drawCharacters(
     ctx: CanvasRenderingContext2D,
+    art: Art,
     state: GameState,
     alpha: number,
     cell: number,
@@ -900,10 +927,13 @@ function drawCharacters(
     // then the other enemies. In fog, enemies outside the light are
     // hidden; the players are always in it. A defeated enemy is hidden until
     // it blinks before coming back (enemyVisible). Statuses are drawn by
-    // their Look: the colour as a disc behind the sprite, the emoji as a
-    // small badge at its top right. A held enemy (e.g. frozen mid-glide) gets
+    // their Look: the colour as a disc behind the sprite, the badge as a
+    // small pixel badge at its top right. A held enemy (e.g. frozen mid-glide) gets
     // no frame alpha: its progress doesn't move on, so it stays exactly where
-    // it is drawn instead of creeping forward between ticks. Each player
+    // it is drawn instead of creeping forward between ticks. Sprites face
+    // the way they last went sideways (a player its breath's facing) and
+    // step through their walk frames while gliding (characterLook). Each
+    // player
     // glides at its current rate (Player.rate), as the ticks move it, and
     // with two players wears its marker (see PLAYER_COLORS). A Splitter's
     // half is drawn smaller (HALF_SCALE), its disc and badges too. With
@@ -927,8 +957,11 @@ function drawCharacters(
         )
     const enemySprite = (enemy: Character) => ({
         character: enemy,
-        sprite: ENEMY_SPRITES[enemy.ai],
+        sprite: isSplitterHalf(enemy)
+            ? SpriteId.splitterHalf
+            : ENEMY_SPRITES[enemy.ai],
         rate: 1,
+        facingX: null,
         marker: null,
         badge: null,
         arrow: null,
@@ -948,6 +981,7 @@ function drawCharacters(
                           character: player.character,
                           sprite: playerSprite(player),
                           rate: player.rate,
+                          facingX: player.breather.facing.x,
                           marker: marked ? i : null,
                           badge: versusBadge(player),
                           arrow:
@@ -983,8 +1017,17 @@ function drawCharacters(
             (!isPlayer && isSplitterHalf(character) ? HALF_SCALE : 1)
         const faint = character.ai === AiType.interceptor && !isPlayer
         if (faint) ctx.globalAlpha = sneak(pos)
+        const look = characterLook(
+            sprite.sprite,
+            character,
+            held ? 0 : alpha,
+            rate,
+            sprite.facingX,
+            art.facing,
+            cols,
+            rows
+        )
         for (const p of wrapCopies(pos, cols, rows)) {
-            ctx.font = `${Math.round(size)}px sans-serif`
             const x = (p.x + 0.5) * cell
             const y = (p.y + 0.5) * cell
             if (aura) {
@@ -1002,23 +1045,23 @@ function drawCharacters(
                 ctx.arc(x, y, size / 2, 0, Math.PI * 2)
                 ctx.fill()
             }
-            ctx.fillStyle = COLORS.sprite
-            ctx.fillText(sprite.sprite, x, y)
+            drawSprite(ctx, art.sprites, look, x, y, size, art.dpr)
             if (marker !== null) drawMarker(ctx, marker, x, y, size)
             // A stunned player (versus) wears the stun badge, and one
             // immune just after a stun the immune badge, like a status's.
             const badges = [
-                ...looks.filter((look) => look.emoji),
-                ...(badge ? [{ emoji: badge }] : []),
+                ...looks.flatMap((look) => (look.badge ? [look.badge] : [])),
+                ...(badge ? [badge] : []),
             ]
-            if (badges.length === 0) continue
-            ctx.font = `${Math.round(size * BADGE_SCALE)}px sans-serif`
-            ctx.fillStyle = COLORS.sprite
-            badges.forEach((look, i) => {
-                ctx.fillText(
-                    look.emoji!,
+            badges.forEach((id, i) => {
+                drawSprite(
+                    ctx,
+                    art.sprites,
+                    { badge: id },
                     x + size / 2 - i * size * BADGE_SCALE,
-                    y - size / 2
+                    y - size / 2,
+                    size * BADGE_SCALE,
+                    art.dpr
                 )
             })
         }
@@ -1027,6 +1070,49 @@ function drawCharacters(
         for (const p of wrapCopies(pos, cols, rows)) {
             drawArrow(ctx, arrow, (p.x + 0.5) * cell, (p.y + 0.5) * cell, cell)
         }
+    }
+}
+
+// How the boss's sprite looks (see drawBoss): its kind's, with the
+// Kitsune's tails by health and the final boss's wind-up grid while it
+// winds up (and `windUp` shows wind-ups).
+export function bossLook(boss: Boss, windUp: boolean): SpriteLook {
+    const id = BOSS_SPRITES[boss.kind]
+    return {
+        id,
+        ...(SPRITES[id].windUp ? { windUp: windUp && windingUp(boss) } : {}),
+        ...(SPRITES[id].tails
+            ? { tails: visibleTails(boss.health, boss.maxHealth) }
+            : {}),
+    }
+}
+
+// How a character's sprite `id` looks this frame: facing the way it last
+// went sideways (an enemy by its latest move, a player by `facingX`, its
+// breath's facing; right is mirrored for side views, and players start
+// facing right as their breath does), and on frame 1 for the first half of
+// each glide (walkFrame). `facing` remembers each one's side from frame to
+// frame.
+export function characterLook(
+    id: SpriteId,
+    character: Character,
+    alpha: number,
+    rate: number,
+    facingX: number | null,
+    facing: WeakMap<object, boolean>,
+    cols: number,
+    rows: number
+): SpriteLook {
+    const step = moveStep(character.lastPos, character.pos, cols, rows)
+    const moving = step.x !== 0 || step.y !== 0
+    const t = glideT(character, alpha, rate)
+    const before = facing.get(character) ?? facingX !== null
+    const right = facesRight(before, facingX ?? step.x)
+    facing.set(character, right)
+    return {
+        id,
+        frame: walkFrame(SPRITES[id].frames.length, moving, t),
+        mirror: mirrored(id, right),
     }
 }
 
@@ -1341,22 +1427,22 @@ function drawPlayersHud(
 // Marks a versus player's dot count in the HUD.
 const DOT_MARK = "●"
 
-// What a stunned player's HUD slot shows: the stun badge and the whole
-// seconds left (rounded up).
+// What a stunned player's HUD slot shows: the whole seconds left (rounded
+// up), like an out player's "back in".
 export function stunLabel(seconds: number): string {
-    return `${STUN_BADGE} ${Math.max(1, Math.ceil(seconds - 1e-9))}`
+    return `stunned ${Math.max(1, Math.ceil(seconds - 1e-9))}`
 }
 
-// Drawn on a stunned player's sprite, and in its HUD slot.
-export const STUN_BADGE = "💫"
+// Drawn on a stunned player's sprite.
+export const STUN_BADGE = BadgeId.stunned
 
 // Drawn on a versus player's sprite while it is immune to stuns, just after
 // one wore off (see STUN_IMMUNITY_SECONDS in versus.ts).
-export const IMMUNE_BADGE = "🛡️"
+export const IMMUNE_BADGE = BadgeId.immune
 
 // The badge a versus player's sprite wears: the stun badge while stunned,
 // the immune badge while immune, else none.
-function versusBadge(player: Player): string | null {
+function versusBadge(player: Player): BadgeId | null {
     if (stunned(player)) return STUN_BADGE
     return stunImmune(player) ? IMMUNE_BADGE : null
 }
