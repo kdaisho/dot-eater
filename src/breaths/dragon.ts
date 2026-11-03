@@ -10,7 +10,7 @@ const BURN_SECONDS = 2
 export const BURNING: TileEffect = {
     name: "dragon.burning",
     blocksEnemies: true,
-    look: { color: "rgba(255, 110, 20, 0.45)", emoji: "🔥" },
+    look: { color: "rgba(255, 110, 20, 0.45)", tile: "fire" },
 }
 
 // How far the fire spreads at charge `level`, in steps from the player: 2

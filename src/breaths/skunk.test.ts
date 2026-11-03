@@ -66,10 +66,10 @@ const cloud = (state: GameState) =>
         .map((t) => `${t.pos.x},${t.pos.y}`)
         .sort()
 
-// The cells showing a 💨.
+// The cells showing the stink tile (the cloud's centre).
 const puffs = (state: GameState) =>
     state.tiles
-        .filter((t) => t.effect.look?.emoji === "💨")
+        .filter((t) => t.effect.look?.tile === "stink")
         .map((t) => `${t.pos.x},${t.pos.y}`)
         .sort()
 
@@ -117,19 +117,19 @@ describe("the Skunk's smelly breath", () => {
         expect(cloud(state)).toEqual(["1,1", "2,1", "3,1"])
     })
 
-    it("shows a green haze, with a 💨 on the player's cell", () => {
+    it("shows a green haze, with the stink tile on the player's cell", () => {
         const state = skunkState(room, centre)
         tick(state, true)
         for (const t of state.tiles.filter((t) => t.effect.look?.color)) {
-            expect(t.effect.look?.emoji).toBeUndefined()
+            expect(t.effect.look?.tile).toBeUndefined()
         }
         expect(state.tiles.filter((t) => t.effect.look?.color)).toHaveLength(13)
         expect(puffs(state)).toEqual(["3,3"])
     })
 
     // Regression: the second cloud's centre was already stink from the
-    // first, so it was refreshed without its 💨.
-    it("shows a 💨 on the centre of a cloud breathed over another", () => {
+    // first, so it was refreshed without its 💨 (now the stink tile).
+    it("shows the stink tile on the centre of a cloud breathed over another", () => {
         const state = skunkState(corridor, { x: 3, y: 1 })
         state.players[0].character.moveProgress = 1
         tick(state, true)
