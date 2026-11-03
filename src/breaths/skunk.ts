@@ -41,17 +41,17 @@ const stink: TileEffect = {
     look: { color: HAZE },
 }
 
-// The cloud's centre also gets a 💨 (drawn over the cell, so only there: the
-// player has just eaten any dot on its own cell, so the emoji hides none).
-// It is its own effect on top of the stink, not a variant of it: a cloud
-// breathed over another then still gets its 💨 where its centre is already
+// The cloud's centre also gets the stink tile (drawn over the cell, so only
+// there: the player has just eaten any dot on its own cell, so the tile
+// hides none). It is its own effect on top of the stink, not a variant of
+// it: a cloud breathed over another then still gets its tile where its centre is already
 // stink (the same name on a cell only refreshes), and the haze isn't drawn
 // twice there. It blocks enemies too, though the stink under it already
 // does.
 const stinkCentre: TileEffect = {
     name: "skunk.stink.centre",
     blocksEnemies: true,
-    look: { emoji: "💨" },
+    look: { tile: "stink" },
 }
 
 export const skunk: BreathDef = {

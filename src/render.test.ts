@@ -9,6 +9,7 @@ import {
     type BreathDef,
 } from "./breath"
 import { BREATHS } from "./breaths"
+import { BREATH_ICE, FROZEN } from "./breaths/penguin"
 import {
     AiType,
     BLINK_RATE,
@@ -64,6 +65,7 @@ import {
     parseFlat,
     textMap,
 } from "./test/helpers"
+import { ART, STAGE_STYLES } from "./tiles"
 import { vec2 } from "./vec2"
 import { stun } from "./versus"
 
@@ -77,7 +79,8 @@ const HEALTH_COLOR = "#16a34a"
 // happy-dom has no 2D canvas, so record the calls on a stub context: every
 // method call is logged, with the fillStyle, strokeStyle, font,
 // globalAlpha and globalCompositeOperation set at the time, and property
-// writes are accepted.
+// writes are accepted. A gradient's colour stops are logged as
+// addColorStop calls, and createImageData gives real pixels.
 function stubContext() {
     const calls: {
         name: string
@@ -109,7 +112,18 @@ function stubContext() {
                         composite,
                     })
                     if (name === "createRadialGradient") {
-                        return { addColorStop() {} }
+                        return {
+                            addColorStop: (...stop: unknown[]) =>
+                                calls.push({
+                                    name: "addColorStop",
+                                    args: stop,
+                                }),
+                        }
+                    }
+                    if (name === "createImageData") {
+                        const [width, height] = args as number[]
+                        const data = new Uint8ClampedArray(width * height * 4)
+                        return { data, width, height }
                     }
                     // save and restore keep the alpha, as a canvas does.
                     if (name === "save") saved.push(globalAlpha)
@@ -129,6 +143,37 @@ function stubContext() {
         }
     )
     return { ctx, calls }
+}
+
+// A canvas the renderer made for itself (its maze art, an effect tile, the
+// 2-player darkness), with its stub context's calls.
+type Offscreen = {
+    canvas: HTMLCanvasElement
+    calls: ReturnType<typeof stubContext>["calls"]
+    // The spy on its getContext.
+    getContext: { mock: { calls: unknown[] } }
+}
+
+// Give every canvas made from here on a stub context of its own, and list
+// them as they are made.
+function stubCanvases(): Offscreen[] {
+    const made: Offscreen[] = []
+    // The prototype's, as the spy is on the document itself.
+    const create = Document.prototype.createElement.bind(document)
+    vi.spyOn(document, "createElement").mockImplementation(
+        (tag: string, options?: ElementCreationOptions) => {
+            const el = create(tag, options)
+            if (el instanceof HTMLCanvasElement) {
+                const { ctx, calls } = stubContext()
+                const getContext = vi
+                    .spyOn(el, "getContext")
+                    .mockReturnValue(ctx as never)
+                made.push({ canvas: el, calls, getContext })
+            }
+            return el
+        }
+    )
+    return made
 }
 
 // What a recorded call drew: a fillText's text, or for a drawImage of a
@@ -157,30 +202,62 @@ function spriteBox(c: { args: unknown[] }): {
     return { x: left + w / 2, y: top + h / 2, size: Math.max(w, h) }
 }
 
-// Hand `layerCanvas` to the renderer as the 2-player darkness layer: the
-// first canvas the document makes from now on (later ones are real). The
-// renderer also makes a canvas per sprite raster, so draw the frame once
-// before this, without fog, to make them first.
-function useLayer(layerCanvas: HTMLCanvasElement) {
-    const make = document.createElement.bind(document)
-    let given = false
-    vi.spyOn(document, "createElement").mockImplementation(((tag: string) => {
-        if (tag !== "canvas" || given) return make(tag)
-        given = true
-        return layerCanvas
-    }) as typeof document.createElement)
-}
-
 function setup() {
     const view = { innerWidth: 1000, innerHeight: 400, devicePixelRatio: 2 }
     const canvas = document.createElement("canvas")
     const { ctx, calls } = stubContext()
     vi.spyOn(canvas, "getContext").mockReturnValue(ctx as never)
+    const offscreen = stubCanvases()
     const renderer = createRenderer(canvas, { view })
     // The text drawn and the sprites (by name, see drawnName), in order.
     const texts = () => calls.flatMap((c) => drawnName(c) ?? [])
-    return { canvas, calls, renderer, texts, view }
+    // The maze art's canvas (see mapArt in render.ts): the one its pixels
+    // were made for. And the colour of its art pixel (x, y) as "#rrggbb",
+    // as last put on it.
+    const art = () =>
+        offscreen.find((o) =>
+            o.calls.some(
+                (c) =>
+                    c.name === "createImageData" && (c.args[0] as number) > ART
+            )
+        )
+    const artColor = (x: number, y: number) => {
+        const put = art()
+            ?.calls.filter((c) => c.name === "putImageData")
+            .at(-1)
+        const image = put?.args[0] as ImageData | undefined
+        if (!image) return undefined
+        const i = (y * image.width + x) * 4
+        return `#${Array.from(image.data.slice(i, i + 3), (v) => v.toString(16).padStart(2, "0")).join("")}`
+    }
+    // The colour at the middle of cell (x, y) of the art.
+    const cellColor = (x: number, y: number) =>
+        artColor(x * ART + ART / 2, y * ART + ART / 2)
+    return {
+        canvas,
+        calls,
+        renderer,
+        texts,
+        view,
+        offscreen,
+        art,
+        artColor,
+        cellColor,
+    }
 }
+
+// Whether a drawImage's source is one of the breaths' effect tiles (a
+// canvas ART across that isn't a sprite raster).
+function isEffectTile(source: unknown): boolean {
+    return (
+        source instanceof HTMLCanvasElement &&
+        source.width === ART &&
+        source.dataset.sprite === undefined
+    )
+}
+
+// Stage 1's (the default's) dot colour, at the middle of its dot.
+const DOT_COLOR = STAGE_STYLES[1].palette.D
 
 describe("createRenderer", () => {
     afterEach(() => {
@@ -558,7 +635,7 @@ describe("createRenderer", () => {
     // the player is drawn gliding in over the next move, so the dot used to
     // vanish a cell ahead of it.
     it("keeps drawing the eaten dot until the player's glide reaches it", () => {
-        const { calls, canvas, renderer } = setup()
+        const { cellColor, renderer } = setup()
         const state = makeState(
             [
                 [1, 1, 1, 1, 1],
@@ -569,24 +646,10 @@ describe("createRenderer", () => {
         )
         movePlayer(state, vec2(1, 0))
         expect(state.cells[1][2]).toBe(Cell.none)
-        // Whether a dot (a square well under half a cell) was drawn centred
-        // on cell (x, y).
-        const dotAt = (x: number, y: number) => {
-            const cell = parseFloat(canvas.style.width) / 5
-            return calls.some((c) => {
-                if (c.name !== "fillRect") return false
-                const [left, top, w, h] = c.args as number[]
-                return (
-                    w === h &&
-                    w < cell / 2 &&
-                    left + w / 2 === (x + 0.5) * cell &&
-                    top + h / 2 === (y + 0.5) * cell
-                )
-            })
-        }
+        // Whether the maze art has a dot on cell (x, y).
+        const dotAt = (x: number, y: number) => cellColor(x, y) === DOT_COLOR
         const drawAt = (progress: number) => {
             state.players[0].character.moveProgress = progress
-            calls.length = 0
             renderer.draw(state, 0)
         }
 
@@ -620,43 +683,47 @@ describe("createRenderer", () => {
             ] as const
         }
 
-        // The cells (as "x,y") where a dot or a wall block was drawn.
-        function drawnCells(
-            calls: { name: string; args: unknown[] }[],
-            canvas: HTMLCanvasElement,
-            cols: number
-        ) {
-            const cell = parseFloat(canvas.style.width) / cols
-            const dots = new Set<string>()
-            const walls = new Set<string>()
-            for (const c of calls) {
-                if (c.name !== "fillRect") continue
-                const [left, top, w, h] = c.args as number[]
-                if (w !== h || w >= cell) continue
-                const x = Math.round((left + w / 2) / cell - 0.5)
-                const y = Math.round((top + h / 2) / cell - 0.5)
-                ;(w < cell / 2 ? dots : walls).add(`${x},${y}`)
-            }
-            return { dots, walls }
-        }
-
         const enemies = () => [
             makeEnemy(4, 1, AiType.random, undefined, ENEMY_IDS[0]),
             makeEnemy(9, 1, AiType.chase, undefined, ENEMY_IDS[1]),
         ]
 
-        it("hides dots, walls and enemies outside the radius", () => {
-            const { calls, canvas, renderer, texts } = setup()
+        it("hides enemies outside the radius, and darkens the maze over its tiles", () => {
+            const { art, calls, renderer, texts } = setup()
             const state = makeState(corridor(), { x: 2, y: 1 }, enemies())
             renderer.draw(state, 0, {}, { fog: { radius: 3 } })
             // enemy1 (random) is 2 cells away, enemy2 (chase) 7.
             expect(texts()).toEqual(["dragon", "tengu"])
-            const { dots, walls } = drawnCells(calls, canvas, 13)
-            expect([...dots].sort()).toEqual(["1,1", "3,1", "4,1", "5,1"])
-            expect(walls.has("0,1")).toBe(true)
-            expect(walls.has("2,0")).toBe(true)
-            expect(walls.has("6,0")).toBe(false)
-            expect(walls.has("12,1")).toBe(false)
+            // The whole maze's tiles go down first; the darkness (fully dark
+            // past the radius) goes over them.
+            const tiles = calls.findIndex(
+                (c) => c.name === "drawImage" && c.args[0] === art()?.canvas
+            )
+            const dark = calls.findIndex(
+                (c) => c.name === "createRadialGradient"
+            )
+            expect(tiles).toBeGreaterThanOrEqual(0)
+            expect(dark).toBeGreaterThan(tiles)
+        })
+
+        it("tints the darkness by the stage's style", () => {
+            const stops = (stage?: number) => {
+                const { calls, renderer } = setup()
+                const state = makeState(corridor(), { x: 2, y: 1 })
+                renderer.draw(
+                    state,
+                    0,
+                    {},
+                    { fog: { radius: 3 } },
+                    stage ? { stage } : {}
+                )
+                return calls
+                    .filter((c) => c.name === "addColorStop")
+                    .map((c) => c.args[1])
+            }
+            expect(stops(8)).toEqual(["rgba(8, 14, 28, 0)", "rgb(8, 14, 28)"])
+            expect(stops(4)).toEqual(["rgba(17, 17, 17, 0)", "rgb(17, 17, 17)"])
+            expect(stops()).toEqual(["rgba(17, 17, 17, 0)", "rgb(17, 17, 17)"])
         })
 
         // User feedback 2026-11-01: the Owl sees 1.5 times as far.
@@ -691,26 +758,23 @@ describe("createRenderer", () => {
         // Regression: only things whose centre was inside the radius were
         // drawn, so walls and enemies popped in at the soft edge.
         it("draws what reaches into the light, so it fades in", () => {
-            const { calls, canvas, renderer, texts } = setup()
+            const { renderer, texts } = setup()
             const state = makeState(corridor(), { x: 2, y: 1 }, [
                 makeEnemy(5, 1, AiType.random, undefined, ENEMY_IDS[0]),
             ])
             renderer.draw(state, 0, {}, { fog: { radius: 2.5 } })
-            // The enemy's centre is 3 cells away, the wall at (4, 0) 2.24 and
-            // the one at (5, 0) 3.16: past 2.5, but their near edges aren't.
+            // The enemy's centre is 3 cells away: past 2.5, but its near
+            // edge isn't.
             expect(texts()).toEqual(["dragon", "tengu"])
-            const { walls } = drawnCells(calls, canvas, 13)
-            expect(walls.has("4,0")).toBe(true)
-            expect(walls.has("5,0")).toBe(true)
-            expect(walls.has("6,0")).toBe(false)
         })
 
         it("draws everything without fog", () => {
-            const { calls, canvas, renderer, texts } = setup()
+            const { calls, cellColor, renderer, texts } = setup()
             const state = makeState(corridor(), { x: 2, y: 1 }, enemies())
             renderer.draw(state, 0, {}, {})
             expect(texts()).toEqual(["dragon", "tengu", "oni"])
-            expect(drawnCells(calls, canvas, 13).dots.size).toBe(10)
+            const dots = Array.from({ length: 13 }, (_, x) => cellColor(x, 1))
+            expect(dots.filter((c) => c === DOT_COLOR)).toHaveLength(10)
             expect(calls.some((c) => c.name === "createRadialGradient")).toBe(
                 false
             )
@@ -723,9 +787,6 @@ describe("createRenderer", () => {
             state.players[0].character.lastPos = vec2(4, 1)
             state.players[0].character.moveProgress = 0
             renderer.draw(state, 0, {}, { fog: { radius: 2 } })
-            const { dots } = drawnCells(calls, canvas, 13)
-            expect(dots.has("2,1")).toBe(true)
-            expect(dots.has("7,1")).toBe(false)
             const gradients = calls.filter(
                 (c) => c.name === "createRadialGradient"
             )
@@ -738,17 +799,13 @@ describe("createRenderer", () => {
         })
 
         it("sees through a wrap tunnel onto the opposite edge", () => {
-            const { calls, canvas, renderer, texts } = setup()
+            const { calls, renderer, texts } = setup()
             const state = makeState(corridor(true), { x: 1, y: 1 }, [
                 makeEnemy(11, 1, AiType.random, undefined, ENEMY_IDS[0]),
                 makeEnemy(8, 1, AiType.chase, undefined, ENEMY_IDS[1]),
             ])
             renderer.draw(state, 0, {}, { fog: { radius: 3 } })
             expect(texts()).toEqual(["dragon", "tengu"])
-            const { dots } = drawnCells(calls, canvas, 13)
-            expect(dots.has("11,1")).toBe(true)
-            expect(dots.has("12,1")).toBe(true)
-            expect(dots.has("10,1")).toBe(false)
             // The light is drawn around the player and its copy past the
             // right edge.
             expect(
@@ -773,72 +830,119 @@ describe("createRenderer", () => {
         })
     })
 
-    describe("ice", () => {
-        // The whole-cell tiles drawn (as "x,y", in drawing order), with the
-        // index of each call, and the fill styles used for them.
-        function iceTiles(
-            calls: { name: string; args: unknown[]; fillStyle?: unknown }[],
-            canvas: HTMLCanvasElement,
-            cols: number
-        ) {
-            const cell = parseFloat(canvas.style.width) / cols
-            const tiles: { at: string; call: number }[] = []
-            const styles = new Set<unknown>()
-            calls.forEach((c, i) => {
-                if (c.name !== "fillRect") return
-                const [left, top, w, h] = c.args as number[]
-                if (Math.abs(w - cell) > 1 || Math.abs(h - cell) > 1) return
-                const x = Math.round(left / cell)
-                const y = Math.round(top / cell)
-                tiles.push({ at: `${x},${y}`, call: i })
-                styles.add(c.fillStyle)
-            })
-            return { tiles, styles }
-        }
+    describe("pixel tiles", () => {
+        // The shared ice's colours (stage 1 has no ice of its own).
+        const ICE = ["#a9e1f7", "#ecfbff", "#5fb3d9"]
 
-        it("draws a pale tile on each ice cell, with its dot on top", () => {
-            const { calls, canvas, renderer } = setup()
+        it("draws ice cells as ice tiles, with their dots on top", () => {
+            const { artColor, cellColor, renderer } = setup()
             const { map, ice } = textMap(["######", "# :~ #", "######"])
             renderer.draw(makeState(map, { x: 1, y: 1 }, [], { ice }), 0)
-            const { tiles, styles } = iceTiles(calls, canvas, 6)
-            expect(tiles.map((t) => t.at)).toEqual(["2,1", "3,1"])
-            // One colour for all ice, not the background, walls or dots.
-            expect(styles.size).toBe(1)
-            const [style] = styles
-            expect(["#fff", "#000"]).not.toContain(style)
-            // The dot at (2, 1) comes after its tile, in the dot colour.
-            const cell = parseFloat(canvas.style.width) / 6
-            const dot = calls.findIndex(
-                (c, i) =>
-                    i > tiles[0].call &&
-                    c.name === "fillRect" &&
-                    (c.args[2] as number) < cell / 2
+            expect(cellColor(2, 1)).toBe(DOT_COLOR)
+            expect(ICE).toContain(artColor(2 * ART + 1, ART + 1))
+            expect(ICE).toContain(cellColor(3, 1))
+            expect(ICE).not.toContain(cellColor(4, 1))
+        })
+
+        it("draws the Penguin's breath ice as ice, for as long as it lasts", () => {
+            const { cellColor, renderer } = setup()
+            const state = makeState(
+                [
+                    [1, 1, 1, 1, 1],
+                    [1, 0, 0, 0, 1],
+                    [1, 1, 1, 1, 1],
+                ],
+                { x: 1, y: 1 }
             )
-            expect(dot).toBeGreaterThan(tiles[0].call)
-            expect(dot).toBeLessThan(tiles[1].call)
-            expect(calls[dot].fillStyle).not.toBe(style)
+            renderer.draw(state, 0)
+            expect(ICE).not.toContain(cellColor(2, 1))
+            addTileEffect(state, vec2(2, 1), BREATH_ICE, 5)
+            renderer.draw(state, 0)
+            expect(ICE).toContain(cellColor(2, 1))
         })
 
-        it("draws no ice tiles on a map without ice", () => {
-            const { calls, canvas, renderer } = setup()
-            renderer.draw(createGameState(OLD_LEVEL), 0)
-            expect(iceTiles(calls, canvas, 9).tiles).toEqual([])
-        })
-
-        it("hides ice outside the fog's light like any other cell", () => {
-            const { calls, canvas, renderer } = setup()
-            const { map, ice } = textMap([
-                "#############",
-                "#~~~~~~~~~~~#",
-                "############.",
+        it("paints the tiles once, then only the cells that change", () => {
+            const { art, renderer } = setup()
+            const state = makeState(
+                [
+                    [1, 1, 1, 1, 1, 1, 1],
+                    [1, 2, 2, 2, 2, 2, 1],
+                    [1, 1, 1, 1, 1, 1, 1],
+                ],
+                { x: 1, y: 1 }
+            )
+            const puts = () =>
+                art()!.calls.filter((c) => c.name === "putImageData")
+            renderer.draw(state, 0)
+            expect(puts()).toHaveLength(1)
+            renderer.draw(state, 0.5)
+            renderer.draw(state, 0)
+            expect(puts()).toHaveLength(1)
+            // A dot eaten at (4, 1): that cell and its neighbours.
+            state.cells[1][4] = Cell.none
+            renderer.draw(state, 0)
+            expect(puts()).toHaveLength(2)
+            expect(puts()[1].args.slice(1)).toEqual([
+                0,
+                0,
+                3 * ART,
+                0,
+                3 * ART,
+                3 * ART,
             ])
-            const state = makeState(map, { x: 1, y: 1 }, [], { ice })
-            renderer.draw(state, 0, {}, { fog: { radius: 2 } })
-            const drawn = iceTiles(calls, canvas, 13).tiles.map((t) => t.at)
-            expect(drawn).toContain("1,1")
-            expect(drawn).toContain("3,1")
-            expect(drawn).not.toContain("5,1")
-            expect(drawn).not.toContain("11,1")
+        })
+
+        it("draws the map art crisp, scaled to the map", () => {
+            const { art, calls, canvas, renderer } = setup()
+            renderer.draw(createGameState(OLD_LEVEL), 0)
+            const cell = parseFloat(canvas.style.width) / 9
+            const drawn = calls.find(
+                (c) => c.name === "drawImage" && c.args[0] === art()?.canvas
+            )!
+            expect(drawn.args.slice(1)).toEqual([0, 0, 9 * cell, 9 * cell])
+            expect(art()!.canvas.width).toBe(9 * ART)
+        })
+
+        it("draws the stage's own tiles, and starts afresh on a new stage", () => {
+            const { cellColor, renderer } = setup()
+            const state = makeState(
+                [
+                    [1, 1, 1],
+                    [1, 0, 1],
+                    [1, 1, 1],
+                ],
+                { x: 1, y: 1 }
+            )
+            renderer.draw(state, 0, {}, {}, { stage: 8 })
+            const floor = (stage: number) => STAGE_STYLES[stage].palette.F
+            expect([floor(8), STAGE_STYLES[8].palette.f]).toContain(
+                cellColor(1, 1)
+            )
+            renderer.draw(state, 0, {}, {}, { stage: 9 })
+            expect(cellColor(1, 1)).not.toBe(floor(8))
+        })
+
+        it("draws nothing of the maze without a 2D context for its art", () => {
+            const canvas = document.createElement("canvas")
+            const { ctx, calls } = stubContext()
+            vi.spyOn(canvas, "getContext").mockReturnValue(ctx as never)
+            // happy-dom's own canvases have no 2D context.
+            const renderer = createRenderer(canvas, {
+                view: {
+                    innerWidth: 1000,
+                    innerHeight: 400,
+                    devicePixelRatio: 2,
+                },
+            })
+            expect(() =>
+                renderer.draw(createGameState(OLD_LEVEL), 0)
+            ).not.toThrow()
+            // Only the (blank) sprite rasters are drawn.
+            expect(
+                calls.some(
+                    (c) => c.name === "drawImage" && drawnName(c) === undefined
+                )
+            ).toBe(false)
         })
     })
 
@@ -942,18 +1046,98 @@ describe("createRenderer", () => {
             ).toBe(true)
         })
 
-        it("draws tile effects by their look", () => {
-            const { renderer, calls, texts } = setup()
+        it("draws tile effects by their look: the colour, then the pixel tile", () => {
+            const { renderer, calls, canvas, offscreen, texts } = setup()
             const state = room()
             addTileEffect(
                 state,
                 vec2(2, 1),
-                { name: "test.fire", look: { color: "red", emoji: "🔥" } },
+                { name: "test.fire", look: { color: "red", tile: "fire" } },
                 1
             )
             renderer.draw(state, 0)
-            expect(calls.some((c) => c.fillStyle === "red")).toBe(true)
-            expect(texts()).toEqual(["🔥", "dragon"])
+            const cell = parseFloat(canvas.style.width) / 5
+            const wash = calls.findIndex((c) => c.fillStyle === "red")
+            const tile = calls.findIndex(
+                (c) => c.name === "drawImage" && isEffectTile(c.args[0])
+            )
+            expect(wash).toBeGreaterThanOrEqual(0)
+            expect(tile).toBeGreaterThan(wash)
+            expect(calls[tile].args.slice(1)).toEqual([
+                2 * cell,
+                cell,
+                cell,
+                cell,
+            ])
+            // The fire tile's own canvas, its pixels put on once.
+            const fire = offscreen.find(
+                (o) => o.canvas === calls[tile].args[0]
+            )!
+            expect(
+                fire.calls.filter((c) => c.name === "putImageData")
+            ).toHaveLength(1)
+            expect(texts()).toEqual(["dragon"])
+        })
+
+        // KDA-299: the sprites' outline would vanish on a dark floor.
+        it("outlines the sprites in the stage's colour, light on a dark floor", () => {
+            const outlines = (stage: number) => {
+                const enemy = makeEnemy(3, 1)
+                const state = room()
+                state.enemies = [enemy]
+                addStatus(enemy, FROZEN, 1)
+                const { renderer, calls } = setup()
+                renderer.draw(state, 0, {}, {}, { stage })
+                return calls
+                    .filter((c) => drawnName(c) !== undefined)
+                    .map((c) => ({
+                        name: drawnName(c),
+                        outline: (c.args[0] as HTMLCanvasElement).dataset
+                            .outline,
+                    }))
+            }
+            for (const stage of [8, 9, 10]) {
+                const light = STAGE_STYLES[stage].outline
+                expect(light).not.toBe("#000000")
+                // The frozen enemy (held, so under the player) with its
+                // badge, then the player.
+                expect(outlines(stage)).toEqual([
+                    { name: "tengu", outline: light },
+                    { name: "frozen", outline: light },
+                    { name: "dragon", outline: light },
+                ])
+            }
+            expect(outlines(1).map((d) => d.outline)).toEqual([
+                "#000000",
+                "#000000",
+                "#000000",
+            ])
+        })
+
+        it("draws the frozen ice block over a frozen enemy's sprite", () => {
+            const enemy = makeEnemy(3, 1)
+            const state = room()
+            state.enemies = [enemy]
+            addStatus(enemy, FROZEN, 1)
+            const { renderer, calls, canvas } = setup()
+            renderer.draw(state, 0)
+            const cell = parseFloat(canvas.style.width) / 5
+            const sprite = calls.findIndex((c) => drawnName(c) === "tengu")
+            const block = calls.findIndex(
+                (c, i) =>
+                    i > sprite &&
+                    c.name === "drawImage" &&
+                    isEffectTile(c.args[0])
+            )
+            expect(sprite).toBeGreaterThanOrEqual(0)
+            expect(block).toBeGreaterThan(sprite)
+            // A cell square, on the enemy's cell.
+            expect(calls[block].args.slice(1)).toEqual([
+                3 * cell,
+                cell,
+                cell,
+                cell,
+            ])
         })
 
         it("draws enemy statuses by their look", () => {
@@ -1540,22 +1724,13 @@ describe("createRenderer with two players", () => {
     })
 
     it("keeps drawing each player's eaten dot until its glide reaches it", () => {
-        const { calls, canvas, renderer } = setup()
+        const { cellColor, renderer } = setup()
         const state = pair()
         movePlayer(state, vec2(-1, 0), state.players[1])
         state.players[1].character.moveProgress = 0
         renderer.draw(state, 0)
-        const cell = parseFloat(canvas.style.width) / 7
-        const dotAt = (x: number) =>
-            calls.some((c) => {
-                if (c.name !== "fillRect") return false
-                const [left, , w, h] = c.args as number[]
-                return (
-                    w === h && w < cell / 2 && left + w / 2 === (x + 0.5) * cell
-                )
-            })
         expect(state.cells[1][4]).toBe(Cell.none)
-        expect(dotAt(4)).toBe(true)
+        expect(cellColor(4, 1)).toBe(DOT_COLOR)
     })
 
     describe("fog", () => {
@@ -1591,26 +1766,27 @@ describe("createRenderer with two players", () => {
             ])
         })
 
-        it("draws the darkness on a layer with a light per player", () => {
-            const { calls, canvas, renderer } = setup()
-            // The layer is a canvas of its own, with its own stub context.
-            const layerCanvas = document.createElement("canvas")
-            const layer = stubContext()
-            vi.spyOn(layerCanvas, "getContext").mockReturnValue(
-                layer.ctx as never
+        // The canvas the darkness is drawn on: the one made with lights
+        // cleared out of it (the others are the maze art and tiles).
+        const darkness = (offscreen: Offscreen[]) =>
+            offscreen.find((o) =>
+                o.calls.some((c) => c.name === "createRadialGradient")
             )
+
+        it("draws the darkness on a layer with a light per player", () => {
+            const { art, calls, canvas, offscreen, renderer } = setup()
             const state = makeState(corridor, [
                 { x: 1, y: 1 },
                 { x: 11, y: 1 },
             ])
             renderer.draw(state, 0)
             calls.length = 0
-            useLayer(layerCanvas)
             renderer.draw(state, 0, {}, { fog: { radius: 2 } })
             const cell = parseFloat(canvas.style.width) / 13
             expect(calls.some((c) => c.name === "createRadialGradient")).toBe(
                 false
             )
+            const layer = darkness(offscreen)!
             const lights = layer.calls.filter(
                 (c) => c.name === "createRadialGradient"
             )
@@ -1618,22 +1794,23 @@ describe("createRenderer with two players", () => {
                 1.5 * cell,
                 11.5 * cell,
             ])
-            // The sprites are drawImages too.
+            // The layer goes over the maze, filled with the stage's fog.
             const images = calls.filter(
-                (c) => c.name === "drawImage" && drawnName(c) === undefined
+                (c) =>
+                    c.name === "drawImage" &&
+                    c.args[0] !== art()?.canvas &&
+                    drawnName(c) === undefined
             )
             expect(images).toHaveLength(1)
-            expect(images[0].args[0]).toBe(layerCanvas)
+            expect(images[0].args[0]).toBe(layer.canvas)
             expect(images[0].args.slice(1)).toEqual([0, 0, 13 * cell, 3 * cell])
+            expect(
+                layer.calls.find((c) => c.name === "fillRect")?.fillStyle
+            ).toBe("rgb(17, 17, 17)")
         })
 
         it("gives each player its own light: the Owl's 1.5 times as wide", () => {
-            const { canvas, renderer } = setup()
-            const layerCanvas = document.createElement("canvas")
-            const layer = stubContext()
-            vi.spyOn(layerCanvas, "getContext").mockReturnValue(
-                layer.ctx as never
-            )
+            const { canvas, offscreen, renderer } = setup()
             const state = makeState(
                 corridor,
                 [
@@ -1644,11 +1821,10 @@ describe("createRenderer with two players", () => {
                 { breath: [BREATHS.dragon, BREATHS.owl] }
             )
             renderer.draw(state, 0)
-            useLayer(layerCanvas)
             renderer.draw(state, 0, {}, { fog: { radius: 2 } })
             const cell = parseFloat(canvas.style.width) / 13
-            const outer = layer.calls
-                .filter((c) => c.name === "createRadialGradient")
+            const outer = darkness(offscreen)!
+                .calls.filter((c) => c.name === "createRadialGradient")
                 .map((c) => (c.args[5] as number) / cell)
             expect(outer).toEqual([2, 3])
         })
@@ -1656,12 +1832,15 @@ describe("createRenderer with two players", () => {
         // Resizing a canvas reallocates it: the layer is sized, and its
         // context taken, once, and again only when the size changes.
         it("reuses the layer from frame to frame", () => {
-            const { renderer, view } = setup()
-            const layerCanvas = document.createElement("canvas")
-            const layer = stubContext()
-            const getContext = vi
-                .spyOn(layerCanvas, "getContext")
-                .mockReturnValue(layer.ctx as never)
+            const { offscreen, renderer, view } = setup()
+            const state = makeState(corridor, [
+                { x: 1, y: 1 },
+                { x: 11, y: 1 },
+            ])
+            renderer.draw(state, 0, {}, { fog: { radius: 2 } })
+            const layer = darkness(offscreen)!
+            const layerCanvas = layer.canvas
+            const { getContext } = layer
             const widths: number[] = []
             const proto = Object.getPrototypeOf(layerCanvas)
             const width = Object.getOwnPropertyDescriptor(proto, "width")!
@@ -1673,38 +1852,41 @@ describe("createRenderer with two players", () => {
                     width.set!.call(layerCanvas, w)
                 },
             })
-            const state = makeState(corridor, [
-                { x: 1, y: 1 },
-                { x: 11, y: 1 },
-            ])
-            renderer.draw(state, 0)
-            useLayer(layerCanvas)
-            for (let i = 0; i < 3; i++) {
+            for (let i = 0; i < 2; i++) {
                 renderer.draw(state, 0, {}, { fog: { radius: 2 } })
             }
             expect(getContext).toHaveBeenCalledTimes(1)
-            expect(widths).toHaveLength(1)
+            expect(widths).toHaveLength(0)
             // Each frame starts from a clear layer.
             expect(
                 layer.calls.filter((c) => c.name === "clearRect")
             ).toHaveLength(3)
             // A smaller window shrinks the map, and the layer with it.
+            const before = layerCanvas.width
             view.innerWidth = 500
             renderer.resize()
             renderer.draw(state, 0, {}, { fog: { radius: 2 } })
-            expect(widths).toHaveLength(2)
-            expect(widths[1]).toBeLessThan(widths[0])
+            expect(widths.length).toBeGreaterThan(0)
+            expect(widths.at(-1)).toBeLessThan(before)
             expect(getContext).toHaveBeenCalledTimes(1)
+            // The one darkness layer, and the maze art, made once each.
+            expect(
+                offscreen.filter((o) => o === darkness(offscreen))
+            ).toHaveLength(1)
         })
 
         it("draws one player's darkness straight onto the map", () => {
-            const { calls, renderer } = setup()
+            const { art, calls, renderer } = setup()
             const state = makeState(corridor, { x: 1, y: 1 })
             renderer.draw(state, 0, {}, { fog: { radius: 2 } })
-            // No layer: the only drawImage is the player's sprite.
             expect(
-                calls.filter((c) => c.name === "drawImage").map(drawnName)
-            ).toEqual(["dragon"])
+                calls.some(
+                    (c) =>
+                        c.name === "drawImage" &&
+                        c.args[0] !== art()?.canvas &&
+                        drawnName(c) === undefined
+                )
+            ).toBe(false)
         })
     })
 })
@@ -1788,19 +1970,16 @@ describe("createRenderer with a player out of play", () => {
     })
 
     it("keeps the light where they went out while nobody is in play", () => {
-        const { calls, renderer } = setup()
-        const layerCanvas = document.createElement("canvas")
-        const layer = stubContext()
-        vi.spyOn(layerCanvas, "getContext").mockReturnValue(layer.ctx as never)
+        const { calls, offscreen, renderer } = setup()
         const state = pair()
         takeOut(state.players[0], PLAYER_RESPAWN_DELAY)
         takeOut(state.players[1], PLAYER_RESPAWN_DELAY)
-        useLayer(layerCanvas)
         renderer.draw(state, 0, {}, { fog: { radius: 2 } })
         expect(calls.some((c) => c.name === "createRadialGradient")).toBe(false)
-        expect(
-            layer.calls.filter((c) => c.name === "createRadialGradient")
-        ).toHaveLength(2)
+        const lights = offscreen.flatMap((o) =>
+            o.calls.filter((c) => c.name === "createRadialGradient")
+        )
+        expect(lights).toHaveLength(2)
     })
 })
 
@@ -2239,27 +2418,20 @@ describe("createRenderer with the facing guide", () => {
         expect(tinted(calls, canvas)).toEqual([2, 3, 4, 5])
     })
 
-    it("draws the tint under the dots and the characters", () => {
-        const { calls, canvas, renderer } = setup()
+    it("draws the tint over the maze's tiles, under the characters", () => {
+        const { art, calls, renderer } = setup()
         const state = game()
         charge(state)
         renderer.draw(state, 0, {}, {}, AIM)
-        const cell = cellOf(canvas)
         const tint = calls.findIndex(
             (c) => c.name === "fillRect" && c.fillStyle === PLAYER_COLORS[0]
         )
-        // The dot on that cell, (2, 1), after it.
-        const dot = calls.findIndex(
-            (c) =>
-                c.name === "fillRect" &&
-                c.fillStyle === "#000" &&
-                (c.args[0] as number) > 2 * cell &&
-                (c.args[0] as number) < 3 * cell &&
-                (c.args[1] as number) > cell
+        const tiles = calls.findIndex(
+            (c) => c.name === "drawImage" && c.args[0] === art()?.canvas
         )
         const sprite = calls.findIndex((c) => drawnName(c) === "dragon")
-        expect(tint).toBeGreaterThanOrEqual(0)
-        expect(dot).toBeGreaterThan(tint)
+        expect(tiles).toBeGreaterThanOrEqual(0)
+        expect(tint).toBeGreaterThan(tiles)
         expect(sprite).toBeGreaterThan(tint)
     })
 
@@ -2694,20 +2866,21 @@ describe("createRenderer on a maze too big for the screen", () => {
 
         it("draws the fog's darkness over the screen, with only the lights on it", () => {
             const { calls, frame } = bigSetup()
-            const layerCanvas = document.createElement("canvas")
-            const layer = stubContext()
-            vi.spyOn(layerCanvas, "getContext").mockReturnValue(
-                layer.ctx as never
-            )
+            const offscreen = stubCanvases()
             const state = coop()
             place(state.players[1], { x: 3, y: 19 })
             frame(state, 0)
-            useLayer(layerCanvas)
             frame(state, 0, { fog: { radius: 2 } })
+            const layer = offscreen.find((o) =>
+                o.calls.some((c) => c.name === "createRadialGradient")
+            )!
+            const layerCanvas = layer.canvas
             // The layer covers the screen, not the whole maze.
             expect(layerCanvas.width).toBe(VIEWPORT.width)
             expect(layerCanvas.height).toBe(VIEWPORT.height)
-            const image = calls.find((c) => c.args[0] === layerCanvas)
+            const image = calls.find(
+                (c) => c.name === "drawImage" && c.args[0] === layerCanvas
+            )
             expect(image?.args.slice(1)).toEqual([
                 0,
                 MAX_Y,

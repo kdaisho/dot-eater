@@ -15,6 +15,7 @@ import {
 import type { Character } from "./character"
 import { emit } from "./events"
 import type { ParticleLook } from "./particles"
+import type { EffectTile } from "./tiles"
 import { dashPlayer, type GameState, type Player } from "./game"
 import { knockFlying } from "./knock"
 import { loopPos, type Cells } from "./level"
@@ -67,8 +68,9 @@ export type Look = {
     // for an enemy, a disc behind its sprite. Use a translucent colour (e.g.
     // "rgba(255, 90, 0, 0.45)") to keep what's underneath readable.
     color?: string
-    // Tiles only: an emoji drawn over the cell.
-    emoji?: string
+    // A pixel tile (see EFFECT_TILES in tiles.ts): for a tile effect, drawn
+    // over the cell, over the colour; for an enemy, over its sprite.
+    tile?: EffectTile
     // Enemies only: a small pixel badge at its top right (see BADGES in
     // sprites.ts).
     badge?: BadgeId

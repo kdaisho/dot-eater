@@ -8,12 +8,12 @@ import { samePos, vec2, type Vec2 } from "../vec2"
 // Seconds a broken wall stays open before it grows back.
 const OPEN_SECONDS = 10
 
-// A broken wall: open floor (no dot) drawn as brown rubble until it grows
-// back, pushing anyone inside out (opensWall in breath.ts).
+// A broken wall: open floor (no dot) drawn as the stage's rubble tile (see
+// tiles.ts) until it grows back, pushing anyone inside out (opensWall in
+// breath.ts).
 export const BROKEN_WALL: TileEffect = {
     name: "boar.broken",
     opensWall: true,
-    look: { color: "rgba(139, 90, 43, 0.6)" },
 }
 
 // Whether `pos` is on the map's border row or column. Those walls are the

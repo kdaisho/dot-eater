@@ -9,7 +9,12 @@ import {
     type BossDefeat,
 } from "./bossDefeat"
 import { AiType, BossKind } from "./constants"
-import { defeatLook, flashAlpha, shardsOf } from "./defeatRender"
+import {
+    defeatLook,
+    drawDefeatBoss,
+    flashAlpha,
+    shardsOf,
+} from "./defeatRender"
 import type { GameState } from "./game"
 import { createRenderer } from "./render"
 import { spritePixels } from "./sprites"
@@ -189,6 +194,26 @@ describe("drawing the final boss's chain", () => {
 })
 
 describe("the defeat's pieces", () => {
+    it("keeps the stage's outline colour as the boss flashes white", () => {
+        const { ctx, calls } = stubContext()
+        const state = fallen(BossKind.final, 0.02)
+        const light = "#d6d9e0"
+        const spot = { x: 100, y: 100, size: 50, cell: 31, outline: light }
+        drawDefeatBoss(
+            ctx as CanvasRenderingContext2D,
+            state.defeat!,
+            state.boss!,
+            spot,
+            0.02
+        )
+        const fills = calls
+            .filter((c) => c.name === "fillRect")
+            .map((c) => c.fillStyle)
+        expect(fills).toContain(light)
+        expect(fills).toContain(WHITE)
+        expect(new Set(fills).size).toBeLessThanOrEqual(4)
+    })
+
     it("breaks the sprite into 2x2 shards that keep every dot once", () => {
         const look = defeatLook(createBoss(vec2(0, 0)))
         const dots = spritePixels(look, true)

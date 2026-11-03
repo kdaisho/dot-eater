@@ -236,6 +236,23 @@ describe("the outline", () => {
             expect(dots.flat()).toContain("#000000")
         }
     })
+
+    // KDA-299: on a dark floor (stages 8 to 10) the outline is light.
+    it("draws the outline in a stage's colour when given one", () => {
+        const look = { id: SpriteId.ghost }
+        const black = spritePixels(look)
+        const light = spritePixels(look, "#d6d9e0")
+        // Only the outline's dots change.
+        const changed = black
+            .flat()
+            .map((d, i) => [d, light.flat()[i]])
+            .filter(([a, b]) => a !== b)
+        expect(changed.length).toBeGreaterThan(0)
+        for (const [a, b] of changed) {
+            expect([a, b]).toEqual(["#000000", "#d6d9e0"])
+        }
+        expect(badgePixels("stunned", "#d6d9e0").flat()).toContain("#d6d9e0")
+    })
 })
 
 describe("createSpriteCache", () => {
@@ -257,6 +274,18 @@ describe("createSpriteCache", () => {
         expect(right.dataset.look).toBe("fox:0:mirror")
         const badge = cache.get({ badge: "frozen" }, 10)
         expect(badge.dataset.sprite).toBe("frozen")
+    })
+
+    it("keeps a raster per outline colour", () => {
+        const make = vi.fn(() => document.createElement("canvas"))
+        const cache = createSpriteCache(make)
+        const black = cache.get({ id: SpriteId.fox }, 36)
+        const light = cache.get({ id: SpriteId.fox }, 36, "#d8c8f0")
+        expect(light).not.toBe(black)
+        expect(cache.get({ id: SpriteId.fox }, 36, "#d8c8f0")).toBe(light)
+        expect(make).toHaveBeenCalledTimes(2)
+        expect(black.dataset.outline).toBe("#000000")
+        expect(light.dataset.outline).toBe("#d8c8f0")
     })
 
     it("keys a look by what changes how it is drawn", () => {

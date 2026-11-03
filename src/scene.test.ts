@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vite-plus/test"
 import { pauseIfPlaying, startLevel, type Screen } from "./flow"
 import { stages as levels } from "./levels"
-import { hudOf, rulesOf, screenEffects } from "./scene"
+import { hudOf, rulesOf, screenEffects, stageOf } from "./scene"
 import { vec2 } from "./vec2"
 
 const playing = startLevel(levels, 0, ["dragon"], "solo")
@@ -15,6 +15,7 @@ const sources = {
 describe("screenEffects", () => {
     it("shakes and previews aim while playing", () => {
         expect(screenEffects(playing, sources)).toEqual({
+            stage: 1,
             particles: [],
             reducedMotion: false,
             shake: vec2(0.1, -0.1),
@@ -26,6 +27,7 @@ describe("screenEffects", () => {
 
     it("keeps the guide but neither shake nor aim while paused", () => {
         expect(screenEffects(pauseIfPlaying(playing), sources)).toEqual({
+            stage: 1,
             particles: [],
             reducedMotion: false,
             guide: "arrow",
@@ -40,9 +42,17 @@ describe("screenEffects", () => {
         expect(effects.aim).toBeUndefined()
     })
 
-    it("shows nothing on other screens", () => {
+    it("shows only the stage's tiles on other screens with a game", () => {
         const end = { ...playing, kind: "gameOver", choice: "retry" } as Screen
-        expect(screenEffects(end, sources)).toEqual({})
+        expect(screenEffects(end, sources)).toEqual({ stage: 1 })
+    })
+
+    it("names the stage by its number, 1 to 10", () => {
+        const last = startLevel(levels, 9, ["dragon"], "solo")
+        expect(stageOf(last)).toBe(10)
+        expect(screenEffects(last, sources).stage).toBe(10)
+        expect(stageOf({ kind: "title" } as Screen)).toBeUndefined()
+        expect(screenEffects({ kind: "title" } as Screen, sources)).toEqual({})
     })
 })
 

@@ -29,7 +29,7 @@ export const GUST_SECONDS = 0.25
 // nobody still shows it fired.
 export const GUST: TileEffect = {
     name: "owl.gust",
-    look: { color: "rgba(200, 230, 255, 0.35)", emoji: "💨" },
+    look: { color: "rgba(200, 230, 255, 0.35)", tile: "gust" },
 }
 
 export const owl: BreathDef = {

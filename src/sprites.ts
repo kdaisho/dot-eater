@@ -145,9 +145,13 @@ export type Dots = (string | null)[][]
 
 // Each dot of a look as a colour, mirrored and with its hidden tails
 // cleared. With `outline` (the game's), it is wrapped in the outline: a row
-// and a column more on every side, black on each clear dot next to a
-// coloured one, so the outline follows what shows.
-export function spritePixels(look: SpriteLook, outline = true): Dots {
+// and a column more on every side, in the outline colour (`outline` when
+// a colour, else black) on each clear dot next to a coloured one, so the
+// outline follows what shows.
+export function spritePixels(
+    look: SpriteLook,
+    outline: boolean | string = true
+): Dots {
     const def = SPRITES[look.id]
     const rows = spriteGrid(look)
     const w = rows[0]?.length ?? 0
@@ -163,13 +167,16 @@ export function spritePixels(look: SpriteLook, outline = true): Dots {
             return def.palette[ch] ?? null
         })
     )
-    return outline ? outlined(dots) : dots
+    if (outline === false) return dots
+    return outlined(dots, outline === true ? OUTLINE : outline)
 }
 
-const OUTLINE = "#000000"
+// The outline's colour unless the stage sets one (spriteOutline in
+// tiles.ts: a light one on a dark floor).
+export const OUTLINE = "#000000"
 
-// `dots` with the 1-dot outline round them.
-function outlined(dots: Dots): Dots {
+// `dots` with the 1-dot outline round them, in `outline`.
+function outlined(dots: Dots, outline = OUTLINE): Dots {
     const h = dots.length
     const w = dots[0]?.length ?? 0
     const at = (x: number, y: number) =>
@@ -185,7 +192,7 @@ function outlined(dots: Dots): Dots {
                 at(x - 1, y) !== null ||
                 at(x, y + 1) !== null ||
                 at(x, y - 1) !== null
-            return edge ? OUTLINE : null
+            return edge ? outline : null
         })
     )
 }
@@ -254,8 +261,8 @@ export const BADGES: Readonly<
     },
 }
 
-// A badge's dots with the outline, as spritePixels.
-export function badgePixels(id: BadgeId): Dots {
+// A badge's dots with the outline (in `outline`), as spritePixels.
+export function badgePixels(id: BadgeId, outline = OUTLINE): Dots {
     const { palette, grid } = BADGES[id]
     return outlined(
         grid.map((row) =>
@@ -263,7 +270,8 @@ export function badgePixels(id: BadgeId): Dots {
                 { length: row.length },
                 (_, x) => palette[row[x]!] ?? null
             )
-        )
+        ),
+        outline
     )
 }
 
@@ -283,8 +291,9 @@ export function drawableKey(d: Drawable): string {
 
 export type SpriteCache = {
     // The drawable rasterised to fit a box `size` device pixels across (its
-    // larger side, outline included, fills it), made on first use.
-    get(d: Drawable, size: number): HTMLCanvasElement
+    // larger side, outline included, fills it), outlined in `outline`
+    // (OUTLINE by default), made on first use.
+    get(d: Drawable, size: number, outline?: string): HTMLCanvasElement
 }
 
 // Above this many rasters (many sizes, from a window resized again and
@@ -300,31 +309,35 @@ export function createSpriteCache(
 ): SpriteCache {
     const rasters = new Map<string, HTMLCanvasElement>()
     return {
-        get(d, size) {
+        get(d, size, outline = OUTLINE) {
             const px = Math.max(1, Math.round(size))
-            const key = `${drawableKey(d)}@${px}`
+            const key = `${drawableKey(d)}@${px}:${outline}`
             const hit = rasters.get(key)
             if (hit) return hit
             if (rasters.size >= CACHE_LIMIT) rasters.clear()
-            const canvas = paintSprite(makeCanvas(), d, px)
+            const canvas = paintSprite(makeCanvas(), d, px, outline)
             rasters.set(key, canvas)
             return canvas
         },
     }
 }
 
-// Paint drawable `d`, outlined, on `canvas` (resized to it, its larger
-// side `px` pixels) and tag it (see createSpriteCache). Returns the canvas.
-// The character select's cards use it straight, scaled up by CSS.
+// Paint drawable `d`, outlined in `outline`, on `canvas` (resized to it,
+// its larger side `px` pixels) and tag it (see createSpriteCache; the
+// outline colour as data-outline). Returns the canvas. The character
+// select's cards use it straight, scaled up by CSS.
 export function paintSprite(
     canvas: HTMLCanvasElement,
     d: Drawable,
-    px: number
+    px: number,
+    outline = OUTLINE
 ): HTMLCanvasElement {
-    const dots = "badge" in d ? badgePixels(d.badge) : spritePixels(d, true)
+    const dots =
+        "badge" in d ? badgePixels(d.badge, outline) : spritePixels(d, outline)
     rasterise(canvas, dots, px)
     canvas.dataset.sprite = "badge" in d ? d.badge : d.id
     canvas.dataset.look = drawableKey(d)
+    canvas.dataset.outline = outline
     return canvas
 }
 
@@ -352,9 +365,9 @@ function rasterise(canvas: HTMLCanvasElement, dots: Dots, px: number) {
 }
 
 // Draw a drawable centred on (x, y) in `ctx`'s units, its box `size` of
-// them across, through `cache`. `dpr` is the device pixels per unit, so
-// the raster is made at the size it shows and copied 1:1, its corner on a
-// whole device pixel.
+// them across, through `cache`, outlined in `outline`. `dpr` is the device
+// pixels per unit, so the raster is made at the size it shows and copied
+// 1:1, its corner on a whole device pixel.
 export function drawSprite(
     ctx: CanvasRenderingContext2D,
     cache: SpriteCache,
@@ -362,9 +375,10 @@ export function drawSprite(
     x: number,
     y: number,
     size: number,
-    dpr: number
+    dpr: number,
+    outline = OUTLINE
 ) {
-    const canvas = cache.get(d, size * dpr)
+    const canvas = cache.get(d, size * dpr, outline)
     const w = canvas.width / dpr
     const h = canvas.height / dpr
     const left = Math.round((x - w / 2) * dpr) / dpr

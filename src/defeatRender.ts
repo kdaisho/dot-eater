@@ -48,8 +48,15 @@ const FX = {
 }
 
 // Where the boss is drawn: the middle of its footprint, in maze pixels,
-// its sprite's box and a cell, in pixels.
-export type DefeatSpot = { x: number; y: number; size: number; cell: number }
+// its sprite's box and a cell, in pixels; and the stage's sprite outline
+// colour (spriteOutline in tiles.ts: black, or light on a dark floor).
+export type DefeatSpot = {
+    x: number
+    y: number
+    size: number
+    cell: number
+    outline: string
+}
 
 // The moment of `defeat` to draw this frame: its own, plus the part of
 // the next tick already gone (`alpha`), at most its end.
@@ -73,19 +80,17 @@ export function defeatLook(boss: Boss): SpriteLook {
         : { id }
 }
 
-// The outline's colour (see spritePixels).
-const OUTLINE = "#000000"
-
 // Draw `dots` (a sprite's, outline included) centred on (x, y) in a box
-// `size` across, each dot a square, all but the black ones in `tint` if
-// given.
+// `size` across, each dot a square, all but the outline's (`outline`) in
+// `tint` if given.
 function drawDots(
     ctx: CanvasRenderingContext2D,
     dots: Dots,
     x: number,
     y: number,
     size: number,
-    tint: string | null
+    tint: string | null,
+    outline: string
 ) {
     const h = dots.length
     const w = dots[0]?.length ?? 0
@@ -95,9 +100,9 @@ function drawDots(
     dots.forEach((row, j) =>
         row.forEach((color, i) => {
             if (color === null) return
-            // The outline stays black, so a white flash still reads on the
-            // white floor (as the design's rasters kept it).
-            ctx.fillStyle = tint && color !== OUTLINE ? tint : color
+            // The outline keeps the stage's colour, so a white flash still
+            // reads on a white floor (as the design's rasters kept it).
+            ctx.fillStyle = tint && color !== outline ? tint : color
             ctx.fillRect(left + i * s, top + j * s, Math.ceil(s), Math.ceil(s))
         })
     )
@@ -117,7 +122,7 @@ export function drawDefeatBoss(
     e: number
 ) {
     const px = spot.cell / 28
-    const dots = spritePixels(defeatLook(boss), true)
+    const dots = spritePixels(defeatLook(boss), spot.outline)
     let dx = 0
     let dy = 0
     let tint: string | null = null
@@ -145,7 +150,7 @@ export function drawDefeatBoss(
         }
         tint = fresh ? FX.white : null
     }
-    drawDots(ctx, dots, spot.x + dx, spot.y + dy, spot.size, tint)
+    drawDots(ctx, dots, spot.x + dx, spot.y + dy, spot.size, tint, spot.outline)
     drawEmptyBar(ctx, spot)
 }
 
@@ -316,7 +321,7 @@ export function drawDefeatFx(
         ])
         const fade = 1 - clamp((t - 0.75) / 0.55)
         if (fade <= 0) return
-        const dots = spritePixels(defeatLook(boss), true)
+        const dots = spritePixels(defeatLook(boss), spot.outline)
         const s = spot.size / Math.max(dots.length, dots[0]?.length ?? 0)
         const size = Math.ceil(s)
         ctx.save()
@@ -387,7 +392,8 @@ export function drawHeart(
     order: number,
     at: Vec2,
     cell: number,
-    e: number
+    e: number,
+    outline: string
 ) {
     const heart = heartOf(defeat, order, e)
     if (!heart || heart.scale <= 0) return
@@ -399,7 +405,8 @@ export function drawHeart(
         at.x,
         at.y - cell * 0.62 - heart.rise * cell,
         size,
-        dpr
+        dpr,
+        outline
     )
 }
 
