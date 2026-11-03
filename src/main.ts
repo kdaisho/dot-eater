@@ -43,7 +43,7 @@ import {
     gameOf,
     initialScreen,
     openingScreen,
-    pauseChoices,
+    PAUSE_CHOICES,
     pauseIfPlaying,
     PLAY_CHOICES,
     playerCount,
@@ -820,7 +820,7 @@ function showOverlay(s: Screen) {
         case "paused":
             return showPause(
                 s.game.players.length,
-                pauseChoices(s).map((c) => ({
+                PAUSE_CHOICES.map((c) => ({
                     label: PAUSE_LABELS[c],
                     selected: c === (s.choice ?? "resume"),
                 }))
@@ -930,10 +930,11 @@ const TITLE_LABELS: Record<TitleChoice, string> = {
     settings: "Settings",
 }
 
+// Quit says where it goes: the title, in every mode.
 const PAUSE_LABELS: Record<PauseChoice, string> = {
     resume: "Resume",
     settings: "Settings",
-    quit: "Quit",
+    quit: "Quit to title",
 }
 
 // An end screen's view. In a story run (KDA-271), game over also shows the

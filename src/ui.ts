@@ -242,7 +242,7 @@ export function showCharacterSelect(
     })
 }
 
-// The pause screen, with its menu (Resume, Settings) when `items` are
+// The pause screen, with its menu (Resume, Settings, Quit to title) when `items` are
 // given. With two players either one resumes, so the hint gives player 2's
 // keys too.
 export function showPause(players = 1, items: readonly MenuItem[] = []) {

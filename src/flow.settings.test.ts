@@ -127,11 +127,14 @@ describe("the pause menu", () => {
         expect(press(paused, ["confirm"])).toEqual(playing)
     })
 
-    it("moves between Resume and Settings, stopping at either end", () => {
+    it("moves between Resume, Settings and Quit, stopping at either end", () => {
         const paused = press(startLevel(levels, 0), ["pause"])
         const onSettings = press(paused, ["down"])
         expect(onSettings).toMatchObject({ choice: "settings" })
-        expect(press(onSettings, ["down"])).toBe(onSettings)
+        const onQuit = press(onSettings, ["down"])
+        expect(onQuit).toMatchObject({ choice: "quit" })
+        expect(press(onQuit, ["down"])).toBe(onQuit)
+        expect(press(onQuit, ["up"])).toMatchObject({ choice: "settings" })
         expect(press(onSettings, ["up"])).toMatchObject({ choice: "resume" })
         expect(press(paused, ["up"])).toBe(paused)
     })

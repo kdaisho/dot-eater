@@ -72,7 +72,7 @@ describe("main's settings", () => {
         expect(screen()).toBe("playing")
         pressAndTick("KeyP")
         expect(screen()).toBe("pause")
-        expect(items()).toEqual(["Resume", "Settings"])
+        expect(items()).toEqual(["Resume", "Settings", "Quit to title"])
         pressAndTick("ArrowDown")
         pressAndTick("Space")
         expect(screen()).toBe("settings")
