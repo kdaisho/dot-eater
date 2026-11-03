@@ -33,6 +33,7 @@ import {
     setControls,
 } from "./dpad"
 import { applyMotion, effectsForEvents } from "./eventEffects"
+import { defeatTimeScale } from "./bossDefeat"
 import { takeEvents, type GameEvent } from "./events"
 import {
     baseScreen,
@@ -455,26 +456,32 @@ const loop = createLoop({
 
 // One logic tick: advance the screen machine with player 1's input, then
 // clear this tick's press edges, so a press is seen by exactly one tick (and
-// one screen). A boss defeated during the tick gets its burst of confetti
-// at once, mid-game. What the game reported goes to onGameEvents.
+// one screen). A boss's defeat gets its big burst of confetti as its
+// effect ends and the clear jingle plays (its gameWon, KDA-301), not on
+// the killing blow, which freezes the frame. What the game reported goes
+// to onGameEvents.
 function tick(dt: number) {
     const game = gameOf(screen)
-    const boss = game?.boss
-    const wasDefeated = boss?.defeated ?? true
     const next = update(screen, tickInput, flowDeps(dt))
     // Before endTick, which clears the presses the recorder reads.
     if (recorder && shouldRecord(screen, next)) recorder.add(tickInput)
     input.endTick()
     pendingCapture = {}
-    if (game) onGameEvents(takeEvents(game), game)
-    if (boss && !wasDefeated && boss.defeated) burst()
+    const events = game ? takeEvents(game) : []
+    if (game) onGameEvents(events, game)
+    if (game?.boss && events.some((e) => e.type === "gameWon")) burst()
     // Effects move on only when this tick moved the game on: a step, or
-    // the outro's settle. Not on a tick that pauses or resumes.
+    // the outro's settle. Not on a tick that pauses or resumes. In a boss
+    // defeat's hit-stop they stand still with the glides (KDA-301).
     const moved =
         screen.kind === "ending" ||
         (screen.kind === "playing" && next.kind !== "paused")
+    const scale =
+        screen.kind === "ending" && screen.game.defeat
+            ? defeatTimeScale(screen.game.defeat)
+            : 1
     if (next !== screen) enter(screen, next)
-    if (moved) effects.tick(dt)
+    if (moved) effects.tick(dt * scale)
     // The way player 1 is going, for the flicks (see TouchSource.follow).
     const player =
         next.kind === "playing" ? gameOf(next)?.players[0] : undefined

@@ -750,7 +750,9 @@ describe("main", () => {
         expect(bursts()).toBe(11)
     })
 
-    it("fires one big burst as the boss is defeated, mid-game", () => {
+    // KDA-301: not on the killing blow, which freezes the frame, but as its
+    // defeat's effect ends with the clear jingle (its gameWon).
+    it("fires one big burst as the boss's defeat ends", () => {
         vi.advanceTimersByTime(1000)
         vi.mocked(confetti).mockClear()
         const game = drawnGame()
@@ -759,6 +761,12 @@ describe("main", () => {
         try {
             vi.mocked(step).mockImplementationOnce((state) => {
                 state.boss!.defeated = true
+                return null
+            })
+            vi.advanceTimersByTime(FRAMES_MS)
+            expect(vi.mocked(confetti)).not.toHaveBeenCalled()
+            vi.mocked(step).mockImplementationOnce((state) => {
+                state.events.push({ type: "gameWon" })
                 return null
             })
             vi.advanceTimersByTime(FRAMES_MS)

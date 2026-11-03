@@ -8,8 +8,9 @@ import type { Vec2 } from "./vec2"
 //
 // `step` (game.ts) empties GameState.events at its start and adds one
 // event per occurrence as it happens, in the order it happens. Nothing else
-// clears it, and `settle` (the outro) adds only the gameWon of a last dot
-// (see GameState.winHeld). Main reads a game's events once after each tick
+// clears it, and `settle` (the outro) adds only the held gameWon (see
+// GameState.winHeld) and the cues of a boss's defeat (bossShattered,
+// bossBlast). Main reads a game's events once after each tick
 // with takeEvents, which also empties the list, so a tick that doesn't step
 // the game (pause, menus) reports nothing new.
 //
@@ -67,8 +68,17 @@ export type GameEvent =
     // what it has left.
     | { type: "bossHit"; player: number; at: Vec2; health: number }
     // A player's breath finished the boss. Its killing blow reports this
-    // only, not a bossHit as well.
+    // only, not a bossHit as well. Its defeat (KDA-301, see bossDefeat.ts)
+    // plays out in the outro after it.
     | { type: "bossDefeated"; player: number; at: Vec2 }
+    // In the outro of a boss's defeat (see advanceDefeat in bossDefeat.ts):
+    // the boss shattered into pixels (the burst), at `at`, the middle of
+    // where it fell, in cell units (cell centres at whole numbers).
+    | { type: "bossShattered"; at: Vec2 }
+    // In the outro of the final boss's defeat: one blast of the explosion
+    // chain went off on `at` (cell units, as above): a small one, or the
+    // big one at the end (`big`).
+    | { type: "bossBlast"; at: Vec2; big: boolean }
     // The boss (at `at`) started winding up its breath, facing `facing`
     // (a unit step) at the player it targets (see bossBreath.ts).
     | { type: "bossWindUp"; at: Vec2; facing: Vec2 }
@@ -112,7 +122,8 @@ export type GameEvent =
     // a round; whether it also ends the match is up to flow.ts (the next
     // screen is roundResult or matchResult). Won by the last dot, it comes
     // from the outro once the players' glides are done (see settle in
-    // game.ts); won by defeating the boss, on that tick.
+    // game.ts); won by defeating the boss, as its defeat's effect ends
+    // (KDA-301, see bossDefeat.ts), when the clear jingle is due.
     | { type: "gameWon" }
     // The game is lost (never in versus).
     | { type: "gameLost" }

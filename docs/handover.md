@@ -46,6 +46,7 @@ The older modules are listed in `CLAUDE.md`. Newer or reshaped ones:
 | `muteButton.ts`                              | The 🔊/🔇 button; its toggle saves `settings.muted`                                                                               |
 | `opening.ts`, `openingView.ts`               | The Gold opening before the title                                                                                                 |
 | `endRoll.ts`, `endRollRender.ts`             | The end roll after the story ending                                                                                               |
+| `bossDefeat.ts`, `defeatRender.ts`           | A boss's defeat in the outro (KDA-301) and the final boss's hops (KDA-303): the timeline, and its drawing                         |
 | `admin.ts`, `adminPanel.ts`, `adminHash.ts`  | Debug mode behind the passphrase hash; `adminBadge.ts` is its on-screen label and Clear button                                    |
 | `flow.ts`, `progress.ts`                     | Difficulty select, story and stage modes; bests by difficulty                                                                     |
 

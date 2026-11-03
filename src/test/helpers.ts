@@ -244,6 +244,7 @@ export function makeState(
         },
         events: [],
         winHeld: false,
+        defeat: null,
         regrow: null,
         splitterDrops: false,
         respawnDelay: RESPAWN_DELAY,
