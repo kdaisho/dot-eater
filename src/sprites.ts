@@ -192,11 +192,13 @@ function outlined(dots: Dots): Dots {
 
 // A small badge on a character for a status (KDA-300, in place of the old
 // emoji badges): frozen (an ice cube), stunned (a star) and immune to stuns
-// (a shield).
+// (a shield); and the heart over each enemy freed when the final boss
+// falls (KDA-303).
 export const BadgeId = {
     frozen: "frozen",
     stunned: "stunned",
     immune: "immune",
+    heart: "heart",
 } as const
 export type BadgeId = (typeof BadgeId)[keyof typeof BadgeId]
 
@@ -237,6 +239,17 @@ export const BADGES: Readonly<
             ".BBWBB.",
             "..BBB..",
             "...B...",
+        ],
+    },
+    heart: {
+        palette: { P: "#f43f5e" },
+        grid: [
+            ".PP.PP.",
+            "PPPPPPP",
+            "PPPPPPP",
+            ".PPPPP.",
+            "..PPP..",
+            "...P...",
         ],
     },
 }

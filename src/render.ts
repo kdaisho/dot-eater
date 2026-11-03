@@ -1,5 +1,21 @@
 import { footprint, type Boss } from "./boss"
 import { bossLooks, bossWarning, windingUp } from "./bossBreath"
+import {
+    defeatCentre,
+    defeatZoom,
+    hopHeight,
+    hopOrder,
+    type BossDefeat,
+} from "./bossDefeat"
+import {
+    defeatMoment,
+    drawDefeatBoss,
+    drawDefeatFlash,
+    drawDefeatFloor,
+    drawDefeatFx,
+    drawHeart,
+    type DefeatSpot,
+} from "./defeatRender"
 import { enemyBreathLooks, enemyWarnings } from "./enemyBreath"
 import {
     affordable,
@@ -358,7 +374,23 @@ export function createRenderer(
                 close
             )
         let next: View
-        if (!camera || camera.state !== state) {
+        if (state.defeat && camera?.state === state) {
+            // The boss's defeat (KDA-301): the view eases over to where it
+            // fell, on a maze that scrolls.
+            const dt = (time - camera.time) / 1000
+            const onBoss = viewFor(
+                maze,
+                viewport,
+                [defeatCentre(state.defeat)],
+                close
+            )
+            next = clampView(
+                easeView(camera.view, onBoss, dt),
+                maze,
+                viewport,
+                close
+            )
+        } else if (!camera || camera.state !== state) {
             next = viewOf(inPlay.length > 0 ? inPlay : state.players)
         } else if (inPlay.length === 0) {
             next = camera.view
@@ -439,12 +471,25 @@ export function createRenderer(
         if (shake && (shake.x !== 0 || shake.y !== 0)) {
             ctx.translate(shake.x * cell, shake.y * cell)
         }
+        // A boss's defeat (KDA-301, see defeatRender.ts): the moment to draw,
+        // and the view zoomed in on where the boss fell.
+        const fall = defeatScene(state, alpha, cell)
+        if (fall) {
+            const z = defeatZoom(fall.defeat, fall.e)
+            ctx.translate(fall.spot.x, fall.spot.y)
+            ctx.scale(z, z)
+            ctx.translate(-fall.spot.x, -fall.spot.y)
+        }
         const aims =
             effects.aim && effects.guide === "aim" ? aimPreviews(state) : []
         const windUp = effects.bossBreath === true
         drawCells(ctx, state, alpha, cell, seen, tintsFor(state, aims, windUp))
         const art = { sprites, facing, dpr }
+        if (fall) drawDefeatFloor(ctx, fall.defeat, fall.spot, fall.e)
         drawBoss(ctx, art, state, alpha, cell, cols, rows, seen, windUp)
+        if (fall && state.boss) {
+            drawDefeatBoss(ctx, fall.defeat, state.boss, fall.spot, fall.e)
+        }
         drawCharacters(
             ctx,
             art,
@@ -456,14 +501,31 @@ export function createRenderer(
             seen,
             effects.guide === "arrow",
             effects.reducedMotion === true,
-            windUp
+            windUp,
+            fall
         )
         if (effects.particles) drawParticles(ctx, effects.particles, cell, seen)
+        if (fall && state.boss) {
+            drawDefeatFx(ctx, fall.defeat, state.boss, fall.spot, fall.e)
+        }
         ctx.restore()
         if (fog) {
             drawDarkness(ctx, fog, cell, cols, rows, darknessLayer, dpr, screen)
         }
         ctx.restore()
+        // The defeat's white flashes cover the maze, not the HUD.
+        if (fall) {
+            ctx.save()
+            ctx.translate(0, hudHeight)
+            drawDefeatFlash(
+                ctx,
+                fall.defeat,
+                viewport.width,
+                viewport.height,
+                fall.e
+            )
+            ctx.restore()
+        }
     }
 
     function clear() {
@@ -847,6 +909,30 @@ type Art = {
     dpr: number
 }
 
+// A boss's defeat as this frame draws it (KDA-301), or null for none: the
+// defeat, its moment and where the boss fell, in maze pixels at `cell`.
+type DefeatScene = { defeat: BossDefeat; e: number; spot: DefeatSpot }
+
+function defeatScene(
+    state: GameState,
+    alpha: number,
+    cell: number
+): DefeatScene | null {
+    const { defeat } = state
+    if (!defeat) return null
+    const centre = defeatCentre(defeat)
+    return {
+        defeat,
+        e: defeatMoment(defeat, alpha),
+        spot: {
+            x: (centre.x + 0.5) * cell,
+            y: (centre.y + 0.5) * cell,
+            size: cell * SPRITE_SCALE * BOSS_SCALE,
+            cell,
+        },
+    }
+}
+
 // The boss, unless it is defeated (gone for good): its sprite centred on
 // its gliding 2x2 footprint, under the other characters, with a thin health
 // bar above the sprite and a white flash over it just after a hit. The
@@ -918,7 +1004,8 @@ function drawCharacters(
     fog: Sight | null,
     arrows: boolean,
     reducedMotion: boolean,
-    windUp: boolean
+    windUp: boolean,
+    fall: DefeatScene | null = null
 ) {
     ctx.textAlign = "center"
     ctx.textBaseline = "middle"
@@ -944,6 +1031,8 @@ function drawCharacters(
     // interceptor (KDA-292) sneaks: it is drawn faint away from the players
     // and fades in as it closes in on the nearest one in play (sneakAlpha),
     // its disc and badges with it; fog hides it as it does any enemy.
+    // After the final boss falls (`fall`, KDA-303), everyone on the map
+    // hops in place (hopHeight), and each enemy gets a heart over it.
     const marked = state.players.length > 1
     const wrap = fogWrap(state.cells)
     const hunted = state.players.flatMap((p) =>
@@ -1027,9 +1116,26 @@ function drawCharacters(
             cols,
             rows
         )
+        const order = fall
+            ? isPlayer
+                ? hopOrder(
+                      fall.defeat,
+                      "player",
+                      state.players.findIndex(
+                          (pl) => pl.character === character
+                      )
+                  )
+                : hopOrder(
+                      fall.defeat,
+                      "enemy",
+                      state.enemies.indexOf(character)
+                  )
+            : -1
+        const hop =
+            fall && order >= 0 ? hopHeight(fall.defeat, order, fall.e) : 0
         for (const p of wrapCopies(pos, cols, rows)) {
             const x = (p.x + 0.5) * cell
-            const y = (p.y + 0.5) * cell
+            const y = (p.y + 0.5 - hop) * cell
             if (aura) {
                 ctx.globalAlpha = aura.alpha
                 ctx.fillStyle = aura.color
@@ -1064,6 +1170,18 @@ function drawCharacters(
                     art.dpr
                 )
             })
+            if (fall && order >= 0 && !isPlayer) {
+                drawHeart(
+                    ctx,
+                    art.sprites,
+                    art.dpr,
+                    fall.defeat,
+                    order,
+                    { x, y },
+                    cell,
+                    fall.e
+                )
+            }
         }
         if (faint) ctx.globalAlpha = 1
         if (!arrow) continue
