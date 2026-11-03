@@ -65,7 +65,7 @@ import {
     type Difficulty,
 } from "./difficulty"
 import { emit, type GameEvent } from "./events"
-import { glidePos, wrapDelta, type Glider } from "./glide"
+import { glidePos, moveStep, wrapDelta, type Glider } from "./glide"
 import { tickEnemyBreaths } from "./enemyBreath"
 import { slideStep, type IceMap } from "./ice"
 import {
@@ -597,7 +597,7 @@ function playerCanEnter(state: GameState, who: Player, cell: Vec2): boolean {
 
 // Eat (and score) the dot on `cell`, if there is one, for `who`, filling
 // its energy meter. Returns whether there was one.
-function eatDot(state: GameState, who: Player, cell: Vec2): boolean {
+export function eatDot(state: GameState, who: Player, cell: Vec2): boolean {
     const { cells } = state
     if (cells[cell.y][cell.x] !== Cell.dot) return false
     cells[cell.y][cell.x] = Cell.none
@@ -667,6 +667,54 @@ export function knockBack(
     c.moveProgress = 0
     player.eatenAt = ate ? vec2(target.x, target.y) : null
     return true
+}
+
+// Dash `who` along `path` (KDA-304, the Boar's Rush; see BreathHit.dash in
+// breath.ts): cells in a straight line on from its cell, nearest first. It
+// goes as far along them as it may enter (see playerCanEnter: not a wall
+// nor, when players bump, the other player's cell), eating every dot it
+// passes over, and ends on the last cell it reached. Returns how many cells
+// it went (0 leaves it as it was).
+//
+// It glides the whole way in one move's time, so it is drawn rushing
+// there, faster the further it goes, and then may move on as after any
+// move. A dash on along the glide it was already in carries that glide on
+// from where it is drawn; any other starts from its cell. It keeps its
+// facing (it dashed the way it faced) and lands without sliding: the glide
+// is longer than a step, so slideStep sees no slide to carry on.
+export function dashPlayer(
+    state: GameState,
+    who: Player,
+    path: readonly Vec2[]
+): number {
+    if (who.out) return 0
+    const c = who.character
+    const from = vec2(c.pos.x, c.pos.y)
+    let moved = 0
+    for (const cell of path) {
+        if (!playerCanEnter(state, who, cell)) break
+        eatDot(state, who, cell)
+        c.pos = vec2(cell.x, cell.y)
+        moved++
+    }
+    if (moved === 0) return 0
+    const cols = state.cells[0].length
+    const rows = state.cells.length
+    const progress = Math.min(c.moveProgress, 1)
+    const was = moveStep(c.lastPos, from, cols, rows)
+    const { facing } = who.breather
+    if (progress < 1 - EPSILON && samePos(was, facing)) {
+        // Drawn `left` of a cell short of `from`: the new glide, `moved`
+        // cells longer, starts from the same spot.
+        const left = 1 - progress
+        c.moveProgress = 1 - (moved + left) / (moved + 1)
+    } else {
+        c.lastPos = from
+        c.moveProgress = 0
+    }
+    who.rate = 1
+    who.eatenAt = null
+    return moved
 }
 
 // Ticks a player stays invulnerable after a hit (HURT_INVULNERABLE_SECONDS).
@@ -947,6 +995,11 @@ export function step(
     })
     for (const rest of later) rest()
     let breathed = false
+    // Where each player stands before the breaths, to tell which ones a
+    // breath moved (a dash or a shove, KDA-304).
+    const beforeBreaths = players.map(({ character: c }) =>
+        vec2(c.pos.x, c.pos.y)
+    )
     players.forEach((player, i) => {
         // A player stunned by an earlier player's breath on this same tick
         // doesn't breathe either, and loses any charge.
@@ -957,7 +1010,20 @@ export function step(
         // The breath comes before the enemies move, but it may have moved
         // some (pushed or defeated) or held them: trace each enemy from
         // where it is after it, not along a sweep across the jump.
-        start = { ...tickStarts(state, dt), players: start.players }
+        // A player keeps the start it moved from this tick, unless a breath
+        // moved it (the Boar's dash, or a shove down its chain, KDA-304):
+        // then it is traced from where it is now, not swept across the
+        // cells it was carried over, which may hold the very enemies it
+        // was shoved along with.
+        const fresh = tickStarts(state, dt)
+        start = {
+            ...fresh,
+            players: start.players.map((s, i) =>
+                samePos(beforeBreaths[i], players[i].character.pos)
+                    ? s
+                    : fresh.players[i]
+            ),
+        }
     }
     // ---- Breathers (KDA-291, see enemyBreath.ts) ----
     // After the breaths and before the enemies move (one winding up holds still): each breather's
@@ -1083,7 +1149,13 @@ export function step(
     // The boss's glide moves on first, then its breath (see bossBreath.ts),
     // which winds up only once the boss is drawn on its cell; while it
     // winds up it makes no new move.
-    const ready = boss !== null && !boss.defeated && advance(boss, dt)
+    // A staggered boss (see staggerBoss in boss.ts) makes no move: its
+    // glide waits too, so it can't step on the tick the stagger ends.
+    const ready =
+        boss !== null &&
+        !boss.defeated &&
+        boss.stagger <= EPSILON &&
+        advance(boss, dt)
     const holding = tickBossBreath(state)
     if (boss && ready) {
         const next = holding

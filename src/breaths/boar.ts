@@ -1,8 +1,9 @@
 import type { BreathDef, TileEffect } from "../breath"
+import { inFootprint } from "../boss"
 import { Cell } from "../constants"
 import type { Cells } from "../level"
 import { AnimalId } from "../roster"
-import { vec2, type Vec2 } from "../vec2"
+import { samePos, vec2, type Vec2 } from "../vec2"
 
 // Seconds a broken wall stays open before it grows back.
 const OPEN_SECONDS = 10
@@ -27,7 +28,7 @@ export function isOuterWall(cells: Cells, pos: Vec2): boolean {
     )
 }
 
-// The walls the Boar's breath at charge `level` breaks, from `wall`, the
+// The walls the Boar's Rush at charge `level` breaks, from `wall`, the
 // wall in front, on along `facing` (KDA-289, with the user): up to `level`
 // walls in a row, a tunnel. It stops at an outer wall, which never breaks,
 // and at open floor (an opened wall included), so open floor between walls
@@ -52,37 +53,119 @@ export function tunnel(
     return walls
 }
 
-// Boar 🐗, wall-break breath (KDA-220): breaks the wall in front; it grows
-// back after 10 s, pushing out anything inside; outer walls hold. Charging
-// it (KDA-289) bores on through the walls behind, one more a level, up to 5
-// (see tunnel), for 20 energy a level; every broken wall grows back on its
-// own 10 s. Refused (nothing spent) when there is no wall in front or it is
-// an outer wall. Stat: slower movement (3.5 cells/s at the default 4).
+// How far the Rush dashes at charge `level` (KDA-304, with the user: the
+// shortest reach of every breath; placeholders to tune at preview): 1 cell
+// for a tap, 2 at levels 2 and 3, 3 at levels 4 and 5. The Dragon's is 2
+// to 6.
+export function rushRange(level: number): number {
+    return Math.ceil((level + 1) / 2)
+}
+
+// How far an enemy the Rush rams is knocked flying at charge `level`
+// (KDA-304; placeholders to tune at preview): 2 cells for a tap, one more
+// a level, 6 at the top. It is defeated wherever it slams, so this only
+// sets how far the chain in front of it is shoved.
+export function knockDistance(level: number): number {
+    return level + 1
+}
+
+// The share of a direct ram's damage the boss takes when the chain of a
+// knocked-flying enemy runs into it instead (KDA-304, with the user: a
+// little; a placeholder to tune at preview).
+export const CHAIN_BOSS_SHARE = 0.25
+
+// Seconds the boss is staggered (makes no move) after being rammed, so the
+// Boar, right against it, has a moment to back off (KDA-304; a
+// placeholder to tune at preview).
+export const RAM_STAGGER = 0.6
+
+// Boar 🐗, Rush (KDA-304, with the user, replacing the wall-break breath of
+// KDA-220, after feedback that the Boar was too weak to defeat the bosses:
+// it had to stand touching them to hurt them at all). The Boar dashes
+// forward along its facing, up to rushRange cells, eating the dots it
+// passes, and stops at the first thing it hits:
+//
+// - an enemy: the Boar stops on the cell before it and the enemy (with any
+//   others on its cell) is knocked flying knockDistance cells on and
+//   defeated where it slams, shoving what is in its way along (see
+//   knock.ts). One on the Boar's own cell is rammed where it stands;
+// - the boss's body: the Boar stops against it, the boss takes the
+//   breath's damage as any breath's (the engine's, by the energy spent) and
+//   is staggered for RAM_STAGGER;
+// - an inner wall: it breaks, as the old breath's did (see tunnel: a wall a
+//   level in a row, the outer wall holds, each grows back after 10 s), and
+//   the Boar carries on into the opening as far as its reach goes;
+// - an outer wall: it thuds against it.
+//
+// Refused (nothing spent) when it can go nowhere and hit nothing: facing an
+// outer wall right in front, say. 20 energy a level, as before. Stat:
+// slower movement (3.5 cells/s at the default 4).
 export const boar: BreathDef = {
     animal: AnimalId.boar,
-    shape: () => ({ kind: "line", range: 1 }),
+    shape: (level) => ({
+        kind: "line",
+        range: rushRange(level),
+        stopsAtEnemies: true,
+    }),
     cost: 20,
     cooldown: 1,
     duration: OPEN_SECONDS,
     maxEnergy: 100,
     speedScale: 0.875,
-    // Chunks of rubble thrown up from the broken wall, falling back.
+    // Dust and chunks kicked up along the dash (or from the walls it broke,
+    // when it broke in from right against them), falling back.
     particles: {
-        colors: ["#8b5a2b", "#57534e", "#a8a29e"],
-        count: 10,
-        life: 0.6,
-        speed: 3,
-        spread: Math.PI * 2,
-        size: 0.14,
-        jitter: 0.3,
-        gravity: 8,
+        colors: ["#8b5a2b", "#a16207", "#a8a29e"],
+        count: 6,
+        life: 0.5,
+        speed: 2.5,
+        spread: Math.PI * 0.8,
+        size: 0.13,
+        jitter: 0.35,
+        gravity: 6,
         shape: "square",
     },
     wallsHit: tunnel,
     fire(hit) {
-        if (hit.walls.length === 0) return false
-        for (const wall of hit.walls) {
-            hit.addTile(wall, BROKEN_WALL, OPEN_SECONDS)
+        const { state, facing, level, cells } = hit
+        const boss = state.boss && !state.boss.defeated ? state.boss : null
+        const first = hit.enemies[0]
+        // The line ends at what it rams (see stopsAtEnemies): an enemy, or
+        // the boss's body.
+        const end = cells[cells.length - 1]
+        const target = first
+            ? first.pos
+            : end && boss && inFootprint(boss.pos, end)
+              ? end
+              : null
+        if (target) {
+            const at = cells.findIndex((c) => samePos(c, target))
+            const free = at < 0 ? [] : cells.slice(0, at)
+            hit.dash(free, target)
+            if (first) {
+                const rammed = hit.enemies.filter((e) =>
+                    samePos(e.pos, first.pos)
+                )
+                hit.knock(
+                    rammed,
+                    facing,
+                    knockDistance(level),
+                    CHAIN_BOSS_SHARE
+                )
+            } else {
+                hit.staggerBoss(RAM_STAGGER)
+            }
+            return
         }
+        if (hit.walls.length > 0) {
+            for (const wall of hit.walls) {
+                hit.addTile(wall, BROKEN_WALL, OPEN_SECONDS)
+            }
+            const into = hit.walls.slice(0, rushRange(level) - cells.length)
+            hit.dash([...cells, ...into], hit.walls[0])
+            return
+        }
+        if (cells.length === 0) return false
+        hit.dash(cells, hit.wall)
     },
 }

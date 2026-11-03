@@ -123,7 +123,7 @@ describe("momentsOf", () => {
         expect(moments).toEqual([])
     })
 
-    it("finds a wall the Boar broke, though no event reports it", () => {
+    it("finds a wall the Boar broke, though no event reports a break", () => {
         const state = ready(
             makeState(CORRIDORS, { x: 2, y: 1 }),
             BREATHS.boar,
@@ -131,7 +131,8 @@ describe("momentsOf", () => {
         )
         const moments = tick(state)
         expect(state.cells[2][2]).not.toBe(Cell.wall)
-        expect(state.events.map((e) => e.type)).toEqual(["breathed"])
+        // The Rush (KDA-304) reports ramming it, not that it broke.
+        expect(state.events.map((e) => e.type)).toEqual(["breathed", "rammed"])
         expect(moments.find((m) => m.kind === "wallBroken")).toMatchObject({
             tick: 1,
             player: 0,

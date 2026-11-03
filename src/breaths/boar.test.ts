@@ -1,21 +1,47 @@
 import { describe, expect, it } from "vite-plus/test"
-import { addStatus, breathe, type EnemyStatus } from "../breath"
-import { AiType, Cell, MAX_HEALTH, TICK_RATE } from "../constants"
-import { createGameState, step, type GameState, type MoveInput } from "../game"
+import { bossDamage } from "../boss"
+import { addStatus, breathe, inPlay, type EnemyStatus } from "../breath"
+import {
+    AiType,
+    BOSS_HEALTH,
+    Cell,
+    ENEMY_DAMAGE,
+    MAX_HEALTH,
+    TICK_RATE,
+} from "../constants"
+import {
+    createGameState,
+    IDLE,
+    step,
+    type GameState,
+    type MoveInput,
+} from "../game"
 import { parseFlat } from "../test/helpers"
 import type { Character } from "../character"
 import {
     cellsFrom,
     fixedRandom,
+    makeBoss,
     makeEnemy,
     makeState,
     textMap,
+    withoutBreath,
     type MapLiteral,
 } from "../test/helpers"
 import { vec2, type Vec2 } from "../vec2"
-import { boar, BROKEN_WALL, tunnel } from "./boar"
+import {
+    boar,
+    BROKEN_WALL,
+    CHAIN_BOSS_SHARE,
+    knockDistance,
+    RAM_STAGGER,
+    rushRange,
+    tunnel,
+} from "./boar"
 
-// The Boar's wall-break breath end to end through step().
+// The Boar's Rush (KDA-304) end to end through step(): the dash, the wall
+// break it took over from the wall-break breath (KDA-220, KDA-289), the
+// knock flight and its chain.
 
 const TICK = 1 / TICK_RATE
 const none = vec2(0, 0)
@@ -59,7 +85,7 @@ function boarState(
 
 const hold: EnemyStatus = { name: "test.hold", holds: true }
 
-describe("the Boar's wall-break breath", () => {
+describe("the Boar's Rush at a wall", () => {
     it("breaks the inner wall in front, for 20 energy and a 1 s cooldown", () => {
         const state = boarState(rooms, { x: 2, y: 1 })
         tick(state, { breath: true })
@@ -71,11 +97,11 @@ describe("the Boar's wall-break breath", () => {
         ])
     })
 
-    it("lets the player walk through the opening", () => {
+    it("carries the Boar into the opening, and lets it walk on through", () => {
         const state = boarState(rooms, { x: 2, y: 1 })
         tick(state, { breath: true })
-        tick(state, { held: east })
         expect(state.players[0].character.pos).toEqual(vec2(3, 1))
+        tick(state, { held: east })
         run(state, TICK_RATE, { held: east })
         expect(state.players[0].character.pos).toEqual(vec2(5, 1))
     })
@@ -172,12 +198,12 @@ describe("the Boar's wall-break breath", () => {
         expect(state.players[0].breather.energy).toBe(100)
     })
 
-    it("refuses empty floor in front, spending nothing", () => {
+    it("only dashes at empty floor in front, breaking nothing", () => {
         const state = boarState(rooms, { x: 1, y: 1 })
         tick(state, { breath: true })
         expect(state.tiles).toEqual([])
-        expect(state.players[0].breather.energy).toBe(100)
-        expect(state.players[0].breather.cooldown).toBe(0)
+        expect(state.players[0].character.pos).toEqual(vec2(2, 1))
+        expect(state.players[0].breather.energy).toBe(80)
     })
 
     it("needs 20 energy", () => {
@@ -280,12 +306,18 @@ describe("the Boar's tunnel", () => {
         expect(state.players[0].character.pos).toEqual(vec2(5, 1))
     })
 
-    it("is refused at open floor, spending nothing, however charged", () => {
+    it("breaks the walls its dash reaches, and dashes into them as far as it goes", () => {
+        // From x 1, level 4 reaches 3 cells: the floor at x 2, then the
+        // tunnel (4 walls a level 4, but floor at x 6 ends it at x 5).
         const state = boarState(gaps, { x: 1, y: 1 })
-        expect(breathe(state, state.players[0], 5)).toBe(false)
-        expect(state.tiles).toEqual([])
-        expect(state.players[0].breather.energy).toBe(100)
-        expect(state.players[0].breather.cooldown).toBe(0)
+        expect(breathe(state, state.players[0], 4)).toBe(true)
+        expect(opened(state)).toEqual([3, 4, 5])
+        expect(state.players[0].character.pos).toEqual(vec2(4, 1))
+        // A tap reaches only the floor in front: no wall within reach.
+        const tap = boarState(gaps, { x: 1, y: 1 })
+        expect(breathe(tap, tap.players[0], 1)).toBe(true)
+        expect(tap.tiles).toEqual([])
+        expect(tap.players[0].character.pos).toEqual(vec2(2, 1))
     })
 
     it("is refused at an outer wall, spending nothing, however charged", () => {
@@ -328,5 +360,361 @@ describe("the Boar's tunnel", () => {
         run(state, OPEN_TICKS)
         expect(state.cells[1][3]).toBe(Cell.wall)
         expect(character.pos).toEqual(vec2(2, 1))
+    })
+})
+
+// KDA-304, with the user: the Rush dashes, and what it rams flies.
+describe("the Boar's Rush", () => {
+    // A hall from x 1 to x 12 along row 1. The dot in the pocket keeps the
+    // game from being won.
+    const hall = textMap([
+        "##############",
+        "#            #",
+        "##############",
+        "#.############",
+    ]).map
+    // Two rows, for the 2x2 boss.
+    const arena = textMap([
+        "##############",
+        "#            #",
+        "#            #",
+        "##############",
+        "#.############",
+    ]).map
+
+    // An enemy on (x, y) that never moves by itself.
+    const still = (x: number, y: number) => {
+        const enemy = makeEnemy(x, y)
+        enemy.speed = 0
+        return enemy
+    }
+
+    const defeats = (state: GameState) =>
+        state.events.flatMap((e) => (e.type === "enemyDefeated" ? [e.at] : []))
+
+    it("reaches 1 cell for a tap, up to 3 at full charge", () => {
+        expect([1, 2, 3, 4, 5].map(rushRange)).toEqual([1, 2, 2, 3, 3])
+    })
+
+    it.each([1, 2, 3, 4, 5])(
+        "dashes rushRange cells at level %i, for 20 a level",
+        (level) => {
+            const state = boarState(hall, { x: 1, y: 1 })
+            expect(breathe(state, state.players[0], level)).toBe(true)
+            const { character, breather } = state.players[0]
+            expect(character.pos).toEqual(vec2(1 + rushRange(level), 1))
+            expect(breather.energy).toBe(100 - 20 * level)
+            expect(breather.facing).toEqual(east)
+        }
+    )
+
+    it("glides the whole dash in one move's time, then moves on", () => {
+        const state = boarState(hall, { x: 1, y: 1 })
+        breathe(state, state.players[0], 5)
+        const { character } = state.players[0]
+        // Drawn where it set off, gliding the 3 cells at once.
+        expect(character.lastPos).toEqual(vec2(1, 1))
+        expect(character.moveProgress).toBe(0)
+        // It may move on once a move's time is up, not a tick before.
+        const move = Math.ceil(TICK_RATE / character.speed - 1e-9)
+        run(state, move - 1, { held: east })
+        expect(character.pos).toEqual(vec2(4, 1))
+        run(state, 2, { held: east })
+        expect(character.pos).toEqual(vec2(5, 1))
+    })
+
+    it("eats the dots it dashes over", () => {
+        const dotted = textMap([
+            "##########",
+            "# ...    #",
+            "##########",
+            "#.########",
+        ]).map
+        const state = boarState(dotted, { x: 1, y: 1 })
+        breathe(state, state.players[0], 5)
+        const p = state.players[0]
+        expect(p.character.pos).toEqual(vec2(4, 1))
+        expect(p.dots).toBe(3)
+        expect(p.score).toBe(30)
+        // 15 back for the dots, after 100 spent.
+        expect(p.breather.energy).toBe(15)
+        expect([2, 3, 4].map((x) => state.cells[1][x])).toEqual([
+            Cell.none,
+            Cell.none,
+            Cell.none,
+        ])
+    })
+
+    it("stops against an outer wall, which holds, with a thud", () => {
+        const state = boarState(hall, { x: 11, y: 1 })
+        expect(breathe(state, state.players[0], 5)).toBe(true)
+        expect(state.players[0].character.pos).toEqual(vec2(12, 1))
+        expect(state.cells[1][13]).toBe(Cell.wall)
+        expect(state.tiles).toEqual([])
+        expect(state.events).toContainEqual({
+            type: "rammed",
+            player: 0,
+            at: vec2(13, 1),
+            facing: east,
+        })
+    })
+
+    it("reports no ram for a dash that hits nothing", () => {
+        const state = boarState(hall, { x: 1, y: 1 })
+        breathe(state, state.players[0], 1)
+        expect(state.events.map((e) => e.type)).toEqual(["breathed"])
+    })
+
+    it("stops at the first enemy and knocks it flying, defeated where it lands", () => {
+        const enemy = still(3, 1)
+        const state = boarState(hall, { x: 1, y: 1 }, [enemy])
+        expect(breathe(state, state.players[0], 2)).toBe(true)
+        // The Boar stops on the cell before it.
+        expect(state.players[0].character.pos).toEqual(vec2(2, 1))
+        // Flown knockDistance(2) = 3 cells, to x 6, and defeated there.
+        expect(knockDistance(2)).toBe(3)
+        expect(defeats(state)).toEqual([vec2(6, 1)])
+        expect(inPlay(enemy)).toBe(false)
+        expect(enemy.pos).toEqual(vec2(3, 1))
+        expect(state.players[0].score).toBe(50)
+        expect(state.events.map((e) => e.type)).toEqual([
+            "breathed",
+            "rammed",
+            "knockedFlying",
+            "enemyDefeated",
+        ])
+        expect(state.events[2]).toEqual({
+            type: "knockedFlying",
+            player: 0,
+            from: vec2(3, 1),
+            to: vec2(6, 1),
+            facing: east,
+        })
+    })
+
+    it("flies further at higher levels", () => {
+        expect([1, 2, 3, 4, 5].map(knockDistance)).toEqual([2, 3, 4, 5, 6])
+        const enemy = still(2, 1)
+        const state = boarState(hall, { x: 1, y: 1 }, [enemy])
+        breathe(state, state.players[0], 5)
+        expect(defeats(state)).toEqual([vec2(8, 1)])
+    })
+
+    it("slams an enemy into a wall, defeating it there", () => {
+        const short = textMap([
+            "##########",
+            "#    #   #",
+            "##########",
+            "#.########",
+        ]).map
+        const enemy = still(3, 1)
+        const state = boarState(short, { x: 1, y: 1 }, [enemy])
+        breathe(state, state.players[0], 5)
+        expect(defeats(state)).toEqual([vec2(4, 1)])
+        // An enemy right against the wall slams at once.
+        const flat = still(4, 1)
+        const against = boarState(short, { x: 2, y: 1 }, [flat])
+        breathe(against, against.players[0], 3)
+        expect(defeats(against)).toEqual([vec2(4, 1)])
+        expect(against.players[0].character.pos).toEqual(vec2(3, 1))
+    })
+
+    it("rams an enemy on its own cell where it stands", () => {
+        const enemy = still(2, 1)
+        const state = boarState(hall, { x: 2, y: 1 }, [enemy])
+        expect(breathe(state, state.players[0], 1)).toBe(true)
+        expect(state.players[0].character.pos).toEqual(vec2(2, 1))
+        expect(defeats(state)).toEqual([vec2(4, 1)])
+    })
+
+    it("knocks every enemy on the rammed cell flying together", () => {
+        const a = still(3, 1)
+        const b = still(3, 1)
+        const state = boarState(hall, { x: 1, y: 1 }, [a, b])
+        breathe(state, state.players[0], 2)
+        expect(defeats(state)).toEqual([vec2(6, 1), vec2(6, 1)])
+        expect(state.players[0].score).toBe(100)
+    })
+
+    it("needs 20 energy, and refuses facing an outer wall right in front", () => {
+        const state = boarState(hall, { x: 1, y: 1 })
+        state.players[0].breather.facing = vec2(-1, 0)
+        expect(breathe(state, state.players[0], 5)).toBe(false)
+        expect(state.players[0].breather.energy).toBe(100)
+        expect(state.players[0].breather.cooldown).toBe(0)
+        state.players[0].breather.facing = east
+        state.players[0].breather.energy = 19
+        expect(breathe(state, state.players[0])).toBe(false)
+    })
+
+    describe("the chain", () => {
+        it("shoves an enemy in the way along, without defeating it", () => {
+            const flier = still(3, 1)
+            const shoved = still(5, 1)
+            const state = boarState(hall, { x: 1, y: 1 }, [flier, shoved])
+            breathe(state, state.players[0], 2)
+            // The flier goes 3 cells, to x 6, carrying the other in front.
+            expect(defeats(state)).toEqual([vec2(6, 1)])
+            expect(inPlay(shoved)).toBe(true)
+            expect(shoved.pos).toEqual(vec2(7, 1))
+            // At rest there, dazed for a move.
+            expect(shoved.lastPos).toEqual(vec2(7, 1))
+            expect(shoved.moveProgress).toBe(0)
+            expect(state.players[0].score).toBe(50)
+        })
+
+        it("passes the shove on down a row, each pushing the next", () => {
+            const flier = still(2, 1)
+            const a = still(3, 1)
+            const b = still(5, 1)
+            const state = boarState(hall, { x: 1, y: 1 }, [flier, a, b])
+            breathe(state, state.players[0], 3)
+            // 4 cells: the flier to x 6, a in front of it, b in front of a.
+            expect(defeats(state)).toEqual([vec2(6, 1)])
+            expect(a.pos).toEqual(vec2(7, 1))
+            expect(b.pos).toEqual(vec2(8, 1))
+        })
+
+        it("stops at a wall, the flier slamming behind what it pushed", () => {
+            const short = textMap([
+                "##########",
+                "#      ###",
+                "##########",
+                "#.########",
+            ]).map
+            const flier = still(2, 1)
+            const shoved = still(4, 1)
+            const state = boarState(short, { x: 1, y: 1 }, [flier, shoved])
+            breathe(state, state.players[0], 5)
+            expect(shoved.pos).toEqual(vec2(6, 1))
+            expect(defeats(state)).toEqual([vec2(5, 1)])
+            expect(state.cells[1][7]).toBe(Cell.wall)
+        })
+
+        it("shoves a co-op partner along, without hurting it", () => {
+            const flier = still(3, 1)
+            const state = makeState(hall, [vec2(1, 1), vec2(5, 1)], [flier], {
+                breath: boar,
+                health: MAX_HEALTH,
+                mode: "coop",
+            })
+            state.players[0].breather.energy = 100
+            breathe(state, state.players[0], 2)
+            const partner = state.players[1]
+            expect(partner.character.pos).toEqual(vec2(7, 1))
+            expect(partner.character.lastPos).toEqual(vec2(7, 1))
+            expect(partner.health).toBe(MAX_HEALTH)
+            expect(partner.out).toBe(false)
+            expect(state.events.map((e) => e.type)).not.toContain("hurt")
+        })
+
+        it("hits a versus opponent it shoves for real", () => {
+            const flier = still(3, 1)
+            const state = makeState(hall, [vec2(1, 1), vec2(5, 1)], [flier], {
+                breath: boar,
+                health: MAX_HEALTH,
+                mode: "versus",
+            })
+            state.players[0].breather.energy = 100
+            breathe(state, state.players[0], 2)
+            const opponent = state.players[1]
+            expect(opponent.health).toBe(MAX_HEALTH - ENEMY_DAMAGE)
+            expect(state.events).toContainEqual({
+                type: "hurt",
+                player: 1,
+                at: vec2(7, 1),
+                damage: ENEMY_DAMAGE,
+            })
+            // The hit's knockback sends it on a cell, away from the flier.
+            expect(opponent.character.pos).toEqual(vec2(8, 1))
+        })
+
+        it("leaves a shoved partner unhurt by the enemy shoved right behind it", () => {
+            const flier = still(2, 1)
+            const shoved = makeEnemy(3, 1, AiType.chase)
+            const state = makeState(
+                hall,
+                [vec2(1, 1), vec2(4, 1)],
+                [flier, shoved],
+                { breath: boar, health: MAX_HEALTH, mode: "coop" }
+            )
+            state.players[0].breather.energy = 100
+            state.players[0].character.moveProgress = 1
+            state.players[1].character.moveProgress = 1
+            step(
+                state,
+                TICK,
+                [{ held: [], pressed: none, breath: true }, IDLE],
+                fixedRandom(0)
+            )
+            // A tap: 2 cells, the flier to x 4, carrying both along.
+            expect(shoved.pos).toEqual(vec2(5, 1))
+            expect(state.players[1].character.pos).toEqual(vec2(6, 1))
+            expect(state.players[1].health).toBe(MAX_HEALTH)
+        })
+
+        it("stops at the boss, which takes a quarter of a ram's damage", () => {
+            const flier = still(3, 1)
+            const boss = withoutBreath(makeBoss(6, 1, 0))
+            const state = makeState(arena, { x: 1, y: 1 }, [flier], {
+                breath: boar,
+                boss,
+            })
+            state.players[0].breather.energy = 100
+            breathe(state, state.players[0], 2)
+            // The flier slams against its body, at x 5.
+            expect(defeats(state)).toEqual([vec2(5, 1)])
+            expect(CHAIN_BOSS_SHARE).toBe(0.25)
+            expect(boss.health).toBeCloseTo(
+                BOSS_HEALTH - bossDamage(40) * CHAIN_BOSS_SHARE
+            )
+            // Not staggered: only a ram does that.
+            expect(boss.stagger).toBe(0)
+        })
+    })
+
+    describe("against the boss", () => {
+        it("rams it for the breath's damage and staggers it", () => {
+            const boss = withoutBreath(makeBoss(4, 1))
+            const state = makeState(arena, { x: 1, y: 1 }, [], {
+                breath: boar,
+                boss,
+                health: MAX_HEALTH,
+            })
+            state.players[0].breather.energy = 100
+            expect(breathe(state, state.players[0], 4)).toBe(true)
+            // Range 3 from x 1 ends at its body (x 4): the Boar stops
+            // against it, at x 3.
+            expect(state.players[0].character.pos).toEqual(vec2(3, 1))
+            expect(boss.health).toBeCloseTo(BOSS_HEALTH - bossDamage(80))
+            expect(boss.stagger).toBe(RAM_STAGGER)
+            expect(state.events).toContainEqual({
+                type: "rammed",
+                player: 0,
+                at: vec2(4, 1),
+                facing: east,
+            })
+        })
+
+        it("keeps a staggered boss from moving until the stagger is over", () => {
+            const boss = withoutBreath(makeBoss(7, 1))
+            const state = makeState(arena, { x: 6, y: 1 }, [], {
+                breath: boar,
+                boss,
+                health: MAX_HEALTH,
+            })
+            state.players[0].breather.energy = 100
+            state.players[0].character.moveProgress = 1
+            breathe(state, state.players[0], 1)
+            expect(boss.stagger).toBe(RAM_STAGGER)
+            // The Boar backs off west; the boss stays put while staggered.
+            const ticks = Math.round(RAM_STAGGER * TICK_RATE)
+            for (let i = 0; i < ticks - 1; i++) {
+                tick(state, { held: vec2(-1, 0) })
+                expect(boss.pos).toEqual(vec2(7, 1))
+            }
+            run(state, TICK_RATE, { held: vec2(-1, 0) })
+            expect(boss.pos).not.toEqual(vec2(7, 1))
+        })
     })
 })

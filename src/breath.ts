@@ -5,11 +5,18 @@ import {
     DOT_ENERGY,
     RESPAWN_BLINK,
 } from "./constants"
-import { bossDamage, damageBoss, inFootprint, tickBoss } from "./boss"
+import {
+    bossDamage,
+    damageBoss,
+    inFootprint,
+    staggerBoss,
+    tickBoss,
+} from "./boss"
 import type { Character } from "./character"
 import { emit } from "./events"
 import type { ParticleLook } from "./particles"
-import type { GameState, Player } from "./game"
+import { dashPlayer, type GameState, type Player } from "./game"
+import { knockFlying } from "./knock"
 import { loopPos, type Cells } from "./level"
 import type { AnimalId } from "./roster"
 import {
@@ -40,7 +47,9 @@ import { allDirections, directions, samePos, vec2, type Vec2 } from "./vec2"
 // - put a timed status on an enemy (EnemyStatus: e.g. frozen);
 // - put a timed effect on a cell (TileEffect: blocks enemies, ice, an opened
 //   wall);
-// - push an enemy a few cells.
+// - push an enemy a few cells;
+// - dash the player along a line, and knock enemies flying down it (the
+//   Boar's Rush, KDA-304; see knock.ts), staggering a boss it rams.
 //
 // Statuses and tile effects are data, including how they look (Look), so
 // game.ts, ai.ts and render.ts know only the generic flags and never a
@@ -115,8 +124,11 @@ export type ActiveStatus = {
 // Where a breath reaches, from the player's cell along its facing. Every
 // shape is wrap-aware (it goes through tunnels), and walls stop it.
 export type BreathShape =
-    // Straight ahead, up to `range` cells, stopping at the first wall.
-    | { kind: "line"; range: number }
+    // Straight ahead, up to `range` cells, stopping at the first wall. With
+    // `stopsAtEnemies` (KDA-304, the Boar's Rush) it also ends at the
+    // first enemy in play, its cell included, as at a boss's body; an
+    // enemy on the player's own cell stops it before it starts (no cells).
+    | { kind: "line"; range: number; stopsAtEnemies?: boolean }
     // A cone widening ahead: 1 cell wide at distance 1, 3 at distance 2, 5
     // at distance 3 and so on, up to `range`. Each cell is reached from a
     // cell of the row before it (straight or diagonally), so walls cast
@@ -169,6 +181,27 @@ export type BreathHit = {
     // Push `enemy` up to `distance` cells along `step` (see pushEnemy).
     // Returns how many cells it moved.
     push(enemy: Character, step: Vec2, distance: number): number
+    // Dash the breathing player along `path`, cells in a straight line on
+    // from `origin`, nearest first, as far as it may go (see dashPlayer in
+    // game.ts: walls, and the other player when players bump, stop it),
+    // eating the dots on the way, and report a `rammed` event on `impact`
+    // if given: what it ran into at the end. Returns how many cells it
+    // went. Open walls (addTile with opensWall) before dashing into them.
+    dash(path: readonly Vec2[], impact: Vec2 | null): number
+    // Knock `enemies` (on one cell) flying up to `distance` cells along
+    // `step`, carrying what is in their way along, and defeat them where
+    // they slam (see knockFlying in knock.ts). If the chain runs into the
+    // boss, it takes `bossShare` of the damage the breath would do it
+    // striking it (see breathe).
+    knock(
+        enemies: readonly Character[],
+        step: Vec2,
+        distance: number,
+        bossShare: number
+    ): void
+    // Stagger the boss, if it is in play, for `seconds` (see staggerBoss
+    // in boss.ts). The damage is the engine's, as for any breath.
+    staggerBoss(seconds: number): void
 }
 
 // One character's breath and stats: everything a file in src/breaths/
@@ -424,7 +457,7 @@ export function cancelCharges(state: GameState) {
 // bossDamage of the energy the breath spends, once however many of its
 // cells are struck (so a charged breath hurts it as much as the taps its
 // energy pays for, KDA-289), and the breath counts as fired even if the
-// hook refused (e.g. the Boar with no wall to break): it hit something.
+// hook refused: it hit something.
 export function breathe(
     state: GameState,
     who: Player = state.players[0],
@@ -439,6 +472,7 @@ export function breathe(
     // player's own cell while its sprite still glides in (collisions are on
     // drawn positions), so they hit enemies there too, first.
     const struck = aimsAhead(shape) ? [origin, ...reach.cells] : reach.cells
+    const spent = breath.cost * at
     const enemies = struck.flatMap((cell) =>
         state.enemies.filter((e) => inPlay(e) && samePos(e.pos, cell))
     )
@@ -469,14 +503,44 @@ export function breathe(
                 distance,
                 playerCharacters(state)
             ),
+        dash: (path, impact) => {
+            const moved = dashPlayer(state, who, path)
+            if (impact) {
+                emit(state, {
+                    type: "rammed",
+                    player: state.players.indexOf(who),
+                    at: vec2(impact.x, impact.y),
+                    facing: vec2(facing.x, facing.y),
+                })
+            }
+            return moved
+        },
+        knock: (rammed, step, distance, bossShare) => {
+            knockFlying(
+                state,
+                who,
+                rammed,
+                step,
+                distance,
+                bossDamage(spent) * bossShare
+            )
+        },
+        staggerBoss: (seconds) => {
+            if (state.boss) staggerBoss(state.boss, seconds)
+        },
     }
     const bossHit = body !== undefined && struck.some(body)
     // In versus, the other player on a struck cell (see opponentsStruck).
     const stuns = opponentsStruck(state, who, struck)
     const eventsBefore = state.events.length
+    // Paid up front, so dots the hook has the player eat (the Boar's dash,
+    // KDA-304) fill the meter after the cost is out of it, not into a full
+    // meter that then pays; given back if the hook refuses.
+    breather.energy -= spent
     const fired = breath.fire(hit) !== false
     if (iceAdded) rebuildIce(state)
     if (!fired && !bossHit && stuns.length === 0) {
+        breather.energy += spent
         // A refused breath reports nothing (see events.ts), even if its
         // hook reported something before refusing.
         state.events.length = eventsBefore
@@ -493,7 +557,6 @@ export function breathe(
         facing: vec2(facing.x, facing.y),
         cells: coveredCells(state, origin, reach, walls),
     })
-    const spent = breath.cost * at
     if (bossHit) damageBoss(state, bossDamage(spent), who)
     for (const other of stuns) {
         stun(other)
@@ -505,7 +568,6 @@ export function breathe(
             at: vec2(pos.x, pos.y),
         })
     }
-    breather.energy -= spent
     breather.cooldown = breath.cooldown
     return true
 }
@@ -532,7 +594,9 @@ function aimOf(
     const boss = state.boss && !state.boss.defeated ? state.boss : null
     const body = boss ? (p: Vec2) => inFootprint(boss.pos, p) : undefined
     const shape = breath.shape(level)
-    const reach = resolveShape(state.cells, origin, facing, shape, body)
+    const reach = stopsAtEnemies(shape)
+        ? lineToEnemy(state, origin, facing, shape, body)
+        : resolveShape(state.cells, origin, facing, shape, body)
     const { wall } = reach
     const walls =
         wall && breath.wallsHit
@@ -541,19 +605,42 @@ function aimOf(
     return { origin, shape, reach, walls, body }
 }
 
+// Whether `shape` is a line that ends at the first enemy (the Rush's).
+function stopsAtEnemies(shape: BreathShape): boolean {
+    return shape.kind === "line" && shape.stopsAtEnemies === true
+}
+
+// A line `shape` that stops at enemies (see BreathShape), resolved from
+// `origin` along `facing` in `state`: it ends at the first cell holding an
+// enemy in play, as at the boss's `body`, and has no cells at all when one
+// stands on `origin`.
+function lineToEnemy(
+    state: GameState,
+    origin: Vec2,
+    facing: Vec2,
+    shape: BreathShape,
+    body: ((p: Vec2) => boolean) | undefined
+): ShapeReach {
+    const enemyOn = (p: Vec2) =>
+        state.enemies.some((e) => inPlay(e) && samePos(e.pos, p))
+    if (enemyOn(origin)) return { cells: [], wall: null }
+    const stop = (p: Vec2) => (body?.(p) ?? false) || enemyOn(p)
+    return resolveShape(state.cells, origin, facing, shape, stop)
+}
+
 // The cells player `index`'s breath (player 1's unless given) would hit if
 // it breathed now, nearest first, whether or not it can: the cells its shape
 // reaches (see aimOf) at the level it would fire at, the charge's while
 // charging, else a tap's, 1 (KDA-289). Not the player's own cell for a line
 // or a cone, though enemies there are hit too: the preview shows where the
-// breath goes, and the sprite covers that cell. A breath that acts on walls
-// (BreathDef.wallsHit: the Boar) shows only the walls it would act on, or
-// nothing, since those walls are all it does (with the user, KDA-252).
+// breath goes, and the sprite covers that cell. Then the walls it would act
+// on (BreathDef.wallsHit: the Boar's Rush breaks them). The Rush once broke
+// walls only, and showed only them (KDA-252); since it dashes (KDA-304) it
+// shows its dash too, up to what it would ram.
 export function aimCells(state: GameState, index = 0): Vec2[] {
     const who = state.players[index]
     const { reach, walls } = aimOf(state, who, aimLevel(who.breather))
-    const cells = who.breather.breath.wallsHit ? walls : reach.cells
-    return cells.map((c) => vec2(c.x, c.y))
+    return [...reach.cells, ...walls].map((c) => vec2(c.x, c.y))
 }
 
 // One player's aim preview: its index and the cells its breath would hit.
@@ -575,18 +662,18 @@ export function aimPreviews(state: GameState): AimPreview[] {
 }
 
 // The cells a breath covered, for its event (see "breathed" in events.ts):
-// what its shape reached, or with nothing in reach the walls it acted on
-// that the hook has just opened (the Boar's tunnel), else the player's own
-// cell.
+// what its shape reached, then the walls it acted on that the hook has just
+// opened (the Boar's tunnel), or with neither the player's own cell. The
+// same cells as the aim preview (see aimCells), when the walls did open.
 function coveredCells(
     state: GameState,
     origin: Vec2,
     reach: ShapeReach,
     walls: readonly Vec2[]
 ): Vec2[] {
-    if (reach.cells.length > 0) return reach.cells.map((c) => vec2(c.x, c.y))
     const opened = walls.filter((w) => state.cells[w.y][w.x] !== Cell.wall)
-    if (opened.length > 0) return opened.map((w) => vec2(w.x, w.y))
+    const covered = [...reach.cells, ...opened]
+    if (covered.length > 0) return covered.map((c) => vec2(c.x, c.y))
     return [vec2(origin.x, origin.y)]
 }
 

@@ -15,6 +15,8 @@ export const SfxId = {
     breathOwl: "breath.owl",
     breathSkunk: "breath.skunk",
     breathBoar: "breath.boar",
+    // The Boar's Rush ramming something (KDA-304): a heavy thud.
+    ram: "ram",
     enemyDefeated: "enemyDefeated",
     bossHit: "bossHit",
     bossDefeated: "bossDefeated",
@@ -156,8 +158,30 @@ export const SFX: Readonly<Record<SfxId, readonly Tone[]>> = {
             attack: 0.05,
         },
     ],
-    // Wall-break: a thud and a crumbling crash.
+    // Rush (KDA-304): a quick rising whoosh of hooves over a short growl,
+    // the dash itself. What it rams adds the ram's thud.
     "breath.boar": [
+        {
+            wave: "noise",
+            at: 0,
+            duration: 0.22,
+            freq: 300,
+            freqEnd: 1400,
+            volume: 0.5,
+            attack: 0.04,
+        },
+        {
+            wave: "sawtooth",
+            at: 0,
+            duration: 0.18,
+            freq: 90,
+            freqEnd: 140,
+            volume: 0.18,
+        },
+    ],
+    // A heavy thud and a short crunch (it was the wall-break breath's
+    // sound, KDA-220).
+    ram: [
         {
             wave: "square",
             at: 0,
@@ -169,10 +193,10 @@ export const SFX: Readonly<Record<SfxId, readonly Tone[]>> = {
         {
             wave: "noise",
             at: 0.02,
-            duration: 0.35,
+            duration: 0.3,
             freq: 900,
             freqEnd: 120,
-            volume: 0.6,
+            volume: 0.55,
         },
     ],
     // Two quick rising chirps.
