@@ -236,8 +236,18 @@ export type Breather = {
     cooldown: number
     // While the breath is held to charge it (see chargeTick), the seconds
     // it has been held since the tick of the press; null when it isn't
-    // charging.
+    // charging. Kept, no longer growing, while a charge let go during the
+    // cooldown waits to fire (see fireAt).
     charge: number | null
+    // A charge let go during the cooldown (KDA-295): the level it was let
+    // go at, which it fires at as soon as the cooldown ends; null when none
+    // is waiting.
+    fireAt: number | null
+    // Whether a press is held that started no charge yet, because the
+    // meter couldn't pay for level 1 or a let-go charge was still waiting
+    // to fire (KDA-295): it starts charging as soon as it can, without a
+    // fresh press.
+    armed: boolean
 }
 
 // Tolerance for timers counting down by dt, as in game.ts.
@@ -258,6 +268,8 @@ export function createBreather(breath: BreathDef): Breather {
         energy: 0,
         cooldown: 0,
         charge: null,
+        fireAt: null,
+        armed: false,
     }
 }
 
@@ -270,7 +282,8 @@ export function gainEnergy(breather: Breather) {
 }
 
 // Whether the player has the energy (for a level-1 breath) and is past the
-// cooldown.
+// cooldown: whether a breath would fire now. Charging needs only the energy
+// (see chargeTick).
 export function canBreathe(breather: Breather): boolean {
     return affordable(breather) >= 1 && breather.cooldown <= EPSILON
 }
@@ -285,9 +298,13 @@ export function affordable(breather: Breather): number {
 
 // The level the charge has reached: 1 at the press and one more every
 // CHARGE_SECONDS held, up to MAX_CHARGE or what the meter pays for,
-// whichever is lower. 0 while not charging.
+// whichever is lower. 0 while not charging. A charge let go during the
+// cooldown stays at the level it was let go at (Breather.fireAt).
 export function chargeLevel(breather: Breather): number {
     if (breather.charge === null) return 0
+    if (breather.fireAt !== null) {
+        return Math.max(1, Math.min(breather.fireAt, affordable(breather)))
+    }
     const held = 1 + Math.floor(breather.charge / CHARGE_SECONDS + EPSILON)
     return Math.max(1, Math.min(held, affordable(breather)))
 }
@@ -308,17 +325,25 @@ export type BreathInput = {
 }
 
 // One tick of `who`'s breath input (KDA-289, with the user: hold to
-// charge, let go to fire). A press starts a charge if the player can
-// breathe (see canBreathe); otherwise it is dropped, not kept. Held on, the
-// charge grows a level every CHARGE_SECONDS (see chargeLevel) while the
-// player keeps moving. Letting go fires it at the level reached (see
-// breathe), so a tap fires level 1: on the tick of its press when it was
-// let go within that tick, else on the next. A hold that began while the
-// player couldn't breathe charges nothing, even once it can: only a fresh
-// press starts a charge. A fresh press during a charge means it was let go
-// and pressed again within the tick: the charge fires at its level, then
-// the press is taken as any other (the cooldown usually drops it). `dt` is
-// the tick's length. Returns true if a breath happened.
+// charge, let go to fire). A press starts a charge if the meter pays for
+// level 1, cooling down or not (KDA-295, with the user: the player can hold
+// energy whenever it likes; only firing waits for the cooldown, so a full
+// meter still can't be dumped in a burst). Held on, the charge grows a level
+// every CHARGE_SECONDS (see chargeLevel) while the player keeps moving,
+// during the cooldown too. Letting go fires it at the level reached (see
+// breathe), so a tap fires level 1: on the tick of its press when it was let
+// go within that tick, else on the next. Let go during the cooldown, it
+// waits at the level reached (Breather.fireAt) and fires on the tick the
+// cooldown ends, so no press is silently dropped. A press without the
+// energy for level 1, or while a let-go charge waits, starts no charge
+// then, but held on it starts one as soon as it can (Breather.armed): when
+// dots pay for level 1, or once the waiting charge has fired. Let go first,
+// it is dropped. Only a press arms: a hold whose press the game never saw
+// (the pad's A held from the menu that started it) charges nothing. A
+// fresh press during a charge means it was let go and pressed again within
+// the tick: the charge fires (or waits) at its level, then the press is
+// taken as any other. `dt` is the tick's length. Returns true if a breath
+// happened.
 export function chargeTick(
     state: GameState,
     who: Player,
@@ -327,25 +352,57 @@ export function chargeTick(
 ): boolean {
     const { breather } = who
     let fired = false
-    if (breather.charge !== null) {
+    if (breather.fireAt !== null) {
+        if (breather.cooldown <= EPSILON) fired = fireCharge(state, who)
+    } else if (breather.charge !== null) {
         if (input.breathHeld && !input.breath) {
             breather.charge += dt
             return false
         }
-        const level = chargeLevel(breather)
-        breather.charge = null
-        fired = breathe(state, who, level)
+        fired = letGo(state, who)
     }
-    if (!input.breath || !canBreathe(breather)) return fired
+    if (input.breath) breather.armed = true
+    if (
+        !breather.armed ||
+        breather.charge !== null ||
+        affordable(breather) < 1
+    ) {
+        if (!input.breathHeld) breather.armed = false
+        return fired
+    }
+    breather.armed = false
     breather.charge = 0
     if (input.breathHeld) return fired
-    breather.charge = null
-    return breathe(state, who, 1) || fired
+    return letGo(state, who) || fired
 }
 
-// Drop the breath's charge, if any, without firing it.
+// The charge is let go: it fires at its level now if the cooldown is over,
+// else waits at that level for the cooldown to end (see chargeTick).
+// Returns true if a breath happened.
+function letGo(state: GameState, who: Player): boolean {
+    const { breather } = who
+    if (breather.cooldown <= EPSILON) return fireCharge(state, who)
+    breather.fireAt = chargeLevel(breather)
+    return false
+}
+
+// Fire the charge at its level and end it. Returns true if a breath
+// happened (a refused one ends the charge all the same, as a tap does).
+function fireCharge(state: GameState, who: Player): boolean {
+    const { breather } = who
+    const level = chargeLevel(breather)
+    breather.charge = null
+    breather.fireAt = null
+    return breathe(state, who, level)
+}
+
+// Drop the breath's charge, if any, without firing it, a let-go one
+// waiting for the cooldown included, and forget a held press, so a hold
+// carried on past it charges nothing.
 export function cancelCharge(breather: Breather) {
     breather.charge = null
+    breather.fireAt = null
+    breather.armed = false
 }
 
 // Drop every player's charge without firing: a pause does (see flow.ts).
@@ -1051,7 +1108,9 @@ export type EnergyHud = {
     max: number
     // The breath's cost per charge level, marked on the meter.
     cost: number
-    // Whether a breath would fire now (enough energy, no cooldown).
+    // Whether a breath would fire now (enough energy, no cooldown). A
+    // press while it isn't can still charge (see chargeTick), but firing
+    // waits for the cooldown.
     ready: boolean
     // While the breath charges, the level it has reached (see chargeLevel),
     // which the meter shows; 0 (or left out) otherwise.

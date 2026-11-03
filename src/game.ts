@@ -231,8 +231,8 @@ export type MoveInput = {
     // already released again.
     pressed: Vec2
     // Whether the breath key was newly pressed this tick, even if it was
-    // already released again. A press that can't breathe (too little
-    // energy, cooling down) is dropped, not kept.
+    // already released again. A press during the cooldown fires once it
+    // ends; one without the energy waits only while held (see chargeTick).
     breath?: boolean
     // Whether the breath key is held now. Held after a press, the breath
     // charges; it fires once let go (see chargeTick in breath.ts). Left

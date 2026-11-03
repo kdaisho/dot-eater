@@ -207,12 +207,16 @@ describe("breathing", () => {
         state.players[0].breather.energy = 100
         tick(state, { breath: true })
         expect(fire).toHaveBeenCalledTimes(1)
-        // A press during the cooldown is dropped, not kept for later.
+        // A press during the cooldown waits for it to end (KDA-295), then
+        // fires on that tick.
         run(state, TICK_RATE / 2 - 2)
         tick(state, { breath: true })
-        tick(state)
         expect(fire).toHaveBeenCalledTimes(1)
         expect(state.players[0].breather.energy).toBe(90)
+        tick(state)
+        expect(fire).toHaveBeenCalledTimes(2)
+        expect(state.players[0].breather.energy).toBe(80)
+        // And the next one waits again.
         tick(state, { breath: true })
         expect(fire).toHaveBeenCalledTimes(2)
     })

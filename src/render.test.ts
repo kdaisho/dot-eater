@@ -2143,6 +2143,17 @@ describe("chargeAura", () => {
         expect(chargeAura(b, true)!.alpha).toBe(CHARGE_AURA_FULL_ALPHA)
     })
 
+    it("shows a charge let go during the cooldown, steady, until it fires", () => {
+        const b = breather()
+        b.charge = 4 * CHARGE_SECONDS + 0.5 / CHARGE_FLICKER_HZ
+        b.fireAt = 5
+        expect(chargeAura(b, false)).toEqual({
+            color: RED,
+            alpha: CHARGE_AURA_FULL_ALPHA,
+            scale: CHARGE_AURA_BASE + 4 * CHARGE_AURA_GROWTH,
+        })
+    })
+
     it("is full at the level the meter pays for", () => {
         // 40 energy pays for the Dragon's level 2.
         const b = breather(40)

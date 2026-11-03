@@ -206,8 +206,9 @@ const ARROW_TIP = 0.7
 const ARROW_WIDTH = 0.3
 
 // A player charging its breath (KDA-289) glows (user feedback 2026-11-01:
-// the meter alone was hard to watch while playing): a disc behind its
-// sprite, CHARGE_AURA_BASE times as wide as the sprite at level 1 and
+// the meter alone was hard to watch while playing), during the cooldown
+// too and while a charge let go then waits to fire (KDA-295): a disc behind
+// its sprite, CHARGE_AURA_BASE times as wide as the sprite at level 1 and
 // CHARGE_AURA_GROWTH of the sprite wider each level. In amber like a ready meter, then in the
 // meter's charge red, flickering CHARGE_FLICKER_HZ times a second, once
 // it is fully charged (MAX_CHARGE, or all the meter pays for). With reduced
@@ -1103,9 +1104,13 @@ export function chargeAura(
     if (!full) {
         return { color: COLORS.meterReady, alpha: CHARGE_AURA_ALPHA, scale }
     }
-    // Bright on the first half of each flicker, faint on the second.
+    // Bright on the first half of each flicker, faint on the second; steady
+    // while a charge let go during the cooldown waits to fire (KDA-295: its
+    // held time no longer runs).
     const bright =
-        reducedMotion || (breather.charge * CHARGE_FLICKER_HZ) % 1 < 0.5
+        reducedMotion ||
+        breather.fireAt !== null ||
+        (breather.charge * CHARGE_FLICKER_HZ) % 1 < 0.5
     return {
         color: COLORS.meterCharge,
         alpha: bright ? CHARGE_AURA_FULL_ALPHA : CHARGE_AURA_ALPHA / 2,
