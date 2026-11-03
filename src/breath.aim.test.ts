@@ -131,8 +131,8 @@ describe("aimCells", () => {
         expect(aimCells(aimer("boar", { x: 1, y: 3 }, west))).toEqual([])
     })
 
-    it("marks nothing for the Boar facing open floor, with no wall to break", () => {
-        expect(aimCells(aimer("boar", { x: 1, y: 4 }))).toEqual([])
+    it("marks the Boar's dash on open floor, with no wall to break", () => {
+        expect(xy(aimCells(aimer("boar", { x: 1, y: 4 })))).toEqual([[2, 4]])
     })
 
     it("goes through a wrap tunnel", () => {
@@ -259,13 +259,7 @@ describe("aimCells", () => {
             const state = aimer(animal, at, facing)
             charge(state.players[0].breather)
             const aimed = aimCells(state)
-            const breathed = breathe(state)
-            if (animal === "boar" && at.y === 4) {
-                // Nothing to break: refused, as nobody is in the way.
-                expect(breathed).toBe(false)
-                return
-            }
-            expect(breathed).toBe(true)
+            expect(breathe(state)).toBe(true)
             const event = state.events.find((e) => e.type === "breathed")
             expect(event?.type === "breathed" && xy(event.cells)).toEqual(
                 xy(aimed)

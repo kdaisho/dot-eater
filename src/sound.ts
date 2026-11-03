@@ -25,6 +25,11 @@ export function soundForEvent(event: GameEvent): SfxId | undefined {
             return breathSfx(event.animal)
         case "enemyDefeated":
             return SfxId.enemyDefeated
+        case "rammed":
+            return SfxId.ram
+        case "knockedFlying":
+            // The ram's thud and the defeat's chirps say it all.
+            return undefined
         case "bossHit":
             return SfxId.bossHit
         case "bossDefeated":

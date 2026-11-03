@@ -148,11 +148,12 @@ describe("a breath on the other player in versus", () => {
         expect(stunned(state.players[1])).toBe(true)
     })
 
-    it("fires even when the hook would refuse (the Boar, no wall)", () => {
+    it("fires even when the hook would refuse (the Boar, at the outer wall)", () => {
         const state = duel(BREATHS[AnimalId.boar], vec2(3, 1))
-        // Nothing to break and nobody there: refused, nothing spent.
+        state.players[0].breather.facing = vec2(-1, 0)
+        // Facing the outer wall, nobody there: refused, nothing spent.
         expect(breathe(state, state.players[0])).toBe(false)
-        state.players[1].character.pos = vec2(2, 1)
+        state.players[1].character.pos = vec2(1, 1)
         expect(breathe(state, state.players[0])).toBe(true)
         expect(state.players[0].breather.cooldown).toBeGreaterThan(0)
     })

@@ -57,6 +57,10 @@ export type Boss = {
     maxHealth: number
     // Seconds left of the white flash after a hit (0 for none).
     flash: number
+    // Seconds left of a stagger (KDA-304: the Boar's Rush rammed it), during
+    // which it makes no move (see step in game.ts); 0 for none. Its breath
+    // goes on as usual.
+    stagger: number
     // At 0 health it is gone for good.
     defeated: boolean
     // Its breath attack (see bossBreath.ts).
@@ -81,6 +85,7 @@ export function createBoss(
         health,
         maxHealth: health,
         flash: 0,
+        stagger: 0,
         defeated: false,
         breath: createBossBreath(breath),
     }
@@ -136,9 +141,21 @@ export function damageBoss(
     }
 }
 
-// Count the flash down by `dt` seconds.
+// Count the flash and the stagger down by `dt` seconds.
 export function tickBoss(boss: Boss, dt: number) {
     boss.flash = Math.max(0, boss.flash - dt)
+    boss.stagger = Math.max(0, boss.stagger - dt)
+}
+
+// Stagger the boss for `seconds` (KDA-304, the Boar's Rush): it makes no
+// move until they are up, though a glide it is in waits where it is drawn
+// and its breath goes on. Our call over pushing it back a cell, which would
+// need the whole 2x2 footprint to fit there: a stagger always works and
+// gives the rammer the moment it needs to back off. A longer stagger
+// already running is kept.
+export function staggerBoss(boss: Boss, seconds: number) {
+    if (boss.defeated) return
+    boss.stagger = Math.max(boss.stagger, seconds)
 }
 
 // ---- Movement ----

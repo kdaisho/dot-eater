@@ -931,7 +931,8 @@ export const SCENES: Readonly<Record<SceneName, SceneDef>> = {
         level: 0,
         animals: ["boar"],
         mode: "solo",
-        seed: 1,
+        // Re-picked by search for the Rush (KDA-304).
+        seed: 30,
         brains: () => [charged(4, breaker(3.5, 240, 80, 4), 0.6)],
         isKey: (moments) => count(moments, "wallBroken") > 0,
         tail: 240,

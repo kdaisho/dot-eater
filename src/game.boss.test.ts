@@ -228,18 +228,18 @@ describe("breathing at the boss", () => {
         }
     )
 
-    it("lets the Boar's breath hit it with no wall to break", () => {
+    it("lets the Boar's Rush ram it, with no wall to break", () => {
         const state = bossGame(vec2(1, 2), vec2(2, 1), { breath: BREATHS.boar })
         tick(state, { breath: true })
         expect(state.boss!.health).toBeCloseTo(BOSS_HEALTH - tap(BREATHS.boar))
         expect(state.tiles).toEqual([])
-        // With the boss elsewhere, the same breath refuses for free.
+        // With the boss out of its reach, the same Rush only dashes a cell.
         const missed = bossGame(vec2(1, 2), vec2(5, 1), {
             breath: BREATHS.boar,
         })
         tick(missed, { breath: true })
         expect(missed.boss!.health).toBe(BOSS_HEALTH)
-        expect(missed.players[0].breather.energy).toBe(BREATHS.boar.maxEnergy)
+        expect(missed.players[0].character.pos).toEqual(vec2(2, 2))
     })
 
     it("damages it once however many of its cells a breath covers", () => {

@@ -83,9 +83,9 @@ export const ANIMALS: Readonly<Record<AnimalId, AnimalInfo>> = {
         id: AnimalId.boar,
         name: "Boar",
         emoji: "🐗",
-        breathName: "Wall-break breath",
+        breathName: "Rush",
         breathText:
-            "Breaks the wall in front of you. It grows back after 10 s. Outer walls hold.",
+            "Dash ahead and ram: enemies fly off and are defeated, walls break for 10 s. Charge to go further.",
         statText: "Costly breath, slower movement",
     },
 }

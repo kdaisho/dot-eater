@@ -650,10 +650,9 @@ describe("breaths in co-op", () => {
         expect(
             step(state, TICK, [{ ...IDLE, breath: true }, IDLE], fixedRandom(0))
         ).toBeNull()
-        // It fired (the Boar's refuses: there is no wall in front, only
-        // the partner).
-        const spent = p1.breather.energy < p1.breather.breath.maxEnergy
-        expect(spent).toBe(animal !== "boar")
+        // It fired (the Boar's Rush dashes on through the partner's cell:
+        // co-op players don't bump by default).
+        expect(p1.breather.energy).toBeLessThan(p1.breather.breath.maxEnergy)
         expect(p2.character.pos).toEqual(vec2(2, 1))
         expect(p2.character.lastPos).toEqual(vec2(2, 1))
         expect(p2.out).toBe(false)

@@ -5,7 +5,8 @@ import type { GameState } from "./game"
 import type { Particles } from "./particles"
 import { shakeEnabled, type Settings } from "./settings"
 import { SHAKES, type Shake } from "./shake"
-import { vec2, type Vec2 } from "./vec2"
+import { loopPos } from "./level"
+import { samePos, vec2, type Vec2 } from "./vec2"
 
 // Particles and screen shake for what happened in a tick (KDA-213): which
 // burst and how much shake each game event (events.ts) gets. Pure apart
@@ -50,6 +51,22 @@ export function effectsForEvent(
         case "enemyDefeated":
             particles.burst("defeat", event.at)
             shake.add(SHAKES.hit)
+            return
+        case "rammed":
+            particles.burst("ram", event.at, { direction: event.facing })
+            shake.add(SHAKES.ram)
+            return
+        case "knockedFlying":
+            // A dust trail on every cell from where it was rammed up to
+            // where it slammed (whose defeat poof is its own event's).
+            for (const cell of flightCells(
+                event.from,
+                event.to,
+                event.facing,
+                state
+            )) {
+                particles.burst("flight", cell, { direction: event.facing })
+            }
             return
         case "bossHit":
             particles.burst("bossHit", bossCentre(event.at))
@@ -119,6 +136,27 @@ export function applyMotion(
 ) {
     targets.particles.reduced = prefersReducedMotion
     targets.shake.enabled = shakeEnabled(settings, prefersReducedMotion)
+}
+
+// The cells from `from` along `facing` up to `to`, `from` included and
+// `to` not (it gets the defeat's poof), the short way round through
+// tunnels.
+function flightCells(
+    from: Vec2,
+    to: Vec2,
+    facing: Vec2,
+    state: GameState
+): Vec2[] {
+    const { cells } = state
+    const passed: Vec2[] = []
+    let p = from
+    // A flight is never longer than the map is wide and tall.
+    const most = cells.length + cells[0].length
+    while (!samePos(p, to) && passed.length < most) {
+        passed.push(p)
+        p = loopPos(cells, vec2(p.x + facing.x, p.y + facing.y))
+    }
+    return passed
 }
 
 // The middle of the boss's 2x2 footprint, from its top-left cell, in cell

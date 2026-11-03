@@ -29,7 +29,7 @@ export type GameEvent =
     // `at` is the player's cell and `facing` the unit step it breathed
     // along. `cells` are the cells the breath covered as it was breathed
     // (its shape against the maze, ending at a boss's body), nearest first;
-    // with none in reach, the wall it opened if it opened one, else `at`.
+    // then the walls it opened, if any (the Boar's); with neither, `at`.
     | {
           type: "breathed"
           player: number
@@ -47,6 +47,21 @@ export type GameEvent =
           enemy: number
           at: Vec2
           split: boolean
+      }
+    // A player's dash (KDA-304, the Boar's Rush; see BreathHit.dash in
+    // breath.ts) rammed something on `at`: an enemy it knocks flying, a
+    // wall, or the boss's body. `facing` is the unit step it rushed along.
+    | { type: "rammed"; player: number; at: Vec2; facing: Vec2 }
+    // Enemies a player's Rush rammed flew from `from` to `to` along
+    // `facing`, where they slammed to a stop and were defeated (each
+    // reports its enemyDefeated on `to` after this; see knock.ts). Only
+    // for a flight of a cell or more.
+    | {
+          type: "knockedFlying"
+          player: number
+          from: Vec2
+          to: Vec2
+          facing: Vec2
       }
     // A player's breath hurt the boss without finishing it; `health` is
     // what it has left.

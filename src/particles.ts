@@ -67,6 +67,8 @@ export type BurstKind =
     | "bossDefeat"
     | "regrow"
     | "drop"
+    | "ram"
+    | "flight"
 
 export const BURSTS: Readonly<Record<BurstKind, ParticleLook>> = {
     // A few small crumbs where a dot was eaten.
@@ -144,6 +146,31 @@ export const BURSTS: Readonly<Record<BurstKind, ParticleLook>> = {
         size: 0.09,
         gravity: 3,
         drag: 2,
+    },
+    // A spray of brown and amber chunks where the Boar's Rush rams
+    // something (KDA-304): an enemy, a wall or the boss.
+    ram: {
+        colors: ["#78350f", "#a16207", "#d97706", "#57534e"],
+        count: 12,
+        life: 0.4,
+        speed: 3.5,
+        spread: Math.PI * 2,
+        size: 0.13,
+        jitter: 0.2,
+        drag: 3,
+        shape: "square",
+    },
+    // A streak of grey dust on each cell an enemy the Rush rammed flew over
+    // (KDA-304), trailing behind it.
+    flight: {
+        colors: ["#9ca3af", "#d6d3d1", "#78716c"],
+        count: 3,
+        life: 0.35,
+        speed: 1.5,
+        spread: 0.6,
+        size: 0.1,
+        jitter: 0.3,
+        drag: 3,
     },
     // A big, colourful blast when the boss goes down.
     bossDefeat: {
