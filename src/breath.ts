@@ -239,6 +239,10 @@ export type BreathDef = {
     // How far the player sees in fog, as a factor of the level's radius
     // (see FogRule in level.ts). Leave it out for 1.
     sightScale?: number
+    // The boss's damage from this breath, as a factor of the usual (see
+    // bossDamage in boss.ts): above 1 for a breath that has to get right up
+    // against the boss to land. Leave it out for 1.
+    bossDamageScale?: number
     // How the breath looks in particles (see particles.ts): a burst on each
     // cell it strikes, flying along the facing. Leave it out for none.
     particles?: ParticleLook
@@ -459,9 +463,10 @@ export function cancelCharges(state: GameState) {
 // wall would, except that its cells are covered: the big body takes the
 // breath. If any of the cells the breath strikes (as for enemies: the
 // origin too for a line, a cone or a spread) is under the boss, it takes
-// bossDamage of the energy the breath spends, once however many of its
-// cells are struck (so a charged breath hurts it as much as the taps its
-// energy pays for, KDA-289), and the breath counts as fired even if the
+// bossDamage of the energy the breath spends (times the breath's
+// bossDamageScale), once however many of its cells are struck (so a
+// charged breath hurts it as much as the taps its energy pays for,
+// KDA-289), and the breath counts as fired even if the
 // hook refused: it hit something.
 export function breathe(
     state: GameState,
@@ -478,6 +483,7 @@ export function breathe(
     // drawn positions), so they hit enemies there too, first.
     const struck = aimsAhead(shape) ? [origin, ...reach.cells] : reach.cells
     const spent = breath.cost * at
+    const toBoss = bossDamage(spent) * (breath.bossDamageScale ?? 1)
     const enemies = struck.flatMap((cell) =>
         state.enemies.filter((e) => inPlay(e) && samePos(e.pos, cell))
     )
@@ -521,14 +527,7 @@ export function breathe(
             return moved
         },
         knock: (rammed, step, distance, bossShare) => {
-            knockFlying(
-                state,
-                who,
-                rammed,
-                step,
-                distance,
-                bossDamage(spent) * bossShare
-            )
+            knockFlying(state, who, rammed, step, distance, toBoss * bossShare)
         },
         staggerBoss: (seconds) => {
             if (state.boss) staggerBoss(state.boss, seconds)
@@ -562,7 +561,7 @@ export function breathe(
         facing: vec2(facing.x, facing.y),
         cells: coveredCells(state, origin, reach, walls),
     })
-    if (bossHit) damageBoss(state, bossDamage(spent), who)
+    if (bossHit) damageBoss(state, toBoss, who)
     for (const other of stuns) {
         stun(other)
         const { pos } = other.character

@@ -34,6 +34,7 @@ import {
     BROKEN_WALL,
     CHAIN_BOSS_SHARE,
     knockDistance,
+    RAM_BOSS_SCALE,
     RAM_STAGGER,
     rushRange,
     tunnel,
@@ -666,7 +667,7 @@ describe("the Boar's Rush", () => {
             expect(defeats(state)).toEqual([vec2(5, 1)])
             expect(CHAIN_BOSS_SHARE).toBe(0.25)
             expect(boss.health).toBeCloseTo(
-                BOSS_HEALTH - bossDamage(40) * CHAIN_BOSS_SHARE
+                BOSS_HEALTH - bossDamage(40) * RAM_BOSS_SCALE * CHAIN_BOSS_SHARE
             )
             // Not staggered: only a ram does that.
             expect(boss.stagger).toBe(0)
@@ -686,7 +687,9 @@ describe("the Boar's Rush", () => {
             // Range 3 from x 1 ends at its body (x 4): the Boar stops
             // against it, at x 3.
             expect(state.players[0].character.pos).toEqual(vec2(3, 1))
-            expect(boss.health).toBeCloseTo(BOSS_HEALTH - bossDamage(80))
+            expect(boss.health).toBeCloseTo(
+                BOSS_HEALTH - bossDamage(80) * RAM_BOSS_SCALE
+            )
             expect(boss.stagger).toBe(RAM_STAGGER)
             expect(state.events).toContainEqual({
                 type: "rammed",
