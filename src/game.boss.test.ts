@@ -127,7 +127,11 @@ function bossGame(
 
 // The damage a tap (level 1) of `breath` does: its cost over 25, the Owl
 // 0.4, the Dragon, Penguin and Boar 0.8, the Skunk 1.2.
-const tap = (breath: BreathDef) => bossDamage(breath.cost)
+// A breath's boss damage for `energy` spent, its bossDamageScale included
+// (the Boar's Rush hits harder, KDA-306).
+const toBoss = (breath: BreathDef, energy: number) =>
+    bossDamage(energy) * (breath.bossDamageScale ?? 1)
+const tap = (breath: BreathDef) => toBoss(breath, breath.cost)
 
 // How far the player's drawn position is from the square the boss's cell
 // centres span, as collisions measure it.
@@ -223,7 +227,9 @@ describe("breathing at the boss", () => {
             expect(state.players[0].breather.energy).toBe(
                 breath.maxEnergy - spent
             )
-            expect(state.boss!.health).toBeCloseTo(BOSS_HEALTH - spent / 25)
+            expect(state.boss!.health).toBeCloseTo(
+                BOSS_HEALTH - toBoss(breath, spent)
+            )
             expect(bossDamage(300)).toBe(BOSS_HEALTH)
         }
     )

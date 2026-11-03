@@ -74,6 +74,12 @@ export function knockDistance(level: number): number {
 // little; a placeholder to tune at preview).
 export const CHAIN_BOSS_SHARE = 0.25
 
+// How much harder than other breaths a ram hits the boss, for the energy
+// it spends (KDA-306, with the user: the Boar has to dash right up
+// against the boss to land it; a placeholder to tune at preview). The
+// chain's share (CHAIN_BOSS_SHARE) is of this harder ram.
+export const RAM_BOSS_SCALE = 2
+
 // Seconds the boss is staggered (makes no move) after being rammed, so the
 // Boar, right against it, has a moment to back off (KDA-304; a
 // placeholder to tune at preview).
@@ -90,8 +96,8 @@ export const RAM_STAGGER = 0.6
 //   defeated where it slams, shoving what is in its way along (see
 //   knock.ts). One on the Boar's own cell is rammed where it stands;
 // - the boss's body: the Boar stops against it, the boss takes the
-//   breath's damage as any breath's (the engine's, by the energy spent) and
-//   is staggered for RAM_STAGGER;
+//   breath's damage by the energy spent, RAM_BOSS_SCALE times what other
+//   breaths do, and is staggered for RAM_STAGGER;
 // - an inner wall: it breaks, as the old breath's did (see tunnel: a wall a
 //   level in a row, the outer wall holds, each grows back after 10 s), and
 //   the Boar carries on into the opening as far as its reach goes;
@@ -112,6 +118,7 @@ export const boar: BreathDef = {
     duration: OPEN_SECONDS,
     maxEnergy: 100,
     speedScale: 0.875,
+    bossDamageScale: RAM_BOSS_SCALE,
     // Dust and chunks kicked up along the dash (or from the walls it broke,
     // when it broke in from right against them), falling back.
     particles: {

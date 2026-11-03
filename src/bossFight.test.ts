@@ -122,12 +122,15 @@ describe.each(BOSS_STAGES)("the %s boss", (_, data) => {
         it.each(ANIMAL_IDS)("falls to the %s's full charges", (animal) => {
             const state = arena(data, difficulty, animal)
             const health = state.boss!.health
-            const { cost, maxEnergy } = BREATHS[animal]
+            const { cost, maxEnergy, bossDamageScale = 1 } = BREATHS[animal]
             const charged = Math.min(MAX_CHARGE, Math.floor(maxEnergy / cost))
             const breaths = fight(state, CHARGED_REACH, charged)
             // Every one of them landed: as many as its energy needs.
             expect(breaths).toBe(
-                Math.ceil(health / bossDamage(cost * charged) - 1e-9)
+                Math.ceil(
+                    health / (bossDamage(cost * charged) * bossDamageScale) -
+                        1e-9
+                )
             )
         })
 
@@ -136,9 +139,12 @@ describe.each(BOSS_STAGES)("the %s boss", (_, data) => {
             (animal) => {
                 const state = arena(data, difficulty, animal)
                 const health = state.boss!.health
+                const { cost, bossDamageScale = 1 } = BREATHS[animal]
                 const breaths = fight(state, TAP_REACH[animal], 1)
                 expect(breaths).toBe(
-                    Math.ceil(health / bossDamage(BREATHS[animal].cost) - 1e-9)
+                    Math.ceil(
+                        health / (bossDamage(cost) * bossDamageScale) - 1e-9
+                    )
                 )
             }
         )
