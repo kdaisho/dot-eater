@@ -1,31 +1,25 @@
 # Handover
 
-Last updated: 2026-11-01. Read `CLAUDE.md` first for project conventions.
+Last updated: 2026-11-02. Read `CLAUDE.md` first for project conventions.
 
 ## Where things stand
 
 - **Done and live:**
     - Organize code & tooling (#2–#12), engine (#14–#21), characters & breaths (#37–#43), stages (#23–#34, #44, #46), controllers & 2-player (#49–#52), polish (#55–#66).
     - The "harder and more exciting" upgrade (#67–#97, KDA-257–287) and tougher enemies (#98–#103, KDA-288–293).
-    - Presentation (2026-10-31 to 11-01, no Linear issues): recorded stage music (#105, trims #109), the Gold opening before the title (#106), the end roll after the story ending (#107, #108, #110, UFO spotlight #114).
-    - Admin debug mode (#111): `#admin` opens a panel; the passphrase opens every stage and stops saving clears. The passphrase is in the env var `ADMIN_PASSPHRASE` (`.env.local` and the repo secret); only its salted hash ships. Never put it in code, docs or chat.
-    - iOS sound and mute (#113): sound plays in iOS silent mode (`navigator.audioSession.type = "playback"`, iOS 17+ only); a 🔊/🔇 button (`muteButton.ts`, `#mute`) on every screen, unmuted by default.
-    - User feedback round (#115, #116):
-        - Dragon fire is a forward **spread**: round corners, split at junctions, each branch stops at the first enemy it defeats. Reach 2 for a tap, +1 a level, 6 at level 5 (`fireRange`; the user found 3–7 too strong).
-        - Touch: a flick keeps the player running with no finger down; a flick opposite the motion stops it; a flick to the side turns at the next opening. Keys, pads and the D-pad still move only while held.
-    - Second feedback round (#117, #118, #120, #121):
-        - The Owl sees 1.5× as far in fog (`BreathDef.sightScale`; each player has its own fog light), so 6 cells on stages 4 and 8.
-        - A charging player glows (`chargeAura` in `render.ts`): amber, growing per level, red and flickering at full charge.
-        - Debug mode shows a red **DEBUG MODE** badge top left (`adminBadge.ts`) with a Clear button that turns it off and forgets it.
-        - On a controller, B goes back on every menu (`GamepadSource.setMenus`, `menuButtonsFor`); Start still does. Hints say "Esc or B to go back".
-- **State:** `main` at `b9d4690`, deploy green, 3229 tests passing (run 2026-11-01 on #120 + #121 combined).
-- **Open PRs:** only [#122](https://github.com/kdaisho/dot-eater/pull/122) (the end roll's UFO spotlight), opened by another session. Don't touch it unless the user asks. The promo PRs (#63, #64, #66, #112) are no longer open.
+    - Presentation (no Linear issues): recorded music (#105, #109), the Gold opening (#106), the end roll (#107, #108, #110, #114, #122), admin debug mode (#111, #120), iOS sound and mute (#113), two feedback rounds (#115–#121).
+    - **Refinement milestone (2026-11-02, KDA-294–305, PRs #124–#132), all merged:**
+        - Punch and guard removed (#127, KDA-294). The breath can be charged during the cooldown; a let-go charge fires when the cooldown ends (#124, KDA-295). The Tengu moves 3.5–4 cells/s, uncapped (#125, KDA-296). The clear jingle waits for the glide into the last dot (#126, KDA-302). "Quit to title" on every pause menu (#128, KDA-305).
+        - The Boar's breath is **Rush** (#129, KDA-304): dash 1–3 cells, rammed enemies fly 2–6 cells and are defeated on the slam, chain pushes, walls break, the boss is staggered 0.6 s. `bossFight.test.ts` proves every animal can beat both bosses.
+        - Pixel sprites replace all character emoji (#130, KDA-297/298/300): variant C of everything, Kitsune (stage 5) and the opening's final boss (stage 10). Per-stage pixel walls, floors, dots, fog tints and breath-effect tiles (#131, KDA-299/300).
+        - Boss defeats (#132, KDA-301/303): Kitsune shatters (2.0 s), the final boss dies in an explosion chain (2.5 s), then everyone hops with hearts over the freed enemies (2.4 s).
+- **State:** `main` at `dceb688`, deploy run triggered by #132. 3508 tests passing on #132 (CI green). Open PRs: none.
+- **Not yet play-tested by the user:** all of the Refinement work. A preview of `main` runs at `http://127.0.0.1:5241/` (worktree `.claude/worktrees/preview-refine`, `pnpm dev --port 5241 --strictPort --host`; LAN `http://192.168.25.55:5241/`). It may be gone in a new session: restart it the same way after `git checkout --detach origin/main`.
 
 ### Start here (new session)
 
-1. Ask the three open questions below if the user hasn't answered them.
-2. Offer a preview of `main` for tuning (see "Previews"), and collect feedback on the placeholders listed below.
-3. Ship each piece of feedback as its own small PR, preview it, and merge on the user's go-ahead.
+1. Offer the user a preview of `main` and collect feedback on the Refinement work, especially the placeholders below.
+2. File each piece of feedback as a Linear issue in project Dot Eater (milestone Refinement, or a new one), ship each as its own small PR, merge when CI and tests are green.
 
 ## Code map
 
@@ -52,28 +46,34 @@ The older modules are listed in `CLAUDE.md`. Newer or reshaped ones:
 
 ## Open questions and follow-ups
 
-- **Asked 2026-10-31, no answer recorded:**
-    - **Boar charge cost:** a full charge at a single wall spends all 100 energy. Recommend paying only for walls broken.
-    - **Touch Breath button:** show the charge level while held? (#118's glow may answer this; ask.)
-    - **Boar breaking the outer wall:** A (dead-end notch, easy) or B (bores through and wraps, medium). Recommend B, own PR.
-- **Tuning to judge at preview** (all placeholders): Dragon spread reach and cost (20 a level); the charge glow's size, colours, flicker (`CHARGE_AURA_*`); damage numbers; charge 0.25 s per level; enemy speed scale; breather and interceptor numbers.
-- **Known gaps:**
-    - iOS before 17 has no `audioSession`, so silent mode still mutes the game there.
-    - A tab open on an old build during a deploy can cut stage 6+ progress from the save.
-    - Stage 7's middle patroller crosses the spawn corridor. `README.md` is out of date.
+- **Tuning to judge at preview** (all placeholders):
+    - Rush: reach `rushRange` 1,2,2,3,3; knock flight level+1; boss stagger `RAM_STAGGER` 0.6 s; chain into boss `CHAIN_BOSS_SHARE` 0.25; ram damage same per energy as other breaths (should the Boar get a bonus for its short reach?).
+    - `TENGU_SPEED` 3.5/3.65/3.8/4: at Easy it equals the Boar, and stage 1's first enemy is near player speed.
+    - A charge let go during the cooldown fires at its release level (it doesn't keep growing).
+    - A short silence (up to one glide) between the music stopping and the clear jingle.
+    - Older: Dragon spread reach and cost, charge glow, damage numbers, enemy speed scale, breather and interceptor numbers.
+- **Visual questions to ask at preview:**
+    - A frozen enemy shows both the ice-cube badge and the ice-block frame tile (`breaths/penguin.ts` FROZEN). Keep both or drop one?
+    - Quit from stage mode goes to the title; should it go to the stage select instead?
+    - End roll: 15 cards in a 5×3 grid is tight vertically; staff credits now show ~3.3 s each.
+    - Defaults we chose (user didn't answer): sprite outline on, light outline on dark floors (stages 8–10), Oni blue, walls fill the cell, per-stage fog tint, regrow markers, tunnel marks.
+- **Follow-ups not filed:** the per-dot eat sound and sparkle fire ~0.125 s before the sprite reaches the dot (KDA-302 left it). Remaining emoji: mute button, touch Breath button 💨, menu title icons, versus 💫/🛡️ badges.
+- **Known gaps:** iOS before 17 has no `audioSession`; a tab on an old build during a deploy can cut stage 6+ progress; stage 7's middle patroller crosses the spawn corridor; `README.md` is out of date.
+- **Promo package (`video/`, another session's):** its tests run in our suite, so our PRs re-recorded scenes: the punch and guard scenes are deleted, promo3's fight is one Breather shot, the dragon scene's seed is 36, the boar scene's is 30, and the boss scene ends mid-outro. Tell that session's owner (the user) if asked.
 
 ## Decisions already made
 
-All are in `docs/decisions.md` by topic (Breaths: Energy, Charge, the five breaths, Fog; Enemies: Punch and guard (removed, KDA-294), Spread rule, Interceptor, Breather). With the user this round:
+All are in `docs/decisions.md` by topic. With the user in the Refinement round (settled):
 
-- **Dragon:** spreading fire that can't pass enemies (each branch stops at one), reach 2–6. Settled after play.
-- **Touch:** flick to run, flick opposite to stop, flick sideways to turn. Only touch latches; other inputs are hold-to-move.
-- **Mute button:** on every screen, default unmuted.
-- **Owl:** sees 1.5× as far in fog. **Charge glow:** a visual on the character so players needn't watch the meter (look was our call; the user approved the merge). **Debug badge:** clearly labelled, with Clear. **Pad Back:** B, as on consoles (our call over a cursor-reachable Back button; offered, not asked for).
+- **Punch and guard:** removed. **Breath:** keep the cooldown for firing so the boss can't be burst; only charging ignores it.
+- **Tengu:** about as fast as the animals. **Boar:** Rush, and a rammed enemy is defeated on the slam; shoved enemies are only pushed; a shoved player takes no damage in co-op, a real hit in versus; a boss hit by a flying enemy takes a little damage.
+- **Sprites:** variant C of every character; Owl C with bigger 3×3 pupils. **Mid-boss:** Kitsune, tails show its health. **Final boss:** the opening's boss. **Stage styles:** 1 C, 2 C, 3 B, 4 A, 5 A, 6 B, 7 A, 8 B, 9 C, 10 B (KDA-299 has the names).
+- **Boss defeats:** Kitsune "freeze-frame and burst", final boss "explosion chain", then everyone hops for joy. Design pages: sprites https://claude.ai/artifact/7iB8DBTZm6timchYVZDcja, stages https://claude.ai/artifact/4iQjJ92S949GWFckFmGZPP, defeats https://claude.ai/artifact/GPAWjs8h2xnNsN9eTFmUHL.
 
 ## How we work
 
-- **Merging:** the user's standing rule: merge once CI is green and tests pass, with merge commits (`gh api -X PUT repos/kdaisho/dot-eater/pulls/N/merge -f merge_method=merge`). For gameplay or visual changes, give the user a local preview first and merge on their go-ahead. Before deleting a branch, check `pulls?state=open&base=<branch>` is empty, then `gh api -X DELETE .../git/refs/heads/<branch>`.
+- **Merging:** the user's standing rule: merge once CI is green and tests pass, with merge commits (`gh api -X PUT repos/kdaisho/dot-eater/pulls/N/merge -f merge_method=merge`). In the Refinement round the user said to merge gameplay and visual PRs on green too, and preview afterwards; ask if unsure for a new round. Before deleting a branch, check `pulls?state=open&base=<branch>` is empty, then `gh api -X DELETE .../git/refs/heads/<branch>`.
+- **Design choices go to the user as Artifact pages** with A/B/C variants (scratchpad HTML, read before publishing, then `Artifact` publish); record the picks in the Linear issue.
 - **Overlapping PRs:** merge one at a time; recheck `mergeable_state` (it reads `null`/`unknown` for a few seconds after a merge) and run tests on the combination. A `dirty` PR gets no CI run.
 - **Previews:** a detached worktree (`git worktree add --detach .claude/worktrees/preview-N origin/<branch>`, merge the other PR's branch locally, `pnpm install`), then `pnpm dev --port <own port> --strictPort --host`. Never commit preview edits.
     - **Use a port no other session uses and give the user `127.0.0.1`, not `localhost`.** Another session's server bound to `[::1]:5199` while ours held `*:5199`; `localhost` resolves to `::1` first, so the user tested the wrong build. Check with `lsof -nP -iTCP:<port> -sTCP:LISTEN`.
