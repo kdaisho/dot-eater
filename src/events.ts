@@ -8,10 +8,10 @@ import type { Vec2 } from "./vec2"
 //
 // `step` (game.ts) empties GameState.events at its start and adds one
 // event per occurrence as it happens, in the order it happens. Nothing else
-// clears it, and `settle` (the outro) adds nothing. Main reads a game's
-// events once after each tick with takeEvents, which also empties the list,
-// so a tick that doesn't step the game (pause, the outro, menus) reports
-// nothing new.
+// clears it, and `settle` (the outro) adds only the gameWon of a last dot
+// (see GameState.winHeld). Main reads a game's events once after each tick
+// with takeEvents, which also empties the list, so a tick that doesn't step
+// the game (pause, menus) reports nothing new.
 //
 // `player` is always a player's index (player 1 is 0). `at` is a cell (the
 // top-left one of the boss's 2x2 footprint), for placing effects, except
@@ -123,7 +123,9 @@ export type GameEvent =
       }
     // The stage is cleared: the game is won. In versus this is the end of
     // a round; whether it also ends the match is up to flow.ts (the next
-    // screen is roundResult or matchResult).
+    // screen is roundResult or matchResult). Won by the last dot, it comes
+    // from the outro once the players' glides are done (see settle in
+    // game.ts); won by defeating the boss, on that tick.
     | { type: "gameWon" }
     // The game is lost (never in versus).
     | { type: "gameLost" }

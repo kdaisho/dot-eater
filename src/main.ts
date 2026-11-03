@@ -465,7 +465,7 @@ const loop = createLoop({
 // One logic tick: advance the screen machine with player 1's input, then
 // clear this tick's press edges, so a press is seen by exactly one tick (and
 // one screen). A boss defeated during the tick gets its burst of confetti
-// at once, mid-game. What the game step reported goes to onGameEvents.
+// at once, mid-game. What the game reported goes to onGameEvents.
 function tick(dt: number) {
     const game = gameOf(screen)
     const boss = game?.boss
@@ -520,8 +520,8 @@ function endRollClock(): Pick<FlowDeps, "endRollClock"> {
     return seconds === undefined ? {} : { endRollClock: seconds }
 }
 
-// What happened in the tick's game step, if it stepped the game (see
-// events.ts); empty otherwise. Sound (KDA-212) and particles and screen
+// What happened in the tick's game step, if it stepped the game, or the
+// outro's held stage clear (see events.ts); empty otherwise. Sound (KDA-212) and particles and screen
 // shake (KDA-213) hook in here.
 function onGameEvents(events: readonly GameEvent[], game: GameState) {
     playEventSounds(audio, events)

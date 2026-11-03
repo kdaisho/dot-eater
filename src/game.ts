@@ -131,6 +131,11 @@ export type GameState = {
     // What happened in the latest tick, in order (see events.ts). `step`
     // empties it first.
     events: GameEvent[]
+    // Whether the game was won by eating the last dot and its gameWon event
+    // waits for the outro (see settle), so the stage clear sound comes as
+    // the players are drawn on their last cells, not as the last move
+    // starts. False otherwise: a boss defeat reports gameWon at once.
+    winHeld: boolean
     // The eaten dots growing back, on a level with rules.regrowDots (see
     // regrow.ts); null on one without.
     regrow: Regrow | null
@@ -331,6 +336,7 @@ export function createGameState(
             enemies: enemySpawns,
         },
         events: [],
+        winHeld: false,
         regrow: createRegrow(level.rules.regrowDots, cells),
         splitterDrops: level.rules.splitterDrops ?? false,
         guard: difficulty ? GUARD[difficulty] : null,
@@ -1151,7 +1157,10 @@ export function step(
     }
 
     const outcome = checkEnd(state, start)
-    if (outcome) {
+    // The last dot is eaten as the move into its cell starts, a glide
+    // before the eater is drawn there: its gameWon waits for settle.
+    if (outcome === "won" && boss === null) state.winHeld = true
+    else if (outcome) {
         emit(state, { type: outcome === "won" ? "gameWon" : "gameLost" })
     }
     return outcome
@@ -1176,7 +1185,8 @@ function bossChaseStep(
 // alone). Nobody moves and nothing else changes (cells, score, health,
 // positions; an enemy a short knock glides out only turns round, see
 // turnKnock in punch.ts). Returns true once every player's glide is
-// complete, i.e. the players are drawn on their cells.
+// complete, i.e. the players are drawn on their cells; a gameWon held back
+// for the last dot (GameState.winHeld) is reported then, once.
 export function settle(state: GameState, dt: number): boolean {
     const boss = state.boss ? [state.boss] : []
     const gliders = [
@@ -1192,7 +1202,14 @@ export function settle(state: GameState, dt: number): boolean {
     // turnKnock in punch.ts).
     const crowd = state.enemies.filter(inPlay)
     for (const enemy of crowd) turnKnock(enemy, crowd)
-    return state.players.every((p) => p.character.moveProgress >= 1 - EPSILON)
+    const done = state.players.every(
+        (p) => p.character.moveProgress >= 1 - EPSILON
+    )
+    if (done && state.winHeld) {
+        state.winHeld = false
+        emit(state, { type: "gameWon" })
+    }
+    return done
 }
 
 // `player`'s turn to move this tick (see step), with `move` its input and
