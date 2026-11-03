@@ -5,6 +5,7 @@ import { bossHud, healthHud, totalScore, type GameState } from "./game"
 import type { LevelRules, Stage } from "./level"
 import type { Particle } from "./particles"
 import type { Effects, Hud } from "./render"
+import type { RushFlight } from "./rushView"
 import type { FacingGuide } from "./settings"
 import type { Vec2 } from "./vec2"
 import { stunned, tallyText } from "./versus"
@@ -112,6 +113,8 @@ export type EffectSources = {
     guide: FacingGuide
     // A full charge's glow doesn't flicker with reduced motion.
     reducedMotion: boolean
+    // The Boar's Rushes landing (see rushView.ts).
+    rush?: readonly RushFlight[]
 }
 
 // The effects drawn on `screen`: particles and shake show while
@@ -130,6 +133,7 @@ export function screenEffects(s: Screen, sources: EffectSources): Effects {
     return {
         ...(stage === undefined ? {} : { stage }),
         particles: sources.particles,
+        ...(sources.rush ? { rush: sources.rush } : {}),
         reducedMotion: sources.reducedMotion,
         ...(moving ? { shake: sources.shake() } : {}),
         guide: sources.guide,

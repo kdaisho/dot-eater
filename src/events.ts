@@ -53,16 +53,21 @@ export type GameEvent =
     // breath.ts) rammed something on `at`: an enemy it knocks flying, a
     // wall, or the boss's body. `facing` is the unit step it rushed along.
     | { type: "rammed"; player: number; at: Vec2; facing: Vec2 }
-    // Enemies a player's Rush rammed flew from `from` to `to` along
-    // `facing`, where they slammed to a stop and were defeated (each
-    // reports its enemyDefeated on `to` after this; see knock.ts). Only
-    // for a flight of a cell or more.
+    // Enemies a player's Rush rammed flew `distance` cells from `from` to
+    // `to` along `facing`, where they slammed to a stop and were defeated
+    // (each reports its enemyDefeated on `to` after this; see knock.ts).
+    // Only for a flight of a cell or more. `shoved` is the chain carried in
+    // front of them, a car per cell that moved, nearest first: the enemies
+    // and players (by index) shoved `distance` cells from `from` to `to`
+    // (KDA-307, so the chain can be drawn sliding; see rushView.ts).
     | {
           type: "knockedFlying"
           player: number
           from: Vec2
           to: Vec2
           facing: Vec2
+          distance: number
+          shoved: readonly ShovedCar[]
       }
     // A player's breath hurt the boss without finishing it; `health` is
     // what it has left.
@@ -129,6 +134,17 @@ export type GameEvent =
     | { type: "gameLost" }
 
 export type GameEventType = GameEvent["type"]
+
+// A cell's worth of the chain a Rush's fliers shoved (see knockedFlying):
+// the enemies and players (by index) on it, carried `distance` cells from
+// `from` to `to`.
+export type ShovedCar = {
+    from: Vec2
+    to: Vec2
+    distance: number
+    enemies: readonly number[]
+    players: readonly number[]
+}
 
 // Record `event` as happening in this tick.
 export function emit(state: GameState, event: GameEvent) {

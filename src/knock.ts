@@ -27,15 +27,17 @@ import { samePos, vec2, type Vec2 } from "./vec2"
 // Everyone moved arrives at rest on its new cell, not gliding in from the
 // cell before: they all move at different speeds, and a chain glided in
 // would let a fast enemy catch up with the player shoved just ahead of it
-// on the way. The flight shows as particles along it instead (the
-// knockedFlying event), and the flier itself is defeated, so it is gone
-// from the board at once anyway. Shoved enemies still wait a whole move
-// before they move on, a moment's daze.
+// on the way. The flight is only drawn (KDA-307, see rushView.ts): from
+// the knockedFlying event, the flier flies along it and the chain slides
+// in front of it, a moment after the logic is done with them. Shoved
+// enemies still wait a whole move before they move on, a moment's daze.
 
 // One cell's worth of the chain: who is on it, and the cell it started on.
 type Car = {
     cell: Vec2
     from: Vec2
+    // How many cells it has been carried.
+    moved: number
     enemies: Character[]
     players: Player[]
 }
@@ -62,7 +64,7 @@ export function knockFlying(
     const ahead = (p: Vec2) =>
         loopPos(state.cells, vec2(p.x + step.x, p.y + step.y))
     const cars: Car[] = [
-        { cell: start, from: start, enemies: fliers, players: [] },
+        { cell: start, from: start, moved: 0, enemies: fliers, players: [] },
     ]
     const taken = new Set<Character>(fliers)
     const others = playersInPlay(state).filter((p) => p !== by)
@@ -85,6 +87,7 @@ export function knockFlying(
             cars.push({
                 cell,
                 from: cell,
+                moved: 0,
                 enemies: shovedEnemies,
                 players: shovedPlayers,
             })
@@ -99,7 +102,10 @@ export function knockFlying(
             hitBoss = true
             break
         }
-        for (const car of cars) car.cell = ahead(car.cell)
+        for (const car of cars) {
+            car.cell = ahead(car.cell)
+            car.moved++
+        }
         pickUp()
     }
     const slam = cars[0].cell
@@ -110,6 +116,24 @@ export function knockFlying(
             from: start,
             to: vec2(slam.x, slam.y),
             facing: vec2(step.x, step.y),
+            distance: cars[0].moved,
+            shoved: cars.slice(1).flatMap((car) =>
+                car.moved === 0
+                    ? []
+                    : [
+                          {
+                              from: vec2(car.from.x, car.from.y),
+                              to: vec2(car.cell.x, car.cell.y),
+                              distance: car.moved,
+                              enemies: car.enemies.map((e) =>
+                                  state.enemies.indexOf(e)
+                              ),
+                              players: car.players.map((p) =>
+                                  state.players.indexOf(p)
+                              ),
+                          },
+                      ]
+            ),
         })
     }
     // The shoved first, front to back, so the dots they pass are eaten and
