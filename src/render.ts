@@ -24,7 +24,7 @@ import {
     type Viewport,
 } from "./camera"
 import type { Character } from "./character"
-import { AiType, Cell, CharacterId, SPRITE_SCALE } from "./constants"
+import { AiType, CharacterId, SPRITE_SCALE } from "./constants"
 import {
     fogDistance,
     fogWrap,
@@ -47,6 +47,17 @@ import type { FacingGuide } from "./settings"
 import { ANIMALS } from "./roster"
 import { isSplitterHalf } from "./splitter"
 import { vec2, type Vec2 } from "./vec2"
+import {
+    ART,
+    createMapArt,
+    effectPixels,
+    styleFor,
+    tileCodes,
+    updateMapArt,
+    type EffectTile,
+    type MapArt,
+    type TileStyle,
+} from "./tiles"
 import { stunImmune, stunned } from "./versus"
 
 // What the HUD strip above the maze shows. Fields left out aren't drawn.
@@ -113,6 +124,10 @@ export type Effects = {
     // playing, paused and in the ending outro, not on end screens. The
     // breathers' wind-ups (KDA-291, see enemyBreath.ts) show with it.
     bossBreath?: boolean
+    // The stage being played (1 to 10), whose pixel tiles draw the maze
+    // (KDA-300, see tiles.ts): its walls, floor, dots and fog. Stage 1's
+    // when left out.
+    stage?: number
 }
 
 export type Renderer = {
@@ -141,13 +156,7 @@ const COLORS = {
     // draws colour emoji with the fill colour's alpha, so drawing one right
     // after a translucent look disc would leave it see-through.
     sprite: "#000",
-    wall: "#000",
-    dot: "#000",
-    // Ice floor: a pale blue tile under the dot.
-    ice: "#d6f0fb",
     text: "#000",
-    // The fog's darkness, as RGB so the soft edge can fade it in.
-    fog: "17, 17, 17",
     // The energy meter: its frame and cost marks, the fill while a breath
     // is ready, and the fill while it isn't (too little energy or cooling
     // down); and the levels a held breath has charged (KDA-289).
@@ -255,11 +264,6 @@ const BOSS_GLOW_SCALE = 1.15
 // A status's badge emoji is this size, as a fraction of the sprite's.
 const BADGE_SCALE = 0.5
 
-// Wall blocks and dots keep the proportions of the old span grid: 30px blocks
-// on a 35px pitch and 5px dots.
-const WALL_SCALE = 30 / 35
-const DOT_SCALE = 5 / 35
-
 export type RendererOptions = {
     // The window to fit; defaults to the global one.
     view?: Pick<Window, "innerWidth" | "innerHeight" | "devicePixelRatio">
@@ -301,6 +305,44 @@ export function createRenderer(
             layer = { canvas: layerCanvas, ctx: layerCanvas.getContext("2d") }
         }
         return layer
+    }
+    // The maze's pixel tiles (see tiles.ts), painted once per stage and map
+    // onto a canvas of their own, ART pixels a cell, and kept: each frame
+    // repaints only the cells that changed (a dot eaten, a wall broken or
+    // grown back, ice come or gone) and scales the canvas onto the map.
+    let tiles: Tiles | undefined
+    function mapArt(
+        style: TileStyle,
+        state: GameState,
+        alpha: number
+    ): HTMLCanvasElement | null {
+        if (
+            !tiles ||
+            tiles.style !== style ||
+            tiles.cols !== cols ||
+            tiles.rows !== rows
+        ) {
+            tiles = createTiles(canvas.ownerDocument, style, cols, rows)
+        }
+        const { art } = tiles
+        if (!art) return null
+        tiles.codes = tileCodes(state, shownDots(state, alpha), tiles.codes)
+        for (const r of updateMapArt(art.map, tiles.codes)) {
+            art.ctx.putImageData(art.image, 0, 0, r.x, r.y, r.width, r.height)
+        }
+        return art.canvas
+    }
+    // The breaths' effect tiles, each on a small canvas of its own made
+    // when first needed.
+    const effectCanvases = new Map<EffectTile, HTMLCanvasElement | null>()
+    const effectTile: EffectTiles = (tile) => {
+        if (!effectCanvases.has(tile)) {
+            effectCanvases.set(
+                tile,
+                createEffectTile(canvas.ownerDocument, tile)
+            )
+        }
+        return effectCanvases.get(tile) ?? null
     }
 
     function fit() {
@@ -425,7 +467,16 @@ export function createRenderer(
         const aims =
             effects.aim && effects.guide === "aim" ? aimPreviews(state) : []
         const windUp = effects.bossBreath === true
-        drawCells(ctx, state, alpha, cell, seen, tintsFor(state, aims, windUp))
+        const style = styleFor(effects.stage)
+        drawCells(
+            ctx,
+            state,
+            cell,
+            seen,
+            tintsFor(state, aims, windUp),
+            mapArt(style, state, alpha),
+            effectTile
+        )
         drawBoss(ctx, state, alpha, cell, cols, rows, seen, windUp)
         drawCharacters(
             ctx,
@@ -437,12 +488,23 @@ export function createRenderer(
             seen,
             effects.guide === "arrow",
             effects.reducedMotion === true,
-            windUp
+            windUp,
+            effectTile
         )
         if (effects.particles) drawParticles(ctx, effects.particles, cell, seen)
         ctx.restore()
         if (fog) {
-            drawDarkness(ctx, fog, cell, cols, rows, darknessLayer, dpr, screen)
+            drawDarkness(
+                ctx,
+                fog,
+                cell,
+                cols,
+                rows,
+                darknessLayer,
+                dpr,
+                screen,
+                style.fog
+            )
         }
         ctx.restore()
     }
@@ -541,6 +603,7 @@ function sight(
 // map. Without a 2D context for the layer, only `visible` hides things.
 // `screen` is the part of the map on screen, in the map's pixels: the layer
 // covers just that, so it keeps its size as the view moves and zooms.
+// `color` is the darkness, "r, g, b": the stage's tint (TileStyle.fog).
 function drawDarkness(
     ctx: CanvasRenderingContext2D,
     fog: Fog,
@@ -549,10 +612,21 @@ function drawDarkness(
     rows: number,
     layer: () => Layer,
     dpr: number,
-    screen: Rect
+    screen: Rect,
+    color: string
 ) {
     if (fog.lights.length > 1) {
-        drawSharedDarkness(ctx, fog, cell, cols, rows, layer(), dpr, screen)
+        drawSharedDarkness(
+            ctx,
+            fog,
+            cell,
+            cols,
+            rows,
+            layer(),
+            dpr,
+            screen,
+            color
+        )
         return
     }
     const [{ pos, radius }] = fog.lights
@@ -564,8 +638,8 @@ function drawDarkness(
         const x = (c.x + 0.5) * cell
         const y = (c.y + 0.5) * cell
         const gradient = ctx.createRadialGradient(x, y, inner, x, y, outer)
-        gradient.addColorStop(0, `rgba(${COLORS.fog}, 0)`)
-        gradient.addColorStop(1, `rgb(${COLORS.fog})`)
+        gradient.addColorStop(0, `rgba(${color}, 0)`)
+        gradient.addColorStop(1, `rgb(${color})`)
         ctx.fillStyle = gradient
         // Whole pixels, so neighbouring bands meet without a seam.
         const left = Math.round(band.left * cell)
@@ -597,7 +671,8 @@ function drawSharedDarkness(
     rows: number,
     layer: Layer,
     dpr: number,
-    screen: Rect
+    screen: Rect,
+    color: string
 ) {
     const dark = layer.ctx
     if (!dark) return
@@ -612,7 +687,7 @@ function drawSharedDarkness(
     dark.clearRect(0, 0, pixelWidth, pixelHeight)
     dark.setTransform(dpr, 0, 0, dpr, -screen.x * dpr, -screen.y * dpr)
     dark.globalCompositeOperation = "source-over"
-    dark.fillStyle = `rgb(${COLORS.fog})`
+    dark.fillStyle = `rgb(${color})`
     dark.fillRect(0, 0, cols * cell, rows * cell)
     dark.globalCompositeOperation = "destination-out"
     for (const { pos, radius } of fog.lights) {
@@ -641,28 +716,27 @@ function drawSharedDarkness(
     ctx.drawImage(layer.canvas, screen.x, screen.y, screen.width, screen.height)
 }
 
-// Ice floor, walls and dots, plus the dot each player has just eaten while its
-// glide hasn't reached it yet (see eatenDotVisible). Ice fills its whole
-// cell, so a patch reads as one surface, with any dot drawn on top. Tile
-// effects from breaths are drawn by their Look: the colour over the floor
-// (under the dot), the emoji on top. In fog, only cells inside the light
-// are drawn.
+// The maze: its pixel tiles (`art`, the map's walls, floor, ice, dots,
+// rubble and tunnel marks, see tiles.ts) scaled onto the map with no
+// smoothing, so the pixels stay crisp. Then tile effects from breaths by
+// their Look: the colour over the cell, the aim and warning tints, and
+// each effect's pixel tile on top. In fog, the darkness covers the tiles
+// outside the light; only cells inside it get looks and tints.
 function drawCells(
     ctx: CanvasRenderingContext2D,
     state: GameState,
-    alpha: number,
     cell: number,
     fog: Sight | null,
-    tints: readonly Tint[]
+    tints: readonly Tint[],
+    art: HTMLCanvasElement | null,
+    effectTile: EffectTiles
 ) {
-    const wall = cell * WALL_SCALE
-    const dot = Math.max(1, cell * DOT_SCALE)
-    // Each player's eaten dot, while it is still to be drawn.
-    const eaten = state.players.flatMap((p) =>
-        p.eatenAt && eatenDotVisible(p.character, alpha, p.rate)
-            ? [p.eatenAt]
-            : []
-    )
+    const rows = state.cells.length
+    const cols = state.cells[0]?.length ?? 0
+    if (art) {
+        ctx.imageSmoothingEnabled = false
+        ctx.drawImage(art, 0, 0, cols * cell, rows * cell)
+    }
     // Whole pixels, so neighbouring filled cells meet without a seam.
     const fillCell = (x: number, y: number, color: string) => {
         const left = Math.round(x * cell)
@@ -677,52 +751,111 @@ function drawCells(
     }
     const looks = tileLooks(state)
     const tinted = tintGrid(state, tints)
-    state.cells.forEach((row, y) => {
-        row.forEach((value, x) => {
-            if (fog && !fog.visible(vec2(x, y))) return
-            const cx = (x + 0.5) * cell
-            const cy = (y + 0.5) * cell
-            if (state.ice[y][x]) fillCell(x, y, COLORS.ice)
-            for (const look of looks?.[y][x] ?? []) {
-                if (look.color) fillCell(x, y, look.color)
-            }
-            for (const color of tinted?.[y][x] ?? []) {
-                ctx.globalAlpha = AIM_FILL_ALPHA
-                fillCell(x, y, color)
-                ctx.globalAlpha = 1
-            }
-            if (value === Cell.wall) {
-                ctx.fillStyle = COLORS.wall
-                ctx.fillRect(cx - wall / 2, cy - wall / 2, wall, wall)
-            } else if (
-                value === Cell.dot ||
-                eaten.some((e) => e.x === x && e.y === y)
-            ) {
-                ctx.fillStyle = COLORS.dot
-                ctx.fillRect(cx - dot / 2, cy - dot / 2, dot, dot)
-            }
+    if (looks || tinted) {
+        state.cells.forEach((row, y) => {
+            row.forEach((_, x) => {
+                if (fog && !fog.visible(vec2(x, y))) return
+                for (const look of looks?.[y][x] ?? []) {
+                    if (look.color) fillCell(x, y, look.color)
+                }
+                for (const color of tinted?.[y][x] ?? []) {
+                    ctx.globalAlpha = AIM_FILL_ALPHA
+                    fillCell(x, y, color)
+                    ctx.globalAlpha = 1
+                }
+            })
         })
-    })
+    }
     for (const tint of tints) drawTintEdge(ctx, tint, cell, fog)
     if (!looks) return
-    // Tile emoji go on top of everything in the cells, before characters.
-    const emoji = looks.flatMap((row, y) =>
-        row.flatMap((list, x) =>
-            list.flatMap((look) =>
-                look.emoji && !(fog && !fog.visible(vec2(x, y)))
-                    ? [{ x, y, emoji: look.emoji }]
-                    : []
-            )
-        )
+    // Effect tiles go on top of everything in the cells, before characters.
+    looks.forEach((row, y) =>
+        row.forEach((list, x) => {
+            if (fog && !fog.visible(vec2(x, y))) return
+            for (const look of list) {
+                if (!look.tile) continue
+                const tile = effectTile(look.tile)
+                if (tile) drawTile(ctx, tile, x * cell, y * cell, cell)
+            }
+        })
     )
-    if (emoji.length === 0) return
-    ctx.font = `${Math.round(cell * SPRITE_SCALE)}px sans-serif`
-    ctx.textAlign = "center"
-    ctx.textBaseline = "middle"
-    ctx.fillStyle = COLORS.sprite
-    for (const e of emoji) {
-        ctx.fillText(e.emoji, (e.x + 0.5) * cell, (e.y + 0.5) * cell)
-    }
+}
+
+// The dots still drawn though eaten: each player's latest, until its glide
+// reaches it (see eatenDotVisible), so the dot doesn't vanish a cell ahead
+// of the player.
+function shownDots(state: GameState, alpha: number): Vec2[] {
+    return state.players.flatMap((p) =>
+        p.eatenAt && eatenDotVisible(p.character, alpha, p.rate)
+            ? [p.eatenAt]
+            : []
+    )
+}
+
+// The renderer's maze art (see mapArt in createRenderer): for which style
+// and map size, the cells' latest TileCodes, and the canvas it is painted
+// on with its pixels (null without a 2D context or ImageData for it).
+type Tiles = {
+    style: TileStyle
+    cols: number
+    rows: number
+    codes: Uint8Array | undefined
+    art: {
+        map: MapArt
+        canvas: HTMLCanvasElement
+        ctx: CanvasRenderingContext2D
+        image: ImageData
+    } | null
+}
+
+function createTiles(
+    doc: Document,
+    style: TileStyle,
+    cols: number,
+    rows: number
+): Tiles {
+    const tiles: Tiles = { style, cols, rows, codes: undefined, art: null }
+    if (cols === 0 || rows === 0) return tiles
+    const canvas = doc.createElement("canvas")
+    canvas.width = cols * ART
+    canvas.height = rows * ART
+    const ctx = canvas.getContext("2d")
+    const image = ctx?.createImageData(cols * ART, rows * ART)
+    if (!ctx || !image) return tiles
+    const map = createMapArt(style, cols, rows, image.data)
+    tiles.art = { map, canvas, ctx, image }
+    return tiles
+}
+
+// The canvas of a breath's effect tile (see EFFECT_TILES in tiles.ts), or
+// null without a 2D context for it.
+type EffectTiles = (tile: EffectTile) => HTMLCanvasElement | null
+
+function createEffectTile(
+    doc: Document,
+    tile: EffectTile
+): HTMLCanvasElement | null {
+    const canvas = doc.createElement("canvas")
+    canvas.width = ART
+    canvas.height = ART
+    const ctx = canvas.getContext("2d")
+    const image = ctx?.createImageData(ART, ART)
+    if (!ctx || !image) return null
+    image.data.set(effectPixels(tile))
+    ctx.putImageData(image, 0, 0)
+    return canvas
+}
+
+// Draw a pixel tile `size` square from (x, y), crisp.
+function drawTile(
+    ctx: CanvasRenderingContext2D,
+    tile: HTMLCanvasElement,
+    x: number,
+    y: number,
+    size: number
+) {
+    ctx.imageSmoothingEnabled = false
+    ctx.drawImage(tile, x, y, size, size)
 }
 
 // Per cell [y][x], the looks of the tile effects on it, oldest first, or
@@ -891,7 +1024,8 @@ function drawCharacters(
     fog: Sight | null,
     arrows: boolean,
     reducedMotion: boolean,
-    windUp: boolean
+    windUp: boolean,
+    effectTile: EffectTiles
 ) {
     ctx.textAlign = "center"
     ctx.textBaseline = "middle"
@@ -900,8 +1034,9 @@ function drawCharacters(
     // then the other enemies. In fog, enemies outside the light are
     // hidden; the players are always in it. A defeated enemy is hidden until
     // it blinks before coming back (enemyVisible). Statuses are drawn by
-    // their Look: the colour as a disc behind the sprite, the emoji as a
-    // small badge at its top right. A held enemy (e.g. frozen mid-glide) gets
+    // their Look: the colour as a disc behind the sprite, the pixel tile
+    // over it (e.g. the frozen ice block), sized to the cell as the sprite
+    // is to its box, and the emoji as a small badge at its top right. A held enemy (e.g. frozen mid-glide) gets
     // no frame alpha: its progress doesn't move on, so it stays exactly where
     // it is drawn instead of creeping forward between ticks. Each player
     // glides at its current rate (Player.rate), as the ticks move it, and
@@ -977,10 +1112,8 @@ function drawCharacters(
             ),
             ...(windUp && !isPlayer ? enemyBreathLooks(character) : []),
         ]
-        const size =
-            cell *
-            SPRITE_SCALE *
-            (!isPlayer && isSplitterHalf(character) ? HALF_SCALE : 1)
+        const scale = !isPlayer && isSplitterHalf(character) ? HALF_SCALE : 1
+        const size = cell * SPRITE_SCALE * scale
         const faint = character.ai === AiType.interceptor && !isPlayer
         if (faint) ctx.globalAlpha = sneak(pos)
         for (const p of wrapCopies(pos, cols, rows)) {
@@ -1004,6 +1137,12 @@ function drawCharacters(
             }
             ctx.fillStyle = COLORS.sprite
             ctx.fillText(sprite.sprite, x, y)
+            for (const look of looks) {
+                const tile = look.tile && effectTile(look.tile)
+                if (!tile) continue
+                const box = cell * scale
+                drawTile(ctx, tile, x - box / 2, y - box / 2, box)
+            }
             if (marker !== null) drawMarker(ctx, marker, x, y, size)
             // A stunned player (versus) wears the stun badge, and one
             // immune just after a stun the immune badge, like a status's.

@@ -204,7 +204,8 @@ describe("main's particles and shake", () => {
         vi.advanceTimersByTime(2000)
         expect(screen()).toBe("game-over")
         expect(seen.particles!.list.length).toBeGreaterThan(0)
-        expect(seen.effects).toEqual({})
+        // Only the stage, whose tiles the maze keeps.
+        expect(seen.effects).toEqual({ stage: 1 })
     })
 
     it("starts a retry with no particles or shake left over", () => {

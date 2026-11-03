@@ -96,6 +96,12 @@ function coopHud(game: GameState): Hud {
     }
 }
 
+// The stage number (1 to 10, see STAGE_STYLES in tiles.ts) of the level
+// on `screen`, or undefined on a screen without one.
+export function stageOf(screen: Screen): number | undefined {
+    return "level" in screen ? screen.level + 1 : undefined
+}
+
 // Where the effects come from (see particles.ts, shake.ts, settings.ts).
 export type EffectSources = {
     // The particles alive.
@@ -112,13 +118,17 @@ export type EffectSources = {
 // the game is played, paused or ending (none on other screens); a paused
 // game doesn't shake. The facing arrow shows with the rings, paused and
 // ending too; the aim preview only while playing. The boss's wind-up (its
-// glow and warning tint) shows on the board as the rings do.
+// glow and warning tint) shows on the board as the rings do. Every screen
+// with a level says which stage it is, so the maze keeps the stage's tiles
+// on the end screens too.
 export function screenEffects(s: Screen, sources: EffectSources): Effects {
+    const stage = stageOf(s)
     if (s.kind !== "playing" && s.kind !== "ending" && s.kind !== "paused") {
-        return {}
+        return stage === undefined ? {} : { stage }
     }
     const moving = s.kind !== "paused"
     return {
+        ...(stage === undefined ? {} : { stage }),
         particles: sources.particles,
         reducedMotion: sources.reducedMotion,
         ...(moving ? { shake: sources.shake() } : {}),

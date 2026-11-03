@@ -38,7 +38,8 @@ The older modules are listed in `CLAUDE.md`. Newer or reshaped ones:
 | `breath.ts`, `breaths/`                      | Breath engine: shapes line/cone/area/flood/self/spread (`resolveShape`), `chargeTick`, `chargeLevel`, `affordable`, `sightScale` |
 | `ai.ts`, `intercept.ts`                      | Enemy AI and the spread rule; the interceptor's route prediction and fade                                                        |
 | `enemyBreath.ts`, `bossBreath.ts`, `boss.ts` | The breather's and the boss's breaths; boss health                                                                               |
-| `render.ts`                                  | Canvas: sprites, fog lights (`createFog`, one `Light` per player), aim tints                                                     |
+| `render.ts`                                  | Canvas: sprites, fog lights (`createFog`, one `Light` per player), aim tints; scales the maze art from `tiles.ts` on             |
+| `tiles.ts`                                   | Per-stage pixel tiles (KDA-300/299): `STAGE_STYLES`, `wallPixel`, `tileCodes`, `MapArt` (repaints changed cells), `EFFECT_TILES` |
 | `touch.ts`                                   | Flick-to-run (`TouchSource.follow(heading(player))` from main's tick), the Breath button                                         |
 | `audio.ts`, `music.ts`, `recorded.ts`        | Music and effects, `LIMITER`, `browserAudioContext` (iOS session); recorded tracks and loop points                               |
 | `muteButton.ts`                              | The 🔊/🔇 button; its toggle saves `settings.muted`                                                                              |

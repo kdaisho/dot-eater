@@ -36,16 +36,15 @@ export const FROZEN: EnemyStatus = {
     holds: true,
     harmless: true,
     blinksBeforeEnd: true,
-    look: { color: "rgba(150, 210, 255, 0.6)", emoji: "🧊" },
+    look: { color: "rgba(150, 210, 255, 0.6)", tile: "frozen" },
 }
 
 // The cone's floor as ice (as level ice: everyone but a Penguin slides on
-// it). The engine leaves out any cell a character stands on, frozen enemies
-// included.
+// it, and it is drawn as the stage's ice tile, see tiles.ts). The engine
+// leaves out any cell a character stands on, frozen enemies included.
 export const BREATH_ICE: TileEffect = {
     name: "penguin.ice",
     ice: true,
-    look: { color: "rgba(190, 230, 255, 0.45)" },
 }
 
 export const penguin: BreathDef = {
