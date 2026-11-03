@@ -16,6 +16,7 @@ import {
     shine,
     type OpeningChoice,
 } from "./opening"
+import { drawPixels, SpriteId, spriteSize } from "./sprites"
 
 // What a frame needs: the stage and its clock, and the menu's state.
 export type OpeningFrame = {
@@ -87,106 +88,17 @@ function text(
     })
 }
 
-// ---------- sprites: 8x8 (the boss 16x15), letters keyed to colors ----
+// ---------- sprites: the game's (sprites.ts), at 1 pixel a dot ----------
 
-const SPRITES: Readonly<Record<string, readonly string[]>> = {
-    // The final boss, a silhouette whose E eyes and F fangs light up.
-    boss: [
-        "V..............V",
-        "VV............VV",
-        ".VV..VVVVVV..VV.",
-        "..VVVVVVVVVVVV..",
-        "...VVVVVVVVVV...",
-        "..VEVVVVVVVVEV..",
-        "..VVEEVVVVEEVV..",
-        "..VVVEVVVVEVVV..",
-        "...VVVVVVVVVV...",
-        "..VVFVFVVFVFVV..",
-        "..VVVVVVVVVVVV..",
-        ".VVVVVVVVVVVVVV.",
-        "VV.VVVVVVVVVV.VV",
-        "V..VV.VVVV.VV..V",
-        "...V...VV...V...",
-    ],
-    // The boss's minions, after the game's enemies, facing left.
-    oni: [
-        ".W....W.",
-        ".RRRRRR.",
-        "RRKRRKRR",
-        "RRRRRRRR",
-        "RWRWWRWR",
-        ".RRRRRR.",
-        "RR....RR",
-    ],
-    fox: [
-        ".O.O....",
-        ".OOO....",
-        "KOOOOOO.",
-        "WWOOOOOO",
-        "..OOOOOO",
-        "..OOOOWO",
-        "..O.O..W",
-        "........",
-    ],
-    robot: [
-        "...S....",
-        ".SSSSSS.",
-        ".SRSSRS.",
-        ".SSSSSS.",
-        "SSKKKKSS",
-        ".SSSSSS.",
-        ".S....S.",
-        "SS....SS",
-    ],
-    snake: [
-        "........",
-        ".GG.....",
-        "GKGG....",
-        "GGGG..G.",
-        "RGGG.GGG",
-        "..GGGG.G",
-        "...GG...",
-        "........",
-    ],
-    wolf: [
-        "L.L.....",
-        "LLL.....",
-        "KLLLLLL.",
-        "LLLLLLLL",
-        "..LLLLLL",
-        "..LLLLL.",
-        "..L.L.L.",
-        "........",
-    ],
-}
-const PALETTE: Readonly<Record<string, string>> = {
-    W: WHITE,
-    K: "#000000",
-    R: "#d82800",
-    O: MENU,
-    S: "#bcbcbc",
-    G: "#00a800",
-    L: "#7c7c7c",
-}
-const RUNNERS = ["oni", "fox", "robot", "snake", "wolf"] as const
-
-function sprite(
-    g: Ctx,
-    name: string,
-    x: number,
-    y: number,
-    scale: number,
-    colors: Readonly<Record<string, string>> = PALETTE
-) {
-    SPRITES[name]!.forEach((row, j) =>
-        row.split("").forEach((ch, i) => {
-            const color = colors[ch]
-            if (ch !== "." && color) {
-                rect(g, x + i * scale, y + j * scale, scale, scale, color)
-            }
-        })
-    )
-}
+// The boss's minions running across, after the game's enemies, facing
+// left as drawn.
+const RUNNERS = [
+    SpriteId.oni,
+    SpriteId.fox,
+    SpriteId.robot,
+    SpriteId.snake,
+    SpriteId.wolf,
+] as const
 
 // ---------- the Dot Eater logo: gold 3D block letters, the O a dot ----
 
@@ -278,11 +190,17 @@ function logo(g: Ctx, top: number) {
 
 // ---------- the boss, its minions, the shine ----
 
-const BOSS_SCALE = 5
+// The final boss (the game's stage 10 boss, KDA-298), 20x20 dots at 4
+// pixels a dot, as a silhouette whose E eyes and F fangs light up. It is
+// drawn RAISE pixels higher than BOSS_ABOVE says, so its foot is where the
+// old 16x15 boss's was, over the logo.
+const BOSS_SCALE = 4
+const RAISE = 5
 const SHADOW = "#2c1858"
+// The middle of each eye, in dots.
 const EYES: readonly (readonly [number, number])[] = [
-    [4.5, 6.2],
-    [11.5, 6.2],
+    [5.5, 8.5],
+    [14.5, 8.5],
 ]
 
 // A four-point star of radius r centered on (cx, cy).
@@ -304,18 +222,25 @@ function star(g: Ctx, cx: number, cy: number, r: number, diagonal?: string) {
     rect(g, cx - 1, cy - 1, 3, 3, WHITE)
 }
 
+// Every colour of the boss in shadow but its eyes and fangs.
+const SILHOUETTE: Readonly<Record<string, string>> = Object.fromEntries(
+    "VDHRKG".split("").map((ch) => [ch, SHADOW])
+)
+
 // Dark until the drum; then red eyes that pulse, a glint on each, fangs.
 function boss(g: Ctx, top: number, seconds: number) {
-    const x = W / 2 - 8 * BOSS_SCALE
-    const y = top - BOSS_ABOVE
+    const look = { id: SpriteId.finalBoss }
+    const [w] = spriteSize(look)
+    const x = W / 2 - (w / 2) * BOSS_SCALE
+    const y = top - BOSS_ABOVE - RAISE
     const lit = seconds >= OPENING_DRUM
     const since = seconds - OPENING_DRUM
     const pulse = lit ? 0.75 + 0.25 * Math.sin(since * 6) : 0
     const eye = lit
         ? `rgb(${Math.round(200 + 55 * pulse)},${Math.round(40 * pulse)},0)`
         : SHADOW
-    sprite(g, "boss", x, y, BOSS_SCALE, {
-        V: SHADOW,
+    drawPixels(g, look, x, y, BOSS_SCALE, {
+        ...SILHOUETTE,
         E: eye,
         F: lit ? WHITE : SHADOW,
     })
@@ -347,7 +272,9 @@ function stampede(g: Ctx, seconds: number) {
         const x = runnerX(lag, lap)
         if (x < -20 || x > W + 4) return
         const hop = Math.floor(lap * 10 + k) % 2
-        sprite(g, RUNNERS[k]!, x, 174 + dy - hop, 2)
+        // A step of the walk on each hop.
+        const look = { id: RUNNERS[k]!, frame: hop }
+        drawPixels(g, look, x, 174 + dy - hop, 1)
     })
 }
 

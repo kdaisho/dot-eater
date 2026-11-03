@@ -1,7 +1,7 @@
 import type { LevelData } from "../level"
 
 // Final boss, the last stage of story mode: stage 5's boss fight, harder.
-// The boss (🐙, see boss.ts) has 18 health, not 12, and breathes every
+// The boss (the final boss from the opening, see BossKind) has 18 health, not 12, and breathes every
 // 2.5 s, not 4, out to 9 cells, not 6, for 35, not 30; its wind-up is a
 // little shorter (0.8 s, not 0.9). 18 health is 450 energy (90 dots) to
 // bring it down; the Dragon, Penguin and Boar, paying 20 a level, spend
@@ -100,10 +100,8 @@ export const stage10: LevelData = {
     },
     // The same boss on both maps: the large map is harder by its arena and
     // enemies, as every stage's is.
-    // The game's last boss: it goes down in a chain of explosions, and then
-    // everyone left hops for joy (KDA-301, KDA-303).
     boss: {
-        finale: true,
+        kind: "final",
         health: 18,
         breath: { every: 2.5, windUp: 0.8, range: 9, damage: 35 },
     },

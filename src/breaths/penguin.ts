@@ -1,7 +1,8 @@
 import type { BreathDef, EnemyStatus, TileEffect } from "../breath"
 import { AnimalId } from "../roster"
+import { BadgeId } from "../sprites"
 
-// Penguin 🐧, ice breath (KDA-217): a cone that freezes enemies for a few
+// Penguin, ice breath (KDA-217): a cone that freezes enemies for a few
 // seconds and turns the floor to ice for 5 s. Charging it (KDA-289) widens
 // the cone and makes the freeze last longer (coneRange, freezeSeconds), for
 // 20 energy a level. Stat: walks on ice (KDA-259): it moves and stops on ice
@@ -36,7 +37,7 @@ export const FROZEN: EnemyStatus = {
     holds: true,
     harmless: true,
     blinksBeforeEnd: true,
-    look: { color: "rgba(150, 210, 255, 0.6)", emoji: "🧊" },
+    look: { color: "rgba(150, 210, 255, 0.6)", badge: BadgeId.frozen },
 }
 
 // The cone's floor as ice (as level ice: everyone but a Penguin slides on

@@ -79,7 +79,7 @@ export const CHAIN_BOSS_SHARE = 0.25
 // placeholder to tune at preview).
 export const RAM_STAGGER = 0.6
 
-// Boar 🐗, Rush (KDA-304, with the user, replacing the wall-break breath of
+// Boar, Rush (KDA-304, with the user, replacing the wall-break breath of
 // KDA-220, after feedback that the Boar was too weak to defeat the bosses:
 // it had to stand touching them to hurt them at all). The Boar dashes
 // forward along its facing, up to rushRange cells, eating the dots it

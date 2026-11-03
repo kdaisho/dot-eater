@@ -1,5 +1,6 @@
 import {
     AiType,
+    BossKind,
     Cell,
     MAX_ENEMIES,
     MAX_HEALTH,
@@ -73,6 +74,8 @@ export type FogRule = {
 
 // The level's boss (see boss.ts), whose spawn is the "B" in the map.
 export type BossData = {
+    // Who it is, for its look (see BossKind). Omitted means the Kitsune.
+    kind?: BossKind
     // Cells per second. Omitted means BOSS_SPEED.
     speed?: number
     // The health it starts with, a whole number up to MAX_BOSS_HEALTH.
@@ -83,10 +86,6 @@ export type BossData = {
     // Its breath attack's tuning (see bossBreath.ts). Omitted, or any part
     // of it, means the defaults.
     breath?: BossBreathData
-    // True for the game's last boss (stage 10): its defeat is the explosion
-    // chain, then everyone left hops for joy (KDA-301, KDA-303; see
-    // bossDefeat.ts). Omitted or false, it shatters (the burst).
-    finale?: boolean
 }
 
 // The boss's breath (KDA-268), each part optional (see bossBreathProblems
@@ -239,10 +238,10 @@ export type Level = {
     // footprint), speed, health and breath tuning (see BossData).
     boss: {
         pos: Readonly<Vec2>
+        kind?: BossKind
         speed?: number
         health?: number
         breath?: Readonly<BossBreathData>
-        finale?: boolean
     } | null
     rules: LevelRules
 }
@@ -654,6 +653,9 @@ function toLevel(data: LevelData, variant: LevelVariant, map: BuiltMap): Level {
                 ? null
                 : {
                       pos: bossPositions[0],
+                      ...(data.boss?.kind === undefined
+                          ? {}
+                          : { kind: data.boss.kind }),
                       ...(data.boss?.speed === undefined
                           ? {}
                           : { speed: data.boss.speed }),
@@ -663,19 +665,16 @@ function toLevel(data: LevelData, variant: LevelVariant, map: BuiltMap): Level {
                       ...(data.boss?.breath === undefined
                           ? {}
                           : { breath: { ...data.boss.breath } }),
-                      ...(data.boss?.finale === undefined
-                          ? {}
-                          : { finale: data.boss.finale }),
                   },
         rules: copyRules(data.rules),
     }
 }
 
 const BOSS_KEYS: ReadonlySet<string> = new Set([
+    "kind",
     "speed",
     "health",
     "breath",
-    "finale",
 ])
 
 // The most health a level may give its boss (BossData.health).
@@ -695,6 +694,14 @@ function bossDataProblems(boss: BossData | undefined): string[] {
             problems.push(`unknown boss setting ${JSON.stringify(key)}`)
         }
     }
+    if (
+        boss.kind !== undefined &&
+        !Object.values(BossKind).includes(boss.kind)
+    ) {
+        problems.push(
+            `boss.kind must be one of ${Object.values(BossKind).join(", ")}, got ${JSON.stringify(boss.kind)}`
+        )
+    }
     checkSpeed(problems, "boss.speed", boss.speed)
     const { health } = boss
     if (
@@ -706,11 +713,6 @@ function bossDataProblems(boss: BossData | undefined): string[] {
         )
     }
     problems.push(...bossBreathProblems(boss.breath))
-    if (boss.finale !== undefined && typeof boss.finale !== "boolean") {
-        problems.push(
-            `boss.finale must be true or false, got ${JSON.stringify(boss.finale)}`
-        )
-    }
     return problems
 }
 

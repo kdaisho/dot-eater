@@ -9,6 +9,7 @@ import {
     BOSS_BREATH_WIND_UP,
     BOSS_HEALTH,
     BOSS_SPEED,
+    BossKind,
     Cell,
     Direction,
     DOT_ENERGY,
@@ -91,6 +92,8 @@ describe.each(EACH_MAP)("stage 10 (%s)", (difficulty) => {
 
     it("is the Final boss", () => {
         expect(level.name).toBe("Final boss")
+        // The opening's boss, not the Kitsune of stage 5 (KDA-298).
+        expect(createGameState(level).boss!.kind).toBe(BossKind.final)
         expect(level.parTime).toBe(map.parTime)
     })
 

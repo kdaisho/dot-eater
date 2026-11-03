@@ -117,7 +117,8 @@ describe("the HUD's difficulty", () => {
     it("is left out when the HUD hasn't got one", () => {
         const { renderer, texts } = setup()
         renderer.draw(createGameState(OLD_LEVEL), 0, { score: 10 })
-        expect(texts.map((t) => t.text)).toEqual(["Score 10", "🐉", "👺", "👹"])
+        // The characters are sprites (drawImage), not text.
+        expect(texts.map((t) => t.text)).toEqual(["Score 10"])
     })
 
     it("goes in the middle in co-op", () => {

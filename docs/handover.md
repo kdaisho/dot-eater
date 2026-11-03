@@ -31,21 +31,22 @@ Last updated: 2026-11-01. Read `CLAUDE.md` first for project conventions.
 
 The older modules are listed in `CLAUDE.md`. Newer or reshaped ones:
 
-| Module                                       | What it does                                                                                                                     |
-| -------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
-| `difficulty.ts`                              | `ENEMY_COUNT`, `MAP_SIZE`, `ENEMY_SPEED_SCALE` and `enemySpeed()`, `TENGU_SPEED` and `tenguSpeed()`                              |
-| `game.ts`                                    | `step`, `hurtPlayer`, `knockBack` (the player's, on a hit), `checkEnd`, ice slides                                               |
-| `breath.ts`, `breaths/`                      | Breath engine: shapes line/cone/area/flood/self/spread (`resolveShape`), `chargeTick`, `chargeLevel`, `affordable`, `sightScale` |
-| `ai.ts`, `intercept.ts`                      | Enemy AI and the spread rule; the interceptor's route prediction and fade                                                        |
-| `enemyBreath.ts`, `bossBreath.ts`, `boss.ts` | The breather's and the boss's breaths; boss health                                                                               |
-| `render.ts`                                  | Canvas: sprites, fog lights (`createFog`, one `Light` per player), aim tints                                                     |
-| `touch.ts`                                   | Flick-to-run (`TouchSource.follow(heading(player))` from main's tick), the Breath button                                         |
-| `audio.ts`, `music.ts`, `recorded.ts`        | Music and effects, `LIMITER`, `browserAudioContext` (iOS session); recorded tracks and loop points                               |
-| `muteButton.ts`                              | The 🔊/🔇 button; its toggle saves `settings.muted`                                                                              |
-| `opening.ts`, `openingView.ts`               | The Gold opening before the title                                                                                                |
-| `endRoll.ts`, `endRollRender.ts`             | The end roll after the story ending                                                                                              |
-| `admin.ts`, `adminPanel.ts`, `adminHash.ts`  | Debug mode behind the passphrase hash; `adminBadge.ts` is its on-screen label and Clear button                                   |
-| `flow.ts`, `progress.ts`                     | Difficulty select, story and stage modes; bests by difficulty                                                                    |
+| Module                                       | What it does                                                                                                                      |
+| -------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| `difficulty.ts`                              | `ENEMY_COUNT`, `MAP_SIZE`, `ENEMY_SPEED_SCALE` and `enemySpeed()`, `TENGU_SPEED` and `tenguSpeed()`                               |
+| `game.ts`                                    | `step`, `hurtPlayer`, `knockBack` (the player's, on a hit), `checkEnd`, ice slides                                                |
+| `breath.ts`, `breaths/`                      | Breath engine: shapes line/cone/area/flood/self/spread (`resolveShape`), `chargeTick`, `chargeLevel`, `affordable`, `sightScale`  |
+| `ai.ts`, `intercept.ts`                      | Enemy AI and the spread rule; the interceptor's route prediction and fade                                                         |
+| `enemyBreath.ts`, `bossBreath.ts`, `boss.ts` | The breather's and the boss's breaths; boss health                                                                                |
+| `render.ts`                                  | Canvas: sprites, fog lights (`createFog`, one `Light` per player), aim tints                                                      |
+| `sprites.ts`, `spriteData.ts`                | Pixel sprites (KDA-300): grids and palettes, lookups by animal/AI/boss, outline, facing, walk frames, Kitsune tails, raster cache |
+| `touch.ts`                                   | Flick-to-run (`TouchSource.follow(heading(player))` from main's tick), the Breath button                                          |
+| `audio.ts`, `music.ts`, `recorded.ts`        | Music and effects, `LIMITER`, `browserAudioContext` (iOS session); recorded tracks and loop points                                |
+| `muteButton.ts`                              | The 🔊/🔇 button; its toggle saves `settings.muted`                                                                               |
+| `opening.ts`, `openingView.ts`               | The Gold opening before the title                                                                                                 |
+| `endRoll.ts`, `endRollRender.ts`             | The end roll after the story ending                                                                                               |
+| `admin.ts`, `adminPanel.ts`, `adminHash.ts`  | Debug mode behind the passphrase hash; `adminBadge.ts` is its on-screen label and Clear button                                    |
+| `flow.ts`, `progress.ts`                     | Difficulty select, story and stage modes; bests by difficulty                                                                     |
 
 ## Open questions and follow-ups
 

@@ -3,6 +3,7 @@ import {
     BLINK_RATE,
     BOSS_BREATH_EVERY,
     BOSS_DAMAGE,
+    BossKind,
     CATCH_DISTANCE,
     Cell,
     CharacterId,
@@ -319,7 +320,7 @@ export function createGameState(
                       ? bossBreathAt(level.boss.breath, difficulty)
                       : level.boss.breath,
                   level.boss.health,
-                  level.boss.finale ?? false
+                  level.boss.kind
               )
             : null,
         ticks: 0,
@@ -1192,7 +1193,7 @@ export function step(
     // boss's fall starts its defeat (KDA-301), and its gameWon waits for
     // the effect, which settle plays out.
     if (outcome === "won" && boss !== null) {
-        state.defeat = startDefeat(state, boss.finale)
+        state.defeat = startDefeat(state, boss.kind === BossKind.final)
         state.winHeld = true
     } else if (outcome === "won") state.winHeld = true
     else if (outcome) emit(state, { type: "gameLost" })

@@ -29,7 +29,7 @@ import { vec2, type Vec2 } from "./vec2"
 //   s; one big blast and a white-out, 0.55 s; then smoke, 0.5 s, over a
 //   scorch mark. Jingle at 2.5 s.
 //
-// A level's boss with `finale` set (BossData) gets the chain and then the
+// The final boss (Boss.kind "final", stage 10) gets the chain and then the
 // celebration: every character still on the map (the players in play and
 // every enemy in play, frozen or stunned ones included) hops in place for
 // CELEBRATION_SECONDS, each a little after the one before so it reads as
