@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vite-plus/test"
-import { AiType } from "./constants"
+import { AiType, BossKind } from "./constants"
 import {
     CAST,
     beamX,
@@ -14,7 +14,6 @@ import {
     endRollPhase,
     endRollPress,
     FINALE_AT,
-    scale2x,
     SKIP_TO,
     STAFF,
     staffAt,
@@ -30,7 +29,7 @@ import { ANIMAL_IDS } from "./roster"
 import { vec2 } from "./vec2"
 
 describe("CAST", () => {
-    it("has every hero, every enemy and the boss, heroes first, boss last", () => {
+    it("has every hero, every enemy and both bosses, heroes first, bosses last", () => {
         const animals = CAST.flatMap((c) =>
             c.who.kind === "animal" ? [c.who.id] : []
         )
@@ -46,7 +45,12 @@ describe("CAST", () => {
                 (c) => c.who.kind === "animal"
             )
         ).toBe(true)
-        expect(CAST.at(-1)?.who.kind).toBe("boss")
+        // The two bosses close it (KDA-298): the Kitsune, then the
+        // Phantom Lord.
+        expect(CAST.slice(-2).map((c) => c.who)).toEqual([
+            { kind: "boss", boss: BossKind.kitsune },
+            { kind: "boss", boss: BossKind.final },
+        ])
     })
 
     it("keeps every line within the 256 px screen (32 characters)", () => {
@@ -165,25 +169,6 @@ describe("endingKind", () => {
         expect(endingKind("medium")).toBe("plain")
         expect(endingKind("hard")).toBe("party")
         expect(endingKind("superHard")).toBe("true")
-    })
-})
-
-describe("scale2x", () => {
-    it("doubles a sprite, keeping a solid shape's inside solid", () => {
-        expect(scale2x(["A"])).toEqual(["AA", "AA"])
-        const big = scale2x(["AAA", "AAA", "AAA"])
-        expect(big).toHaveLength(6)
-        // Only the outer corners round off.
-        expect(big[0]).toBe(".AAAA.")
-        expect(big.slice(1, 5)).toEqual(Array(4).fill("AAAAAA"))
-    })
-
-    it("rounds a diagonal into a smooth line", () => {
-        expect(scale2x(["A.", ".A"])).toEqual(["AA..", "AAA.", ".AAA", "..AA"])
-    })
-
-    it("cuts the corners of an outlined block", () => {
-        expect(scale2x(["AB", "CD"])).toEqual([".AB.", "AABB", "CCDD", ".CD."])
     })
 })
 

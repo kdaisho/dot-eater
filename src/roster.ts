@@ -17,7 +17,6 @@ export type AnimalId = (typeof AnimalId)[keyof typeof AnimalId]
 export type AnimalInfo = {
     id: AnimalId
     name: string
-    emoji: string
     // The breath's name and a one-line description, for the card.
     breathName: string
     breathText: string
@@ -46,7 +45,6 @@ export const ANIMALS: Readonly<Record<AnimalId, AnimalInfo>> = {
     dragon: {
         id: AnimalId.dragon,
         name: "Dragon",
-        emoji: "🐉",
         breathName: "Fire breath",
         breathText:
             "Spreading fire that defeats the enemies it reaches. Burning cells block enemies for 2 s.",
@@ -55,7 +53,6 @@ export const ANIMALS: Readonly<Record<AnimalId, AnimalInfo>> = {
     penguin: {
         id: AnimalId.penguin,
         name: "Penguin",
-        emoji: "🐧",
         breathName: "Ice breath",
         breathText:
             "A cone that freezes enemies for 3 s and turns the floor to ice for 5 s.",
@@ -64,7 +61,6 @@ export const ANIMALS: Readonly<Record<AnimalId, AnimalInfo>> = {
     owl: {
         id: AnimalId.owl,
         name: "Owl",
-        emoji: "🦉",
         breathName: "Wind breath",
         breathText:
             "Blows every enemy in a line back 3 cells, even through tunnels.",
@@ -73,7 +69,6 @@ export const ANIMALS: Readonly<Record<AnimalId, AnimalInfo>> = {
     skunk: {
         id: AnimalId.skunk,
         name: "Skunk",
-        emoji: "🦨",
         breathName: "Smelly breath",
         breathText:
             "A stink cloud around you for 5 s. Enemies won't go in and turn back inside it.",
@@ -82,7 +77,6 @@ export const ANIMALS: Readonly<Record<AnimalId, AnimalInfo>> = {
     boar: {
         id: AnimalId.boar,
         name: "Boar",
-        emoji: "🐗",
         breathName: "Rush",
         breathText:
             "Dash ahead and ram: enemies fly off and are defeated, walls break for 10 s. Charge to go further.",

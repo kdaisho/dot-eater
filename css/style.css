@@ -272,9 +272,13 @@ body[data-dpad="on"][data-touch="on"] #play {
     color: #f87171;
 }
 
-.overlay-cards .card-emoji {
-    font-size: 48px;
-    line-height: 56px;
+/* The character's pixel sprite: an 18x18 canvas at 3x, crisp. */
+.overlay-cards .card-sprite {
+    display: block;
+    height: 54px;
+    image-rendering: pixelated;
+    margin: 0 auto 2px;
+    width: 54px;
 }
 
 .overlay-cards .card-name {
@@ -311,9 +315,9 @@ body[data-dpad="on"][data-touch="on"] #play {
         width: 130px;
     }
 
-    .overlay-cards .card-emoji {
-        font-size: 36px;
-        line-height: 42px;
+    .overlay-cards .card-sprite {
+        height: 36px;
+        width: 36px;
     }
 }
 

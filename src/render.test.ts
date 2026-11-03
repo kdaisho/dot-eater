@@ -13,6 +13,7 @@ import { BREATH_ICE, FROZEN } from "./breaths/penguin"
 import {
     AiType,
     BLINK_RATE,
+    BossKind,
     Cell,
     CharacterId,
     ENEMY_IDS,
@@ -36,7 +37,6 @@ import { MIN_CELL_PX } from "./layout"
 import type { LevelRules } from "./level"
 import {
     BOSS_SCALE,
-    BOSS_SPRITE,
     createRenderer,
     HALF_SCALE,
     outLabel,
@@ -95,6 +95,7 @@ function stubContext() {
     let strokeStyle: unknown
     let font: unknown
     let globalAlpha: unknown = 1
+    const saved: unknown[] = []
     let composite: unknown
     const ctx = new Proxy(
         {},
@@ -123,6 +124,11 @@ function stubContext() {
                         const [width, height] = args as number[]
                         const data = new Uint8ClampedArray(width * height * 4)
                         return { data, width, height }
+                    }
+                    // save and restore keep the alpha, as a canvas does.
+                    if (name === "save") saved.push(globalAlpha)
+                    if (name === "restore" && saved.length > 0) {
+                        globalAlpha = saved.pop()
                     }
                 }
             },
@@ -170,6 +176,32 @@ function stubCanvases(): Offscreen[] {
     return made
 }
 
+// What a recorded call drew: a fillText's text, or for a drawImage of a
+// sprite raster its sprite or badge name (see paintSprite);
+// undefined for anything else.
+function drawnName(c: { name: string; args: unknown[] }): unknown {
+    if (c.name === "fillText") return c.args[0]
+    if (c.name !== "drawImage") return undefined
+    return (c.args[0] as HTMLCanvasElement).dataset?.sprite
+}
+
+// Where a drawImage of a sprite put it: its centre and its larger side, in
+// the canvas's CSS pixels (drawSprite draws a raster centred on the spot).
+function spriteBox(c: { args: unknown[] }): {
+    x: number
+    y: number
+    size: number
+} {
+    const [, left, top, w, h] = c.args as [
+        unknown,
+        number,
+        number,
+        number,
+        number,
+    ]
+    return { x: left + w / 2, y: top + h / 2, size: Math.max(w, h) }
+}
+
 function setup() {
     const view = { innerWidth: 1000, innerHeight: 400, devicePixelRatio: 2 }
     const canvas = document.createElement("canvas")
@@ -177,13 +209,17 @@ function setup() {
     vi.spyOn(canvas, "getContext").mockReturnValue(ctx as never)
     const offscreen = stubCanvases()
     const renderer = createRenderer(canvas, { view })
-    const texts = () =>
-        calls.filter((c) => c.name === "fillText").map((c) => c.args[0])
-    // The maze art's canvas (see mapArt in render.ts), and the colour of
-    // its art pixel (x, y) as "#rrggbb", as last put on it.
+    // The text drawn and the sprites (by name, see drawnName), in order.
+    const texts = () => calls.flatMap((c) => drawnName(c) ?? [])
+    // The maze art's canvas (see mapArt in render.ts): the one its pixels
+    // were made for. And the colour of its art pixel (x, y) as "#rrggbb",
+    // as last put on it.
     const art = () =>
-        offscreen.find(
-            (o) => o.canvas.width % ART === 0 && o.canvas.width > ART
+        offscreen.find((o) =>
+            o.calls.some(
+                (c) =>
+                    c.name === "createImageData" && (c.args[0] as number) > ART
+            )
         )
     const artColor = (x: number, y: number) => {
         const put = art()
@@ -210,6 +246,16 @@ function setup() {
     }
 }
 
+// Whether a drawImage's source is one of the breaths' effect tiles (a
+// canvas ART across that isn't a sprite raster).
+function isEffectTile(source: unknown): boolean {
+    return (
+        source instanceof HTMLCanvasElement &&
+        source.width === ART &&
+        source.dataset.sprite === undefined
+    )
+}
+
 // Stage 1's (the default's) dot colour, at the middle of its dot.
 const DOT_COLOR = STAGE_STYLES[1].palette.D
 
@@ -224,7 +270,81 @@ describe("createRenderer", () => {
             renderer.draw(createGameState(OLD_LEVEL), 0.5)
         ).not.toThrow()
         expect(calls.some((c) => c.name === "fillRect")).toBe(true)
-        expect(texts()).toEqual(["🐉", "👺", "👹"])
+        expect(texts()).toEqual(["dragon", "tengu", "oni"])
+    })
+
+    // KDA-300: pixel sprites face the way they go and walk while moving.
+    describe("sprite looks", () => {
+        // A one-row corridor with the player at (2, 1) and a fox at (4, 1).
+        const corridor = [
+            [1, 1, 1, 1, 1, 1, 1],
+            [1, 0, 0, 0, 0, 0, 1],
+            [1, 1, 1, 1, 1, 1, 1],
+        ] as const
+        const lookOf = (
+            calls: ReturnType<typeof setup>["calls"],
+            name: string
+        ) => {
+            const c = calls.find((c) => drawnName(c) === name)!
+            return (c.args[0] as HTMLCanvasElement).dataset.look
+        }
+
+        it("mirrors a side-view player to face right, as it starts", () => {
+            const state = makeState(corridor, { x: 2, y: 1 })
+            const { calls, renderer } = setup()
+            renderer.draw(state, 0)
+            expect(lookOf(calls, "dragon")).toBe("dragon:0:mirror")
+            state.players[0].breather.facing = vec2(-1, 0)
+            renderer.draw(state, 0)
+            calls.length = 0
+            renderer.draw(state, 0)
+            expect(lookOf(calls, "dragon")).toBe("dragon:0")
+            // Facing up, it keeps the side it last faced.
+            state.players[0].breather.facing = vec2(0, -1)
+            calls.length = 0
+            renderer.draw(state, 0)
+            expect(lookOf(calls, "dragon")).toBe("dragon:0")
+        })
+
+        it("faces an enemy the way it last moved sideways", () => {
+            const fox = makeEnemy(4, 1, AiType.ambusher)
+            const state = makeState(corridor, { x: 2, y: 1 }, [fox])
+            const { calls, renderer } = setup()
+            renderer.draw(state, 0)
+            // Not moved yet: facing left, as drawn.
+            expect(lookOf(calls, "fox")).toBe("fox:0")
+            fox.lastPos = vec2(3, 1)
+            fox.moveProgress = 1
+            calls.length = 0
+            renderer.draw(state, 0)
+            expect(lookOf(calls, "fox")).toBe("fox:0:mirror")
+        })
+
+        it("walks on frame 1 for the first half of each move", () => {
+            const fox = makeEnemy(4, 1, AiType.ambusher, { x: 5, y: 1 })
+            fox.lastPos = vec2(5, 1)
+            const state = makeState(corridor, { x: 2, y: 1 }, [fox])
+            const frameAt = (progress: number) => {
+                fox.moveProgress = progress
+                const { calls, renderer } = setup()
+                renderer.draw(state, 0)
+                return lookOf(calls, "fox")
+            }
+            expect(frameAt(0.2)).toBe("fox:1")
+            expect(frameAt(0.7)).toBe("fox:0")
+            // Arrived: standing.
+            expect(frameAt(1)).toBe("fox:0")
+        })
+
+        it("draws a front-view enemy as it is whichever way it goes", () => {
+            const oni = makeEnemy(4, 1, AiType.chase)
+            oni.lastPos = vec2(3, 1)
+            oni.moveProgress = 1
+            const state = makeState(corridor, { x: 2, y: 1 }, [oni])
+            const { calls, renderer } = setup()
+            renderer.draw(state, 0)
+            expect(lookOf(calls, "oni")).toBe("oni:0")
+        })
     })
 
     // A one-row corridor with the player at (1, 2) and `enemies` along row 1.
@@ -256,9 +376,15 @@ describe("createRenderer", () => {
         const enemies = ids.map((id, i) =>
             makeEnemy(i + 1, 1, types[i], undefined, id)
         )
-        expect(drawEnemies(enemies)).toEqual(["🐉", "👻", "🤖", "🦊", "👹"])
+        expect(drawEnemies(enemies)).toEqual([
+            "dragon",
+            "ghost",
+            "robot",
+            "fox",
+            "oni",
+        ])
         enemies.push(makeEnemy(5, 1, AiType.random, undefined, ENEMY_IDS[0]))
-        expect(drawEnemies(enemies).at(-1)).toBe("👺")
+        expect(drawEnemies(enemies).at(-1)).toBe("tengu")
     })
 
     it("draws a Splitter's halves smaller than the whole one", () => {
@@ -279,18 +405,18 @@ describe("createRenderer", () => {
         defeatEnemy(state, main)
         const { renderer, calls } = setup()
         renderer.draw(state, 0)
-        const sizes = calls
-            .filter((c) => c.name === "fillText" && c.args[0] === "🦠")
-            .map((c) => parseInt(String(c.font)))
-        const player = calls.find(
-            (c) => c.name === "fillText" && c.args[0] === "🐉"
-        )!
-        const full = parseInt(String(player.font))
-        expect(sizes).toEqual([
-            full,
-            Math.round(full * HALF_SCALE),
-            Math.round(full * HALF_SCALE),
-        ])
+        const size = (name: string) =>
+            calls
+                .filter((c) => drawnName(c) === name)
+                .map((c) => spriteBox(c).size)
+        const [full] = size("dragon")
+        expect(size("splitter")).toEqual([full])
+        // The halves have a sprite of their own, drawn smaller.
+        const halves = size("splitterHalf")
+        expect(halves).toHaveLength(2)
+        for (const half of halves) {
+            expect(half).toBeCloseTo(full! * HALF_SCALE, 0)
+        }
     })
 
     // KDA-292: an interceptor sneaks up, faint until it is near.
@@ -317,11 +443,11 @@ describe("createRenderer", () => {
             )
             renderer.draw(state, 0)
             const sprite = (text: string) =>
-                calls.find((c) => c.name === "fillText" && c.args[0] === text)
+                calls.find((c) => drawnName(c) === text)
             // Everything else is drawn as usual.
-            expect(sprite("👹")?.globalAlpha).toBe(1)
-            expect(sprite("🐉")?.globalAlpha).toBe(1)
-            return sprite("🐺")?.globalAlpha
+            expect(sprite("oni")?.globalAlpha).toBe(1)
+            expect(sprite("dragon")?.globalAlpha).toBe(1)
+            return sprite("wolf")?.globalAlpha
         }
         expect(alphaAt(10)).toBeCloseTo(SNEAK_ALPHA)
         expect(alphaAt(1 + SNEAK_FAR)).toBeCloseTo(SNEAK_ALPHA)
@@ -337,7 +463,7 @@ describe("createRenderer", () => {
             makeEnemy(1, 1, AiType.chase, undefined, ENEMY_IDS[0]),
             makeEnemy(2, 1, AiType.chase, undefined, ENEMY_IDS[2]),
         ]
-        expect(drawEnemies(enemies)).toEqual(["🐉", "👹", "👹"])
+        expect(drawEnemies(enemies)).toEqual(["dragon", "oni", "oni"])
     })
 
     it("gives every AI type its own sprite", () => {
@@ -346,7 +472,7 @@ describe("createRenderer", () => {
             types.map((ai, i) => makeEnemy(i + 1, 1, ai))
         ).slice(1)
         expect(sprites).toHaveLength(types.length)
-        expect(sprites).not.toContain("🐉")
+        expect(sprites).not.toContain("dragon")
         expect(new Set(sprites).size).toBe(types.length)
     })
 
@@ -363,7 +489,7 @@ describe("createRenderer", () => {
             )
             state.players[0].character.ai = ai
             renderer.draw(state, 0)
-            expect(texts()).toEqual(["🐉"])
+            expect(texts()).toEqual(["dragon"])
         }
     })
 
@@ -424,7 +550,7 @@ describe("createRenderer", () => {
         state.players[0].character = player
         state.enemies = []
         renderer.draw(state, 0)
-        expect(texts()).toEqual(["🐉", "🐉"])
+        expect(texts()).toEqual(["dragon", "dragon"])
     })
 
     it("draws only the HUD fields given", () => {
@@ -433,14 +559,14 @@ describe("createRenderer", () => {
 
         const empty = setup()
         empty.renderer.draw(state, 0, {})
-        expect(empty.texts()).toEqual(["🐉"])
+        expect(empty.texts()).toEqual(["dragon"])
 
         const full = setup()
         full.renderer.draw(state, 0, {
             score: 120,
             health: { health: 50, max: 100 },
         })
-        expect(full.texts()).toEqual(["Score 120", "🐉"])
+        expect(full.texts()).toEqual(["Score 120", "dragon"])
         expect(full.calls.some((c) => c.name === "strokeRect")).toBe(true)
     })
 
@@ -497,7 +623,7 @@ describe("createRenderer", () => {
         player.invulnerableFor = HURT_INVULNERABLE_TICKS
         const on = setup()
         on.renderer.draw(state, 0)
-        expect(on.texts()).toEqual(["🐉"])
+        expect(on.texts()).toEqual(["dragon"])
         // A blink later it is hidden.
         player.invulnerableFor -= TICK_RATE / (BLINK_RATE * 2)
         const off = setup()
@@ -567,7 +693,7 @@ describe("createRenderer", () => {
             const state = makeState(corridor(), { x: 2, y: 1 }, enemies())
             renderer.draw(state, 0, {}, { fog: { radius: 3 } })
             // enemy1 (random) is 2 cells away, enemy2 (chase) 7.
-            expect(texts()).toEqual(["🐉", "👺"])
+            expect(texts()).toEqual(["dragon", "tengu"])
             // The whole maze's tiles go down first; the darkness (fully dark
             // past the radius) goes over them.
             const tiles = calls.findIndex(
@@ -622,9 +748,9 @@ describe("createRenderer", () => {
                 return { texts: texts(), radii }
             }
             // The chaser is 6 cells off: out of a radius of 4, in one of 6.
-            expect(fogged()).toEqual({ texts: ["🐉"], radii: [2.5, 4] })
+            expect(fogged()).toEqual({ texts: ["dragon"], radii: [2.5, 4] })
             expect(fogged(BREATHS.owl)).toEqual({
-                texts: ["🦉", "👹"],
+                texts: ["owl", "oni"],
                 radii: [4.5, 6],
             })
         })
@@ -639,14 +765,14 @@ describe("createRenderer", () => {
             renderer.draw(state, 0, {}, { fog: { radius: 2.5 } })
             // The enemy's centre is 3 cells away: past 2.5, but its near
             // edge isn't.
-            expect(texts()).toEqual(["🐉", "👺"])
+            expect(texts()).toEqual(["dragon", "tengu"])
         })
 
         it("draws everything without fog", () => {
             const { calls, cellColor, renderer, texts } = setup()
             const state = makeState(corridor(), { x: 2, y: 1 }, enemies())
             renderer.draw(state, 0, {}, {})
-            expect(texts()).toEqual(["🐉", "👺", "👹"])
+            expect(texts()).toEqual(["dragon", "tengu", "oni"])
             const dots = Array.from({ length: 13 }, (_, x) => cellColor(x, 1))
             expect(dots.filter((c) => c === DOT_COLOR)).toHaveLength(10)
             expect(calls.some((c) => c.name === "createRadialGradient")).toBe(
@@ -679,7 +805,7 @@ describe("createRenderer", () => {
                 makeEnemy(8, 1, AiType.chase, undefined, ENEMY_IDS[1]),
             ])
             renderer.draw(state, 0, {}, { fog: { radius: 3 } })
-            expect(texts()).toEqual(["🐉", "👺"])
+            expect(texts()).toEqual(["dragon", "tengu"])
             // The light is drawn around the player and its copy past the
             // right edge.
             expect(
@@ -691,7 +817,7 @@ describe("createRenderer", () => {
             const { renderer, texts } = setup()
             const state = makeState(corridor(), { x: 2, y: 1 }, enemies())
             renderer.draw(state, 0, { score: 10 }, { fog: { radius: 1 } })
-            expect(texts()).toEqual(["Score 10", "🐉"])
+            expect(texts()).toEqual(["Score 10", "dragon"])
         })
 
         it("keeps the fog when redrawing on resize", () => {
@@ -700,7 +826,7 @@ describe("createRenderer", () => {
             renderer.draw(state, 0, {}, { fog: { radius: 1 } })
             view.innerHeight = 200
             renderer.resize()
-            expect(texts()).toEqual(["🐉", "🐉"])
+            expect(texts()).toEqual(["dragon", "dragon"])
         })
     })
 
@@ -811,7 +937,12 @@ describe("createRenderer", () => {
             expect(() =>
                 renderer.draw(createGameState(OLD_LEVEL), 0)
             ).not.toThrow()
-            expect(calls.some((c) => c.name === "drawImage")).toBe(false)
+            // Only the (blank) sprite rasters are drawn.
+            expect(
+                calls.some(
+                    (c) => c.name === "drawImage" && drawnName(c) === undefined
+                )
+            ).toBe(false)
         })
     })
 
@@ -838,7 +969,7 @@ describe("createRenderer", () => {
             const state = createGameState(OLD_LEVEL, "penguin")
             state.enemies = []
             renderer.draw(state, 0, {})
-            expect(texts()).toEqual(["🐧"])
+            expect(texts()).toEqual(["penguin"])
         })
 
         it("draws the energy meter only when the HUD has it", () => {
@@ -928,9 +1059,7 @@ describe("createRenderer", () => {
             const cell = parseFloat(canvas.style.width) / 5
             const wash = calls.findIndex((c) => c.fillStyle === "red")
             const tile = calls.findIndex(
-                (c) =>
-                    c.name === "drawImage" &&
-                    (c.args[0] as HTMLCanvasElement).width === ART
+                (c) => c.name === "drawImage" && isEffectTile(c.args[0])
             )
             expect(wash).toBeGreaterThanOrEqual(0)
             expect(tile).toBeGreaterThan(wash)
@@ -947,7 +1076,42 @@ describe("createRenderer", () => {
             expect(
                 fire.calls.filter((c) => c.name === "putImageData")
             ).toHaveLength(1)
-            expect(texts()).toEqual(["🐉"])
+            expect(texts()).toEqual(["dragon"])
+        })
+
+        // KDA-299: the sprites' outline would vanish on a dark floor.
+        it("outlines the sprites in the stage's colour, light on a dark floor", () => {
+            const outlines = (stage: number) => {
+                const enemy = makeEnemy(3, 1)
+                const state = room()
+                state.enemies = [enemy]
+                addStatus(enemy, FROZEN, 1)
+                const { renderer, calls } = setup()
+                renderer.draw(state, 0, {}, {}, { stage })
+                return calls
+                    .filter((c) => drawnName(c) !== undefined)
+                    .map((c) => ({
+                        name: drawnName(c),
+                        outline: (c.args[0] as HTMLCanvasElement).dataset
+                            .outline,
+                    }))
+            }
+            for (const stage of [8, 9, 10]) {
+                const light = STAGE_STYLES[stage].outline
+                expect(light).not.toBe("#000000")
+                // The frozen enemy (held, so under the player) with its
+                // badge, then the player.
+                expect(outlines(stage)).toEqual([
+                    { name: "tengu", outline: light },
+                    { name: "frozen", outline: light },
+                    { name: "dragon", outline: light },
+                ])
+            }
+            expect(outlines(1).map((d) => d.outline)).toEqual([
+                "#000000",
+                "#000000",
+                "#000000",
+            ])
         })
 
         it("draws the frozen ice block over a frozen enemy's sprite", () => {
@@ -958,14 +1122,12 @@ describe("createRenderer", () => {
             const { renderer, calls, canvas } = setup()
             renderer.draw(state, 0)
             const cell = parseFloat(canvas.style.width) / 5
-            const sprite = calls.findIndex(
-                (c) => c.name === "fillText" && c.args[0] === "👺"
-            )
+            const sprite = calls.findIndex((c) => drawnName(c) === "tengu")
             const block = calls.findIndex(
                 (c, i) =>
                     i > sprite &&
                     c.name === "drawImage" &&
-                    (c.args[0] as HTMLCanvasElement).width === ART
+                    isEffectTile(c.args[0])
             )
             expect(sprite).toBeGreaterThanOrEqual(0)
             expect(block).toBeGreaterThan(sprite)
@@ -992,19 +1154,24 @@ describe("createRenderer", () => {
             )
             addStatus(
                 enemy,
-                { name: "test.frozen", look: { color: "blue", emoji: "❄️" } },
+                {
+                    name: "test.frozen",
+                    look: { color: "blue", badge: "frozen" },
+                },
                 1
             )
             renderer.draw(state, 0)
             expect(
                 calls.some((c) => c.name === "fill" && c.fillStyle === "blue")
             ).toBe(true)
-            expect(texts()).toEqual(["🐉", "👺", "❄️"])
+            // The badge is a pixel sprite of its own (KDA-300).
+            expect(texts()).toEqual(["dragon", "tengu", "frozen"])
         })
 
         // Regression (PR #74 review): the sprite and badge were drawn with
-        // the look's translucent fill still set, and canvas draws colour
-        // emoji with the fill's alpha, so they came out see-through.
+        // the look's translucent fill still set, and canvas drew the emoji
+        // they were then with the fill's alpha, so they came out
+        // see-through. Pixel sprites must still come out opaque.
         it("draws a sprite with a look opaque, not in its disc's colour", () => {
             const enemy = makeEnemy(3, 1)
             const state = makeState(
@@ -1019,16 +1186,15 @@ describe("createRenderer", () => {
             const color = "rgba(255, 110, 20, 0.45)"
             addStatus(
                 enemy,
-                { name: "test.burning", look: { color, emoji: "🔥" } },
+                { name: "test.burning", look: { color, badge: "stunned" } },
                 1
             )
             const { renderer, calls } = setup()
             renderer.draw(state, 0)
-            for (const text of ["👺", "🔥"]) {
-                const drawn = calls.find(
-                    (c) => c.name === "fillText" && c.args[0] === text
-                )!
-                expect(drawn.fillStyle, text).toBe("#000")
+            for (const name of ["tengu", "stunned"]) {
+                const drawn = calls.find((c) => drawnName(c) === name)!
+                expect(drawn.name, name).toBe("drawImage")
+                expect(drawn.globalAlpha, name).toBe(1)
             }
         })
 
@@ -1054,7 +1220,7 @@ describe("createRenderer", () => {
                 {
                     name: "test.frozen",
                     holds: true,
-                    look: { color: "blue", emoji: "🧊" },
+                    look: { color: "blue", badge: "frozen" },
                 },
                 1
             )
@@ -1063,18 +1229,16 @@ describe("createRenderer", () => {
             // The frozen enemy and its badge, both players with their
             // markers, then the moving enemy.
             expect(texts().filter((t) => t !== "1" && t !== "2")).toEqual([
-                "👺",
-                "🧊",
-                "🐉",
-                "🐉",
-                "👹",
+                "tengu",
+                "frozen",
+                "dragon",
+                "dragon",
+                "oni",
             ])
             const disc = calls.findIndex(
                 (c) => c.name === "fill" && c.fillStyle === "blue"
             )
-            const player = calls.findIndex(
-                (c) => c.name === "fillText" && c.args[0] === "🐉"
-            )
+            const player = calls.findIndex((c) => drawnName(c) === "dragon")
             expect(disc).toBeGreaterThanOrEqual(0)
             expect(disc).toBeLessThan(player)
         })
@@ -1097,9 +1261,7 @@ describe("createRenderer", () => {
             const spriteX = (alpha: number) => {
                 const { renderer, calls } = setup()
                 renderer.draw(state, alpha)
-                return calls.find(
-                    (c) => c.name === "fillText" && c.args[0] === "👺"
-                )!.args[1]
+                return calls.find((c) => drawnName(c) === "tengu")!.args[1]
             }
             expect(spriteX(0.9)).toBe(spriteX(0))
         })
@@ -1116,14 +1278,15 @@ describe("createRenderer", () => {
                 state.players[0].rate = rate
                 const { renderer, calls } = setup()
                 renderer.draw(state, alpha)
-                return calls.find(
-                    (c) => c.name === "fillText" && c.args[0] === "🐉"
-                )!.args[1] as number
+                return spriteBox(calls.find((c) => drawnName(c) === "dragon")!)
+                    .x
             }
-            // At 1.5x it gets 1.5 times as far through the frame.
+            // At 1.5x it gets 1.5 times as far through the frame (to the
+            // half pixel the sprite is put on at a devicePixelRatio of 2).
             const start = spriteX(1.5, 0)
             expect(spriteX(1.5, 0.9) - start).toBeCloseTo(
-                1.5 * (spriteX(1, 0.9) - start)
+                1.5 * (spriteX(1, 0.9) - start),
+                0
             )
         })
 
@@ -1141,11 +1304,11 @@ describe("createRenderer", () => {
             enemy.respawnIn = RESPAWN_DELAY
             const gone = setup()
             gone.renderer.draw(state, 0)
-            expect(gone.texts()).toEqual(["🐉"])
+            expect(gone.texts()).toEqual(["dragon"])
             enemy.respawnIn = RESPAWN_BLINK
             const blink = setup()
             blink.renderer.draw(state, 0)
-            expect(blink.texts()).toEqual(["🐉", "👺"])
+            expect(blink.texts()).toEqual(["dragon", "tengu"])
         })
     })
 
@@ -1168,16 +1331,14 @@ describe("createRenderer", () => {
         it("draws it twice the size of a sprite, centred on its footprint, under the others", () => {
             const { calls, canvas, renderer, texts } = setup()
             renderer.draw(bossState(), 0)
-            expect(texts()).toEqual([BOSS_SPRITE, "🐉"])
+            expect(texts()).toEqual(["kitsune", "dragon"])
             const cell = cellOf(canvas)
-            const boss = calls.find(
-                (c) => c.name === "fillText" && c.args[0] === BOSS_SPRITE
-            )!
-            expect(boss.args[1]).toBeCloseTo(4 * cell)
-            expect(boss.args[2]).toBeCloseTo(2 * cell)
-            expect(boss.font).toBe(
-                `${Math.round(cell * SPRITE_SCALE * BOSS_SCALE)}px sans-serif`
+            const boss = spriteBox(
+                calls.find((c) => drawnName(c) === "kitsune")!
             )
+            expect(boss.x).toBeCloseTo(4 * cell, 0)
+            expect(boss.y).toBeCloseTo(2 * cell, 0)
+            expect(boss.size).toBeCloseTo(cell * SPRITE_SCALE * BOSS_SCALE, 0)
         })
 
         it("glides it between cells like any character", () => {
@@ -1187,10 +1348,8 @@ describe("createRenderer", () => {
             boss.moveProgress = 0.5
             const { calls, canvas, renderer } = setup()
             renderer.draw(state, 0)
-            const sprite = calls.find(
-                (c) => c.name === "fillText" && c.args[0] === BOSS_SPRITE
-            )!
-            expect(sprite.args[1]).toBeCloseTo(4.5 * cellOf(canvas))
+            const sprite = calls.find((c) => drawnName(c) === "kitsune")!
+            expect(spriteBox(sprite).x).toBeCloseTo(4.5 * cellOf(canvas), 0)
         })
 
         // The health bar's fill: the fillRect drawn in its colour.
@@ -1288,23 +1447,65 @@ describe("createRenderer", () => {
             const { calls, renderer } = setup()
             renderer.draw(windingUp(), 0, {}, {}, IN_GAME)
             const glow = glows(calls)
-            const sprite = calls.findIndex(
-                (c) => c.name === "fillText" && c.args[0] === BOSS_SPRITE
-            )
+            const sprite = calls.findIndex((c) => drawnName(c) === "kitsune")
             expect(glow).toBeGreaterThanOrEqual(0)
             expect(glow).toBeLessThan(sprite)
         })
 
         // Regression (PR #74 review): the sprite was drawn with the glow's
-        // translucent fill still set, and canvas draws colour emoji with
-        // the fill's alpha, so the boss faded out as it wound up.
+        // translucent fill still set, and canvas drew the emoji it was then
+        // with the fill's alpha, so the boss faded out as it wound up.
         it("draws its sprite opaque over the glow", () => {
             const { calls, renderer } = setup()
             renderer.draw(windingUp(), 0, {}, {}, IN_GAME)
-            const sprite = calls.find(
-                (c) => c.name === "fillText" && c.args[0] === BOSS_SPRITE
-            )!
-            expect(sprite.fillStyle).toBe("#000")
+            const sprite = calls.find((c) => drawnName(c) === "kitsune")!
+            expect(sprite.name).toBe("drawImage")
+            expect(sprite.globalAlpha).toBe(1)
+        })
+
+        // KDA-298: the Kitsune's tails show its health, and the final boss
+        // blazes as it winds up.
+        const looks = (calls: ReturnType<typeof setup>["calls"]) =>
+            calls.flatMap((c) =>
+                c.name === "drawImage"
+                    ? [(c.args[0] as HTMLCanvasElement).dataset.look]
+                    : []
+            )
+
+        it("draws the Kitsune with a tail per ninth of its health left", () => {
+            const state = bossState()
+            const boss = state.boss!
+            expect(boss.maxHealth).toBe(12)
+            const tails = (health: number) => {
+                boss.health = health
+                const { calls, renderer } = setup()
+                renderer.draw(state, 0)
+                return looks(calls).filter((l) => l?.startsWith("kitsune"))
+            }
+            // A ninth of 12 is 1.33 health.
+            expect(tails(12)).toEqual(["kitsune:0:tails9"])
+            expect(tails(4.1)).toEqual(["kitsune:0:tails4"])
+            expect(tails(4)).toEqual(["kitsune:0:tails3"])
+            expect(tails(0.1)).toEqual(["kitsune:0:tails1"])
+        })
+
+        it("draws the final boss on stage 10 with its wind-up grid while it winds up", () => {
+            const state = windingUp()
+            state.boss!.kind = BossKind.final
+            const { calls, renderer, texts } = setup()
+            renderer.draw(state, 0, {}, {}, IN_GAME)
+            expect(texts()).toContain("finalBoss")
+            expect(looks(calls)).toContain("finalBoss:0:windUp")
+            // Not on end screens, where no wind-up shows.
+            const end = setup()
+            end.renderer.draw(state, 0, {}, {}, {})
+            expect(looks(end.calls)).toContain("finalBoss:0")
+            // Nor once it has breathed.
+            state.boss!.breath.windingUp = 0
+            const calm = setup()
+            calm.renderer.draw(state, 0, {}, {}, IN_GAME)
+            expect(looks(calm.calls)).toContain("finalBoss:0")
+            expect(looks(calm.calls)).not.toContain("finalBoss:0:windUp")
         })
 
         it("shows no wind-up on end screens", () => {
@@ -1312,7 +1513,7 @@ describe("createRenderer", () => {
             end.renderer.draw(windingUp(), 0, {}, {}, {})
             expect(tinted(end)).toEqual([])
             expect(glows(end.calls)).toBe(-1)
-            expect(end.texts()).toContain(BOSS_SPRITE)
+            expect(end.texts()).toContain("kitsune")
         })
 
         it("doesn't draw it once defeated", () => {
@@ -1320,7 +1521,7 @@ describe("createRenderer", () => {
             state.boss!.defeated = true
             const { calls, renderer, texts } = setup()
             renderer.draw(state, 0)
-            expect(texts()).toEqual(["🐉"])
+            expect(texts()).toEqual(["dragon"])
             expect(healthBar(calls)).toHaveLength(0)
         })
 
@@ -1330,13 +1531,13 @@ describe("createRenderer", () => {
             state.boss!.lastPos = vec2(6, 1)
             const dark = setup()
             dark.renderer.draw(state, 0, {}, { fog: { radius: 2 } })
-            expect(dark.texts()).toEqual(["🐉"])
+            expect(dark.texts()).toEqual(["dragon"])
             // Its nearest cell, (3, 1), is 2 cells from the player.
             state.boss!.pos = vec2(3, 1)
             state.boss!.lastPos = vec2(3, 1)
             const lit = setup()
             lit.renderer.draw(state, 0, {}, { fog: { radius: 2 } })
-            expect(lit.texts()).toEqual([BOSS_SPRITE, "🐉"])
+            expect(lit.texts()).toEqual(["kitsune", "dragon"])
         })
     })
 
@@ -1409,12 +1610,10 @@ describe("createRenderer", () => {
             const { calls, renderer } = setup()
             renderer.draw(breatherState(), 0, {}, {}, IN_GAME)
             const glow = glows(calls)
-            const sprite = calls.findIndex(
-                (c) => c.name === "fillText" && c.args[0] === "🐍"
-            )
+            const sprite = calls.findIndex((c) => drawnName(c) === "snake")
             expect(glow).toBeGreaterThanOrEqual(0)
             expect(glow).toBeLessThan(sprite)
-            expect(calls[sprite].fillStyle).toBe("#000")
+            expect(calls[sprite].globalAlpha).toBe(1)
         })
 
         it("shows no wind-up on end screens", () => {
@@ -1422,7 +1621,7 @@ describe("createRenderer", () => {
             end.renderer.draw(breatherState(), 0, {}, {}, {})
             expect(tinted(end)).toEqual([])
             expect(glows(end.calls)).toBe(-1)
-            expect(end.texts()).toContain("🐍")
+            expect(end.texts()).toContain("snake")
         })
     })
 })
@@ -1453,7 +1652,7 @@ describe("createRenderer with two players", () => {
     it("draws both players, each with its number in its colour", () => {
         const { calls, renderer, texts } = setup()
         renderer.draw(pair([BREATHS.owl, BREATHS.boar]), 0)
-        expect(texts()).toEqual(["🦉", "1", "🐗", "2"])
+        expect(texts()).toEqual(["owl", "1", "boar", "2"])
         const labels = calls.filter(
             (c) =>
                 c.name === "fillText" &&
@@ -1467,7 +1666,7 @@ describe("createRenderer with two players", () => {
     it("tells two players of the same character apart", () => {
         const { renderer, texts } = setup()
         renderer.draw(pair([BREATHS.penguin, BREATHS.penguin]), 0)
-        expect(texts()).toEqual(["🐧", "1", "🐧", "2"])
+        expect(texts()).toEqual(["penguin", "1", "penguin", "2"])
     })
 
     it("draws no marker with one player", () => {
@@ -1475,7 +1674,7 @@ describe("createRenderer with two players", () => {
         const state = createGameState(OLD_LEVEL)
         state.enemies = []
         renderer.draw(state, 0)
-        expect(texts()).toEqual(["🐉"])
+        expect(texts()).toEqual(["dragon"])
         expect(calls.some((c) => c.name === "stroke")).toBe(false)
     })
 
@@ -1557,7 +1756,14 @@ describe("createRenderer with two players", () => {
             )
             renderer.draw(state, 0, {}, { fog: { radius: 2 } })
             // The chaser in the middle is out of both lights.
-            expect(texts()).toEqual(["🐉", "1", "🐉", "2", "👺", "🦊"])
+            expect(texts()).toEqual([
+                "dragon",
+                "1",
+                "dragon",
+                "2",
+                "tengu",
+                "fox",
+            ])
         })
 
         // The canvas the darkness is drawn on: the one made with lights
@@ -1573,6 +1779,8 @@ describe("createRenderer with two players", () => {
                 { x: 1, y: 1 },
                 { x: 11, y: 1 },
             ])
+            renderer.draw(state, 0)
+            calls.length = 0
             renderer.draw(state, 0, {}, { fog: { radius: 2 } })
             const cell = parseFloat(canvas.style.width) / 13
             expect(calls.some((c) => c.name === "createRadialGradient")).toBe(
@@ -1588,7 +1796,10 @@ describe("createRenderer with two players", () => {
             ])
             // The layer goes over the maze, filled with the stage's fog.
             const images = calls.filter(
-                (c) => c.name === "drawImage" && c.args[0] !== art()?.canvas
+                (c) =>
+                    c.name === "drawImage" &&
+                    c.args[0] !== art()?.canvas &&
+                    drawnName(c) === undefined
             )
             expect(images).toHaveLength(1)
             expect(images[0].args[0]).toBe(layer.canvas)
@@ -1609,6 +1820,7 @@ describe("createRenderer with two players", () => {
                 [],
                 { breath: [BREATHS.dragon, BREATHS.owl] }
             )
+            renderer.draw(state, 0)
             renderer.draw(state, 0, {}, { fog: { radius: 2 } })
             const cell = parseFloat(canvas.style.width) / 13
             const outer = darkness(offscreen)!
@@ -1669,7 +1881,10 @@ describe("createRenderer with two players", () => {
             renderer.draw(state, 0, {}, { fog: { radius: 2 } })
             expect(
                 calls.some(
-                    (c) => c.name === "drawImage" && c.args[0] !== art()?.canvas
+                    (c) =>
+                        c.name === "drawImage" &&
+                        c.args[0] !== art()?.canvas &&
+                        drawnName(c) === undefined
                 )
             ).toBe(false)
         })
@@ -1704,7 +1919,7 @@ describe("createRenderer with a player out of play", () => {
         const state = pair()
         takeOut(state.players[0], PLAYER_RESPAWN_DELAY)
         renderer.draw(state, 0)
-        expect(texts()).toEqual(["🐗", "2"])
+        expect(texts()).toEqual(["boar", "2"])
     })
 
     it("shows its countdown, or that it is out for good, in place of its meter", () => {
@@ -1755,19 +1970,16 @@ describe("createRenderer with a player out of play", () => {
     })
 
     it("keeps the light where they went out while nobody is in play", () => {
-        const { calls, renderer } = setup()
-        const layerCanvas = document.createElement("canvas")
-        const layer = stubContext()
-        vi.spyOn(layerCanvas, "getContext").mockReturnValue(layer.ctx as never)
-        vi.spyOn(document, "createElement").mockReturnValue(layerCanvas)
+        const { calls, offscreen, renderer } = setup()
         const state = pair()
         takeOut(state.players[0], PLAYER_RESPAWN_DELAY)
         takeOut(state.players[1], PLAYER_RESPAWN_DELAY)
         renderer.draw(state, 0, {}, { fog: { radius: 2 } })
         expect(calls.some((c) => c.name === "createRadialGradient")).toBe(false)
-        expect(
-            layer.calls.filter((c) => c.name === "createRadialGradient")
-        ).toHaveLength(2)
+        const lights = offscreen.flatMap((o) =>
+            o.calls.filter((c) => c.name === "createRadialGradient")
+        )
+        expect(lights).toHaveLength(2)
     })
 })
 
@@ -1823,7 +2035,7 @@ describe("createRenderer in versus", () => {
         const state = pair()
         state.players[1].stunnedFor = 1
         renderer.draw(state, 0)
-        expect(texts()).toEqual(["🦉", "1", "🐗", "2", STUN_BADGE])
+        expect(texts()).toEqual(["owl", "1", "boar", "2", STUN_BADGE])
     })
 
     it("marks a player immune after a stun with the immune badge", () => {
@@ -1831,7 +2043,7 @@ describe("createRenderer in versus", () => {
         const state = pair()
         state.players[1].stunImmuneFor = 1
         renderer.draw(state, 0)
-        expect(texts()).toEqual(["🦉", "1", "🐗", "2", IMMUNE_BADGE])
+        expect(texts()).toEqual(["owl", "1", "boar", "2", IMMUNE_BADGE])
     })
 })
 
@@ -1903,7 +2115,7 @@ describe("createRenderer with effects", () => {
     it("draws particles over the characters", () => {
         const { calls, renderer } = setup()
         renderer.draw(corridor(), 0, {}, {}, { particles: [particle()] })
-        const sprite = calls.findIndex((c) => c.name === "fillText")
+        const sprite = calls.findIndex((c) => drawnName(c) === "dragon")
         const arc = calls.findIndex((c) => c.name === "arc")
         expect(arc).toBeGreaterThan(sprite)
     })
@@ -1966,8 +2178,8 @@ describe("createRenderer with effects", () => {
         expect(translates[1].args[0]).toBeCloseTo(0.2 * cell)
         expect(translates[1].args[1]).toBeCloseTo(-0.1 * cell)
         const shakeAt = calls.indexOf(translates[1])
-        const hud = calls.findIndex((c) => c.args[0] === "Score 5")
-        const sprite = calls.findIndex((c) => c.args[0] === "🐉")
+        const hud = calls.findIndex((c) => drawnName(c) === "Score 5")
+        const sprite = calls.findIndex((c) => drawnName(c) === "dragon")
         expect(hud).toBeLessThan(shakeAt)
         expect(sprite).toBeGreaterThan(shakeAt)
         // The clip is set before the shake, so the maze moves inside it.
@@ -2115,9 +2327,7 @@ describe("createRenderer with a charging breath", () => {
             fillStyle: "#f59e0b",
             globalAlpha: CHARGE_AURA_ALPHA,
         })
-        const sprite = calls.findIndex(
-            (c) => c.name === "fillText" && c.args[0] === "🐉"
-        )
+        const sprite = calls.findIndex((c) => drawnName(c) === "dragon")
         expect(sprite).toBeGreaterThan(fill)
         expect(calls[sprite].globalAlpha).toBe(1)
     })
@@ -2219,7 +2429,7 @@ describe("createRenderer with the facing guide", () => {
         const tiles = calls.findIndex(
             (c) => c.name === "drawImage" && c.args[0] === art()?.canvas
         )
-        const sprite = calls.findIndex((c) => c.name === "fillText")
+        const sprite = calls.findIndex((c) => drawnName(c) === "dragon")
         expect(tiles).toBeGreaterThanOrEqual(0)
         expect(tint).toBeGreaterThan(tiles)
         expect(sprite).toBeGreaterThan(tint)
@@ -2427,8 +2637,7 @@ describe("createRenderer on a maze too big for the screen", () => {
             view,
             now: () => clock.now,
         })
-        const texts = () =>
-            calls.filter((c) => c.name === "fillText").map((c) => c.args[0])
+        const texts = () => calls.flatMap((c) => drawnName(c) ?? [])
         // How far the view scrolled the maze this frame: the translate after
         // the HUD's, undone; [0, 0] without one.
         const scroll = () => {
@@ -2461,8 +2670,9 @@ describe("createRenderer on a maze too big for the screen", () => {
     const coop = () =>
         createGameState(BIG_LEVEL, [DEFAULT_ANIMAL, DEFAULT_ANIMAL], "coop")
 
-    const font = (cell: number) =>
-        `${Math.round(cell * SPRITE_SCALE)}px sans-serif`
+    // A sprite's size at `cell` px cells (at a devicePixelRatio of 1, to
+    // the pixel).
+    const spriteSize = (cell: number) => Math.round(cell * SPRITE_SCALE)
 
     it("zooms in to the minimum cell size and shows the player's corner", () => {
         const { canvas, calls, frame, scroll, texts } = bigSetup()
@@ -2472,11 +2682,14 @@ describe("createRenderer on a maze too big for the screen", () => {
         expect(canvas.style.height).toBe(`${VIEWPORT.height + CELL}px`)
         // Held at the maze's left and bottom edges.
         expect(scroll()).toEqual([0, MAX_Y])
-        const sprite = calls.find((c) => c.args[0] === "🐉")
-        expect(sprite?.args.slice(1)).toEqual([1.5 * CELL, 19.5 * CELL])
-        expect(sprite?.font).toBe(font(CELL))
+        const sprite = spriteBox(calls.find((c) => drawnName(c) === "dragon")!)
+        expect(sprite).toEqual({
+            x: 1.5 * CELL,
+            y: 19.5 * CELL,
+            size: spriteSize(CELL),
+        })
         // The enemy top right is out of view; the one in the middle isn't.
-        expect(texts()).toEqual(["🐉", "👹"])
+        expect(texts()).toEqual(["dragon", "oni"])
     })
 
     it("centres the player when it is away from the edges", () => {
@@ -2554,8 +2767,8 @@ describe("createRenderer on a maze too big for the screen", () => {
         enemy.moveProgress = 0.5
         frame(state)
         expect(scroll()[0]).toBeCloseTo(MAX_X)
-        const drawn = calls.filter((c) => c.args[0] === "👹")
-        expect(drawn.map((c) => c.args[1])).toEqual([0, 29 * CELL])
+        const drawn = calls.filter((c) => drawnName(c) === "oni")
+        expect(drawn.map((c) => spriteBox(c).x)).toEqual([0, 29 * CELL])
     })
 
     it("draws a maze that fits whole under MIN_CELL_PX whole, without zooming in", () => {
@@ -2580,8 +2793,8 @@ describe("createRenderer on a maze too big for the screen", () => {
         expect(calls.filter((c) => c.name === "translate")).toHaveLength(1)
         const rect = calls.find((c) => c.name === "rect")
         expect(rect?.args).toEqual([0, 0, 17 * 19, 15 * 19])
-        const sprite = calls.find((c) => c.args[0] === "🐉")
-        expect(sprite?.font).toBe(font(19))
+        const sprite = calls.find((c) => drawnName(c) === "dragon")!
+        expect(spriteBox(sprite).size).toBe(spriteSize(19))
     })
 
     it("draws a maze that fits whole as before, unmoved", () => {
@@ -2603,8 +2816,8 @@ describe("createRenderer on a maze too big for the screen", () => {
             place(state.players[1], { x: 16, y: 9 })
             frame(state)
             expect(scroll()[0]).toBeCloseTo(14.5 * CELL - VIEWPORT.width / 2)
-            const sprite = calls.find((c) => c.args[0] === "🐉")
-            expect(sprite?.args[1]).toBe(12.5 * CELL)
+            const sprite = calls.find((c) => drawnName(c) === "dragon")!
+            expect(spriteBox(sprite).x).toBe(12.5 * CELL)
         })
 
         it("zooms out to keep both in view, down to the whole maze", () => {
@@ -2612,12 +2825,13 @@ describe("createRenderer on a maze too big for the screen", () => {
             // On their spawns, bottom left and bottom right.
             frame(coop())
             const cell = VIEWPORT.width / 29
-            const sprites = calls.filter((c) => c.args[0] === "🐉")
-            expect(sprites.map((c) => c.args[1])).toEqual([
-                1.5 * cell,
-                27.5 * cell,
-            ])
-            expect(sprites[0].font).toBe(font(cell))
+            const sprites = calls
+                .filter((c) => drawnName(c) === "dragon")
+                .map(spriteBox)
+            expect(sprites).toHaveLength(2)
+            expect(sprites[0]!.x).toBeCloseTo(1.5 * cell, 0)
+            expect(sprites[1]!.x).toBeCloseTo(27.5 * cell, 0)
+            expect(sprites[0]!.size).toBe(spriteSize(cell))
             // The whole maze across, and centred down.
             const [x, y] = scroll()
             expect(x).toBe(0)
@@ -2630,8 +2844,8 @@ describe("createRenderer on a maze too big for the screen", () => {
             takeOut(state.players[1], PLAYER_RESPAWN_DELAY)
             frame(state)
             expect(scroll()).toEqual([0, MAX_Y])
-            const sprite = calls.find((c) => c.args[0] === "🐉")
-            expect(sprite?.font).toBe(font(CELL))
+            const sprite = calls.find((c) => drawnName(c) === "dragon")!
+            expect(spriteBox(sprite).size).toBe(spriteSize(CELL))
         })
 
         it("holds the view while nobody is in play", () => {
@@ -2655,6 +2869,7 @@ describe("createRenderer on a maze too big for the screen", () => {
             const offscreen = stubCanvases()
             const state = coop()
             place(state.players[1], { x: 3, y: 19 })
+            frame(state, 0)
             frame(state, 0, { fog: { radius: 2 } })
             const layer = offscreen.find((o) =>
                 o.calls.some((c) => c.name === "createRadialGradient")

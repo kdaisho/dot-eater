@@ -1,7 +1,7 @@
 import type { BreathDef, TileEffect } from "../breath"
 import { AnimalId } from "../roster"
 
-// Owl 🦉, wind breath (KDA-218): blows every enemy in a line back a few
+// Owl, wind breath (KDA-218): blows every enemy in a line back a few
 // cells, through tunnels; it doesn't defeat. Charging it (KDA-289) makes
 // the line longer and the push further (windRange, windPush), for 10
 // energy a level. Stats: cheap breath, short cooldown, and it sees 1.5

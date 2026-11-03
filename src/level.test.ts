@@ -1001,6 +1001,17 @@ describe("parseLevel with a boss", () => {
         ])
     })
 
+    // KDA-298: who it is, for its sprite.
+    it("takes the boss's kind from its settings", () => {
+        expect(parseFlat(withBoss({ kind: "final" })).boss).toEqual({
+            pos: vec2(3, 2),
+            kind: "final",
+        })
+        expect(problemsOf(withBoss({ kind: "dragon" as never }))).toEqual([
+            'boss.kind must be one of kitsune, final, got "dragon"',
+        ])
+    })
+
     it("takes the boss's health from its settings", () => {
         expect(parseFlat(withBoss({ health: 18 })).boss).toEqual({
             pos: vec2(3, 2),

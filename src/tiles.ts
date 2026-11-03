@@ -83,8 +83,7 @@ export type TileStyle = {
     fog: string
     // The colour of the characters' 1-px outline on this stage: black, or
     // a light one on a dark floor so it doesn't vanish (stages 8 to 10).
-    // For the sprite module (KDA-300's sprites) to draw with: see
-    // spriteOutline.
+    // The renderer draws the sprites with it (see spriteOutline).
     outline: string
 }
 
@@ -490,9 +489,9 @@ export function styleFor(stage: number | undefined): TileStyle {
     return (stage !== undefined && STAGE_STYLES[stage]) || STAGE_STYLES[1]
 }
 
-// The colour of the characters' outline on stage `stage` (TileStyle.outline):
-// the hook for the sprite module to draw sprites with, so they stand out on
-// the dark-floor stages.
+// The colour of the characters' outline on stage `stage` (TileStyle.outline),
+// which render.ts gives the sprite cache (see drawSprite in sprites.ts), so
+// sprites stand out on the dark-floor stages.
 export function spriteOutline(stage: number | undefined): string {
     return styleFor(stage).outline
 }

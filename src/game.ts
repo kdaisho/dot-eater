@@ -306,7 +306,8 @@ export function createGameState(
                   difficulty
                       ? bossBreathAt(level.boss.breath, difficulty)
                       : level.boss.breath,
-                  level.boss.health
+                  level.boss.health,
+                  level.boss.kind
               )
             : null,
         ticks: 0,

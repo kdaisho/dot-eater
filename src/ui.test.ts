@@ -181,18 +181,19 @@ describe("showCharacterSelect", () => {
         expect(cards().map((card) => card.dataset.animal)).toEqual(ANIMAL_IDS)
     })
 
-    it("shows each character's emoji, name, breath and stat", () => {
+    it("shows each character's sprite, name, breath and stat", () => {
         showCharacterSelect(animals, AnimalId.dragon)
         cards().forEach((card, i) => {
             const animal = animals[i]
-            expect(part(card, "emoji")).toBe(animal.emoji)
+            const sprite = card.querySelector<HTMLCanvasElement>(".card-sprite")
+            expect(sprite?.dataset.sprite).toBe(animal.id)
+            expect([sprite?.width, sprite?.height]).toEqual([18, 18])
             expect(part(card, "name")).toBe(animal.name)
             expect(part(card, "breath")).toBe(animal.breathName)
             expect(part(card, "text")).toBe(animal.breathText)
             expect(part(card, "stat")).toBe(animal.statText)
         })
         const owl = cards()[ANIMAL_IDS.indexOf(AnimalId.owl)]
-        expect(part(owl, "emoji")).toBe("🦉")
         expect(part(owl, "name")).toBe("Owl")
         expect(part(owl, "breath")).toBe("Wind breath")
     })

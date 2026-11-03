@@ -20,7 +20,7 @@ export function fireRange(level: number): number {
     return level + 1
 }
 
-// Dragon 🐉, fire breath (KDA-216): fire that spreads down the corridors
+// Dragon, fire breath (KDA-216): fire that spreads down the corridors
 // ahead (a spread shape), turning corners and splitting at junctions, and
 // defeats every enemy it reaches; the cells it passed burn for 2 s and
 // block enemies. Charging it (KDA-289) makes it spread further (fireRange),
