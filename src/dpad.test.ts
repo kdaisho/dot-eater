@@ -34,7 +34,7 @@ describe("padDirection", () => {
 })
 
 describe("createTouchControls", () => {
-    it("adds pause, the D-pad, breath and punch once", () => {
+    it("adds pause, the D-pad and breath once", () => {
         const root = createTouchControls(document)
         expect(root.parentElement).toBe(document.body)
         expect(root.querySelector("[data-action=pause]")).not.toBeNull()
@@ -44,11 +44,7 @@ describe("createTouchControls", () => {
                 .querySelector("[data-action=breath]")
                 ?.getAttribute("aria-label")
         ).toBe("Breath")
-        expect(
-            root
-                .querySelector("[data-action=punch]")
-                ?.getAttribute("aria-label")
-        ).toBe("Punch")
+        expect(root.querySelectorAll("button")).toHaveLength(2)
         expect(createTouchControls(document)).toBe(root)
         expect(document.querySelectorAll("#touch-controls")).toHaveLength(1)
     })
@@ -62,7 +58,7 @@ describe("setBreathReady", () => {
         expect(breath.classList.contains("ready")).toBe(true)
         expect(
             root
-                .querySelector("[data-action=punch]")
+                .querySelector("[data-action=pause]")
                 ?.classList.contains("ready")
         ).toBe(false)
         setBreathReady(root, false)
@@ -93,11 +89,10 @@ describe("touch controls' visibility", () => {
 
     const phone = { touch: true, buttons: true, dpad: false }
 
-    it("shows pause, punch and breath only on a touch screen during play", () => {
+    it("shows pause and breath only on a touch screen during play", () => {
         expect(shownWith({ ...phone, playing: true })).toEqual([
             "touch-pause",
             "touch-breath",
-            "touch-punch",
         ])
         // Outside play (menus, pause).
         expect(shownWith({ ...phone, playing: false })).toEqual([])
@@ -113,7 +108,7 @@ describe("touch controls' visibility", () => {
     })
 
     // Regression (PR #79 review): a laptop with a touch screen got the
-    // punch and breath buttons (and their band) over its keyboard play.
+    // touch buttons (and their band) over its keyboard play.
     it("shows only pause on a touch screen that isn't the main input", () => {
         expect(
             shownWith({
@@ -125,10 +120,10 @@ describe("touch controls' visibility", () => {
         ).toEqual(["touch-pause"])
     })
 
-    it("shows the D-pad with Show D-pad on, beside punch and breath", () => {
+    it("shows the D-pad with Show D-pad on, beside breath", () => {
         expect(
             shownWith({ touch: true, buttons: true, dpad: true, playing: true })
-        ).toEqual(["touch-pause", "dpad", "touch-breath", "touch-punch"])
+        ).toEqual(["touch-pause", "dpad", "touch-breath"])
     })
 
     // Where the stylesheet puts each control shown, from its fixed
@@ -183,7 +178,7 @@ describe("touch controls' visibility", () => {
                 dpad,
                 playing: true,
             })
-            expect(boxes).toHaveLength(dpad ? 4 : 3)
+            expect(boxes).toHaveLength(dpad ? 3 : 2)
             for (const a of boxes) {
                 expect(a.x).toBeGreaterThanOrEqual(0)
                 expect(a.y).toBeGreaterThanOrEqual(0)
@@ -202,30 +197,31 @@ describe("touch controls' visibility", () => {
         }
     })
 
-    it("stacks breath above punch in landscape and on a narrow phone with the D-pad", () => {
-        const at = (width: number, height: number, dpad: boolean) => {
-            const boxes = boxesAt(width, height, {
+    // KDA-294: breath has the corner to itself.
+    it("puts breath in the band's bottom-right corner", () => {
+        const at = (width: number, height: number, dpad: boolean) =>
+            boxesAt(width, height, {
                 touch: true,
                 buttons: true,
                 dpad,
                 playing: true,
-            })
-            const find = (name: string) => boxes.find((b) => b.name === name)!
-            return { breath: find("touch-breath"), punch: find("touch-punch") }
-        }
-        for (const [width, height, dpad] of [
-            [844, 390, false],
-            [844, 390, true],
-            [320, 568, true],
+            }).find((b) => b.name === "touch-breath")!
+        // Without the D-pad, 16 px in from the corner, portrait or not.
+        for (const [width, height] of [
+            [390, 844],
+            [844, 390],
         ] as const) {
-            const { breath, punch } = at(width, height, dpad)
-            expect(breath.x).toBe(punch.x)
-            expect(breath.y).toBeLessThan(punch.y)
+            const breath = at(width, height, false)
+            expect(breath.x + breath.w).toBe(width - 16)
+            expect(breath.y + breath.h).toBe(height - 16)
         }
-        // Side by side in portrait otherwise.
-        const { breath, punch } = at(390, 844, true)
-        expect(breath.y).toBe(punch.y)
-        expect(breath.x).toBeLessThan(punch.x)
+        // With it, further in: up in portrait, in from the side in landscape.
+        const portrait = at(390, 844, true)
+        expect(portrait.x + portrait.w).toBe(390 - 16)
+        expect(portrait.y + portrait.h).toBe(844 - 54)
+        const landscape = at(844, 390, true)
+        expect(landscape.x + landscape.w).toBe(844 - 54)
+        expect(landscape.y + landscape.h).toBe(390 - 40)
     })
 })
 
@@ -256,7 +252,6 @@ describe("DpadSource", () => {
     const breath = () =>
         root.querySelector<HTMLElement>("[data-action=breath]")!
     const pause = () => root.querySelector<HTMLElement>("[data-action=pause]")!
-    const punch = () => root.querySelector<HTMLElement>("[data-action=punch]")!
     const p1 = () => input.player(0)
 
     // happy-dom lays nothing out: every rect is at (0, 0) and empty, so
@@ -306,9 +301,9 @@ describe("DpadSource", () => {
         expect(p1().isDown("pause")).toBe(false)
     })
 
-    it("presses punch and breath once per tap, never again while held", () => {
-        for (const button of [punch(), breath()]) {
-            const action = button.dataset.action as "punch" | "breath"
+    it("presses breath once per tap, never again while held", () => {
+        for (const button of [breath()]) {
+            const action = button.dataset.action as "breath"
             pointer(button, "pointerdown")
             expect(p1().wasPressed(action)).toBe(true)
             // Held over later ticks: no auto-repeat.
@@ -328,23 +323,23 @@ describe("DpadSource", () => {
     })
 
     it("looks pressed while a finger is on a button", () => {
-        pointer(punch(), "pointerdown", 0, 0, 1)
-        expect(punch().classList.contains("pressed")).toBe(true)
+        pointer(breath(), "pointerdown", 0, 0, 1)
+        expect(breath().classList.contains("pressed")).toBe(true)
         // A second finger on it, then the first lifts: still pressed.
-        pointer(punch(), "pointerdown", 0, 0, 2)
-        pointer(punch(), "pointerup", 0, 0, 1)
-        expect(punch().classList.contains("pressed")).toBe(true)
-        pointer(punch(), "pointercancel", 0, 0, 2)
-        expect(punch().classList.contains("pressed")).toBe(false)
-        expect(p1().isDown("punch")).toBe(false)
+        pointer(breath(), "pointerdown", 0, 0, 2)
+        pointer(breath(), "pointerup", 0, 0, 1)
+        expect(breath().classList.contains("pressed")).toBe(true)
+        pointer(breath(), "pointercancel", 0, 0, 2)
+        expect(breath().classList.contains("pressed")).toBe(false)
+        expect(p1().isDown("breath")).toBe(false)
     })
 
-    it("takes two fingers at once: steer and punch", () => {
+    it("takes two fingers at once: steer and breathe", () => {
         pointer(pad(), "pointerdown", 40, 0, 1)
-        pointer(punch(), "pointerdown", 0, 0, 2)
+        pointer(breath(), "pointerdown", 0, 0, 2)
         expect(p1().isDown("right")).toBe(true)
-        expect(p1().wasPressed("punch")).toBe(true)
-        pointer(punch(), "pointerup", 0, 0, 2)
+        expect(p1().wasPressed("breath")).toBe(true)
+        pointer(breath(), "pointerup", 0, 0, 2)
         expect(p1().isDown("right")).toBe(true)
     })
 

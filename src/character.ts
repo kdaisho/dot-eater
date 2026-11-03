@@ -22,9 +22,7 @@ export type Character = {
     // move). It grows by speed * dt each tick and stays at 1 while the
     // character can't or doesn't want to move. Just after a move it can be a
     // little above 0: the progress left over past 1, so slow ticks don't
-    // round speeds down. An enemy a punch knocked back from short of its
-    // cell starts below 0 (down to -0.5; see knockEnemy in punch.ts): it is
-    // drawn that far before lastPos, and its glide in is that much longer.
+    // round speeds down.
     moveProgress: number
     // Patrollers only: the waypoints walked in a loop, and the index of the
     // one it is heading for. Other characters have no route.
@@ -50,30 +48,6 @@ export type Character = {
     // Breathers only (KDA-291): its breath's cooldown, wind-up and facing,
     // and how its AI moves this tick (see enemyBreath.ts).
     breath?: EnemyBreath
-    // The punch (KDA-288; see punch.ts). Enemies only: a player's stay at
-    // their starting values.
-    //
-    // Landed punches counting towards the knockback's decay (see
-    // knockLevel), from 0 (a full cell) up to the last of the game's decay
-    // steps (GameState.knock), and the seconds since the latest of them. 0
-    // and 0 to start with, and again once it is defeated.
-    knocks: number
-    sinceKnock: number
-    // While a short knock (less than a cell) glides it out, the move
-    // progress at which it turns round and glides back into the cell it
-    // was knocked from (see turnKnock); null otherwise.
-    knockTurn: number | null
-    // Whether its next move may turn back into the cell it came from, the
-    // no-reverse rule aside (see candidateMoves in ai.ts): set by a full
-    // knock, so it comes straight back at the player, until it next makes
-    // a move of its own.
-    turnsBack: boolean
-    // Its guard skill, the chance it blocks a quick punch (see guard.ts):
-    // 0 for none, null until it is rolled, as it comes into play.
-    guard: number | null
-    // Seconds left of its guard stance after a block (KDA-293; see
-    // GUARD_STANCE in guard.ts), while it holds still; 0 for none.
-    stance: number
 }
 
 export function createCharacter(
@@ -101,41 +75,7 @@ export function createCharacter(
         statuses: [],
         respawnIn: 0,
         heldFor: 0,
-        knocks: 0,
-        sinceKnock: 0,
-        knockTurn: null,
-        turnsBack: false,
-        guard: null,
-        stance: 0,
     }
-}
-
-// Stop any knock `character` is in the middle of (see punch.ts), for when
-// something else moves it: it no longer turns round or turns back.
-export function endKnock(character: Character) {
-    character.knockTurn = null
-    character.turnsBack = false
-}
-
-// Call off the turn a short knock (see punch.ts) has `character` make, for
-// when the cell it would turn back into won't do: it carries on into the
-// cell it was knocked towards as a full knock would, and may turn back on
-// its next move (turnsBack), if that cell is open then.
-export function skipKnockTurn(character: Character) {
-    if (character.knockTurn === null) return
-    character.knockTurn = null
-    character.turnsBack = true
-}
-
-// Forget the punches `character` has taken (see punch.ts), its guard roll
-// and any guard stance (see guard.ts), as when it is defeated: it comes
-// back fresh and rolls again.
-export function freshFromPunches(character: Character) {
-    endKnock(character)
-    character.knocks = 0
-    character.sinceKnock = 0
-    character.guard = null
-    character.stance = 0
 }
 
 function defaultSpeed(id: CharacterId, ai: AiType): number {

@@ -14,9 +14,7 @@ import {
     DIFFICULTIES,
     ENEMY_SPEED_CAP,
     enemySpeed,
-    KNOCK_DECAY,
     TENGU_SPEED,
-    USUAL_KNOCK,
 } from "./difficulty"
 import { createGameState, IDLE, step } from "./game"
 import { parseLevel, sameForBoth } from "./level"
@@ -139,11 +137,7 @@ describe("createGameState at a difficulty", () => {
         expect(main.respawnIn).toBeCloseTo(RESPAWN_DELAY * 0.6)
     })
 
-    it("uses the difficulty's knockback decay and respawn wait", () => {
-        for (const d of DIFFICULTIES) {
-            const game = createGameState(stage5[d], "dragon", "solo", d)
-            expect(game.knock).toBe(KNOCK_DECAY[d])
-        }
+    it("uses the difficulty's respawn wait", () => {
         const respawn = (d: (typeof DIFFICULTIES)[number]) =>
             createGameState(stage5[d], "dragon", "solo", d).respawnDelay
         expect(respawn("easy")).toBe(RESPAWN_DELAY)
@@ -200,7 +194,6 @@ describe("createGameState at a difficulty", () => {
             ENEMY_SPEED,
         ])
         expect(game.enemies).toHaveLength(level.enemies.length + 1)
-        expect(game.knock).toBe(USUAL_KNOCK)
         expect(game.respawnDelay).toBe(RESPAWN_DELAY)
         const { breath } = createGameState(stage10.superHard).boss!
         expect(breath.every).toBe(Math.round(2.5 * TICK_RATE))

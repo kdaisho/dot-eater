@@ -467,8 +467,8 @@ describe("while nobody is in play", () => {
 
 describe("coming back onto an occupied spawn", () => {
     it("waits while an enemy there would catch it, then comes back", () => {
-        const guard = post(1, 1)
-        const state = coop([guard])
+        const sentry = post(1, 1)
+        const state = coop([sentry])
         const p1 = state.players[0]
         takeOut(p1, PLAYER_RESPAWN_DELAY)
         run(state, [IDLE, IDLE], RESPAWN_TICKS + 30)
@@ -476,8 +476,8 @@ describe("coming back onto an occupied spawn", () => {
         expect(p1.respawnIn).toBe(0)
         expect(p1.health).toBe(MAX_HEALTH)
         // Once the enemy is off the spawn, it is back on the next tick.
-        guard.pos = vec2(3, 1)
-        guard.lastPos = vec2(3, 1)
+        sentry.pos = vec2(3, 1)
+        sentry.lastPos = vec2(3, 1)
         step(state, TICK, [IDLE, IDLE], fixedRandom(0))
         expect(p1.out).toBe(false)
         expect(p1.character.pos).toEqual(P1)
@@ -487,14 +487,14 @@ describe("coming back onto an occupied spawn", () => {
     it("waits for an enemy gliding off it to be RESPAWN_CLEAR_DISTANCE away", () => {
         // Gliding from (2, 1) to (3, 1): drawn 1.3 cells from the spawn,
         // then 1.6.
-        const guard = post(3, 1)
-        guard.lastPos = vec2(2, 1)
-        guard.moveProgress = 0.3
-        const state = coop([guard])
+        const sentry = post(3, 1)
+        sentry.lastPos = vec2(2, 1)
+        sentry.moveProgress = 0.3
+        const state = coop([sentry])
         takeOut(state.players[0], 0)
         step(state, TICK, [IDLE, IDLE], fixedRandom(0))
         expect(state.players[0].out).toBe(true)
-        guard.moveProgress = 0.6
+        sentry.moveProgress = 0.6
         step(state, TICK, [IDLE, IDLE], fixedRandom(0))
         expect(state.players[0].out).toBe(false)
     })
@@ -502,10 +502,10 @@ describe("coming back onto an occupied spawn", () => {
     it("waits for an enemy whose move ends next to it", () => {
         // Gliding from (3, 1) to (2, 1): drawn 2 cells away, but its
         // move ends next to the spawn.
-        const guard = post(2, 1)
-        guard.lastPos = vec2(3, 1)
-        guard.moveProgress = 0
-        const state = coop([guard])
+        const sentry = post(2, 1)
+        sentry.lastPos = vec2(3, 1)
+        sentry.moveProgress = 0
+        const state = coop([sentry])
         takeOut(state.players[0], 0)
         step(state, TICK, [IDLE, IDLE], fixedRandom(0))
         expect(state.players[0].out).toBe(true)
@@ -546,9 +546,9 @@ describe("coming back onto an occupied spawn", () => {
     })
 
     it("isn't held up by a harmless enemy", () => {
-        const guard = post(1, 1)
-        addStatus(guard, { name: "test.calm", harmless: true }, 10)
-        const state = coop([guard])
+        const sentry = post(1, 1)
+        addStatus(sentry, { name: "test.calm", harmless: true }, 10)
+        const state = coop([sentry])
         takeOut(state.players[0], PLAYER_RESPAWN_DELAY)
         run(state, [IDLE, IDLE], RESPAWN_TICKS)
         expect(state.players[0].out).toBe(false)

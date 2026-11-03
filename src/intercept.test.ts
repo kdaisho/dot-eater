@@ -379,15 +379,11 @@ describe("the interceptor", () => {
         const cells = cellsOf(RING)
         const player = vec2(5, 1)
 
-        it("never turns back, unless a punch just knocked it", () => {
+        it("never turns back", () => {
             // Heading left along the bottom from (6, 5), the player is 11
             // moves back the way it came and 13 on: it goes on.
             const on = interceptor(6, 5, { x: 7, y: 5 })
             expect(moveOnce(cells, on, player)).toEqual(vec2(5, 5))
-            const knocked = interceptor(6, 5, { x: 7, y: 5 })
-            knocked.turnsBack = true
-            expect(moveOnce(cells, knocked, player)).toEqual(vec2(7, 5))
-            expect(knocked.turnsBack).toBe(false)
         })
 
         it("keeps from stacking on another interceptor", () => {

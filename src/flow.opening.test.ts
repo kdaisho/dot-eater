@@ -56,7 +56,7 @@ describe("the opening's studio logo", () => {
         let screen = openingScreen()
         for (let i = 0; i < 100; i++) screen = update(screen, none, deps())
         expect(opening(screen).stage).toBe("gate")
-        expect(opening(update(screen, input("punch"), deps())).stage).toBe(
+        expect(opening(update(screen, input("left"), deps())).stage).toBe(
             "logo"
         )
     })

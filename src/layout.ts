@@ -76,20 +76,19 @@ export function computeLayout(
     }
 }
 
-// The band (CSS pixels) kept for the punch and breath buttons on a touch
-// screen without the D-pad: below the maze in portrait (the buttons side by
-// side on the right), right of it in landscape (one above the other). Just
-// a button (72 px) and a margin each side, so the maze stays as big as it
-// can. css/style.css uses the same sizes.
+// The band (CSS pixels) kept for the breath button on a touch screen
+// without the D-pad: below the maze in portrait, right of it in landscape,
+// the button in the corner. Just a button (72 px) and a margin each side,
+// so the maze stays as big as it can. css/style.css uses the same sizes.
 export const BUTTONS_SPACE = 104
 
 // The band (CSS pixels) kept with the on-screen D-pad on: below the maze in
-// portrait, and on both sides of it in landscape (D-pad left, punch and
-// breath right). css/style.css uses the same size.
+// portrait, and on both sides of it in landscape (D-pad left, breath
+// right). css/style.css uses the same size.
 export const DPAD_SPACE = 180
 
-// Which touch controls take room: none (no touch screen), the punch and
-// breath buttons, or those and the D-pad.
+// Which touch controls take room: none (no touch screen), the breath
+// button, or that and the D-pad.
 export type ControlsShown = "none" | "buttons" | "dpad"
 
 // The room the touch controls take from a viewport (CSS pixels), to fit

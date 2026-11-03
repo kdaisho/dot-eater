@@ -419,7 +419,7 @@ describe("recordClear", () => {
         expect(storage.setItem).not.toHaveBeenCalled()
     })
 
-    // Regression guard: the merge with storage used to take another tab's
+    // Regression: the merge with storage used to take another tab's
     // fields as they were, so a stale tab's worse bests could replace this
     // tab's better ones, and the other way round.
     it("keeps the better bests of this tab and another tab", () => {

@@ -43,12 +43,6 @@ export function soundForEvent(event: GameEvent): SfxId | undefined {
             return SfxId.caught
         case "playerStunned":
             return SfxId.stunned
-        case "punched":
-            return SfxId.punch
-        case "punchHit":
-            return event.target === "boss" ? SfxId.punchHitBoss : SfxId.punchHit
-        case "punchBlocked":
-            return SfxId.punchBlocked
         case "gameWon":
             return SfxId.stageClear
         case "gameLost":
@@ -61,30 +55,10 @@ export function soundForEvent(event: GameEvent): SfxId | undefined {
 
 // The effects a tick's events play, each once (two dots eaten on one tick
 // are one blip), in the order they first happened. The game over jingle
-// replaces the catch that lost the game. Each punch is one sound: its
-// first hit's if it landed (a punch reports enemies first, so an enemy's
-// thwack wins over the boss's thud), else a block's thock if an enemy
-// blocked it (KDA-288, KDA-293), else its whiff. A player punches once a tick at most, so
-// one player's punch never silences the other's.
+// replaces the catch that lost the game.
 export function eventSounds(events: readonly GameEvent[]): SfxId[] {
-    const by = (type: "punchHit" | "punchBlocked") =>
-        new Set(events.flatMap((e) => (e.type === type ? [e.player] : [])))
-    const landed = by("punchHit")
-    const blocked = by("punchBlocked")
-    // Players whose punch has made its sound this tick.
-    const sounded = new Set<number>()
     const ids = new Set<SfxId>()
     for (const event of events) {
-        if (
-            event.type === "punched" &&
-            (landed.has(event.player) || blocked.has(event.player))
-        )
-            continue
-        if (event.type === "punchBlocked" && landed.has(event.player)) continue
-        if (event.type === "punchHit" || event.type === "punchBlocked") {
-            if (sounded.has(event.player)) continue
-            sounded.add(event.player)
-        }
         const id = soundForEvent(event)
         if (id) ids.add(id)
     }

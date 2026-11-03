@@ -39,9 +39,7 @@ import {
     type Player,
 } from "./game"
 import { eatenDotVisible, glidePos, wrapCopies } from "./glide"
-import { inStance } from "./guard"
 import { sneakAlpha } from "./intercept"
-import { fistBounce, jabLunge, type Jab } from "./jab"
 import { computeLayout, type Layout } from "./layout"
 import type { LevelRules } from "./level"
 import { particleAlpha, type Particle } from "./particles"
@@ -107,11 +105,8 @@ export type Effects = {
     // (see aimPreviews in breath.ts), a faint tint in its colour on the
     // cells its breath would hit, under the dots.
     aim?: boolean
-    // Each player's jab under way (KDA-258; see jab.ts): its sprite lunges
-    // along it, with a fist just ahead.
-    jabs?: readonly Jab[]
-    // Whether the system asks for reduced motion: an enemy in its guard
-    // stance then doesn't crouch (see stanceLook).
+    // Whether the system asks for reduced motion: a full charge's glow
+    // then doesn't flicker (see chargeAura).
     reducedMotion?: boolean
     // Whether the boss's wind-up shows (KDA-268; see bossBreath.ts): its
     // glow and the warning tint on the cells it will strike. Set while
@@ -142,7 +137,7 @@ export type Renderer = {
 
 const COLORS = {
     background: "#fff",
-    // The fill an emoji sprite, badge or fist is drawn with. Opaque: canvas
+    // The fill an emoji sprite or badge is drawn with. Opaque: canvas
     // draws colour emoji with the fill colour's alpha, so drawing one right
     // after a translucent look disc would leave it see-through.
     sprite: "#000",
@@ -218,24 +213,6 @@ export const CHARGE_AURA_GROWTH = 0.15
 export const CHARGE_AURA_ALPHA = 0.45
 export const CHARGE_AURA_FULL_ALPHA = 0.6
 export const CHARGE_FLICKER_HZ = 8
-
-// A jab (see jab.ts) shows a fist this far ahead of the sprite's centre and
-// this wide, in cells: just past the sprite's front, where the punch
-// reaches. Placeholders to tune at preview.
-const FIST = "👊"
-const FIST_AHEAD = 0.6
-const FIST_SCALE = 0.4
-
-// An enemy in its guard stance (KDA-293, with the user; see guard.ts;
-// placeholders to tune at preview) crouches: its sprite is drawn this much
-// wider and less tall, its feet where they were. It is tinted steel-blue
-// (its shading kept), with a thin pale-blue outline this wide as a fraction
-// of the sprite. With reduced motion it doesn't crouch; the tint stays.
-export const CROUCH_WIDTH = 1.06
-export const CROUCH_HEIGHT = 0.85
-export const STANCE_TINT = "#4682b4"
-export const STANCE_OUTLINE = "#93c5fd"
-const STANCE_OUTLINE_WIDTH = 0.04
 
 // The aim preview (see Effects.aim) is a tint in the player's colour: a
 // faint fill over each cell its breath would hit, and a slightly stronger
@@ -325,7 +302,6 @@ export function createRenderer(
         }
         return layer
     }
-    const guardSprites = createGuardSprites(canvas.ownerDocument)
 
     function fit() {
         layout = computeLayout(
@@ -460,9 +436,7 @@ export function createRenderer(
             rows,
             seen,
             effects.guide === "arrow",
-            effects.jabs ?? [],
             effects.reducedMotion === true,
-            (sprite, size) => guardSprites(sprite, size, dpr),
             windUp
         )
         if (effects.particles) drawParticles(ctx, effects.particles, cell, seen)
@@ -916,9 +890,7 @@ function drawCharacters(
     rows: number,
     fog: Sight | null,
     arrows: boolean,
-    jabs: readonly Jab[],
     reducedMotion: boolean,
-    guardSprite: (sprite: string, size: number) => GuardSprite | null,
     windUp: boolean
 ) {
     ctx.textAlign = "center"
@@ -936,9 +908,7 @@ function drawCharacters(
     // with two players wears its marker (see PLAYER_COLORS). A Splitter's
     // half is drawn smaller (HALF_SCALE), its disc and badges too. With
     // `arrows`, each player who could breathe also gets its facing arrow (see
-    // drawArrow). A player with a jab under way (see jab.ts) lunges along
-    // it, with a fist just ahead (see drawFist), and an enemy in its guard
-    // stance (see guard.ts) crouches, tinted (see stanceLook). With `windUp`
+    // drawArrow). With `windUp`
     // (Effects.bossBreath), a breather winding up its breath glows, a disc
     // like a status's colour (see enemyBreathLooks, KDA-291). An
     // interceptor (KDA-292) sneaks: it is drawn faint away from the players
@@ -962,8 +932,6 @@ function drawCharacters(
         marker: null,
         badge: null,
         arrow: null,
-        jab: null,
-        stance: stanceLook(enemy, reducedMotion),
         aura: null,
     })
     const held = state.enemies.filter((e) => hasStatus(e, "holds"))
@@ -988,8 +956,6 @@ function drawCharacters(
                               canBreathe(player.breather)
                                   ? { index: i, facing: player.breather.facing }
                                   : null,
-                          jab: jabs.find((j) => j.player === i) ?? null,
-                          stance: null,
                           aura: stunned(player)
                               ? null
                               : chargeAura(player.breather, reducedMotion),
@@ -998,24 +964,12 @@ function drawCharacters(
         ),
         ...free.map(enemySprite),
     ]
-    // Fists are drawn after every character, so one isn't hidden under the
-    // enemy it hits (players are drawn before enemies) or another enemy
-    // drawn on top.
-    const fists: { x: number; y: number; facing: Vec2; back: number }[] = []
     for (const sprite of sprites) {
-        const { character, rate, marker, badge, arrow, jab, stance, aura } =
-            sprite
+        const { character, rate, marker, badge, arrow, aura } = sprite
         const isPlayer = character.id === CharacterId.player
         if (!isPlayer && !enemyVisible(character)) continue
         const held = !isPlayer && hasStatus(character, "holds")
-        const glide = glidePos(character, held ? 0 : alpha, cols, rows, rate)
-        const lunge = jab ? jabLunge(jab) : 0
-        const pos = jab
-            ? vec2(
-                  glide.x + jab.facing.x * lunge,
-                  glide.y + jab.facing.y * lunge
-              )
-            : glide
+        const pos = glidePos(character, held ? 0 : alpha, cols, rows, rate)
         if (fog && !isPlayer && !fog.visible(pos)) continue
         const looks = [
             ...character.statuses.flatMap((s) =>
@@ -1049,16 +1003,8 @@ function drawCharacters(
                 ctx.fill()
             }
             ctx.fillStyle = COLORS.sprite
-            if (stance) {
-                const image = guardSprite(sprite.sprite, size)
-                drawGuarding(ctx, image, sprite.sprite, stance, x, y, size)
-            } else {
-                ctx.fillText(sprite.sprite, x, y)
-            }
+            ctx.fillText(sprite.sprite, x, y)
             if (marker !== null) drawMarker(ctx, marker, x, y, size)
-            if (jab) {
-                fists.push({ x, y, facing: jab.facing, back: fistBounce(jab) })
-            }
             // A stunned player (versus) wears the stun badge, and one
             // immune just after a stun the immune badge, like a status's.
             const badges = [
@@ -1077,14 +1023,10 @@ function drawCharacters(
             })
         }
         if (faint) ctx.globalAlpha = 1
-        // The arrow stays with the glide, not the jab's lunge.
         if (!arrow) continue
-        for (const p of wrapCopies(glide, cols, rows)) {
+        for (const p of wrapCopies(pos, cols, rows)) {
             drawArrow(ctx, arrow, (p.x + 0.5) * cell, (p.y + 0.5) * cell, cell)
         }
-    }
-    for (const fist of fists) {
-        drawFist(ctx, fist.facing, fist.x, fist.y, cell, fist.back)
     }
 }
 
@@ -1118,145 +1060,6 @@ export function chargeAura(
     }
 }
 
-// How an enemy's sprite is drawn in its guard stance (see CROUCH_WIDTH):
-// its width and height as fractions of its usual size, or null for one not
-// in its stance, drawn as usual. With `reducedMotion` it doesn't crouch.
-export type StanceLook = { width: number; height: number }
-
-export function stanceLook(
-    enemy: Character,
-    reducedMotion: boolean
-): StanceLook | null {
-    if (!inStance(enemy)) return null
-    if (reducedMotion) return { width: 1, height: 1 }
-    return { width: CROUCH_WIDTH, height: CROUCH_HEIGHT }
-}
-
-// A guarding enemy's sprite, tinted and outlined (see STANCE_TINT), on a
-// canvas of its own, made for a sprite `size` CSS pixels across: a square
-// `box` CSS pixels wide round the sprite's centre, the sprite's size plus
-// the outline, `edge` wide, on each side.
-export type GuardSprite = {
-    image: HTMLCanvasElement
-    size: number
-    box: number
-    edge: number
-}
-
-// How many guarding enemies' sprites (see createGuardSprites) a renderer
-// keeps.
-export const GUARD_SPRITES_KEPT = 32
-
-// A renderer's guarding enemies' sprites (see guardSprite): made when
-// first needed and kept, one per sprite, whole-pixel size (the font's) and
-// pixel ratio, so a view easing its cell size from frame to frame (see
-// camera.ts) reuses them, drawn scaled to the exact size (see
-// drawGuarding). All are dropped at once when there are too many (a
-// resize or zoom has left them behind). Each is null where a canvas has no
-// 2D context.
-export function createGuardSprites(
-    doc: Pick<Document, "createElement">
-): (emoji: string, size: number, dpr: number) => GuardSprite | null {
-    const kept = new Map<string, GuardSprite | null>()
-    return (emoji, size, dpr) => {
-        const whole = Math.max(1, Math.round(size))
-        const key = `${emoji} ${whole} ${dpr}`
-        if (!kept.has(key)) {
-            if (kept.size >= GUARD_SPRITES_KEPT) kept.clear()
-            kept.set(key, guardSprite(doc, emoji, whole, dpr))
-        }
-        return kept.get(key) ?? null
-    }
-}
-
-// Make `emoji`'s GuardSprite at `size` CSS pixels, for `dpr`: null if a
-// canvas has no 2D context. Colour emoji can't be tinted on the canvas
-// itself everywhere (CanvasRenderingContext2D.filter isn't), so it is
-// drawn on its own canvas and coloured there by compositing.
-function guardSprite(
-    doc: Pick<Document, "createElement">,
-    emoji: string,
-    size: number,
-    dpr: number
-): GuardSprite | null {
-    const edge = Math.max(1, size * STANCE_OUTLINE_WIDTH)
-    const box = size + edge * 2
-    const mid = box / 2
-    const layer = () => {
-        const image = doc.createElement("canvas")
-        image.width = Math.ceil(box * dpr)
-        image.height = Math.ceil(box * dpr)
-        const ctx = image.getContext("2d")
-        if (!ctx) return null
-        ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
-        ctx.font = `${Math.round(size)}px sans-serif`
-        ctx.textAlign = "center"
-        ctx.textBaseline = "middle"
-        ctx.fillStyle = COLORS.sprite
-        return { image, ctx }
-    }
-    const tinted = layer()
-    const outlined = layer()
-    if (!tinted || !outlined) return null
-    // The sprite in steel-blue, its shading kept ("color" keeps its
-    // lightness), then cut back to its own shape.
-    tinted.ctx.fillText(emoji, mid, mid)
-    tinted.ctx.globalCompositeOperation = "color"
-    tinted.ctx.fillStyle = STANCE_TINT
-    tinted.ctx.fillRect(0, 0, box, box)
-    tinted.ctx.globalCompositeOperation = "destination-in"
-    tinted.ctx.fillText(emoji, mid, mid)
-    // Its shape `edge` out on every side, in the outline's colour, with the
-    // tinted sprite over it.
-    const { ctx } = outlined
-    for (const [dx, dy] of [
-        [edge, 0],
-        [-edge, 0],
-        [0, edge],
-        [0, -edge],
-    ]) {
-        ctx.fillText(emoji, mid + dx, mid + dy)
-    }
-    ctx.globalCompositeOperation = "source-in"
-    ctx.fillStyle = STANCE_OUTLINE
-    ctx.fillRect(0, 0, box, box)
-    ctx.globalCompositeOperation = "source-over"
-    ctx.drawImage(tinted.image, 0, 0, box, box)
-    return { image: outlined.image, size, box, edge }
-}
-
-// A guarding enemy's sprite `emoji`, centred at (x, y) and `size` across
-// as usual: its GuardSprite scaled from the size it was made at to `size`
-// and stretched by `look`, its feet (the bottom of its usual box) where
-// they were. Without one (no 2D context to tint on), the plain sprite,
-// stretched the same way.
-function drawGuarding(
-    ctx: CanvasRenderingContext2D,
-    sprite: GuardSprite | null,
-    emoji: string,
-    look: StanceLook,
-    x: number,
-    y: number,
-    size: number
-) {
-    const feet = y + size / 2
-    if (!sprite) {
-        ctx.save()
-        ctx.translate(x, feet)
-        ctx.scale(look.width, look.height)
-        ctx.fillText(emoji, 0, -size / 2)
-        ctx.restore()
-        return
-    }
-    const scale = size / sprite.size
-    const box = sprite.box * scale
-    const edge = sprite.edge * scale
-    const width = box * look.width
-    const height = box * look.height
-    const top = feet - (size + edge) * look.height
-    ctx.drawImage(sprite.image, x - width / 2, top, width, height)
-}
-
 // Particles (see particles.ts), each a disc or a square of its colour,
 // fading out over its life. In fog, those outside the light are hidden like
 // any other thing. They aren't wrapped through tunnels: one flying off the
@@ -1285,15 +1088,6 @@ function drawParticles(
             ctx.arc(x, y, size / 2, 0, Math.PI * 2)
             ctx.fill()
         }
-        if (p.outline) {
-            ctx.strokeStyle = p.outline
-            ctx.lineWidth = 1
-            if (p.shape === "square") {
-                ctx.strokeRect(x - size / 2, y - size / 2, size, size)
-            } else {
-                ctx.stroke()
-            }
-        }
     }
     ctx.restore()
 }
@@ -1316,23 +1110,6 @@ function drawMarker(
     ctx.fillStyle = color
     ctx.font = `bold ${Math.round(size * LABEL_SCALE)}px sans-serif`
     ctx.fillText(String(index + 1), x - size / 2, y + size / 2)
-}
-
-// A jab's fist (see jab.ts) for a sprite centred at (x, y): a small 👊
-// FIST_AHEAD cells out along `facing`, less `back` cells for a blocked one
-// bouncing back (see fistBounce), FIST_SCALE of a cell wide.
-function drawFist(
-    ctx: CanvasRenderingContext2D,
-    facing: Vec2,
-    x: number,
-    y: number,
-    cell: number,
-    back: number
-) {
-    const ahead = (FIST_AHEAD - back) * cell
-    ctx.font = `${Math.round(cell * FIST_SCALE)}px sans-serif`
-    ctx.fillStyle = COLORS.sprite
-    ctx.fillText(FIST, x + facing.x * ahead, y + facing.y * ahead)
 }
 
 // Player `arrow.index`'s facing arrow, for its sprite centred at (x, y): a

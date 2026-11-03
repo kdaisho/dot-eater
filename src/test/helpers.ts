@@ -28,7 +28,6 @@ import {
     ENEMY_COUNT,
     MAP_SIZE,
     MAP_SIZES,
-    USUAL_KNOCK,
     type Difficulty,
     type MapSize,
 } from "../difficulty"
@@ -247,8 +246,6 @@ export function makeState(
         winHeld: false,
         regrow: null,
         splitterDrops: false,
-        guard: null,
-        knock: USUAL_KNOCK,
         respawnDelay: RESPAWN_DELAY,
     }
 }

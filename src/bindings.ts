@@ -4,30 +4,23 @@
 //
 // Rules (product decisions):
 // - Each player binds one key (a KeyboardEvent.code) to each action, and a
-//   pad button to breath, punch, confirm and pause. The pad's D-pad and
-//   left stick always move and can't be rebound.
+//   pad button to breath, confirm and pause. The pad's D-pad and left stick
+//   always move and can't be rebound.
 // - Escape always pauses (player 1) and goes back. It can't be bound, so
 //   nobody can lock themselves out of the pause menu.
 // - Binding a key or button already in use swaps the two bindings, across
 //   players too for keys, so every action always has exactly one key.
-// - Pad buttons: confirm may share a button with breath or punch (A does
-//   breath and confirm by default: breath in play, confirm in menus, never
-//   both at once). Breath and punch never share (both act in play, so one
-//   press would do both), and pause never shares. Pads are per player (pad
-//   1 drives P1, pad 2 drives P2), so pad bindings only swap within a
-//   player. See rebind.
+// - Pad buttons: breath and confirm may share a button (A does both by
+//   default: breath in play, confirm in menus, never both at once). Pause
+//   never shares. Pads are per player (pad 1 drives P1, pad 2 drives P2),
+//   so pad bindings only swap within a player. See rebind.
 
 import type { Action } from "./input"
 
 // The actions a pad button can be bound to.
-export type PadAction = "breath" | "punch" | "confirm" | "pause"
+export type PadAction = "breath" | "confirm" | "pause"
 
-export const PAD_ACTIONS: readonly PadAction[] = [
-    "breath",
-    "punch",
-    "confirm",
-    "pause",
-]
+export const PAD_ACTIONS: readonly PadAction[] = ["breath", "confirm", "pause"]
 
 export type PlayerBindings = {
     // KeyboardEvent.code per action.
@@ -53,7 +46,6 @@ export const FIXED_PAUSE_KEY = "Escape"
 export const PAD_A = 0
 // B (Circle): Back on menus, fixed like Escape (see GamepadSource.setMenus).
 export const PAD_B = 1
-export const PAD_X = 2
 export const PAD_START = 9
 // The D-pad (up, down, left, right): fixed to the directions.
 export const PAD_DPAD: readonly number[] = [12, 13, 14, 15]
@@ -70,16 +62,10 @@ export const DEFAULT_BINDINGS: Bindings = {
                 left: "ArrowLeft",
                 right: "ArrowRight",
                 breath: "ShiftRight",
-                punch: "Slash",
                 pause: "KeyP",
                 confirm: "Space",
             },
-            pad: {
-                breath: PAD_A,
-                punch: PAD_X,
-                confirm: PAD_A,
-                pause: PAD_START,
-            },
+            pad: { breath: PAD_A, confirm: PAD_A, pause: PAD_START },
         },
         {
             keys: {
@@ -88,16 +74,10 @@ export const DEFAULT_BINDINGS: Bindings = {
                 left: "KeyA",
                 right: "KeyD",
                 breath: "ShiftLeft",
-                punch: "KeyZ",
                 pause: "KeyQ",
                 confirm: "KeyE",
             },
-            pad: {
-                breath: PAD_A,
-                punch: PAD_X,
-                confirm: PAD_A,
-                pause: PAD_START,
-            },
+            pad: { breath: PAD_A, confirm: PAD_A, pause: PAD_START },
         },
     ],
 }
@@ -161,12 +141,9 @@ export function isPadAction(action: Action): action is PadAction {
     return (PAD_ACTIONS as readonly Action[]).includes(action)
 }
 
-// Whether two different pad actions may share a button: confirm (menus
-// only) with breath or punch (play only). Breath and punch both act in
-// play, and pause acts in both, so neither shares with them.
+// Whether two pad actions may share a button: only breath and confirm.
 function canShare(a: PadAction, b: PadAction): boolean {
-    if (a === "pause" || b === "pause") return false
-    return a === "confirm" || b === "confirm"
+    return a !== "pause" && b !== "pause"
 }
 
 // Bind `target` to `player`'s `action`: a string binds a key, a number a pad
@@ -178,15 +155,14 @@ function canShare(a: PadAction, b: PadAction): boolean {
 // Keys: whatever action (of either player) holds the key takes this
 // action's old key, a swap.
 //
-// Pad buttons, within the player: a button shared by breath (or punch) and
-// confirm stays shared when one of them moves to a free button or to its
-// partner's. Moving onto a button whose action can't share with it (see
-// canShare: pause's button, or breath onto punch's and back) swaps the two
-// buttons whole: what was on the target button takes the old one, and a
-// partner left behind on the old button comes along to the target. For
-// example, with A on breath and confirm and Start on pause, binding confirm
-// to Start gives Start to breath and confirm and A to pause, never pause
-// sharing a button with breath.
+// Pad buttons, within the player: a button shared by breath and confirm
+// stays shared when one of them moves to a free button or to its partner's.
+// Moving onto pause's button (or pause onto theirs) swaps the two buttons
+// whole: what was on the target button takes the old one, and a partner
+// left behind on the old button comes along to the target. For example,
+// with A on breath and confirm and Start on pause, binding confirm to Start
+// gives Start to breath and confirm and A to pause, never pause sharing a
+// button with breath.
 export function rebind(
     bindings: Bindings,
     player: number,
@@ -275,10 +251,8 @@ function withKey(
 //
 // Each entry falls back on its own: a missing or invalid key or button (not
 // a string or number, or an unbindable one) takes its default, so a save
-// from an older version with fewer actions keeps the rest. An action the
-// save predates (the punch) takes its default only where that is free,
-// else a spare key or button (see fillLaterActions). Then the whole is
-// checked: when two actions end up on one key (stored duplicates, or a
+// from an older version with fewer actions keeps the rest. Then the whole
+// is checked: when two actions end up on one key (stored duplicates, or a
 // fallback default that a stored key already uses), every key falls back to
 // the defaults; when a player's pad has two actions on one button that
 // can't share (see canShare), that player's pad buttons fall back.
@@ -287,20 +261,17 @@ function withKey(
 // player and in their keys and pad, as settings keeps its own: a save from
 // a later build (say with a new action) loses nothing when this one saves
 // it back. Only the known actions are ever read (see keyMapsFor and
-// padButtonsFor), so an unknown field never binds anything here.
+// padButtonsFor), so an unknown field never binds anything here: a save's
+// key and button for an action this build no longer has (KDA-294) are kept
+// but unused.
 export function parseBindings(value: unknown): Bindings {
     const stored = field(value, "players")
     const entries = DEFAULT_BINDINGS.players.map((_, i) =>
         Array.isArray(stored) ? (stored[i] as unknown) : undefined
     )
-    const parsed = DEFAULT_BINDINGS.players.map((defaults, i) =>
+    const players = DEFAULT_BINDINGS.players.map((defaults, i) =>
         parsePlayer(entries[i], defaults)
-    )
-    fillLaterActions(parsed)
-    const players = parsed.map(({ keys, pad }) => ({ keys, pad })) as [
-        PlayerBindings,
-        PlayerBindings,
-    ]
+    ) as [PlayerBindings, PlayerBindings]
     const codes = players.flatMap((p) => KEY_ACTIONS.map((a) => p.keys[a]))
     const keysOk = new Set(codes).size === codes.length
     return {
@@ -346,116 +317,22 @@ export function sameBindings(a: Bindings, b: Bindings): boolean {
     })
 }
 
-// One player's stored bindings, each entry parsed on its own (a missing or
-// invalid one takes its default), with which of the LATER_ACTIONS were
-// missing or invalid (see fillLaterActions).
-type ParsedPlayer = {
-    keys: Record<Action, string>
-    pad: Record<PadAction, number>
-    missingKeys: Action[]
-    missingPad: PadAction[]
-}
-
-function parsePlayer(value: unknown, defaults: PlayerBindings): ParsedPlayer {
+function parsePlayer(value: unknown, defaults: PlayerBindings): PlayerBindings {
     const keys = field(value, "keys")
     const pad = field(value, "pad")
-    const parsed: ParsedPlayer = {
-        keys: {} as Record<Action, string>,
-        pad: {} as Record<PadAction, number>,
-        missingKeys: [],
-        missingPad: [],
-    }
+    const parsedKeys = {} as Record<Action, string>
     for (const action of KEY_ACTIONS) {
         const code = field(keys, action)
-        if (isBindableKey(code)) parsed.keys[action] = code
-        else {
-            parsed.keys[action] = defaults.keys[action]
-            if (LATER_ACTIONS.includes(action)) parsed.missingKeys.push(action)
-        }
+        parsedKeys[action] = isBindableKey(code) ? code : defaults.keys[action]
     }
+    const parsedPad = {} as Record<PadAction, number>
     for (const action of PAD_ACTIONS) {
         const button = field(pad, action)
-        if (isBindableButton(button)) parsed.pad[action] = button
-        else {
-            parsed.pad[action] = defaults.pad[action]
-            if (LATER_ACTIONS.includes(action)) parsed.missingPad.push(action)
-        }
+        parsedPad[action] = isBindableButton(button)
+            ? button
+            : defaults.pad[action]
     }
-    return parsed
-}
-
-// Actions added after bindings were first saved: the punch (KDA-258). A
-// save from before one has no key or button for it, which isn't the
-// player's doing, so it must never reset the bindings they made.
-const LATER_ACTIONS: readonly Action[] = ["punch"]
-
-// Keys a later action missing from a save tries, after its own default,
-// when that is taken. More than the 15 keys the other actions can hold,
-// so one is always free.
-const SPARE_KEYS: readonly string[] = [
-    "Slash",
-    "KeyZ",
-    "Period",
-    "Comma",
-    "Semicolon",
-    "Quote",
-    "KeyX",
-    "KeyC",
-    "KeyV",
-    "KeyB",
-    "KeyN",
-    "KeyM",
-    "KeyF",
-    "KeyG",
-    "KeyH",
-    "KeyJ",
-    "KeyK",
-    "KeyL",
-    "KeyR",
-    "KeyT",
-]
-
-// Buttons a later pad action missing from a save tries, after its own
-// default: the face and shoulder buttons first. Every bindable button is
-// here, so with only three other pad actions one always fits.
-const SPARE_BUTTONS: readonly number[] = [
-    2, 3, 1, 5, 4, 7, 6, 0, 8, 10, 11, 16, 9,
-]
-
-// Give each later action missing from a save (see parsePlayer) its default
-// key and button when they are free, else the first spare one that is,
-// player 1 first: a key no other action of either player holds, a button
-// whose actions may all share with it (see canShare). So a save from
-// before an action keeps every binding it has, and only a clash among
-// the stored bindings themselves resets anything.
-function fillLaterActions(players: ParsedPlayer[]) {
-    const taken = new Set(
-        players.flatMap((p) =>
-            KEY_ACTIONS.filter((a) => !p.missingKeys.includes(a)).map(
-                (a) => p.keys[a]
-            )
-        )
-    )
-    for (const p of players) {
-        for (const action of p.missingKeys) {
-            const code = [p.keys[action], ...SPARE_KEYS].find(
-                (c) => !taken.has(c)
-            )!
-            p.keys[action] = code
-            taken.add(code)
-        }
-    }
-    for (const p of players) {
-        for (const action of p.missingPad) {
-            const others = PAD_ACTIONS.filter(
-                (a) => a !== action && !p.missingPad.includes(a)
-            )
-            const fits = (button: number) =>
-                others.every((a) => p.pad[a] !== button || canShare(a, action))
-            p.pad[action] = [p.pad[action], ...SPARE_BUTTONS].find(fits)!
-            p.missingPad = p.missingPad.filter((a) => a !== action)
-        }
-    }
+    return { keys: parsedKeys, pad: parsedPad }
 }
 
 // Whether every pad action sharing a button with another may share it.

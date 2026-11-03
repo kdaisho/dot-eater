@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vite-plus/test"
-import { DEFAULT_BINDINGS, rebind } from "./bindings"
+import { DEFAULT_BINDINGS, rebind, sameBindings } from "./bindings"
 import { LAST_PICK_KEY } from "./lastPick"
 import { PROGRESS_KEY } from "./progress"
 import {
@@ -181,6 +181,19 @@ describe("parseSettings", () => {
             const s = parseSettings(saved({ bindings }))
             expect(bindingsOf(s).players[1].keys.up).toBe("KeyW")
             expect(bindingsOf(s).players[0].keys.breath).toBe("KeyX")
+        })
+
+        // KDA-294: a save from when the punch had a key and a button.
+        it("loads a save that still binds the punch, keeping the rest", () => {
+            const bindings = JSON.parse(JSON.stringify(remapped))
+            bindings.players[0].keys.punch = "Slash"
+            bindings.players[0].pad.punch = 2
+            bindings.players[1].keys.punch = "KeyZ"
+            bindings.players[1].pad.punch = 2
+            const s = parseSettings(saved({ bindings, musicVolume: 3 }))
+            expect(s.musicVolume).toBe(3)
+            expect(bindingsOf(s).players[0].keys.breath).toBe("KeyX")
+            expect(sameBindings(bindingsOf(s), remapped)).toBe(true)
         })
     })
 })

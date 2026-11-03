@@ -21,7 +21,7 @@ import type { LevelData } from "../level"
 // The light's radius is 4 cells on both maps (the rules are shared): half a
 // cell more than the old one-map stage had, so with more enemies coming
 // from more sides, and the large map's longer corridors, an enemy coming
-// out of the dark still gives the player a moment to turn or punch.
+// out of the dark still gives the player a moment to turn.
 export const stage4: LevelData = {
     name: "Fog",
     medium: {

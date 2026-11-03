@@ -59,7 +59,7 @@ export function slideStep(
     if (!ice[pos.y][pos.x]) return null
     const step = moveStep(lastPos, pos, cells[0].length, cells.length)
     // Only a one-cell move has a direction to keep (moves always are one
-    // cell; this guards against a character placed by hand).
+    // cell; this protects against a character placed by hand).
     if (Math.abs(step.x) + Math.abs(step.y) !== 1) return null
     const next = loopPos(cells, vec2(pos.x + step.x, pos.y + step.y))
     return cells[next.y][next.x] === Cell.wall ? null : step

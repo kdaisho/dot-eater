@@ -374,9 +374,9 @@ describe("players bumping into each other", () => {
 
         it("still doesn't come back onto or next to an enemy", () => {
             const state = onSpawn()
-            const guard = makeEnemy(3, 1)
-            guard.speed = 0
-            state.enemies.push(guard)
+            const sentry = makeEnemy(3, 1)
+            sentry.speed = 0
+            state.enemies.push(sentry)
             state.spawns.enemies = [vec2(3, 1)]
             run(state, [IDLE, IDLE], GRACE_TICKS)
             // (2, 1), (3, 1) and (4, 1) are on or next to the enemy.
@@ -386,9 +386,9 @@ describe("players bumping into each other", () => {
 
         it("doesn't count a wait an enemy causes", () => {
             const state = game(vec2(1, 1), vec2(6, 1))
-            const guard = makeEnemy(2, 1)
-            guard.speed = 0
-            state.enemies.push(guard)
+            const sentry = makeEnemy(2, 1)
+            sentry.speed = 0
+            state.enemies.push(sentry)
             state.spawns.enemies = [vec2(2, 1)]
             const p1 = state.players[0]
             takeOut(p1, 0)

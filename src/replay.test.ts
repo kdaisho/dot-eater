@@ -127,29 +127,38 @@ describe("recordTick and tickInputOf", () => {
                           pressed: vec2(-1, 0),
                           breath: true,
                           breathHeld: true,
-                          punch: true,
                       },
         }
         const tick = recordTick(input, 2)
-        expect(tick).toEqual([{ h: "ur" }, { p: "l", a: "lbxcB" }])
+        expect(tick).toEqual([{ h: "ur" }, { p: "l", a: "lbcB" }])
         const replayed = tickInputOf(tick)
         expect(replayed.move()).toEqual({
             held: [vec2(0, -1), vec2(1, 0)],
             pressed: vec2(0, 0),
             breath: false,
             breathHeld: false,
-            punch: false,
         })
         expect(replayed.move(1)).toEqual({
             held: [],
             pressed: vec2(-1, 0),
             breath: true,
             breathHeld: true,
-            punch: true,
         })
         expect(replayed.wasPressed("confirm", 1)).toBe(true)
         expect(replayed.wasPressed("pause", 1)).toBe(false)
         expect(replayed.wasPressed("confirm")).toBe(false)
+    })
+
+    // KDA-294: recordings from before the punch was dropped mark its
+    // presses with x. They still play; the x is ignored.
+    it("ignores an old recording's punch presses", () => {
+        const replayed = tickInputOf([{ a: "xb" }])
+        expect(replayed.move()).toEqual({
+            held: [],
+            pressed: vec2(0, 0),
+            breath: true,
+            breathHeld: false,
+        })
     })
 
     it("hands out vectors of its own, so changing one changes no other tick", () => {
@@ -170,7 +179,6 @@ describe("recordTick and tickInputOf", () => {
             pressed: vec2(-1, 0),
             breath: false,
             breathHeld: false,
-            punch: false,
         })
         // Nor within a tick: each call is fresh.
         const replayed = tickInputOf(tick)

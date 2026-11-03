@@ -42,15 +42,8 @@ import {
     PLAYER_COLORS,
     IMMUNE_BADGE,
     STUN_BADGE,
-    createGuardSprites,
-    GUARD_SPRITES_KEPT,
-    stanceLook,
-    STANCE_OUTLINE,
-    STANCE_TINT,
     stunLabel,
     type Effects,
-    CROUCH_HEIGHT,
-    CROUCH_WIDTH,
     CHARGE_AURA_ALPHA,
     CHARGE_AURA_BASE,
     CHARGE_AURA_FULL_ALPHA,
@@ -58,9 +51,7 @@ import {
     CHARGE_FLICKER_HZ,
     chargeAura,
 } from "./render"
-import { GUARD_STANCE } from "./guard"
 import { SNEAK_ALPHA, SNEAK_FAR, SNEAK_NEAR, sneakAlpha } from "./intercept"
-import { FIST_BOUNCE, FIST_BOUNCE_SECONDS, JAB_LUNGE, JAB_SECONDS } from "./jab"
 import type { Particle } from "./particles"
 import { createSplitter } from "./splitter"
 import { DEFAULT_ANIMAL } from "./roster"
@@ -1745,30 +1736,6 @@ describe("createRenderer with effects", () => {
     })
 
     // KDA-293: the block's pale sparks are outlined.
-    it("outlines only a particle whose look has an outline", () => {
-        const strokes = (p: Particle) => {
-            const { calls, renderer } = setup()
-            renderer.draw(corridor(), 0, {}, {}, { particles: [p] })
-            return calls.filter(
-                (c) => c.name === "stroke" || c.name === "strokeRect"
-            )
-        }
-        const none = strokes(particle())
-        const disc = strokes(particle({ outline: "#a16207" }))
-        expect(disc).toHaveLength(none.length + 1)
-        expect(disc.at(-1)).toMatchObject({
-            name: "stroke",
-            strokeStyle: "#a16207",
-        })
-        const square = strokes(
-            particle({ outline: "#a16207", shape: "square" })
-        )
-        expect(square.at(-1)).toMatchObject({
-            name: "strokeRect",
-            strokeStyle: "#a16207",
-        })
-    })
-
     it("draws a square particle as a square", () => {
         const { calls, canvas, renderer } = setup()
         renderer.draw(
@@ -1896,207 +1863,8 @@ describe("createRenderer with effects", () => {
         renderer.resize()
         expect(calls.filter((c) => c.name === "arc")).toHaveLength(1)
     })
-
-    describe("a jab", () => {
-        const sprite = (
-            calls: ReturnType<typeof setup>["calls"],
-            text: string
-        ) => calls.find((c) => c.name === "fillText" && c.args[0] === text)
-
-        it("lunges the player along it, with a fist just ahead", () => {
-            const { calls, canvas, renderer } = setup()
-            const jab = {
-                player: 0,
-                facing: vec2(1, 0),
-                age: JAB_SECONDS / 2,
-                lunge: JAB_LUNGE,
-            }
-            renderer.draw(corridor(), 0, {}, {}, { jabs: [jab] })
-            const cell = cellOf(canvas)
-            const player = sprite(calls, "🐉")
-            expect(player?.args[1]).toBeCloseTo((1.5 + JAB_LUNGE) * cell)
-            expect(player?.args[2]).toBeCloseTo(1.5 * cell)
-            const fist = sprite(calls, "👊")
-            expect(fist?.args[1]).toBeGreaterThan(player?.args[1] as number)
-            expect(fist?.args[2]).toBeCloseTo(1.5 * cell)
-        })
-
-        it("shows nothing without one, or for another player", () => {
-            const { calls, canvas, renderer } = setup()
-            const other = {
-                player: 1,
-                facing: vec2(1, 0),
-                age: 0.05,
-                lunge: JAB_LUNGE,
-            }
-            renderer.draw(corridor(), 0, {}, {}, { jabs: [other] })
-            expect(sprite(calls, "🐉")?.args[1]).toBeCloseTo(
-                1.5 * cellOf(canvas)
-            )
-            expect(sprite(calls, "👊")).toBeUndefined()
-        })
-
-        // Regression: the fist was drawn with the player, before the
-        // enemies, so the enemy it hit covered it.
-        it("draws the fist over the enemy it hits", () => {
-            const { calls, renderer } = setup()
-            const state = corridor()
-            state.enemies.push(makeEnemy(2, 1))
-            const jab = {
-                player: 0,
-                facing: vec2(1, 0),
-                age: 0.05,
-                lunge: JAB_LUNGE,
-            }
-            renderer.draw(state, 0, {}, {}, { jabs: [jab] })
-            const at = (text: string) =>
-                calls.findIndex(
-                    (c) => c.name === "fillText" && c.args[0] === text
-                )
-            expect(at("👺")).toBeGreaterThan(-1)
-            expect(at("👊")).toBeGreaterThan(at("👺"))
-        })
-    })
-
-    const sprite = (calls: ReturnType<typeof setup>["calls"], text: string) =>
-        calls.find((c) => c.name === "fillText" && c.args[0] === text)
-
-    it("bounces a blocked jab's fist back towards the player (KDA-293)", () => {
-        const fistAt = (blocked: boolean, age: number) => {
-            const { calls, canvas, renderer } = setup()
-            const jab = {
-                player: 0,
-                facing: vec2(1, 0),
-                age,
-                lunge: 0,
-                blocked,
-            }
-            renderer.draw(corridor(), 0, {}, {}, { jabs: [jab] })
-            const fist = sprite(calls, "👊")
-            return (fist?.args[1] as number) / cellOf(canvas)
-        }
-        expect(fistAt(false, 0) - fistAt(true, 0)).toBeCloseTo(FIST_BOUNCE)
-        const half = FIST_BOUNCE_SECONDS / 2
-        expect(fistAt(false, half) - fistAt(true, half)).toBeCloseTo(
-            FIST_BOUNCE / 2
-        )
-        expect(fistAt(true, FIST_BOUNCE_SECONDS)).toBeCloseTo(fistAt(false, 0))
-    })
-
-    describe("an enemy in its guard stance (KDA-293)", () => {
-        // Each canvas the renderer makes for a guarding sprite shares one
-        // stub context.
-        function setupLayers() {
-            const drawn = setup()
-            const image = document.createElement("canvas")
-            const layer = stubContext()
-            vi.spyOn(image, "getContext").mockReturnValue(layer.ctx as never)
-            vi.spyOn(document, "createElement").mockReturnValue(image)
-            return { ...drawn, image, layer }
-        }
-        const guarding = (stance = GUARD_STANCE) => {
-            const state = corridor()
-            const enemy = makeEnemy(2, 1)
-            enemy.stance = stance
-            state.enemies.push(enemy)
-            return state
-        }
-
-        it("crouches, tinted, with its feet where they were", () => {
-            const { calls, canvas, image, layer, renderer } = setupLayers()
-            renderer.draw(guarding(), 0, {}, {}, {})
-            const cell = cellOf(canvas)
-            const size = cell * SPRITE_SCALE
-            // Drawn from its tinted canvas, not as text.
-            expect(sprite(calls, "👺")).toBeUndefined()
-            const draws = calls.filter((c) => c.name === "drawImage")
-            expect(draws).toHaveLength(1)
-            const [source, left, top, width, height] = draws[0].args as [
-                unknown,
-                number,
-                number,
-                number,
-                number,
-            ]
-            expect(source).toBe(image)
-            expect(left + width / 2).toBeCloseTo(2.5 * cell)
-            const box = width / CROUCH_WIDTH
-            expect(height).toBeCloseTo(box * CROUCH_HEIGHT)
-            // Its box is the sprite and its outline on each side; the
-            // feet stay put.
-            const edge = (box - size) / 2
-            expect(edge).toBeGreaterThan(0)
-            expect(top + height - edge * CROUCH_HEIGHT).toBeCloseTo(
-                1.5 * cell + size / 2
-            )
-            // Tinted steel-blue, outlined in pale blue.
-            const fills = layer.calls
-                .filter((c) => c.name === "fillRect")
-                .map((c) => c.fillStyle)
-            expect(fills).toContain(STANCE_TINT)
-            expect(fills).toContain(STANCE_OUTLINE)
-            expect(
-                layer.calls.some(
-                    (c) => c.name === "fillText" && c.args[0] === "👺"
-                )
-            ).toBe(true)
-        })
-
-        it("doesn't crouch with reduced motion, but stays tinted", () => {
-            const { calls, renderer } = setupLayers()
-            renderer.draw(guarding(), 0, {}, {}, { reducedMotion: true })
-            const [draw] = calls.filter((c) => c.name === "drawImage")
-            const [, , , width, height] = draw.args as number[]
-            expect(width).toBeCloseTo(height)
-        })
-
-        it("makes its tinted sprite once and keeps it", () => {
-            const { layer, renderer } = setupLayers()
-            renderer.draw(guarding(), 0, {}, {}, {})
-            const made = layer.calls.length
-            renderer.draw(guarding(), 0, {}, {}, {})
-            expect(layer.calls.length).toBe(made)
-        })
-
-        it("is drawn as usual without a stance", () => {
-            const { calls, layer, renderer } = setupLayers()
-            renderer.draw(guarding(0), 0, {}, {}, {})
-            expect(sprite(calls, "👺")?.args[1]).toBeDefined()
-            expect(calls.some((c) => c.name === "drawImage")).toBe(false)
-            expect(layer.calls).toEqual([])
-        })
-
-        it("still crouches, untinted, where a canvas has no 2D context", () => {
-            const { calls, renderer } = setup()
-            renderer.draw(guarding(), 0, {}, {}, {})
-            const scales = calls.filter((c) => c.name === "scale")
-            expect(scales.map((c) => c.args)).toEqual([
-                [CROUCH_WIDTH, CROUCH_HEIGHT],
-            ])
-            expect(sprite(calls, "👺")).toBeDefined()
-        })
-    })
 })
 
-describe("stanceLook (KDA-293)", () => {
-    it("crouches an enemy in its guard stance, and not without one", () => {
-        const enemy = makeEnemy(2, 1)
-        expect(stanceLook(enemy, false)).toBeNull()
-        expect(stanceLook(enemy, true)).toBeNull()
-        enemy.stance = GUARD_STANCE
-        expect(stanceLook(enemy, false)).toEqual({
-            width: CROUCH_WIDTH,
-            height: CROUCH_HEIGHT,
-        })
-        expect(CROUCH_HEIGHT).toBeCloseTo(0.85)
-        expect(CROUCH_WIDTH).toBeCloseTo(1.06)
-        // Reduced motion: no crouch, but still the stance's look.
-        expect(stanceLook(enemy, true)).toEqual({ width: 1, height: 1 })
-    })
-})
-
-// User feedback 2026-11-01: a charging breath shows on the character, so
-// the player needn't watch the meter.
 describe("chargeAura", () => {
     // Amber while charging, the meter's charge red once full.
     const AMBER = "#f59e0b"
@@ -2426,22 +2194,6 @@ describe("createRenderer with the facing guide", () => {
             ])
         })
 
-        // Regression: the arrow was drawn on the lunging sprite, so it
-        // bobbed with every punch.
-        it("stays with the glide while the player jabs", () => {
-            const { calls, canvas, renderer } = setup()
-            const jab = {
-                player: 0,
-                facing: vec2(1, 0),
-                age: JAB_SECONDS / 2,
-                lunge: JAB_LUNGE,
-            }
-            renderer.draw(charged(), 0, {}, {}, { ...ARROW, jabs: [jab] })
-            expect(arrows(calls, canvas)).toEqual([
-                { color: 0, tip: [2.2, 1.5] },
-            ])
-        })
-
         it.each([
             ["up", vec2(0, -1), [1.5, 0.8]],
             ["down", vec2(0, 1), [1.5, 2.2]],
@@ -2607,29 +2359,6 @@ describe("createRenderer on a maze too big for the screen", () => {
         // The view moves the maze inside the clip.
         const translates = calls.filter((c) => c.name === "translate")
         expect(calls.indexOf(translates[1])).toBeGreaterThan(clip)
-    })
-
-    it("draws a jab's fist in the view, with the characters", () => {
-        const { calls, frame } = bigSetup()
-        const jab = {
-            player: 0,
-            facing: vec2(1, 0),
-            age: 0.05,
-            lunge: JAB_LUNGE,
-        }
-        frame(createGameState(BIG_LEVEL), 0, {}, { jabs: [jab] })
-        const clip = calls.findIndex((c) => c.name === "clip")
-        const view = calls.indexOf(
-            calls.filter((c) => c.name === "translate")[1]!
-        )
-        const fist = calls.findIndex(
-            (c) => c.name === "fillText" && c.args[0] === "👊"
-        )
-        expect(fist).toBeGreaterThan(Math.max(clip, view))
-        // In maze space: just right of player 1 at (1, 19).
-        const [x, y] = calls[fist]!.args.slice(1) as number[]
-        expect(x).toBeGreaterThan(1.5 * CELL)
-        expect(y).toBeCloseTo(19.5 * CELL)
     })
 
     it("draws only the cells in view", () => {
@@ -2811,85 +2540,6 @@ describe("createRenderer on a maze too big for the screen", () => {
                 1.5 * CELL,
                 3.5 * CELL,
             ])
-        })
-    })
-})
-
-describe("createGuardSprites (KDA-293)", () => {
-    // A document whose every canvas has a stub context of its own; `made`
-    // lists them, in the order made. A guarding sprite takes two.
-    function fakeDocument() {
-        const made: ReturnType<typeof stubContext>[] = []
-        const doc = {
-            createElement: () => {
-                const stub = stubContext()
-                made.push(stub)
-                return { width: 0, height: 0, getContext: () => stub.ctx }
-            },
-        }
-        return { doc: doc as never, made, builds: () => made.length / 2 }
-    }
-
-    // Regression (PR #101 review): keyed by the exact size, a view easing
-    // its cell size made a new sprite on nearly every frame.
-    it("makes one sprite for sizes within a pixel of each other", () => {
-        const { doc, builds } = fakeDocument()
-        const sprites = createGuardSprites(doc)
-        for (let i = 0; i < 40; i++) sprites("👺", 38 + i * 0.01, 2)
-        expect(builds()).toBe(1)
-        expect(sprites("👺", 38.3, 2)?.size).toBe(38)
-        sprites("👺", 39, 2)
-        expect(builds()).toBe(2)
-    })
-
-    it("makes one per sprite and per pixel ratio", () => {
-        const { doc, builds } = fakeDocument()
-        const sprites = createGuardSprites(doc)
-        sprites("👺", 38, 1)
-        sprites("👺", 38, 2)
-        sprites("👹", 38, 2)
-        expect(builds()).toBe(3)
-        sprites("👺", 38, 1)
-        sprites("👺", 38, 2)
-        expect(builds()).toBe(3)
-    })
-
-    it("drops them all once there are too many", () => {
-        const { doc, builds } = fakeDocument()
-        const sprites = createGuardSprites(doc)
-        for (let size = 1; size <= GUARD_SPRITES_KEPT; size++) {
-            sprites("👺", size, 1)
-        }
-        sprites("👺", 1, 1)
-        expect(builds()).toBe(GUARD_SPRITES_KEPT)
-        // One more: the rest go, so the first is made again.
-        sprites("👺", GUARD_SPRITES_KEPT + 1, 1)
-        sprites("👺", 1, 1)
-        expect(builds()).toBe(GUARD_SPRITES_KEPT + 2)
-    })
-
-    it("tints by colour, keeping the sprite's shape, then outlines it", () => {
-        const { doc, made } = fakeDocument()
-        createGuardSprites(doc)("👺", 38, 2)
-        const [tinted, outlined] = made
-        const tint = tinted.calls.find(
-            (c) => c.name === "fillRect" && c.fillStyle === STANCE_TINT
-        )
-        // "color" keeps the sprite's lightness, so its shading shows.
-        expect(tint?.composite).toBe("color")
-        // Then cut back to the sprite's own shape.
-        expect(tinted.calls.at(-1)).toMatchObject({
-            name: "fillText",
-            composite: "destination-in",
-        })
-        const outline = outlined.calls.find(
-            (c) => c.name === "fillRect" && c.fillStyle === STANCE_OUTLINE
-        )
-        expect(outline?.composite).toBe("source-in")
-        // The tinted sprite goes over its outline.
-        expect(outlined.calls.at(-1)).toMatchObject({
-            name: "drawImage",
-            composite: "source-over",
         })
     })
 })

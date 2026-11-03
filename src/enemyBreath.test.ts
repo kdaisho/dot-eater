@@ -173,8 +173,6 @@ function openWall(state: GameState, cell: Vec2) {
     state.tiles.push({ pos: cell, effect: opensWall, left: 100 })
 }
 
-const PUNCH: MoveInput = { held: [], pressed: vec2(0, 0), punch: true }
-
 describe("createEnemyBreath", () => {
     it("starts with a whole cooldown ahead, the grace period", () => {
         expect(createEnemyBreath()).toEqual({
@@ -501,8 +499,7 @@ describe("the breath, through step", () => {
 })
 
 describe("calling the breath off", () => {
-    // A breather on (2, 1) winding up at the player on (3, 1), who faces
-    // it, so a punch reaches it.
+    // A breather on (2, 1) winding up at the player on (3, 1).
     function windingUp(): { state: GameState; enemy: Character } {
         const enemy = breather(2, 1)
         const state = game(vec2(3, 1), [enemy])
@@ -511,38 +508,6 @@ describe("calling the breath off", () => {
         expect(eventsOf(state, "enemyWindUp")).toHaveLength(1)
         return { state, enemy }
     }
-
-    it("is done by a punch that lands, which starts its cooldown", () => {
-        const { state, enemy } = windingUp()
-        tick(state, PUNCH)
-        expect(eventsOf(state, "punchHit")).toHaveLength(1)
-        expect(enemy.breath).toMatchObject({ windingUp: 0, cooldown: EVERY })
-        expect(enemyWarnings(state)).toEqual([])
-        ticksWithout(state, "enemyBreathed", WIND_UP + 10)
-        expect(state.players[0].health).toBe(MAX_HEALTH)
-    })
-
-    it("is done by a punch that lands but knocks it nowhere", () => {
-        const { state, enemy } = windingUp()
-        // Punched so often it no longer moves (see KNOCK_STEPS).
-        enemy.knocks = 4
-        tick(state, PUNCH)
-        expect(eventsOf(state, "punchHit")).toHaveLength(1)
-        expect(enemy.knocks).toBe(4)
-        expect(enemy.breath).toMatchObject({ windingUp: 0, cooldown: EVERY })
-    })
-
-    it("isn't done by a punch it blocks", () => {
-        const { state, enemy } = windingUp()
-        enemy.guard = 0.85
-        // fixedRandom(0) is under any chance, so it blocks.
-        tick(state, PUNCH)
-        expect(eventsOf(state, "punchBlocked")).toHaveLength(1)
-        expect(enemy.breath!.windingUp).toBe(WIND_UP - 1)
-        // So it breathes on time: 1 + WIND_UP from the start.
-        expect(ticksUntil(state, "enemyBreathed")).toBe(WIND_UP - 1)
-        expect(state.players[0].health).toBeLessThan(MAX_HEALTH)
-    })
 
     it("is done by a freeze, and a frozen breather doesn't wind up", () => {
         const { state, enemy } = windingUp()
@@ -579,15 +544,13 @@ describe("calling the breath off", () => {
         expect(enemy.breath!.cooldown).toBeGreaterThan(EVERY - 5)
     })
 
-    // KDA-290 brings it back sooner on Super Hard (GameState.respawnDelay),
-    // and KDA-293 clears its stance: it still gets a whole grace period.
-    it("comes back with a whole cooldown and no stance on Super Hard too", () => {
+    // KDA-290 brings it back sooner on Super Hard (GameState.respawnDelay):
+    // it still gets a whole grace period.
+    it("comes back with a whole cooldown on Super Hard too", () => {
         const { state, enemy } = windingUp()
         state.respawnDelay = 3
-        enemy.stance = 0.2
         defeatEnemy(state, enemy)
         expect(enemy.respawnIn).toBe(3)
-        expect(enemy.stance).toBe(0)
         let back = 0
         while (enemy.respawnIn > 0) {
             tick(state)
@@ -599,7 +562,6 @@ describe("calling the breath off", () => {
             windingUp: 0,
             cooldown: EVERY - 1,
         })
-        expect(enemy.stance).toBe(0)
     })
 
     it("is done while nobody is in play", () => {

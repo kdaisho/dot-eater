@@ -38,7 +38,7 @@ describe("stage 7", () => {
         hard: { patroller: 2, chase: 1, breather: 2, interceptor: 1 },
         superHard: { patroller: 2, chase: 1, breather: 2, interceptor: 3 },
     }
-    it.each(DIFFICULTIES)("brings out a guard mix at %s", (d) => {
+    it.each(DIFFICULTIES)("brings out a patroller mix at %s", (d) => {
         const ais = parseLevel(stage7, d).enemies.map((e) => e.ai)
         expect(ais).toHaveLength(ENEMY_COUNT[d])
         expect(ais[0]).toBe(AiType.patroller)
@@ -128,7 +128,7 @@ describe.each(EACH_MAP)("stage 7 (%s)", (difficulty) => {
         expect(chokepoints(cells)).toEqual([])
     })
 
-    // One guard walks the whole corridor; the others have long beats
+    // One patroller walks the whole corridor; the others have long beats
     // through the rooms.
     it("sends one patroller round the corridor and the rest on long beats", () => {
         const routes = level.enemies.flatMap((e) =>
@@ -170,7 +170,7 @@ describe.each(EACH_MAP)("stage 7 (%s)", (difficulty) => {
         }
     }
 
-    // A guard on a beat along a row of rooms (its waypoints all in one row)
+    // A patroller on a beat along a row of rooms (its waypoints all in one row)
     // stays in the rooms: where the corridor round them is as short, the
     // route has a waypoint in between to keep it inside.
     it("keeps each beat along a row of rooms inside the rooms", () => {

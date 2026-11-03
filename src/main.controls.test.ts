@@ -136,7 +136,7 @@ describe("main's controls screen", () => {
     })
 
     it("captures a pad button on a pad row, and the pad uses it", () => {
-        for (let i = 0; i < 8; i++) pressAndTick("ArrowDown")
+        for (let i = 0; i < 7; i++) pressAndTick("ArrowDown")
         expect(selectedItem()).toBe("Pad breath A")
         tap(0) // A confirms: the prompt opens
         expect(capturing()).toBe(true)
@@ -149,7 +149,6 @@ describe("main's controls screen", () => {
         expect(selectedItem()).toBe("Pad breath Y")
         expect(saved().bindings.players[0].pad).toEqual({
             breath: Y,
-            punch: 2,
             confirm: 0,
             pause: 9,
         })
@@ -159,7 +158,7 @@ describe("main's controls screen", () => {
     })
 
     it("resets to the defaults and goes back to the settings", () => {
-        for (let i = 0; i < 4; i++) pressAndTick("ArrowDown")
+        for (let i = 0; i < 3; i++) pressAndTick("ArrowDown")
         expect(selectedItem()).toBe("Reset to defaults")
         pressAndTick("Space")
         // The bindings are dropped: the defaults, from then on.
@@ -168,11 +167,10 @@ describe("main's controls screen", () => {
         pressAndTick("ArrowUp")
         expect(selectedItem()).toBe("Pad pause Start")
         pressAndTick("ArrowUp")
-        pressAndTick("ArrowUp")
-        expect(selectedItem()).toBe("Pad punch X")
+        expect(selectedItem()).toBe("Pad confirm A")
         pressAndTick("ArrowUp")
         expect(selectedItem()).toBe("Pad breath A")
-        for (let i = 0; i < 4; i++) pressAndTick("ArrowDown")
+        for (let i = 0; i < 3; i++) pressAndTick("ArrowDown")
         pressAndTick("ArrowDown")
         pressAndTick("Space")
         expect(screen()).toBe("settings")

@@ -12,8 +12,6 @@ export const SCENE_NAMES = [
     "owl",
     "skunk",
     "boar",
-    "punch",
-    "guard",
     "breather",
     "boss",
 ] as const
@@ -35,10 +33,6 @@ export const HERO_KIND: Readonly<Record<SceneName, MomentKind>> = {
     skunk: "enemyRepelled",
     // A wall bursts into rubble.
     boar: "wallBroken",
-    // A punch knocks an enemy back.
-    punch: "punchHit",
-    // An enemy's guard blocks a punch.
-    guard: "punchBlocked",
     // A breather's breath hurts the player.
     breather: "hurt",
     // The boss goes down.

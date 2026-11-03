@@ -60,19 +60,13 @@ import { createCharacter, type Character } from "./character"
 import {
     BOSS_BREATH_SCALE,
     enemySpeed,
-    GUARD,
-    KNOCK_DECAY,
     RESPAWN_SCALE,
     tenguSpeed,
-    USUAL_KNOCK,
     type Difficulty,
-    type GuardOdds,
-    type KnockDecay,
 } from "./difficulty"
 import { emit, type GameEvent } from "./events"
 import { glidePos, wrapDelta, type Glider } from "./glide"
 import { tickEnemyBreaths } from "./enemyBreath"
-import { inStance, rollGuards, tickStances } from "./guard"
 import { slideStep, type IceMap } from "./ice"
 import {
     hasDots,
@@ -84,7 +78,6 @@ import {
 import { levels } from "./levels"
 import { distanceMap, openNeighbours } from "./path"
 import { DEFAULT_ANIMAL, type AnimalId } from "./roster"
-import { punch, tickPunches, turnKnock } from "./punch"
 import { createRegrow, dotGone, tickRegrow, type Regrow } from "./regrow"
 import { createSplitter, dropDot, tickDrops } from "./splitter"
 import { loseDots, stunned, tickStuns } from "./versus"
@@ -143,15 +136,9 @@ export type GameState = {
     // Whether Splitters drop dots (rules.splitterDrops, see dropDot in
     // splitter.ts).
     splitterDrops: boolean
-    // How well enemies guard against the punch (KDA-288, see guard.ts),
-    // from the game's difficulty, or null for no guard at all (no rolls,
-    // no blocks).
-    guard: GuardOdds | null
-    // How the punch's knockback decays (KDA-290, see knockLevel in
-    // punch.ts) and how long a defeated enemy stays gone, in seconds (see
-    // defeatEnemy in breath.ts), from the game's difficulty: USUAL_KNOCK
-    // and RESPAWN_DELAY in a game with none.
-    knock: KnockDecay
+    // How long a defeated enemy stays gone, in seconds (see defeatEnemy in
+    // breath.ts), from the game's difficulty: RESPAWN_DELAY in a game with
+    // none.
     respawnDelay: number
 }
 
@@ -214,10 +201,6 @@ export type Player = {
     // boss pass through it without hurting it, and it is drawn blinking
     // (see playerVisible).
     invulnerableFor: number
-    // Seconds since its latest punch (see punch.ts), for the guard (see
-    // guard.ts): game time, so a pause doesn't count. Infinity before its
-    // first.
-    sincePunch: number
 }
 
 export type Spawns = {
@@ -244,9 +227,6 @@ export type MoveInput = {
     // charges; it fires once let go (see chargeTick in breath.ts). Left
     // out, a press is a tap and fires at once.
     breathHeld?: boolean
-    // Whether the punch key was newly pressed this tick (see punch.ts).
-    // Every press punches, unless the player is out or stunned.
-    punch?: boolean
 }
 
 // No input: nothing held or pressed.
@@ -259,12 +239,10 @@ const EPSILON = 1e-9
 // A new game of `level`, played as `animals`, one per player (one animal on
 // its own for a 1-player game), whose breaths and stats come from BREATHS
 // (src/breaths/). Player i starts on the level's spawn i.
-// `mode` is the rules it is played by (see knockOut). `difficulty` sets how
-// well enemies guard against the punch (GUARD); left out, they don't. It
-// also sets (KDA-290) how fast enemies go (enemySpeed), how the knockback
-// decays (KNOCK_DECAY), how soon a defeated enemy is back (RESPAWN_SCALE)
-// and how often the boss breathes (BOSS_BREATH_SCALE); left out, all of
-// them are the level's and the defaults, as before.
+// `mode` is the rules it is played by (see knockOut). `difficulty` sets
+// (KDA-290) how fast enemies go (enemySpeed), how soon a defeated enemy is
+// back (RESPAWN_SCALE) and how often the boss breathes (BOSS_BREATH_SCALE);
+// left out, all of them are the level's and the defaults, as before.
 export function createGameState(
     level: Level = levels[0],
     animals: AnimalId | readonly AnimalId[] = DEFAULT_ANIMAL,
@@ -340,8 +318,6 @@ export function createGameState(
         winHeld: false,
         regrow: createRegrow(level.rules.regrowDots, cells),
         splitterDrops: level.rules.splitterDrops ?? false,
-        guard: difficulty ? GUARD[difficulty] : null,
-        knock: difficulty ? KNOCK_DECAY[difficulty] : USUAL_KNOCK,
         respawnDelay:
             RESPAWN_DELAY * (difficulty ? RESPAWN_SCALE[difficulty] : 1),
     }
@@ -407,7 +383,6 @@ export function newPlayer(character: Character, breath: BreathDef): Player {
         stunImmuneFor: 0,
         health: MAX_HEALTH,
         invulnerableFor: 0,
-        sincePunch: Infinity,
     }
 }
 
@@ -923,13 +898,6 @@ function wait(character: Glider) {
 // before it moves, its breath ticks (see bossBreath.ts): it may wind up
 // (holding still) or breathe, hurting the players it strikes.
 //
-// Punches (see punch.ts) come right after the breaths, from where each
-// player is drawn after its move, and knock enemies back like a breath's
-// push. They cost nothing and never stop or slow the player. Their timers
-// (see tickPunches) move on with the others, and so do the enemies' guard
-// stances (see tickStances in guard.ts): one in its stance holds still.
-// Enemies just in play roll their guard (see guard.ts) after them.
-//
 // On a level with rules.regrowDots, eaten dots due back grow back with the
 // timers, on cells no character is on (see regrow.ts), so a player moving
 // onto one this tick eats it. On one with rules.splitterDrops, a Splitter
@@ -955,17 +923,11 @@ export function step(
     tickEffects(state, dt)
     tickPlayersOut(state, dt)
     tickStuns(players, dt)
-    tickPunches(state, dt)
-    tickStances(state, dt)
     for (const player of players) {
         if (player.invulnerableFor > 0) player.invulnerableFor--
     }
     tickRegrow(state, dt)
     tickDrops(state, dt)
-    // Enemies just in play (at the start, or back after a defeat) roll
-    // their guard (see guard.ts), before anything else draws on `random`
-    // this tick.
-    rollGuards(state, random)
     const from = positions(state)
     let start = tickStarts(state, dt)
     // Where each player came from on its latest move before this tick, for
@@ -991,34 +953,14 @@ export function step(
         if (player.out || stunned(player)) return cancelCharge(player.breather)
         if (chargeTick(state, player, inputs[i] ?? IDLE, dt)) breathed = true
     })
-    // Punches come after the breaths, player 1's first (see punch.ts).
-    let punched = false
-    const shoved = new Set<number>()
-    players.forEach((player, i) => {
-        if (!inputs[i]?.punch) return
-        const moved = punch(state, player, random)
-        if (moved.enemies) punched = true
-        for (const j of moved.players) shoved.add(j)
-    })
-    if (breathed || punched || shoved.size > 0) {
-        // The breath or punch comes before the enemies move, but it may
-        // have moved some (pushed or defeated) or held them: trace each
-        // enemy from where it is after it, not along a sweep across the
-        // jump. A player a punch knocked back (versus) has made its move
-        // this tick, so it stays where it now is drawn for the rest of it.
-        // (Known gap, rare and left: the bit of its own move it made this
-        // tick, before the shove, isn't checked for catches.)
-        const after = tickStarts(state, dt)
-        start = {
-            ...after,
-            players: start.players.map((s, i) =>
-                shoved.has(i) ? { ...after.players[i], arrive: Infinity } : s
-            ),
-        }
+    if (breathed) {
+        // The breath comes before the enemies move, but it may have moved
+        // some (pushed or defeated) or held them: trace each enemy from
+        // where it is after it, not along a sweep across the jump.
+        start = { ...tickStarts(state, dt), players: start.players }
     }
     // ---- Breathers (KDA-291, see enemyBreath.ts) ----
-    // After the punches (one that landed calls a wind-up off) and before
-    // the enemies move (one winding up holds still): each breather's
+    // After the breaths and before the enemies move (one winding up holds still): each breather's
     // breath ticks, and it may wind up or breathe, hurting the players it
     // strikes.
     tickEnemyBreaths(state)
@@ -1048,13 +990,10 @@ export function step(
             return []
         }
         // Still gliding: not holding (a hold is always ready to move), so a
-        // push, knock-back or split that cut a hold short leaves none to
-        // count against the next. A short knock turns round as its
-        // progress moves on (see turnKnock in punch.ts). One in its guard
-        // stance (see guard.ts) finishes its glide but makes no new move.
+        // push or split that cut a hold short leaves none to count against
+        // the next.
         advance(enemy, dt)
-        turnKnock(enemy, crowd)
-        if (enemy.moveProgress < 1 - EPSILON || inStance(enemy)) {
+        if (enemy.moveProgress < 1 - EPSILON) {
             enemy.heldFor = 0
             return []
         }
@@ -1188,10 +1127,9 @@ function bossChaseStep(
 // outro before the end screen (see flow.ts). Every character's moveProgress
 // rises by speed * dt, capped at 1 (progress already at or past 1 is left
 // alone). Nobody moves and nothing else changes (cells, score, health,
-// positions; an enemy a short knock glides out only turns round, see
-// turnKnock in punch.ts). Returns true once every player's glide is
-// complete, i.e. the players are drawn on their cells; a gameWon held back
-// for the last dot (GameState.winHeld) is reported then, once.
+// positions). Returns true once every player's glide is complete, i.e. the
+// players are drawn on their cells; a gameWon held back for the last dot
+// (GameState.winHeld) is reported then, once.
 export function settle(state: GameState, dt: number): boolean {
     const boss = state.boss ? [state.boss] : []
     const gliders = [
@@ -1203,10 +1141,6 @@ export function settle(state: GameState, dt: number): boolean {
         const progress = c.moveProgress + c.speed * dt * rate
         c.moveProgress = progress >= 1 - EPSILON ? 1 : progress
     }
-    // An enemy a short knock glides out turns round as in play (see
-    // turnKnock in punch.ts).
-    const crowd = state.enemies.filter(inPlay)
-    for (const enemy of crowd) turnKnock(enemy, crowd)
     const done = state.players.every(
         (p) => p.character.moveProgress >= 1 - EPSILON
     )

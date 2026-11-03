@@ -178,7 +178,7 @@ describe("enemyMove (random)", () => {
 })
 
 describe("enemyMove (chase)", () => {
-    // Also guards the missing-break regression: falling through from the
+    // Also covers the missing-break regression: falling through from the
     // chase case would hit the default branch (which throws now, and used to
     // console.log), so assert neither happens.
     it("moves to the candidate closest to the target", () => {

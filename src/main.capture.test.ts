@@ -121,7 +121,7 @@ describe("main's controls capture", () => {
     // broke the poll also stopped the capture.
     it("captures a button even when polling the pads throws", () => {
         const error = vi.spyOn(console, "error").mockImplementation(() => {})
-        for (let i = 0; i < 8; i++) pressAndTick("ArrowDown")
+        for (let i = 0; i < 7; i++) pressAndTick("ArrowDown")
         expect(selectedItem()).toBe("Pad breath A")
         pressAndTick("Space")
         expect(capturing()).toBe(true)
@@ -155,12 +155,12 @@ describe("main's controls capture", () => {
         tickFrame()
         expect(selectedItem()).toBe("Pad breath A")
         // Up is on J now.
-        for (let i = 0; i < 8; i++) pressAndTick("KeyJ")
+        for (let i = 0; i < 7; i++) pressAndTick("KeyJ")
         pressAndTick("Space")
         pressAndTick("ArrowUp")
         expect(selectedItem()).toBe("Up ↑")
         setBindings.mockClear()
-        for (let i = 0; i < 12; i++) pressAndTick("ArrowDown")
+        for (let i = 0; i < 10; i++) pressAndTick("ArrowDown")
         expect(selectedItem()).toBe("Reset to defaults")
         pressAndTick("Space")
         const saved = JSON.parse(localStorage.getItem(SETTINGS_KEY) ?? "{}")

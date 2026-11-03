@@ -559,7 +559,7 @@ export type DifficultyNext = {
 export type TickInput = {
     // Pressed since the previous tick (a press edge; holding doesn't repeat).
     wasPressed(action: Action, player?: number): boolean
-    // Movement and the breath and punch presses for the game; only read
+    // Movement and the breath presses for the game; only read
     // while playing.
     move(player?: number): MoveInput
     // The controls screen's capture since the previous tick (see Capture).

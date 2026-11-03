@@ -32,7 +32,7 @@ body * {
 
 /* The play area: the whole window, the maze centred in it. Dragging
    anywhere on it steers, bands included. Where touch is the main input
-   (data-buttons) it leaves the punch and breath buttons' band free
+   (data-buttons) it leaves the breath button's band free
    (BUTTONS_SPACE in src/layout.ts): below in portrait, on the right in
    landscape. With the D-pad on, a bigger band
    (DPAD_SPACE): below in portrait, both sides in landscape. */
@@ -426,72 +426,32 @@ body[data-dpad="on"] .dpad {
     transform: translateY(-50%);
 }
 
-/* Punch and breath: during play where touch is the main input (a coarse
-   primary pointer, not a laptop's touch screen) or the D-pad shows
-   (data-buttons), on the right of the band
-   #play leaves free. In portrait they sit side by side below the maze,
-   punch in the corner; in landscape breath sits above punch, right of the
-   maze. 72 px each with 16 px margins: BUTTONS_SPACE (104 px) in
-   src/layout.ts. With the D-pad on they sit further in, in its bigger
-   band. */
-body[data-buttons="on"][data-playing="on"] .touch-punch,
+/* Breath: during play where touch is the main input (a coarse primary
+   pointer, not a laptop's touch screen) or the D-pad shows (data-buttons),
+   in the bottom-right corner of the band #play leaves free: below the maze
+   in portrait, right of it in landscape. 72 px with 16 px margins:
+   BUTTONS_SPACE (104 px) in src/layout.ts. With the D-pad on it sits
+   further in, in its bigger band. */
 body[data-buttons="on"][data-playing="on"] .touch-breath {
     display: block;
 }
 
-.touch-punch,
 .touch-breath {
     bottom: 16px;
     font-size: 32px;
     height: 72px;
+    right: 16px;
     width: 72px;
 }
 
-.touch-punch {
-    right: 16px;
-}
-
-.touch-breath {
-    right: 100px;
-}
-
-body[data-dpad="on"] .touch-punch,
 body[data-dpad="on"] .touch-breath {
     bottom: 54px;
 }
 
 @media (orientation: landscape) {
-    .touch-breath {
-        bottom: 100px;
-        right: 16px;
-    }
-
-    body[data-dpad="on"] .touch-punch,
     body[data-dpad="on"] .touch-breath {
-        right: 54px;
-    }
-
-    body[data-dpad="on"] .touch-punch {
         bottom: 40px;
-    }
-
-    body[data-dpad="on"] .touch-breath {
-        bottom: 124px;
-    }
-}
-
-/* A narrow phone in portrait with the D-pad: side by side, breath would
-   reach the D-pad under 349 px (172 px of buttons from the right, the
-   D-pad's 165 px from the left, a 12 px gap), so breath sits above punch
-   in the D-pad's band instead. */
-@media (orientation: portrait) and (max-width: 348px) {
-    body[data-dpad="on"] .touch-punch {
-        bottom: 16px;
-    }
-
-    body[data-dpad="on"] .touch-breath {
-        bottom: 100px;
-        right: 16px;
+        right: 54px;
     }
 }
 
