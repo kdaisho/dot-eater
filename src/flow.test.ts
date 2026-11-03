@@ -516,8 +516,12 @@ describe("ending", () => {
             screen = update(screen, tickInput(["confirm", "pause"], east), d)
             expect(screen.kind).toBe("ending")
             expect(game.players[0].character.moveProgress).toBeLessThan(1)
+            // Nor does the stage clear sound play yet (KDA-302).
+            expect(game.events.map((e) => e.type)).not.toContain("gameWon")
         }
         screen = update(screen, tickInput(["confirm"], east), d)
+        // It comes with the clear screen.
+        expect(game.events.map((e) => e.type)).toContain("gameWon")
         expect(screen).toEqual({
             kind: "stageClear",
             level: 0,

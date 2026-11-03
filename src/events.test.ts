@@ -14,9 +14,11 @@ import {
     step,
     takeOut,
     type GameState,
+    IDLE,
     type Mode,
     type MoveInput,
 } from "./game"
+import { glideT } from "./glide"
 import { AnimalId } from "./roster"
 import { createSplitter } from "./splitter"
 import {
@@ -453,34 +455,61 @@ describe("playerStunned", () => {
 describe("gameWon", () => {
     const corridor = textMap(["####", "# .#", "####"]).map
 
-    it("follows the last dot", () => {
-        const state = makeState(corridor, vec2(1, 1))
+    // Step until the game ends; its outcome.
+    function playOut(
+        state: GameState,
+        moves: MoveInput | readonly MoveInput[]
+    ) {
         let outcome = null
         for (let i = 0; i < TICK_RATE && !outcome; i++) {
-            outcome = tick(state, hold(east))
+            outcome = tick(state, moves)
         }
-        expect(outcome).toBe("won")
+        return outcome
+    }
+
+    it("waits for the glide into the last dot (KDA-302)", () => {
+        const state = makeState(corridor, vec2(1, 1))
+        expect(playOut(state, hold(east))).toBe("won")
+        // The dot is eaten as the move starts, while the player is still
+        // drawn a cell short of it: no stage clear yet.
         expect(state.events).toEqual([
             { type: "dotEaten", player: 0, at: vec2(2, 1) },
-            { type: "gameWon" },
         ])
+        takeEvents(state)
+        const player = state.players[0].character
+        while (!settle(state, TICK)) {
+            expect(glideT(player, 0)).toBeLessThan(1)
+            expect(takeEvents(state)).toEqual([])
+        }
+        // It comes as the glide ends, the player drawn on the dot's cell.
+        expect(glideT(player, 0)).toBe(1)
+        expect(takeEvents(state)).toEqual([{ type: "gameWon" }])
+    })
+
+    it("is reported by the outro once", () => {
+        const state = makeState(corridor, vec2(1, 1))
+        playOut(state, hold(east))
+        while (!settle(state, TICK));
+        takeEvents(state)
+        settle(state, TICK)
+        expect(state.events).toEqual([])
     })
 
     it("ends a versus round too", () => {
         const state = makeState(corridor, [vec2(1, 1), vec2(1, 1)], [], {
             mode: "versus",
         })
-        let outcome = null
-        for (let i = 0; i < TICK_RATE && !outcome; i++) {
-            outcome = tick(state, [hold(east), { held: [], pressed: none }])
-        }
-        expect(outcome).toBe("won")
+        const idle = { held: [], pressed: none }
+        expect(playOut(state, [hold(east), idle])).toBe("won")
+        expect(ofType(state, "gameWon")).toEqual([])
+        while (!settle(state, TICK));
         expect(ofType(state, "gameWon")).toHaveLength(1)
     })
 
-    it("nothing is reported by the outro", () => {
-        const state = makeState(corridor, vec2(1, 1))
-        while (!tick(state, hold(east)));
+    it("isn't reported by the outro of a lost game", () => {
+        const state = makeState(corridor, vec2(1, 1), [makeEnemy(1, 1)])
+        state.players[0].health = 1
+        expect(playOut(state, IDLE)).toBe("dead")
         takeEvents(state)
         while (!settle(state, TICK));
         expect(state.events).toEqual([])
