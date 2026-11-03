@@ -868,7 +868,7 @@ export const SCENES: Readonly<Record<SceneName, SceneDef>> = {
         level: 0,
         animals: ["dragon"],
         mode: "solo",
-        seed: 30,
+        seed: 3,
         brains: () => [
             charged(
                 3,

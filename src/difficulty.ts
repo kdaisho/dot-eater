@@ -1,3 +1,5 @@
+import { ENEMY_SPEED } from "./constants"
+
 // How hard a game is: which of its stage's two maps it is played on and how
 // many of the map's enemies come out (see parseLevel in level.ts), and how
 // strong they and the boss are (see createGameState in game.ts). The
@@ -63,7 +65,8 @@ export const GUARD_CAP = 0.85
 // How fast enemies go at each difficulty (KDA-290, with the user;
 // placeholders to tune at preview): every enemy's speed from its level (or
 // its default), a Splitter's halves included, times this, but never above
-// ENEMY_SPEED_CAP. The boss keeps its level's speed.
+// ENEMY_SPEED_CAP. The boss keeps its level's speed, and the Tengu has its
+// own (TENGU_SPEED, KDA-296).
 export const ENEMY_SPEED_SCALE: Readonly<Record<Difficulty, number>> = {
     easy: 1.1,
     medium: 1.25,
@@ -78,6 +81,29 @@ export const ENEMY_SPEED_CAP = 3.4
 // An enemy's speed of `speed` cells/s (its level's) at `difficulty`.
 export function enemySpeed(speed: number, difficulty: Difficulty): number {
     return Math.min(speed * ENEMY_SPEED_SCALE[difficulty], ENEMY_SPEED_CAP)
+}
+
+// How fast the Tengu (the wanderer, AiType.random) goes at each difficulty
+// (KDA-296, with the user; placeholders to tune at preview): its own
+// speeds instead of ENEMY_SPEED_SCALE's, from a little under the players
+// at Easy up to them (PLAYER_SPEED 4) at Super Hard. Not capped at
+// ENEMY_SPEED_CAP: that cap is so a chase can be outrun, and the Tengu
+// doesn't chase, it wanders, so a fast one is a hazard to dodge.
+export const TENGU_SPEED: Readonly<Record<Difficulty, number>> = {
+    easy: 3.5,
+    medium: 3.65,
+    hard: 3.8,
+    superHard: 4,
+}
+
+// A Tengu's speed at `difficulty`, from its level's `speed` cells/s (its
+// default, ENEMY_SPEED, if the level leaves it out). Our call: a level's
+// speed counts as a share of the default, as stage 9's 2.25 is a little
+// above it, so TENGU_SPEED times speed / ENEMY_SPEED. A level can still
+// make its Tengus a little slower or faster than the usual ones, and
+// leaving it out gives TENGU_SPEED exactly. No stage sets one today.
+export function tenguSpeed(speed: number, difficulty: Difficulty): number {
+    return (TENGU_SPEED[difficulty] * speed) / ENEMY_SPEED
 }
 
 // How the punch's knockback decays (see knockLevel in punch.ts): how far

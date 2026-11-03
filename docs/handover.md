@@ -33,7 +33,7 @@ The older modules are listed in `CLAUDE.md`. Newer or reshaped ones:
 
 | Module                                       | What it does                                                                                                                     |
 | -------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
-| `difficulty.ts`                              | `ENEMY_COUNT`, `MAP_SIZE`, `GUARD` odds, `ENEMY_SPEED_SCALE` and `enemySpeed()`                                                  |
+| `difficulty.ts`                              | `ENEMY_COUNT`, `MAP_SIZE`, `GUARD` odds, `ENEMY_SPEED_SCALE` and `enemySpeed()`, `TENGU_SPEED` and `tenguSpeed()`                |
 | `game.ts`                                    | `step`, `hurtPlayer`, `knockBack`, `checkEnd`, knock state, ice slides                                                           |
 | `punch.ts`, `guard.ts`                       | The punch and `knockEnemy`; guard rolls, `blockChance`, the 0.4 s stance                                                         |
 | `breath.ts`, `breaths/`                      | Breath engine: shapes line/cone/area/flood/self/spread (`resolveShape`), `chargeTick`, `chargeLevel`, `affordable`, `sightScale` |

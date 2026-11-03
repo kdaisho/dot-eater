@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test"
 import { BREATHS } from "./breaths"
-import { MAX_ENEMIES, PLAYER_SPEED } from "./constants"
+import { ENEMY_SPEED, MAX_ENEMIES, PLAYER_SPEED } from "./constants"
 import {
     BOSS_BREATH_SCALE,
     DEFAULT_DIFFICULTY,
@@ -17,6 +17,8 @@ import {
     MAP_SIZE,
     MAP_SIZES,
     RESPAWN_SCALE,
+    TENGU_SPEED,
+    tenguSpeed,
     USUAL_KNOCK,
 } from "./difficulty"
 import { createGameState } from "./game"
@@ -76,6 +78,25 @@ describe("how strong enemies are at each difficulty", () => {
         expect(enemySpeed(2.25, "hard")).toBeCloseTo(3.15)
         expect(enemySpeed(2.25, "superHard")).toBe(ENEMY_SPEED_CAP)
         expect(enemySpeed(5, "easy")).toBe(ENEMY_SPEED_CAP)
+    })
+
+    // KDA-296 (with the user; placeholders): the Tengu as fast as the
+    // animals.
+    it("gives the Tengu its own speeds, up to the players', past the cap", () => {
+        expect(TENGU_SPEED).toEqual({
+            easy: 3.5,
+            medium: 3.65,
+            hard: 3.8,
+            superHard: 4,
+        })
+        const speeds = DIFFICULTIES.map((d) => tenguSpeed(ENEMY_SPEED, d))
+        expect(speeds).toEqual([3.5, 3.65, 3.8, 4])
+        expect(speeds).toEqual([...speeds].sort((a, b) => a - b))
+        expect(Math.min(...speeds)).toBeGreaterThan(ENEMY_SPEED_CAP)
+        expect(Math.max(...speeds)).toBe(PLAYER_SPEED)
+        // A level's speed is a share of the default.
+        expect(tenguSpeed(2.25, "easy")).toBeCloseTo(3.9375)
+        expect(tenguSpeed(1, "superHard")).toBe(2)
     })
 
     it("caps them below every character, so each can outrun a chase", () => {
