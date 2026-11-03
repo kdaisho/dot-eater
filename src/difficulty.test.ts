@@ -11,15 +11,12 @@ import {
     ENEMY_SPEED_CAP,
     ENEMY_SPEED_SCALE,
     enemySpeed,
-    GUARD,
     isDifficulty,
-    KNOCK_DECAY,
     MAP_SIZE,
     MAP_SIZES,
     RESPAWN_SCALE,
     TENGU_SPEED,
     tenguSpeed,
-    USUAL_KNOCK,
 } from "./difficulty"
 import { createGameState } from "./game"
 import { parseLevel, sameForBoth, type LevelData } from "./level"
@@ -105,36 +102,6 @@ describe("how strong enemies are at each difficulty", () => {
         )
         expect(slowest).toBe(3.5)
         expect(ENEMY_SPEED_CAP).toBeLessThan(slowest)
-    })
-
-    it("guards better the harder it is, up to the cap", () => {
-        for (const key of ["chance", "min", "max"] as const) {
-            const values = DIFFICULTIES.map((d) => GUARD[d][key])
-            expect(values).toEqual([...values].sort((a, b) => a - b))
-        }
-    })
-
-    it("decays the knockback faster and recovers it slower on Super Hard", () => {
-        expect(USUAL_KNOCK).toEqual({
-            steps: [1, 0.7, 0.5, 0.3, 0],
-            lull: 2,
-            recover: 0.5,
-        })
-        expect(KNOCK_DECAY.easy).toBe(USUAL_KNOCK)
-        expect(KNOCK_DECAY.medium).toBe(USUAL_KNOCK)
-        expect(KNOCK_DECAY.hard).toBe(USUAL_KNOCK)
-        expect(KNOCK_DECAY.superHard).toEqual({
-            steps: [1, 0.5, 0.2, 0],
-            lull: 3,
-            recover: 0.75,
-        })
-        // Each starts at a full cell and ends at none.
-        for (const d of DIFFICULTIES) {
-            const { steps } = KNOCK_DECAY[d]
-            expect(steps[0]).toBe(1)
-            expect(steps.at(-1)).toBe(0)
-            expect(steps).toEqual([...steps].sort((a, b) => b - a))
-        }
     })
 
     it("brings defeated enemies back sooner on Super Hard only", () => {

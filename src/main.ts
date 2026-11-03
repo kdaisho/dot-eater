@@ -97,7 +97,6 @@ import {
     stageSlots,
     type Progress,
 } from "./progress"
-import { createJabs } from "./jab"
 import { createParticles } from "./particles"
 import { createRenderer, type Effects } from "./render"
 import {
@@ -222,7 +221,7 @@ const touch = isTouchDevice(window)
 // flow needs so a game never starts unwatched (FlowDeps.focused).
 let focused = !document.hidden
 // Touch is the main input (a phone or tablet, not a laptop's touch screen):
-// the punch and breath buttons show, with room kept for them.
+// the breath button shows, with room kept for it.
 const touchFirst = isTouchFirst(window)
 
 // Gameplay recording, for videos (see replay.ts), on with ?record in the
@@ -239,8 +238,8 @@ const canvas = document.getElementById("game")
 if (!(canvas instanceof HTMLCanvasElement)) throw new Error("No #game canvas")
 // Touch: dragging on the play area steers player 1 while the finger is
 // down (TouchSource). The on-screen pause button (dpad.ts) shows during
-// play on touch devices, and the punch and breath buttons where touch is
-// the main input or the D-pad shows. The optional D-pad steers too,
+// play on touch devices, and the breath button where touch is the main
+// input or the D-pad shows. The optional D-pad steers too,
 // alongside the drag: it shows on touch devices when the Show D-pad
 // setting is on (applyDpad, live as the setting changes).
 const playArea = document.getElementById("play") ?? canvas
@@ -278,8 +277,8 @@ function controlsRoom() {
 }
 
 // Show or hide the on-screen D-pad as the settings say, refitting the maze
-// when that changes. Punch and breath show beside it, on a laptop's touch
-// screen too.
+// when that changes. Breath shows beside it, on a laptop's touch screen
+// too.
 function applyDpad() {
     const on = touch && settings.showDpad
     if (on === dpadShown) return
@@ -296,36 +295,29 @@ applyDpad()
 // shorter; the Screen shake setting, when set, overrides the shake part.
 const particles = createParticles({ random: Math.random })
 const shake = createShake()
-// The players' jab looks after a punch (KDA-258; see jab.ts). A guarding
-// enemy's look is drawn from the game (KDA-293; see stanceLook in
-// render.ts).
-const jabs = createJabs()
 const effects = {
     // Follow reduced motion and the Screen shake setting: on load, when the
     // settings change and when the system setting does.
     motion() {
         const reduced = reducedMotion?.matches ?? false
-        applyMotion({ particles, shake, jabs }, settings, reduced)
+        applyMotion({ particles, shake }, settings, reduced)
     },
     // The bursts and shakes for a tick's game events (see eventEffects.ts).
     events(events: readonly GameEvent[], game: GameState) {
-        effectsForEvents(events, game, { particles, shake, jabs })
+        effectsForEvents(events, game, { particles, shake })
     },
     tick(dt: number) {
         particles.update(dt)
         shake.update(dt)
-        jabs.update(dt)
     },
     reset() {
         particles.clear()
         shake.clear()
-        jabs.clear()
     },
     of(s: Screen): Effects {
         // The facing guide the settings pick (KDA-247); see screenEffects.
         return screenEffects(s, {
             particles: particles.list,
-            jabs: jabs.list,
             shake: () => shake.offset(Math.random),
             guide: settings.facingGuide,
             reducedMotion: reducedMotion?.matches ?? false,
@@ -351,7 +343,6 @@ const tickInput: TickInput = {
             // keys, pads and the touch Breath button all hold it.
             breath: p.wasPressed("breath"),
             breathHeld: p.isDown("breath"),
-            punch: p.wasPressed("punch"),
         }
     },
     captured: () => pendingCapture,

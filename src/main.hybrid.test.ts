@@ -5,8 +5,8 @@ import { levels } from "./levels"
 
 // main on a laptop with a touch screen: touch points and a coarse pointer
 // among others, but a fine primary pointer (its trackpad). The pause
-// button shows during play, but the punch and breath buttons don't, and
-// the maze keeps no band for them. (A separate file, since main is
+// button shows during play, but the breath button doesn't, and the maze
+// keeps no band for it. (A separate file, since main is
 // imported once per module graph.)
 
 vi.mock("canvas-confetti", () => ({ default: vi.fn() }))
@@ -53,9 +53,9 @@ describe("main on a laptop with a touch screen", () => {
         await import("./main")
     })
 
-    // Regression (PR #79 review): a touch-screen laptop got the punch and
-    // breath buttons and their 104 px band.
-    it("keeps no band and shows no punch or breath buttons", () => {
+    // Regression (PR #79 review): a touch-screen laptop got the touch
+    // buttons and their 104 px band.
+    it("keeps no band and shows no breath button", () => {
         expect(document.body.dataset.touch).toBe("on")
         expect(document.body.dataset.buttons).toBe("off")
         tap("#overlay li[data-index='0']")

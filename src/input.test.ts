@@ -214,7 +214,6 @@ describe("KeyboardSource", () => {
             ["ArrowLeft", "left"],
             ["ArrowRight", "right"],
             ["ShiftRight", "breath"],
-            ["Slash", "punch"],
             ["KeyP", "pause"],
             ["Escape", "pause"],
             ["Space", "confirm"],
@@ -226,7 +225,6 @@ describe("KeyboardSource", () => {
             ["KeyA", "left"],
             ["KeyD", "right"],
             ["ShiftLeft", "breath"],
-            ["KeyZ", "punch"],
             ["KeyQ", "pause"],
             ["KeyE", "confirm"],
         ])

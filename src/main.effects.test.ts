@@ -160,29 +160,6 @@ describe("main's particles and shake", () => {
         expect(seen.effects?.bossBreath).toBe(true)
     })
 
-    // KDA-293: the sparks, and the fist bouncing back.
-    it("draws a blocked punch's sparks and bounces its fist back", () => {
-        nextEvents = [
-            { type: "punched", player: 0, at: vec2(1, 1), facing: vec2(1, 0) },
-            {
-                type: "punchBlocked",
-                player: 0,
-                at: vec2(2, 1),
-                facing: vec2(1, 0),
-                enemy: 0,
-            },
-        ]
-        vi.advanceTimersByTime(20)
-        nextEvents = []
-        expect(seen.effects?.jabs).toEqual([
-            expect.objectContaining({ player: 0, blocked: true }),
-        ])
-        expect(seen.particles!.list.length).toBeGreaterThan(0)
-        // The system asks for reduced motion here: a guarding enemy
-        // doesn't crouch.
-        expect(seen.effects?.reducedMotion).toBe(true)
-    })
-
     // Regression (the resume tick): effects moved on once more than the
     // game, on the tick that resumed it.
     it("freezes the effects while paused, and moves them only with steps", () => {

@@ -258,9 +258,7 @@ describe("the endRoll screen", () => {
 
     it("ignores other buttons", () => {
         const screen = roll(10)
-        expect(
-            update(screen, input(["breath", "punch", "left"]), deps(0))
-        ).toBe(screen)
+        expect(update(screen, input(["breath", "left"]), deps(0))).toBe(screen)
     })
 })
 

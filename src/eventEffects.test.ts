@@ -5,14 +5,12 @@ import { BREATHS } from "./breaths"
 import { TICK_RATE } from "./constants"
 import {
     applyMotion,
-    BLOCK_IMPACT,
     effectsForEvent,
     effectsForEvents,
     type EffectTargets,
 } from "./eventEffects"
 import { takeEvents, type GameEvent } from "./events"
 import { step, type GameState, type MoveInput } from "./game"
-import { createJabs } from "./jab"
 import { BURSTS, createParticles, type ParticleLook } from "./particles"
 import { defaultSettings } from "./settings"
 import { createShake, SHAKES } from "./shake"
@@ -217,100 +215,6 @@ describe("effectsForEvent", () => {
         expect(SHAKES.stun).toBeLessThan(SHAKES.hit)
     })
 
-    it("a jab look, nothing else, for a punch", () => {
-        const r = recorder()
-        const jabs: { player: number; facing: Vec2 }[] = []
-        r.targets.jabs = {
-            add: (player, facing) => jabs.push({ player, facing }),
-            block: () => {},
-        }
-        effectsForEvent(
-            { type: "punched", player: 1, at: vec2(2, 2), facing: vec2(0, -1) },
-            room(),
-            r.targets
-        )
-        expect(jabs).toEqual([{ player: 1, facing: vec2(0, -1) }])
-        expect(r.bursts).toEqual([])
-        expect(r.shakes).toEqual([])
-    })
-
-    // KDA-293, with the user.
-    it("sparks at the impact and a fist bounce, no shake, for a block", () => {
-        const r = recorder()
-        const directions: (Vec2 | undefined)[] = []
-        const burst = r.targets.particles.burst
-        r.targets.particles.burst = (kind, at, options) => {
-            directions.push(options?.direction)
-            burst(kind, at, options)
-        }
-        const blocked: number[] = []
-        r.targets.jabs = {
-            add: () => {},
-            block: (player) => blocked.push(player),
-        }
-        // Punched from the left: the enemy's left side faces the puncher.
-        effectsForEvent(
-            {
-                type: "punchBlocked",
-                player: 1,
-                at: vec2(3, 2),
-                facing: vec2(1, 0),
-                enemy: 3,
-            },
-            room(),
-            r.targets
-        )
-        expect(r.bursts).toEqual([
-            { kind: "block", at: vec2(3 - BLOCK_IMPACT, 2) },
-        ])
-        // Thrown back at the puncher.
-        // (+ 0 turns a -0 into 0.)
-        expect(directions.map((d) => vec2(d!.x + 0, d!.y + 0))).toEqual([
-            vec2(-1, 0),
-        ])
-        expect(blocked).toEqual([1])
-        expect(r.shakes).toEqual([])
-        // Punched upwards: the impact is on its bottom side.
-        const up = run({
-            type: "punchBlocked",
-            player: 0,
-            at: vec2(3, 2),
-            facing: vec2(0, -1),
-            enemy: 3,
-        })
-        expect(up.bursts).toEqual([
-            { kind: "block", at: vec2(3, 2 + BLOCK_IMPACT) },
-        ])
-        expect(up.shakes).toEqual([])
-    })
-
-    it("throws white and yellow sparks for a block, fewer with reduced motion", () => {
-        const look = BURSTS.block
-        expect(look.colors).toEqual(["#fff7cc", "#facc15"])
-        const sparks = (reduced: boolean) => {
-            const particles = createParticles({ random: () => 0.5, reduced })
-            particles.burst("block", vec2(2, 2), { direction: vec2(-1, 0) })
-            return particles.list
-        }
-        expect(sparks(false)).toHaveLength(look.count)
-        expect(sparks(true).length).toBeLessThan(look.count)
-        expect(sparks(true).length).toBeGreaterThan(0)
-        // Outlined, so the pale ones show on the white floor.
-        expect(sparks(false)[0].outline).toBe(look.outline)
-        // Flying back along the direction they were given.
-        expect(sparks(false)[0].vx).toBeLessThan(0)
-    })
-
-    it("a tiny burst and a very small shake where a punch lands", () => {
-        for (const target of ["enemy", "boss", "player"] as const) {
-            const at = vec2(2.4, 2)
-            const r = run({ type: "punchHit", player: 0, at, target })
-            expect(r.bursts).toEqual([{ kind: "punch", at }])
-            expect(r.shakes).toEqual([SHAKES.punch])
-        }
-        expect(SHAKES.punch).toBeLessThan(SHAKES.stun)
-    })
-
     it.each([
         { type: "playerRespawned", player: 0, at: vec2(1, 2) },
         { type: "gameWon" },
@@ -484,70 +388,6 @@ describe("effectsForEvents", () => {
         expect(r.bursts.map((b) => b.kind)).toEqual(["dot", "caught"])
         expect(r.shakes).toEqual([SHAKES.caught])
     })
-
-    // Regression: each hit shook, so a jab into three stacked enemies
-    // shook three times as hard as one into a single enemy.
-    it("shakes once per punch, however many it hits, with a burst on each", () => {
-        const r = recorder()
-        const hit = (player: number, enemy: number): GameEvent => ({
-            type: "punchHit",
-            player,
-            at: vec2(3, 2),
-            target: "enemy",
-            enemy,
-        })
-        const punched = (player: number): GameEvent => ({
-            type: "punched",
-            player,
-            at: vec2(2, 2),
-            facing: vec2(1, 0),
-        })
-        effectsForEvents(
-            [
-                punched(0),
-                hit(0, 0),
-                hit(0, 1),
-                hit(0, 2),
-                punched(1),
-                hit(1, 3),
-            ],
-            room(),
-            r.targets
-        )
-        expect(r.bursts.map((b) => b.kind)).toEqual([
-            "punch",
-            "punch",
-            "punch",
-            "punch",
-        ])
-        expect(r.shakes).toEqual([SHAKES.punch, SHAKES.punch])
-    })
-
-    it("shakes for a punch's hit, not for a block before it (KDA-288)", () => {
-        const r = recorder()
-        effectsForEvents(
-            [
-                {
-                    type: "punchBlocked",
-                    player: 0,
-                    at: vec2(3, 2),
-                    facing: vec2(1, 0),
-                    enemy: 0,
-                },
-                {
-                    type: "punchHit",
-                    player: 0,
-                    at: vec2(3, 2),
-                    target: "enemy",
-                    enemy: 1,
-                },
-            ],
-            room(),
-            r.targets
-        )
-        expect(r.bursts.map((b) => b.kind)).toEqual(["block", "punch"])
-        expect(r.shakes).toEqual([SHAKES.punch])
-    })
 })
 
 describe("applyMotion", () => {
@@ -564,15 +404,6 @@ describe("applyMotion", () => {
         applyMotion(t, defaultSettings(), false)
         expect(t.particles.reduced).toBe(false)
         expect(t.shake.enabled).toBe(true)
-    })
-
-    // Regression: the jab lunged even with reduced motion requested.
-    it("stops jabs lunging with reduced motion", () => {
-        const t = { ...targets(), jabs: createJabs() }
-        applyMotion(t, defaultSettings(), true)
-        expect(t.jabs.reduced).toBe(true)
-        applyMotion(t, defaultSettings(), false)
-        expect(t.jabs.reduced).toBe(false)
     })
 
     it("turns the shake on with reduced motion when the setting says so", () => {

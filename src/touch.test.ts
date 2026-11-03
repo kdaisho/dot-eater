@@ -334,13 +334,13 @@ describe("TouchSource", () => {
         down(50, 50)
         move(55, 52)
         up(55, 52)
-        for (const action of ["breath", "punch", "up", "right"] as const) {
+        for (const action of ["breath", "up", "right"] as const) {
             expect(p1().wasPressed(action)).toBe(false)
         }
     })
 
     describe("with two fingers on the board", () => {
-        // Regression (PR #79 review): a thumb that missed Punch and tapped
+        // Regression (PR #79 review): a thumb that missed a button and tapped
         // the board stopped the player, and the steering finger was dead
         // until it lifted.
         it("ignores a stray tap: the steering finger keeps steering", () => {
@@ -599,11 +599,10 @@ describe("TouchSource", () => {
             key("keyup", "ArrowRight")
         })
 
-        it("doesn't drop the drag for a breath, punch or pause key", () => {
+        it("doesn't drop the drag for a breath or pause key", () => {
             down(0, 0)
             move(40, 0)
             key("keydown", "ShiftRight")
-            key("keydown", "Slash")
             key("keydown", "KeyP")
             expect(held()).toEqual(["right"])
         })

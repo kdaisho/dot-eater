@@ -66,7 +66,7 @@ describe("computeLayout", () => {
         }
 
         // An iPhone 12-15 (390x844) and an Android phone (360x740), each
-        // way up: the punch and breath buttons' band, and the D-pad's,
+        // way up: the breath button's band, and the D-pad's,
         // cost the maze nothing there.
         it.each([
             [390, 844, 21],
@@ -167,7 +167,7 @@ describe("controlsSpace", () => {
         expect(controlsSpace(844, 390, "none")).toEqual({ width: 0, height: 0 })
     })
 
-    it("keeps a band for punch and breath on a touch screen without the D-pad", () => {
+    it("keeps a band for breath on a touch screen without the D-pad", () => {
         // Below the maze in portrait (a square viewport counts as
         // portrait), right of it in landscape.
         expect(controlsSpace(390, 844, "buttons")).toEqual({

@@ -14,8 +14,7 @@ import type { Vec2 } from "./vec2"
 // the game (pause, menus) reports nothing new.
 //
 // `player` is always a player's index (player 1 is 0). `at` is a cell (the
-// top-left one of the boss's 2x2 footprint), for placing effects, except
-// for the punch's events, where it is a drawn position.
+// top-left one of the boss's 2x2 footprint), for placing effects.
 export type GameEvent =
     // A player ate a dot on `at` (walking or sliding onto it).
     | { type: "dotEaten"; player: number; at: Vec2 }
@@ -94,33 +93,6 @@ export type GameEvent =
     | { type: "playerRespawned"; player: number; at: Vec2 }
     // Versus: player `by`'s breath stunned `player`, on `at` (its cell).
     | { type: "playerStunned"; player: number; by: number; at: Vec2 }
-    // A player punched (see punch.ts), whether it hit anything or not. `at`
-    // is where the player is drawn (not a whole cell) and `facing` the unit
-    // step it punched along. Its hits follow, one punchHit (or
-    // punchBlocked) each.
-    | { type: "punched"; player: number; at: Vec2; facing: Vec2 }
-    // A player's punch hit an enemy (`enemy`, its index in
-    // GameState.enemies), the boss or the other player (versus), at `at`:
-    // where the target was drawn when the fist met it (the nearest point of
-    // the boss's body), not a whole cell. The boss isn't hurt or moved.
-    | {
-          type: "punchHit"
-          player: number
-          at: Vec2
-          target: "enemy" | "boss" | "player"
-          enemy?: number
-      }
-    // Enemy `enemy` (its index in GameState.enemies) blocked a player's
-    // punch with its guard (KDA-288, see guard.ts), in place of a
-    // punchHit: it wasn't moved. `at` is where it was drawn and `facing`
-    // the unit step the punch came along, as in punched.
-    | {
-          type: "punchBlocked"
-          player: number
-          at: Vec2
-          facing: Vec2
-          enemy: number
-      }
     // The stage is cleared: the game is won. In versus this is the end of
     // a round; whether it also ends the match is up to flow.ts (the next
     // screen is roundResult or matchResult). Won by the last dot, it comes

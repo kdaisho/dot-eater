@@ -8,7 +8,6 @@ const playing = startLevel(levels, 0, ["dragon"], "solo")
 const sources = {
     particles: [],
     shake: () => vec2(0.1, -0.1),
-    jabs: [],
     guide: "arrow" as const,
     reducedMotion: false,
 }
@@ -17,7 +16,6 @@ describe("screenEffects", () => {
     it("shakes and previews aim while playing", () => {
         expect(screenEffects(playing, sources)).toEqual({
             particles: [],
-            jabs: [],
             reducedMotion: false,
             shake: vec2(0.1, -0.1),
             guide: "arrow",
@@ -29,7 +27,6 @@ describe("screenEffects", () => {
     it("keeps the guide but neither shake nor aim while paused", () => {
         expect(screenEffects(pauseIfPlaying(playing), sources)).toEqual({
             particles: [],
-            jabs: [],
             reducedMotion: false,
             guide: "arrow",
             bossBreath: true,

@@ -6,10 +6,10 @@ import type { LevelData } from "../level"
 // round the middle of the base, so the player learns their timing and slips
 // past behind them. Breathers (KDA-291) start on the doors between rooms,
 // and interceptors (KDA-292, from Medium) and on the large map a chaser
-// inside the rooms. Every
-// inner wall is one cell thick, so the Boar can open a shortcut into the
-// next room, and a punch shoves a guard back out of a doorway. Every room has at least two doors, so there is always another way
-// round. No tunnels, ice or fog. Left-right symmetric walls, no dead ends.
+// inside the rooms. Every inner wall is one cell thick, so the Boar can
+// open a shortcut into the next room. Every room has at least two doors, so
+// there is always another way round. No tunnels, ice or fog. Left-right
+// symmetric walls, no dead ends.
 export const stage7: LevelData = {
     name: "Patrol base",
     medium: {

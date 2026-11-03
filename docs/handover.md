@@ -33,14 +33,13 @@ The older modules are listed in `CLAUDE.md`. Newer or reshaped ones:
 
 | Module                                       | What it does                                                                                                                     |
 | -------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
-| `difficulty.ts`                              | `ENEMY_COUNT`, `MAP_SIZE`, `GUARD` odds, `ENEMY_SPEED_SCALE` and `enemySpeed()`, `TENGU_SPEED` and `tenguSpeed()`                |
-| `game.ts`                                    | `step`, `hurtPlayer`, `knockBack`, `checkEnd`, knock state, ice slides                                                           |
-| `punch.ts`, `guard.ts`                       | The punch and `knockEnemy`; guard rolls, `blockChance`, the 0.4 s stance                                                         |
+| `difficulty.ts`                              | `ENEMY_COUNT`, `MAP_SIZE`, `ENEMY_SPEED_SCALE` and `enemySpeed()`, `TENGU_SPEED` and `tenguSpeed()`                              |
+| `game.ts`                                    | `step`, `hurtPlayer`, `knockBack` (the player's, on a hit), `checkEnd`, ice slides                                               |
 | `breath.ts`, `breaths/`                      | Breath engine: shapes line/cone/area/flood/self/spread (`resolveShape`), `chargeTick`, `chargeLevel`, `affordable`, `sightScale` |
 | `ai.ts`, `intercept.ts`                      | Enemy AI and the spread rule; the interceptor's route prediction and fade                                                        |
 | `enemyBreath.ts`, `bossBreath.ts`, `boss.ts` | The breather's and the boss's breaths; boss health                                                                               |
-| `render.ts`                                  | Canvas: sprites, fog lights (`createFog`, one `Light` per player), aim tints, guard sprites                                      |
-| `touch.ts`                                   | Flick-to-run (`TouchSource.follow(heading(player))` from main's tick), the Punch/Breath buttons                                  |
+| `render.ts`                                  | Canvas: sprites, fog lights (`createFog`, one `Light` per player), aim tints                                                     |
+| `touch.ts`                                   | Flick-to-run (`TouchSource.follow(heading(player))` from main's tick), the Breath button                                         |
 | `audio.ts`, `music.ts`, `recorded.ts`        | Music and effects, `LIMITER`, `browserAudioContext` (iOS session); recorded tracks and loop points                               |
 | `muteButton.ts`                              | The 🔊/🔇 button; its toggle saves `settings.muted`                                                                              |
 | `opening.ts`, `openingView.ts`               | The Gold opening before the title                                                                                                |
@@ -54,7 +53,7 @@ The older modules are listed in `CLAUDE.md`. Newer or reshaped ones:
     - **Boar charge cost:** a full charge at a single wall spends all 100 energy. Recommend paying only for walls broken.
     - **Touch Breath button:** show the charge level while held? (#118's glow may answer this; ask.)
     - **Boar breaking the outer wall:** A (dead-end notch, easy) or B (bores through and wraps, medium). Recommend B, own PR.
-- **Tuning to judge at preview** (all placeholders): Dragon spread reach and cost (20 a level); the charge glow's size, colours, flicker (`CHARGE_AURA_*`); damage numbers; knockback decay; guard odds; charge 0.25 s per level; enemy speed scale; breather and interceptor numbers.
+- **Tuning to judge at preview** (all placeholders): Dragon spread reach and cost (20 a level); the charge glow's size, colours, flicker (`CHARGE_AURA_*`); damage numbers; charge 0.25 s per level; enemy speed scale; breather and interceptor numbers.
 - **Known gaps:**
     - iOS before 17 has no `audioSession`, so silent mode still mutes the game there.
     - A tab open on an old build during a deploy can cut stage 6+ progress from the save.
@@ -62,7 +61,7 @@ The older modules are listed in `CLAUDE.md`. Newer or reshaped ones:
 
 ## Decisions already made
 
-All are in `docs/decisions.md` by topic (Breaths: Energy, Charge, the five breaths, Fog; Enemies: Punch, Spread rule, Interceptor, Breather). With the user this round:
+All are in `docs/decisions.md` by topic (Breaths: Energy, Charge, the five breaths, Fog; Enemies: Punch and guard (removed, KDA-294), Spread rule, Interceptor, Breather). With the user this round:
 
 - **Dragon:** spreading fire that can't pass enemies (each branch stops at one), reach 2–6. Settled after play.
 - **Touch:** flick to run, flick opposite to stop, flick sideways to turn. Only touch latches; other inputs are hold-to-move.

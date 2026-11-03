@@ -93,7 +93,6 @@ export function GameplayClip({
                 rulesOf(screen, levels),
                 screenEffects(screen, {
                     particles: effects.particles,
-                    jabs: effects.jabs,
                     reducedMotion: false,
                     shake: () => effects.shake,
                     guide: GUIDE,

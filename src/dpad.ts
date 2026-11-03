@@ -6,7 +6,7 @@ import type {
     PlayerInput,
 } from "./input"
 
-// On-screen touch buttons for player 1: pause, punch and breath (on touch
+// On-screen touch buttons for player 1: pause and breath (on touch
 // screens, during play) and a D-pad (optional, off by default). They are
 // DOM buttons rather than drawn on the canvas: each gets its own pointer
 // events, CSS places them beside or below the maze by orientation (see
@@ -15,7 +15,7 @@ import type {
 //
 // The D-pad works like the keyboard: a direction is held while a finger is
 // on it, and sliding the finger round the pad changes direction without
-// lifting, as on a stick. The pause, punch and breath buttons press on
+// lifting, as on a stick. The pause and breath buttons press on
 // touch and release on lift, so holding one presses it once (no
 // auto-repeat); a button looks pressed (the "pressed" class) while held.
 // Held, Breath charges the breath, which fires on the lift (or a lost
@@ -72,10 +72,7 @@ export function createTouchControls(doc: Document = document): HTMLElement {
     const breath = button(doc, "breath", "Breath", "💨")
     breath.classList.add("touch-breath")
 
-    const punch = button(doc, "punch", "Punch", "👊")
-    punch.classList.add("touch-punch")
-
-    root.append(pause, pad, breath, punch)
+    root.append(pause, pad, breath)
     doc.body.appendChild(root)
     return root
 }
@@ -97,8 +94,8 @@ function button(
 export type ControlFlags = {
     // A touch screen: the pause button shows during play.
     touch?: boolean
-    // The punch and breath buttons show during play (and the maze makes
-    // room for them): touch is the main input, or the D-pad shows.
+    // The breath button shows during play (and the maze makes room for
+    // it): touch is the main input, or the D-pad shows.
     buttons?: boolean
     // The D-pad shows (and the maze makes a bigger band for it).
     dpad?: boolean

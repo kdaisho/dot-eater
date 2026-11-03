@@ -78,11 +78,9 @@ describe("the directed scenes", () => {
         }
     })
 
-    it("shows a punch land, a guard block it and a breather's breath hurt", () => {
-        for (const name of ["punch", "guard", "breather"] as const) {
-            const recording = JSON.parse(saved(name)) as Recording
-            expect(heroMoment(name, recording), name).toBeDefined()
-        }
+    it("shows a breather's breath hurt", () => {
+        const recording = JSON.parse(saved("breather")) as Recording
+        expect(heroMoment("breather", recording)).toBeDefined()
     })
 })
 

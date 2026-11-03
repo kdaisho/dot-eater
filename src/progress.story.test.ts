@@ -95,7 +95,7 @@ describe("story bests in the save", () => {
         })
     })
 
-    // Regression guard, as for byDifficulty: assigning a saved "__proto__"
+    // Regression, as for byDifficulty: assigning a saved "__proto__"
     // key would set the object's prototype, and its fields would read as
     // inherited bests.
     it("never read a saved __proto__ key as inherited bests", () => {

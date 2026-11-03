@@ -8,8 +8,8 @@ import type {
 // Touch source: flicks on the play area steer player 1, who keeps going
 // the way flicked without a finger on the screen, and stops at a flick back
 // the way it is going. Touch drives player 1 only; 2-player modes stay on
-// keyboard and pads. Punch and breath are on-screen buttons (dpad.ts), so a
-// tap on the board does nothing.
+// keyboard and pads. Breath is an on-screen button (dpad.ts), so a tap on
+// the board does nothing.
 //
 // A finger that touches the board and drags SWIPE_DISTANCE (a flick, or a
 // drag that is still down) presses the way it went, by its stronger axis,
@@ -339,8 +339,8 @@ export function isTouchDevice(view: {
 }
 
 // Whether touch is the device's main input (its primary pointer is coarse,
-// as on a phone or tablet), so the punch and breath buttons show and the
-// maze leaves room for them. A laptop with a touch screen is a touch device
+// as on a phone or tablet), so the breath button shows and the maze leaves
+// room for it. A laptop with a touch screen is a touch device
 // (isTouchDevice) but not this: its trackpad and keys come first.
 export function isTouchFirst(view: {
     matchMedia?: (query: string) => { matches: boolean }

@@ -72,9 +72,8 @@ export type PadButtonMap = Readonly<Record<number, readonly Action[]>>
 // The fixed D-pad directions, in PAD_DPAD order.
 const DPAD_ACTIONS: readonly Action[] = ["up", "down", "left", "right"]
 
-// One player's pad buttons: the bound breath, punch, confirm and pause
-// buttons (confirm may share one with breath or punch), plus the fixed
-// D-pad.
+// One player's pad buttons: the bound breath, confirm and pause buttons
+// (breath and confirm may share one), plus the fixed D-pad.
 export function padButtonsFor(player: PlayerBindings): PadButtonMap {
     const map: Record<number, Action[]> = {}
     for (const action of PAD_ACTIONS) {
@@ -97,8 +96,8 @@ export function menuButtonsFor(buttons: PadButtonMap): PadButtonMap {
     return { ...buttons, [PAD_B]: [...actions, "pause"] }
 }
 
-// The default buttons: A (Cross) breath in play and confirm in menus, X
-// (Square) punch, Start (Options) pause, and the D-pad.
+// The default buttons: A (Cross) breath in play and confirm in menus,
+// Start (Options) pause, and the D-pad.
 export const PAD_BUTTONS: PadButtonMap = padButtonsFor(
     DEFAULT_BINDINGS.players[0]
 )
@@ -242,7 +241,7 @@ export class GamepadSource implements InputSource {
 
     // Whether a menu shows (true) or play (false): on menus B goes back. A
     // B held through the change counts only once released, so a B held
-    // into a menu (bound to punch, say) doesn't go back at once. Nothing
+    // into a menu (bound to breath, say) doesn't go back at once. Nothing
     // else is let go: a direction held from a menu into play still moves.
     setMenus(menus: boolean): void {
         if (menus === this.menus) return

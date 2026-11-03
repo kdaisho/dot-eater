@@ -40,13 +40,11 @@ import { samePos, vec2, type Vec2 } from "./vec2"
 // - Wind-up (ENEMY_BREATH_WIND_UP): it holds still, glows (enemyBreathLooks)
 //   and the cells it will hit are tinted (enemyWarnings). Then it breathes
 //   along its facing, whoever is in line by then: a player can step out of
-//   the way, or punch it.
-// - Called off: a punch that lands on it while it winds up calls the
-//   breath off and starts its cooldown (a blocked one doesn't). So does
-//   anything that holds it (a freeze) or moves it off its cell (a knock, a
-//   push, a cloud it has to leave), nobody being in play, a defeat, or
-//   another breather on its cell, though those leave its cooldown as it
-//   was (ready).
+//   the way.
+// - Called off: anything that holds it (a freeze) or moves it off its cell
+//   (a push, a cloud it has to leave), nobody being in play, a defeat, or
+//   another breather on its cell calls the breath off, leaving its
+//   cooldown as it was (ready).
 // - The breath: one cell wide, out to ENEMY_BREATH_RANGE cells from its own,
 //   stopped by the first wall or Boar-opened wall (see enemyBreathCells),
 //   or the map's edge (no wrapping through tunnels). It is shown for
@@ -233,18 +231,11 @@ export function enemyBreathTarget(
 // ---- Each tick ----
 
 // Every breather's breath for one tick of step (see the top of this file),
-// after the punches (so a punch that landed this tick calls a wind-up off)
-// and before the enemies move (so EnemyBreath.move is set for their AI).
+// after the breaths and before the enemies move (so EnemyBreath.move is set for their AI).
 // For each breather: count its cooldown down, start a wind-up when it is
 // ready, at rest and a player is in line, or breathe when the wind-up is
 // over.
 export function tickEnemyBreaths(state: GameState) {
-    // A punch that landed on an enemy this tick (not one it blocked).
-    const punched = new Set(
-        state.events.flatMap((e) =>
-            e.type === "punchHit" && e.enemy !== undefined ? [e.enemy] : []
-        )
-    )
     const nobody = playersInPlay(state).length === 0
     const over = cleared(state) && state.mode !== "versus"
     state.enemies.forEach((enemy, i) => {
@@ -258,8 +249,8 @@ export function tickEnemyBreaths(state: GameState) {
             return
         }
         const frozen = hasStatus(enemy, "holds")
-        // Sharing its cell with a breather in an earlier slot (a knock or a
-        // push can put it there), it steps off (see breatherStep in ai.ts)
+        // Sharing its cell with a breather in an earlier slot (a push can
+        // put it there), it steps off (see breatherStep in ai.ts)
         // and doesn't wind up meanwhile, so the two don't stand and breathe
         // as one.
         const crowded = state.enemies.some(
@@ -269,13 +260,6 @@ export function tickEnemyBreaths(state: GameState) {
                 inPlay(other) &&
                 samePos(other.pos, enemy.pos)
         )
-        if (breath.windingUp > 0 && punched.has(i)) {
-            // Its cooldown starts now, as if it had breathed.
-            breath.windingUp = 0
-            breath.cooldown = ENEMY_BREATH_EVERY_TICKS
-            breath.move = "keep"
-            return
-        }
         if (nobody || frozen || crowded || !atRest(enemy)) {
             breath.windingUp = 0
         }

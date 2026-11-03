@@ -41,27 +41,6 @@ export const MAP_SIZE: Readonly<Record<Difficulty, MapSize>> = {
     superHard: "large",
 }
 
-// How well enemies guard against the punch at each difficulty (KDA-288,
-// with the user; placeholders to tune at preview; see guard.ts): the
-// chance each enemy is a guarder as it comes into play, and the range its
-// skill (the chance it blocks a quick punch) is drawn from, evenly. Any
-// enemy type can be one. No skill is above GUARD_CAP.
-export type GuardOdds = {
-    chance: number
-    min: number
-    max: number
-}
-
-// Raised for every difficulty in KDA-290 (with the user, placeholders too).
-export const GUARD: Readonly<Record<Difficulty, GuardOdds>> = {
-    easy: { chance: 0.35, min: 0.25, max: 0.55 },
-    medium: { chance: 0.55, min: 0.4, max: 0.75 },
-    hard: { chance: 0.75, min: 0.55, max: 0.85 },
-    superHard: { chance: 0.95, min: 0.7, max: 0.85 },
-}
-
-export const GUARD_CAP = 0.85
-
 // How fast enemies go at each difficulty (KDA-290, with the user;
 // placeholders to tune at preview): every enemy's speed from its level (or
 // its default), a Splitter's halves included, times this, but never above
@@ -104,34 +83,6 @@ export const TENGU_SPEED: Readonly<Record<Difficulty, number>> = {
 // leaving it out gives TENGU_SPEED exactly. No stage sets one today.
 export function tenguSpeed(speed: number, difficulty: Difficulty): number {
     return (TENGU_SPEED[difficulty] * speed) / ENEMY_SPEED
-}
-
-// How the punch's knockback decays (see knockLevel in punch.ts): how far
-// each landed punch in a row knocks an enemy back, in cells (the first a
-// full cell, then less each time, the last for every hit after), and how
-// it recovers: a step after a lull of `lull` seconds with no landed punch,
-// then another every `recover` seconds, back to a full cell.
-export type KnockDecay = {
-    steps: readonly number[]
-    lull: number
-    recover: number
-}
-
-// The knockback's decay (KDA-288, with the user; placeholders to tune at
-// preview) at every difficulty but Super Hard, and in a game with none.
-export const USUAL_KNOCK: KnockDecay = {
-    steps: [1, 0.7, 0.5, 0.3, 0],
-    lull: 2,
-    recover: 0.5,
-}
-
-// At each difficulty (KDA-290, with the user; placeholders): Super Hard's
-// decays faster and recovers slower.
-export const KNOCK_DECAY: Readonly<Record<Difficulty, KnockDecay>> = {
-    easy: USUAL_KNOCK,
-    medium: USUAL_KNOCK,
-    hard: USUAL_KNOCK,
-    superHard: { steps: [1, 0.5, 0.2, 0], lull: 3, recover: 0.75 },
 }
 
 // How long a defeated enemy stays gone at each difficulty, as a share of

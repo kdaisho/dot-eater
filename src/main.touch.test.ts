@@ -9,8 +9,8 @@ import { SETTINGS_KEY } from "./settings"
 
 // main on a phone: overlays are tapped, a flick on the play area steers
 // (the player runs on after the lift, and a flick back stops it), the
-// punch and breath buttons press, and the pause button pauses. (A separate file, since main is imported once per
-// module graph.)
+// breath button presses, and the pause button pauses. (A separate file,
+// since main is imported once per module graph.)
 
 vi.mock("canvas-confetti", () => ({ default: vi.fn() }))
 
@@ -164,8 +164,7 @@ describe("main on a touch screen", () => {
         expect(document.body.dataset.playing).toBe("on")
     })
 
-    it("fits the maze beside the punch and breath buttons' band, without the D-pad", () => {
-        expect(document.querySelector("[data-action=punch]")).not.toBeNull()
+    it("fits the maze beside the breath button's band, without the D-pad", () => {
         expect(document.querySelector("[data-action=breath]")).not.toBeNull()
         const map = levels[0]
         const cols = map.cells[0].length
@@ -222,7 +221,7 @@ describe("main on a touch screen", () => {
         expect(moves(before).filter((m) => m.breath)).toHaveLength(0)
     })
 
-    it.each(["punch", "breath"] as const)(
+    it.each(["breath"] as const)(
         "steers with one finger while another presses %s",
         (action) => {
             const play = el("#play")

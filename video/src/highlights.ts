@@ -39,10 +39,6 @@ export type MomentKind =
     // A threat came close to player 1 without catching it (see nearMisses
     // in replayers.ts).
     | "nearMiss"
-    // A player's punch hit an enemy (or the boss), or an enemy's guard
-    // blocked it.
-    | "punchHit"
-    | "punchBlocked"
     // A breather enemy breathed, and a player lost health without being
     // knocked out.
     | "enemyBreathed"
@@ -146,17 +142,6 @@ export function momentsOf(
                     at: e.at,
                     // The middle of its 2x2 footprint.
                     focus: vec2(e.at.x + 1, e.at.y + 1),
-                })
-                break
-            case "punchHit":
-            case "punchBlocked":
-                moments.push({
-                    tick,
-                    kind: e.type,
-                    player: e.player,
-                    ...(e.enemy !== undefined ? { enemy: e.enemy } : {}),
-                    at: vec2(Math.round(e.at.x), Math.round(e.at.y)),
-                    focus: centre(e.at),
                 })
                 break
             case "enemyBreathed":

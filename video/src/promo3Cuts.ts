@@ -16,8 +16,7 @@ import type { SceneName } from "./scenes"
 //   beats  0–8   OPEN: the chase, a close call in gentle slow motion
 //   beats  8–48  CHARACTERS: two bars each: a slam card, then the charged
 //                ability in hard slow motion on the second bar's snare
-//   beats 48–56  FIGHT: a punch lands, a guard blocks one, a breather's
-//                breath hurts
+//   beats 48–56  FIGHT: a breather's breath hurts
 //   beats 56–66  BOSS: two hits, the boss down on bar 16 (the lift)
 //   beats 66–72  MONTAGE: a beat per character on the hook
 //   beats 72–80  END CARD
@@ -144,30 +143,14 @@ function characterShots(scenes: Scenes): Shot[] {
     })
 }
 
+// The breather's breath catching the player, the punch and the guard that
+// shared these two bars gone (KDA-294).
 function fightShots(scenes: Scenes): Shot[] {
     return [
-        on(scenes, "punch", hero(scenes, "punch"), {
-            name: "Punch",
-            durationBeats: 3,
-            heroBeat: 1.5,
-            transition: "cut",
-            speed: SOFT,
-            camera: { move: "push", zoom: [2, 3], punch: 0.16 },
-            shake: 1.3,
-        }),
-        on(scenes, "guard", hero(scenes, "guard"), {
-            name: "Guard",
-            durationBeats: 2.5,
-            heroBeat: 1.25,
-            transition: "cut",
-            speed: SOFT,
-            camera: { move: "push", zoom: [2, 3], punch: 0.16 },
-            shake: 1.2,
-        }),
         on(scenes, "breather", hero(scenes, "breather"), {
             name: "Breather",
-            durationBeats: 2.5,
-            heroBeat: 1.25,
+            durationBeats: 8,
+            heroBeat: 4,
             transition: "cut",
             speed: SOFT,
             camera: { move: "push", zoom: [1.8, 2.7], punch: 0.16 },
@@ -225,9 +208,9 @@ function bossShots(scenes: Scenes): Shot[] {
 
 // A beat per character on the hook, just after its ability.
 function montageShots(scenes: Scenes): Shot[] {
-    return [...CHARACTER_ORDER, "punch" as const].map((scene) => {
+    return [...CHARACTER_ORDER, "breather" as const].map((scene) => {
         const moment = hero(scenes, scene)
-        const look = scene === "punch" ? undefined : LOOKS[scene]
+        const look = scene === "breather" ? undefined : LOOKS[scene]
         return on(
             scenes,
             scene,

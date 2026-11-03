@@ -66,13 +66,12 @@ const ACTIONS = Object.keys(DIRECTIONS) as DirectionAction[]
 const key = (p: Vec2) => `${p.x},${p.y}`
 
 // One player's choice for one tick: the direction to hold (null for none),
-// whether to press breath, whether the breath key is held (to charge it;
-// left out, a press is a tap) and whether to punch.
+// whether to press breath and whether the breath key is held (to charge
+// it; left out, a press is a tap).
 export type Decision = {
     dir: DirectionAction | null
     breath: boolean
     hold?: boolean
-    punch?: boolean
 }
 
 const IDLE: Decision = { dir: null, breath: false }
@@ -91,7 +90,7 @@ export type View = {
     // and after it. A dry run on a copy: the real game and its randomness
     // are left as they were.
     tryBreath(dir: DirectionAction | null): Lookahead
-    // The same for any decision of this player's, e.g. a punch.
+    // The same for any decision of this player's, e.g. a charged breath.
     tryDecision(decision: Decision): Lookahead
 }
 
@@ -596,62 +595,6 @@ export function charged(level: number, brain: Brain, panic = 1): Brain {
     }
 }
 
-// Walks up to the nearest enemy and punches it: on every `every`th tick
-// while a punch would land (hit or be blocked). With `targets`, only those
-// enemies (by index).
-export function puncher(
-    every: number,
-    targets?: (game: GameState) => number[]
-): Brain {
-    let wait = 0
-    return (view) => {
-        const { game, player } = view
-        const me = game.players[player].character.pos
-        const wanted = new Set(
-            targets
-                ? targets(game)
-                : game.enemies.flatMap((e, i) => (inPlay(e) ? [i] : []))
-        )
-        const cells = new Set(
-            game.enemies
-                .filter((e, i) => wanted.has(i) && inPlay(e))
-                .map((e) => key(e.pos))
-        )
-        if (wait > 0) wait--
-        // Punch where it would land, facing the way it is going.
-        const facing = facingOf(game, player)
-        if (wait === 0) {
-            const look = view.tryDecision({
-                dir: null,
-                breath: false,
-                punch: true,
-            })
-            const lands = look.moments.some(
-                (m) =>
-                    (m.kind === "punchHit" || m.kind === "punchBlocked") &&
-                    m.player === player
-            )
-            if (lands) {
-                wait = every
-                return { dir: null, breath: false, punch: true }
-            }
-        }
-        // Next to a target: turn to it.
-        for (const dir of ACTIONS) {
-            const d = DIRECTIONS[dir]
-            const q = loopPos(game.cells, vec2(me.x + d.x, me.y + d.y))
-            if (cells.has(key(q))) {
-                return { dir: dir === facing ? null : dir, breath: false }
-            }
-        }
-        const step = firstStepTo(game, me, new Set(), (p) => cells.has(key(p)))
-        return {
-            dir: step ? directionTo(me, step) : eat(game, me),
-            breath: false,
-        }
-    }
-}
-
 // ---- Playing a scene ----
 
 // One tick's input from every player's decision. `held` is what each held
@@ -665,7 +608,6 @@ function inputOf(
             const d = decisions[player]
             if (!d) return false
             if (action === "breath") return d.breath
-            if (action === "punch") return d.punch === true
             return d.dir === action && d.dir !== held[player]
         },
         move: (player = 0) => {
@@ -676,7 +618,6 @@ function inputOf(
                 pressed: d.dir && pressed ? DIRECTIONS[d.dir] : vec2(0, 0),
                 breath: d.breath,
                 ...(d.hold !== undefined ? { breathHeld: d.hold } : {}),
-                ...(d.punch ? { punch: true } : {}),
             }
         },
     }
@@ -868,7 +809,7 @@ export const SCENES: Readonly<Record<SceneName, SceneDef>> = {
         level: 0,
         animals: ["dragon"],
         mode: "solo",
-        seed: 3,
+        seed: 36,
         brains: () => [
             charged(
                 3,
@@ -999,38 +940,6 @@ export const SCENES: Readonly<Record<SceneName, SceneDef>> = {
             const walls = count(at(run, run.keyTick!), "wallBroken")
             const close = run.threats[run.keyTick!]
             return walls * 300 + (5 - Math.min(close, 5)) * 100 - run.keyTick!
-        },
-    },
-    // A punch knocking an enemy back.
-    punch: {
-        level: 0,
-        animals: ["dragon"],
-        mode: "solo",
-        seed: 1,
-        brains: () => [puncher(20)],
-        isKey: (moments) => count(moments, "punchHit") > 0,
-        tail: 240,
-        maxTicks: 900,
-        score: (run) => -run.keyTick!,
-    },
-    // Punches mashed at an enemy on Hard, and its guard blocking them.
-    guard: {
-        level: 0,
-        difficulty: "hard",
-        animals: ["boar"],
-        mode: "solo",
-        seed: 4,
-        brains: () => [puncher(8)],
-        isKey: (moments) => count(moments, "punchBlocked") > 0,
-        tail: 240,
-        maxTicks: 900,
-        score: (run) => {
-            const key = run.keyTick!
-            const hits = run.moments.filter(
-                (m) =>
-                    m.kind === "punchHit" && m.tick < key && m.tick > key - 90
-            ).length
-            return hits * 200 - key
         },
     },
     // A breather's breath catching the penguin, which loses health.

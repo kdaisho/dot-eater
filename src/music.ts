@@ -555,7 +555,7 @@ export const TRACKS: Readonly<Record<MusicTrackId, Track>> = {
         ],
     },
     // Stage 7, Patrol base: a G minor march, with a snare roll at the end of
-    // each phrase like guards changing watch.
+    // each phrase like sentries changing watch.
     stage7: {
         bpm: 132,
         voices: [

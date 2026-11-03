@@ -2,7 +2,6 @@ import { energyHud } from "./breath"
 import { DIFFICULTY_LABELS } from "./difficulty"
 import { runTotal, type Screen } from "./flow"
 import { bossHud, healthHud, totalScore, type GameState } from "./game"
-import type { Jab } from "./jab"
 import type { LevelRules, Stage } from "./level"
 import type { Particle } from "./particles"
 import type { Effects, Hud } from "./render"
@@ -97,22 +96,19 @@ function coopHud(game: GameState): Hud {
     }
 }
 
-// Where the effects come from (see particles.ts, shake.ts, jab.ts,
-// settings.ts).
+// Where the effects come from (see particles.ts, shake.ts, settings.ts).
 export type EffectSources = {
     // The particles alive.
     particles: readonly Particle[]
-    // The punches being thrown.
-    jabs: readonly Jab[]
     // This frame's shake offset; only asked for while the game moves.
     shake: () => Vec2
     // The Facing guide setting.
     guide: FacingGuide
-    // A guarding enemy doesn't crouch with reduced motion.
+    // A full charge's glow doesn't flicker with reduced motion.
     reducedMotion: boolean
 }
 
-// The effects drawn on `screen`: particles, punches and shake show while
+// The effects drawn on `screen`: particles and shake show while
 // the game is played, paused or ending (none on other screens); a paused
 // game doesn't shake. The facing arrow shows with the rings, paused and
 // ending too; the aim preview only while playing. The boss's wind-up (its
@@ -124,7 +120,6 @@ export function screenEffects(s: Screen, sources: EffectSources): Effects {
     const moving = s.kind !== "paused"
     return {
         particles: sources.particles,
-        jabs: sources.jabs,
         reducedMotion: sources.reducedMotion,
         ...(moving ? { shake: sources.shake() } : {}),
         guide: sources.guide,

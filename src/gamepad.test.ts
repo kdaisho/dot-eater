@@ -78,14 +78,8 @@ describe("padControls", () => {
         })
     })
 
-    it("punches on X", () => {
-        expect(Object.fromEntries(padControls(pad(0, [X])))).toEqual({
-            "pad:0:2": ["punch"],
-        })
-    })
-
     it("ignores unmapped buttons", () => {
-        expect(padControls(pad(0, [1, 3, 16])).size).toBe(0)
+        expect(padControls(pad(0, [1, X, 3, 16])).size).toBe(0)
     })
 
     // Regression: a malformed pad entry threw, stopping the frame loop.
@@ -116,7 +110,6 @@ describe("padButtonsFor", () => {
     it("gives today's buttons for the defaults, for either player", () => {
         const today = {
             0: ["breath", "confirm"],
-            2: ["punch"],
             9: ["pause"],
             12: ["up"],
             13: ["down"],
@@ -133,7 +126,6 @@ describe("padButtonsFor", () => {
         )
         expect(buttons).toEqual({
             0: ["pause"],
-            2: ["punch"],
             9: ["breath", "confirm"],
             12: ["up"],
             13: ["down"],
@@ -299,9 +291,9 @@ describe("GamepadSource", () => {
         })
 
         it("adds Back to what else B is bound to", () => {
-            const bound = rebind(DEFAULT_BINDINGS, 0, "punch", B)
+            const bound = rebind(DEFAULT_BINDINGS, 0, "breath", B)
             expect(menuButtonsFor(padButtonsFor(bound.players[0]))[B]).toEqual([
-                "punch",
+                "breath",
                 "pause",
             ])
         })
