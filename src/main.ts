@@ -99,6 +99,7 @@ import {
     type Progress,
 } from "./progress"
 import { createParticles } from "./particles"
+import { createRushView } from "./rushView"
 import { createRenderer, type Effects } from "./render"
 import {
     createRecorder,
@@ -296,6 +297,9 @@ applyDpad()
 // shorter; the Screen shake setting, when set, overrides the shake part.
 const particles = createParticles({ random: Math.random })
 const shake = createShake()
+// The Boar's Rushes landing (KDA-307): they hold back their ram's events
+// until the Boar gets there, and are drawn flying.
+const rush = createRushView()
 const effects = {
     // Follow reduced motion and the Screen shake setting: on load, when the
     // settings change and when the system setting does.
@@ -307,13 +311,17 @@ const effects = {
     events(events: readonly GameEvent[], game: GameState) {
         effectsForEvents(events, game, { particles, shake })
     },
-    tick(dt: number) {
+    // Moves on by `dt`; a Rush's held events due by then are returned, for
+    // their sounds and effects.
+    tick(dt: number): readonly GameEvent[] {
         particles.update(dt)
         shake.update(dt)
+        return rush.update(dt)
     },
     reset() {
         particles.clear()
         shake.clear()
+        rush.clear()
     },
     of(s: Screen): Effects {
         // The facing guide the settings pick (KDA-247); see screenEffects.
@@ -322,6 +330,7 @@ const effects = {
             shake: () => shake.offset(Math.random),
             guide: settings.facingGuide,
             reducedMotion: reducedMotion?.matches ?? false,
+            rush: rush.flights,
         })
     },
 }
@@ -481,7 +490,8 @@ function tick(dt: number) {
             ? defeatTimeScale(screen.game.defeat)
             : 1
     if (next !== screen) enter(screen, next)
-    if (moved) effects.tick(dt * scale)
+    const due = moved ? effects.tick(dt * scale) : []
+    if (game && due.length > 0) playEvents(due, game)
     // The way player 1 is going, for the flicks (see TouchSource.follow).
     const player =
         next.kind === "playing" ? gameOf(next)?.players[0] : undefined
@@ -521,7 +531,13 @@ function endRollClock(): Pick<FlowDeps, "endRollClock"> {
 // What happened in the tick's game step, if it stepped the game, or the
 // outro's held stage clear (see events.ts); empty otherwise. Sound (KDA-212) and particles and screen
 // shake (KDA-213) hook in here.
+// A Rush's ram and what it sets off wait for the Boar to get there (see
+// rushView.ts), and come back here from effects.tick when they are due.
 function onGameEvents(events: readonly GameEvent[], game: GameState) {
+    playEvents(rush.take(events, game), game)
+}
+
+function playEvents(events: readonly GameEvent[], game: GameState) {
     playEventSounds(audio, events)
     effects.events(events, game)
 }

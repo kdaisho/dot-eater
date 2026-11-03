@@ -179,10 +179,10 @@ export type Player = {
     // eatenDotVisible in glide.ts). Purely visual.
     eatenAt: Vec2 | null
     // The factor on the player's speed for the glide of its latest move
-    // (lastPos -> pos). It is 1 for every move today (it was added for the
-    // Penguin's faster slides, which became walking on ice), kept as the
-    // hook for a move that glides at another speed. The renderer reads it
-    // too, so frames between ticks glide at the same rate (see glideT).
+    // (lastPos -> pos). It is 1 for every move but the Boar's dash, which
+    // glides in DASH_SECONDS however far it goes (see dashPlayer). The
+    // renderer reads it too, so frames between ticks glide at the same rate
+    // (see glideT), and so do the collisions (see tickStarts).
     rate: number
     // Whether the player has been taken out of play (see takeOut): it isn't
     // drawn, doesn't move, breathe, eat or get hurt, enemies and the boss
@@ -586,6 +586,8 @@ export function movePlayer(
     player.pos = target
     who.breather.facing = vec2(step.x, step.y)
     who.eatenAt = ate ? vec2(target.x, target.y) : null
+    // At its own pace again after a dash (see dashPlayer).
+    who.rate = 1
     return true
 }
 
@@ -684,6 +686,12 @@ export function knockBack(
     return true
 }
 
+// How long the Boar's dash glides, however many cells it covers (KDA-307,
+// with the user: before, it took a whole move, and the rammed enemy was
+// gone well before the Boar got there; a placeholder to tune at preview).
+// What it rams is hit as it arrives (see rushView.ts).
+export const DASH_SECONDS = 0.1
+
 // Dash `who` along `path` (KDA-304, the Boar's Rush; see BreathHit.dash in
 // breath.ts): cells in a straight line on from its cell, nearest first. It
 // goes as far along them as it may enter (see playerCanEnter: not a wall
@@ -691,12 +699,14 @@ export function knockBack(
 // passes over, and ends on the last cell it reached. Returns how many cells
 // it went (0 leaves it as it was).
 //
-// It glides the whole way in one move's time, so it is drawn rushing
-// there, faster the further it goes, and then may move on as after any
-// move. A dash on along the glide it was already in carries that glide on
-// from where it is drawn; any other starts from its cell. It keeps its
-// facing (it dashed the way it faced) and lands without sliding: the glide
-// is longer than a step, so slideStep sees no slide to carry on.
+// It glides the whole way in DASH_SECONDS, however far it goes (its
+// Player.rate), so the dash is a burst on release, and then may move on as
+// after any move. Its collisions follow that faster glide, as they follow
+// any glide (see tickStarts). A dash on along the glide it was already in
+// carries that glide on from where it is drawn; any other starts from its
+// cell. It keeps its facing (it dashed the way it faced) and lands without
+// sliding: the glide is longer than a step, so slideStep sees no slide to
+// carry on.
 export function dashPlayer(
     state: GameState,
     who: Player,
@@ -727,7 +737,9 @@ export function dashPlayer(
         c.lastPos = from
         c.moveProgress = 0
     }
-    who.rate = 1
+    // The rest of the glide (all of it, but for a dash carried on) in
+    // DASH_SECONDS. Never slower than a step.
+    who.rate = Math.max(1, (1 - c.moveProgress) / (c.speed * DASH_SECONDS))
     who.eatenAt = null
     return moved
 }

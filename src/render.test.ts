@@ -4,6 +4,7 @@ import { BOSS_BREATH } from "./bossBreath"
 import {
     addStatus,
     addTileEffect,
+    breathe,
     CHARGE_SECONDS,
     defeatEnemy,
     type BreathDef,
@@ -54,6 +55,7 @@ import {
 } from "./render"
 import { SNEAK_ALPHA, SNEAK_FAR, SNEAK_NEAR, sneakAlpha } from "./intercept"
 import type { Particle } from "./particles"
+import { createRushView, FLIGHT_SECONDS } from "./rushView"
 import { createSplitter } from "./splitter"
 import { DEFAULT_ANIMAL } from "./roster"
 import {
@@ -2897,5 +2899,79 @@ describe("createRenderer on a maze too big for the screen", () => {
                 3.5 * CELL,
             ])
         })
+    })
+})
+
+// KDA-307: a Rush's rammed enemy is drawn flying until it slams.
+describe("createRenderer drawing a Rush", () => {
+    afterEach(() => vi.restoreAllMocks())
+
+    const hall = textMap([
+        "##############",
+        "#            #",
+        "##############",
+        "#.############",
+    ]).map
+    const TICK = 1 / TICK_RATE
+
+    // The Boar on x 3, right behind a Tengu on x 4, rams it 2 cells on (a
+    // tap): it flies to x 6, defeated there in the game at once. `ticks`
+    // of the flight's time later.
+    function rammed(ticks: number) {
+        const tengu = makeEnemy(4, 1, AiType.random)
+        tengu.speed = 0
+        const state = makeState(hall, { x: 3, y: 1 }, [tengu], {
+            breath: BREATHS.boar,
+        })
+        state.players[0].breather.energy = 100
+        state.players[0].character.moveProgress = 1
+        breathe(state, state.players[0], 1)
+        const view = createRushView()
+        view.take(state.events, state)
+        for (let k = 0; k <= ticks; k++) view.update(TICK)
+        return { state, effects: { rush: view.flights } }
+    }
+
+    // Where the Tengu was drawn, in cells from the Boar (on x 3), and the
+    // turn it was drawn at, if it was.
+    function tenguDrawn(ticks: number) {
+        const { calls, canvas, renderer } = setup()
+        const { state, effects } = rammed(ticks)
+        renderer.draw(state, 0, {}, {}, effects)
+        const cell = parseFloat(canvas.style.width) / 14
+        const boar = spriteBox(calls.find((c) => drawnName(c) === "boar")!)
+        const i = calls.findIndex((c) => drawnName(c) === "tengu")
+        if (i < 0) return undefined
+        // The last move and turn before it was drawn.
+        const before = calls.slice(0, i).reverse()
+        const moved = before.find((c) => c.name === "translate")!
+            .args as number[]
+        const turned = before.find((c) => c.name === "rotate")
+        return {
+            x: (moved[0] - boar.x) / cell,
+            spin: turned?.args[0] as number,
+        }
+    }
+
+    it("draws the defeated enemy where it was rammed, then along its flight", () => {
+        const start = tenguDrawn(0)!
+        expect(start.x).toBeCloseTo(1, 1)
+        expect(start.spin).toBe(0)
+        const mid = tenguDrawn(5)!
+        expect(mid.x).toBeGreaterThan(1.5)
+        expect(mid.x).toBeLessThan(3)
+        expect(mid.spin).toBeGreaterThan(0)
+    })
+
+    it("draws nothing once it has slammed", () => {
+        expect(tenguDrawn(Math.ceil(FLIGHT_SECONDS * TICK_RATE))).toBe(
+            undefined
+        )
+    })
+
+    it("draws it gone, as before, without the Rush's effects", () => {
+        const { calls, renderer } = setup()
+        renderer.draw(rammed(0).state, 0)
+        expect(calls.some((c) => drawnName(c) === "tengu")).toBe(false)
     })
 })

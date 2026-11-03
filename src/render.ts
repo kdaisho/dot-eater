@@ -40,7 +40,7 @@ import {
     type Viewport,
 } from "./camera"
 import type { Character } from "./character"
-import { AiType, CharacterId, SPRITE_SCALE } from "./constants"
+import { AiType, CharacterId, SPRITE_SCALE, TICK_MS } from "./constants"
 import {
     fogDistance,
     fogWrap,
@@ -65,6 +65,13 @@ import { sneakAlpha } from "./intercept"
 import { computeLayout, type Layout } from "./layout"
 import type { LevelRules } from "./level"
 import { particleAlpha, type Particle } from "./particles"
+import {
+    rushFrame,
+    shifted,
+    type DrawnFlier,
+    type RushFlight,
+    type RushFrame,
+} from "./rushView"
 import type { FacingGuide } from "./settings"
 import { isSplitterHalf } from "./splitter"
 import {
@@ -166,6 +173,9 @@ export type Effects = {
     // (KDA-300, see tiles.ts): its walls, floor, dots and fog. Stage 1's
     // when left out.
     stage?: number
+    // The Boar's Rushes still landing (KDA-307, see rushView.ts): each
+    // rammed enemy drawn flying, and the chain in front sliding.
+    rush?: readonly RushFlight[]
 }
 
 export type Renderer = {
@@ -561,7 +571,10 @@ export function createRenderer(
             effects.reducedMotion === true,
             windUp,
             effectTile,
-            fall
+            fall,
+            effects.rush
+                ? rushFrame(effects.rush, state, alpha, TICK_MS / 1000)
+                : null
         )
         if (effects.particles) drawParticles(ctx, effects.particles, cell, seen)
         if (fall && state.boss) {
@@ -1160,7 +1173,8 @@ function drawCharacters(
     reducedMotion: boolean,
     windUp: boolean,
     effectTile: EffectTiles,
-    fall: DefeatScene | null = null
+    fall: DefeatScene | null = null,
+    rush: RushFrame | null = null
 ) {
     ctx.textAlign = "center"
     ctx.textBaseline = "middle"
@@ -1190,6 +1204,9 @@ function drawCharacters(
     // its disc and badges with it; fog hides it as it does any enemy.
     // After the final boss falls (`fall`, KDA-303), everyone on the map
     // hops in place (hopHeight), and each enemy gets a heart over it.
+    // With a Rush landing (`rush`, KDA-307), the chain it shoved is drawn
+    // back along the rush line, sliding in, and its fliers over everyone
+    // (drawFlier).
     const marked = state.players.length > 1
     const wrap = fogWrap(state.cells)
     const hunted = state.players.flatMap((p) =>
@@ -1248,8 +1265,16 @@ function drawCharacters(
         const { character, rate, marker, badge, arrow, aura } = sprite
         const isPlayer = character.id === CharacterId.player
         if (!isPlayer && !enemyVisible(character)) continue
+        const index = isPlayer
+            ? state.players.findIndex((p) => p.character === character)
+            : state.enemies.indexOf(character)
+        if (!isPlayer && rush?.hidden.has(index)) continue
         const held = !isPlayer && hasStatus(character, "holds")
-        const pos = glidePos(character, held ? 0 : alpha, cols, rows, rate)
+        const glided = glidePos(character, held ? 0 : alpha, cols, rows, rate)
+        const shift = (isPlayer ? rush?.playerShift : rush?.enemyShift)?.get(
+            index
+        )
+        const pos = shift ? shifted(glided, shift, cols, rows) : glided
         if (fog && !isPlayer && !fog.visible(pos)) continue
         const looks = [
             ...character.statuses.flatMap((s) =>
@@ -1351,6 +1376,37 @@ function drawCharacters(
         for (const p of wrapCopies(pos, cols, rows)) {
             drawArrow(ctx, arrow, (p.x + 0.5) * cell, (p.y + 0.5) * cell, cell)
         }
+    }
+    for (const flier of rush?.fliers ?? []) {
+        if (fog && !fog.visible(flier.pos)) continue
+        drawFlier(ctx, art, state, flier, cell, cols, rows)
+    }
+}
+
+// A Rush's flier (KDA-307, see rushView.ts): the enemy it rammed, defeated
+// in the game already, drawn where its flight has it, tumbling. A whole
+// Splitter flies whole (it splits on the slam), a half as a half.
+function drawFlier(
+    ctx: CanvasRenderingContext2D,
+    art: Art,
+    state: GameState,
+    flier: DrawnFlier,
+    cell: number,
+    cols: number,
+    rows: number
+) {
+    const enemy = state.enemies[flier.index]
+    if (!enemy) return
+    const half = enemy.ai === AiType.splitter && !flier.split
+    const id = half ? SpriteId.splitterHalf : ENEMY_SPRITES[enemy.ai]
+    const look = { id, mirror: mirrored(id, art.facing.get(enemy) ?? false) }
+    const size = cell * SPRITE_SCALE * (half ? HALF_SCALE : 1)
+    for (const p of wrapCopies(flier.pos, cols, rows)) {
+        ctx.save()
+        ctx.translate((p.x + 0.5) * cell, (p.y + 0.5) * cell)
+        ctx.rotate(flier.spin)
+        drawSprite(ctx, art.sprites, look, 0, 0, size, art.dpr, art.outline)
+        ctx.restore()
     }
 }
 

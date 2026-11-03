@@ -11,11 +11,13 @@ import {
 } from "../constants"
 import {
     createGameState,
+    DASH_SECONDS,
     IDLE,
     step,
     type GameState,
     type MoveInput,
 } from "../game"
+import { glidePos } from "../glide"
 import { parseFlat } from "../test/helpers"
 import type { Character } from "../character"
 import {
@@ -409,19 +411,86 @@ describe("the Boar's Rush", () => {
         }
     )
 
-    it("glides the whole dash in one move's time, then moves on", () => {
+    // KDA-307: a fixed, short glide, so the dash is a burst on release.
+    it.each([1, 3, 5])(
+        "glides the whole dash in DASH_SECONDS at level %i, then moves on",
+        (level) => {
+            const state = boarState(hall, { x: 1, y: 1 })
+            breathe(state, state.players[0], level)
+            const player = state.players[0]
+            const { character } = player
+            const end = 1 + rushRange(level)
+            // Drawn where it set off, gliding the cells at once.
+            expect(character.lastPos).toEqual(vec2(1, 1))
+            expect(character.moveProgress).toBe(0)
+            const ticks = Math.round(DASH_SECONDS * TICK_RATE)
+            expect(ticks).toBeLessThan(TICK_RATE / character.speed)
+            // Drawn arriving a tick before the end, not before.
+            run(state, ticks - 1, { held: east })
+            expect(glidePos(character, 0, 14, 4, player.rate).x).toBeLessThan(
+                end
+            )
+            expect(character.pos).toEqual(vec2(end, 1))
+            run(state, 1, { held: east })
+            expect(glidePos(character, 0, 14, 4, player.rate).x).toBeCloseTo(
+                end
+            )
+            // And moves on from there at its own pace.
+            run(state, 1, { held: east })
+            expect(character.pos).toEqual(vec2(end + 1, 1))
+            expect(player.rate).toBe(1)
+        }
+    )
+
+    // KDA-307: collisions follow the drawn glide, so they keep up with
+    // the faster dash too.
+    it("is caught only where its dash is drawn, not on cells it has rushed past", () => {
+        const shaft = textMap([
+            "##############",
+            "#            #",
+            "### ##########",
+            "### ##########",
+            "#.############",
+        ]).map
+        // A chaser coming up the shaft at x 3, about to step into the hall
+        // the Boar dashes along, from x 1 to x 4.
+        const chaser = makeEnemy(3, 2, AiType.chase, { x: 3, y: 3 })
+        chaser.speed = 4
+        chaser.moveProgress = 1
+        const state = boarState(shaft, { x: 1, y: 1 }, [chaser])
+        breathe(state, state.players[0], 4)
+        expect(state.players[0].character.pos).toEqual(vec2(4, 1))
+        const hits: string[] = []
+        for (let k = 0; k < 14; k++) {
+            tick(state)
+            for (const e of state.events) hits.push(e.type)
+        }
+        // It came out at x 3 after the Boar had rushed by (it would have
+        // caught a Boar gliding the dash in a move's time).
+        expect(chaser.pos).toEqual(vec2(3, 1))
+        expect(hits).not.toContain("playerCaught")
+        expect(hits).not.toContain("hurt")
+    })
+
+    it("carries a dash on along its glide in DASH_SECONDS too", () => {
         const state = boarState(hall, { x: 1, y: 1 })
-        breathe(state, state.players[0], 5)
-        const { character } = state.players[0]
-        // Drawn where it set off, gliding the 3 cells at once.
-        expect(character.lastPos).toEqual(vec2(1, 1))
-        expect(character.moveProgress).toBe(0)
-        // It may move on once a move's time is up, not a tick before.
-        const move = Math.ceil(TICK_RATE / character.speed - 1e-9)
-        run(state, move - 1, { held: east })
-        expect(character.pos).toEqual(vec2(4, 1))
-        run(state, 2, { held: east })
-        expect(character.pos).toEqual(vec2(5, 1))
+        const player = state.players[0]
+        // Half a step east first.
+        run(state, 1, { held: east })
+        const half = Math.ceil(TICK_RATE / player.character.speed / 2)
+        run(state, half - 1, { held: east })
+        const before = glidePos(player.character, 0, 14, 4, player.rate)
+        expect(before.x).toBeGreaterThan(1)
+        expect(before.x).toBeLessThan(2)
+        breathe(state, player, 3)
+        // Drawn from the same spot, and there in DASH_SECONDS.
+        const drawn = () => glidePos(player.character, 0, 14, 4, player.rate)
+        expect(drawn().x).toBeCloseTo(before.x)
+        expect(player.character.pos).toEqual(vec2(4, 1))
+        run(state, Math.round(DASH_SECONDS * TICK_RATE) - 1)
+        expect(drawn().x).toBeLessThan(4 - 1e-6)
+        run(state, 1)
+        expect(drawn().x).toBeCloseTo(4)
     })
 
     it("eats the dots it dashes over", () => {
@@ -490,6 +559,8 @@ describe("the Boar's Rush", () => {
             from: vec2(3, 1),
             to: vec2(6, 1),
             facing: east,
+            distance: 3,
+            shoved: [],
         })
     })
 
@@ -574,6 +645,37 @@ describe("the Boar's Rush", () => {
             expect(defeats(state)).toEqual([vec2(6, 1)])
             expect(a.pos).toEqual(vec2(7, 1))
             expect(b.pos).toEqual(vec2(8, 1))
+        })
+
+        it("reports the chain it shoved, car by car, for drawing it sliding", () => {
+            const flier = still(2, 1)
+            const a = still(3, 1)
+            const b = still(5, 1)
+            const state = boarState(hall, { x: 1, y: 1 }, [flier, a, b])
+            breathe(state, state.players[0], 3)
+            const flight = state.events.find((e) => e.type === "knockedFlying")
+            // a is carried all 4 cells; b only from when a reached it.
+            expect(flight).toMatchObject({
+                from: vec2(2, 1),
+                to: vec2(6, 1),
+                distance: 4,
+                shoved: [
+                    {
+                        from: vec2(3, 1),
+                        to: vec2(7, 1),
+                        distance: 4,
+                        enemies: [1],
+                        players: [],
+                    },
+                    {
+                        from: vec2(5, 1),
+                        to: vec2(8, 1),
+                        distance: 3,
+                        enemies: [2],
+                        players: [],
+                    },
+                ],
+            })
         })
 
         it("stops at a wall, the flier slamming behind what it pushed", () => {
