@@ -19,6 +19,7 @@ import { dashPlayer, type GameState, type Player } from "./game"
 import { knockFlying } from "./knock"
 import { loopPos, type Cells } from "./level"
 import type { AnimalId } from "./roster"
+import type { BadgeId } from "./sprites"
 import {
     halfDefeated,
     isSplitterHalf,
@@ -66,9 +67,11 @@ export type Look = {
     // for an enemy, a disc behind its sprite. Use a translucent colour (e.g.
     // "rgba(255, 90, 0, 0.45)") to keep what's underneath readable.
     color?: string
-    // An emoji: for a tile, drawn over the cell; for an enemy, a small badge
-    // at its top right.
+    // Tiles only: an emoji drawn over the cell.
     emoji?: string
+    // Enemies only: a small pixel badge at its top right (see BADGES in
+    // sprites.ts).
+    badge?: BadgeId
 }
 
 // A timed effect on one cell. Every flag is optional and off by default.

@@ -4,6 +4,7 @@ import {
     BOSS_FLASH,
     BOSS_HEALTH,
     BOSS_SPEED,
+    BossKind,
     Cell,
 } from "./constants"
 import type { BlockMap } from "./breath"
@@ -41,6 +42,8 @@ import { allDirections, directions, samePos, vec2, type Vec2 } from "./vec2"
 // it never wraps or slides.
 
 export type Boss = {
+    // Who it is (KDA-298): only its sprite depends on it.
+    kind: BossKind
     // The top-left cell of its 2x2 footprint; the footprint is pos to
     // pos + (1, 1).
     pos: Vec2
@@ -68,14 +71,17 @@ export type Boss = {
 }
 
 // A boss on `pos` at `speed` with `health`, its breath tuned by `breath`
-// (the level's; the defaults for anything it leaves out).
+// (the level's; the defaults for anything it leaves out), looking like
+// `kind` (the Kitsune unless given).
 export function createBoss(
     pos: Vec2,
     speed: number = BOSS_SPEED,
     breath?: BossBreathData,
-    health: number = BOSS_HEALTH
+    health: number = BOSS_HEALTH,
+    kind: BossKind = BossKind.kitsune
 ): Boss {
     return {
+        kind,
         pos: vec2(pos.x, pos.y),
         lastPos: vec2(pos.x, pos.y),
         spawn: vec2(pos.x, pos.y),

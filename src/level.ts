@@ -1,5 +1,6 @@
 import {
     AiType,
+    BossKind,
     Cell,
     MAX_ENEMIES,
     MAX_HEALTH,
@@ -73,6 +74,8 @@ export type FogRule = {
 
 // The level's boss (see boss.ts), whose spawn is the "B" in the map.
 export type BossData = {
+    // Who it is, for its look (see BossKind). Omitted means the Kitsune.
+    kind?: BossKind
     // Cells per second. Omitted means BOSS_SPEED.
     speed?: number
     // The health it starts with, a whole number up to MAX_BOSS_HEALTH.
@@ -235,6 +238,7 @@ export type Level = {
     // footprint), speed, health and breath tuning (see BossData).
     boss: {
         pos: Readonly<Vec2>
+        kind?: BossKind
         speed?: number
         health?: number
         breath?: Readonly<BossBreathData>
@@ -649,6 +653,9 @@ function toLevel(data: LevelData, variant: LevelVariant, map: BuiltMap): Level {
                 ? null
                 : {
                       pos: bossPositions[0],
+                      ...(data.boss?.kind === undefined
+                          ? {}
+                          : { kind: data.boss.kind }),
                       ...(data.boss?.speed === undefined
                           ? {}
                           : { speed: data.boss.speed }),
@@ -663,7 +670,12 @@ function toLevel(data: LevelData, variant: LevelVariant, map: BuiltMap): Level {
     }
 }
 
-const BOSS_KEYS: ReadonlySet<string> = new Set(["speed", "health", "breath"])
+const BOSS_KEYS: ReadonlySet<string> = new Set([
+    "kind",
+    "speed",
+    "health",
+    "breath",
+])
 
 // The most health a level may give its boss (BossData.health).
 export const MAX_BOSS_HEALTH = 99
@@ -681,6 +693,14 @@ function bossDataProblems(boss: BossData | undefined): string[] {
         if (!BOSS_KEYS.has(key)) {
             problems.push(`unknown boss setting ${JSON.stringify(key)}`)
         }
+    }
+    if (
+        boss.kind !== undefined &&
+        !Object.values(BossKind).includes(boss.kind)
+    ) {
+        problems.push(
+            `boss.kind must be one of ${Object.values(BossKind).join(", ")}, got ${JSON.stringify(boss.kind)}`
+        )
     }
     checkSpeed(problems, "boss.speed", boss.speed)
     const { health } = boss

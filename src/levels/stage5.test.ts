@@ -1,7 +1,14 @@
 import { describe, expect, it } from "vite-plus/test"
 import { bossDamage, footprint } from "../boss"
 import { BREATHS } from "../breaths"
-import { AiType, BOSS_HEALTH, BOSS_SPEED, Cell, DOT_ENERGY } from "../constants"
+import {
+    AiType,
+    BOSS_HEALTH,
+    BOSS_SPEED,
+    BossKind,
+    Cell,
+    DOT_ENERGY,
+} from "../constants"
 import { MAP_SIZE } from "../difficulty"
 import { createGameState } from "../game"
 import { parseLevel, type Level } from "../level"
@@ -78,8 +85,9 @@ describe.each(EACH_MAP)("stage 5 (%s)", (difficulty) => {
     })
 
     // The mid-game boss: the defaults, its breath the gentle one.
-    it("has a boss at the default speed and breath", () => {
-        expect(stage5.boss).toEqual({})
+    it("has the Kitsune at the default speed and breath", () => {
+        expect(stage5.boss).toEqual({ kind: BossKind.kitsune })
+        expect(createGameState(level).boss!.kind).toBe(BossKind.kitsune)
         expect(level.boss!.speed).toBeUndefined()
         expect(level.boss!.breath).toBeUndefined()
     })

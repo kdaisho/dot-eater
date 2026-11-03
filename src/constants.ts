@@ -103,8 +103,8 @@ export const ENEMY_BREATH_DAMAGE = 20
 export const BREATHER_KEEP_NEAR = 3
 export const BREATHER_KEEP_FAR = 4
 
-// How wide characters are drawn, as a fraction of a cell (the emoji's font
-// size; see render.ts).
+// How wide characters are drawn, as a fraction of a cell (the box a pixel
+// sprite fills, outline included; see sprites.ts).
 export const SPRITE_SCALE = 0.8
 
 // How close (in cells, centre to centre) an enemy's drawn position must come
@@ -158,6 +158,16 @@ export const RESPAWN_BLINK = 1
 export const BLINK_RATE = 4
 
 // ---- The boss (see boss.ts) ----
+
+// Who a level's boss is (KDA-298). It changes only how it looks: the
+// Kitsune, the mid-boss on stage 5, whose tails show its health, and the
+// final boss from the opening on stage 10, whose eyes blaze as it winds up
+// its breath. Both play alike.
+export const BossKind = {
+    kitsune: "kitsune",
+    final: "final",
+} as const
+export type BossKind = (typeof BossKind)[keyof typeof BossKind]
 
 // Hit points a boss starts with. A breath that reaches it does
 // BOSS_DAMAGE_PER_ENERGY of the energy it spends in damage, so it takes 300

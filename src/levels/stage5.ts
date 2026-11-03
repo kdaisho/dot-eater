@@ -1,7 +1,7 @@
 import type { LevelData } from "../level"
 
-// Boss lair, the mid-game boss: a big 2x2 boss (🐙, see boss.ts) roams a
-// walled arena in the middle, round 2x2 pillars and a bar, along lanes at
+// Boss lair, the mid-game boss: the Kitsune, a big 2x2 boss (see boss.ts),
+// roams a walled arena in the middle, round 2x2 pillars and a bar, along lanes at
 // least 3 cells wide (the bar splits the middle one), so beside the 2-wide
 // boss there is always a cell its breath misses. A 1-wide corridor runs
 // all round the arena, where the boss doesn't fit, so its touch never
@@ -100,7 +100,7 @@ export const stage5: LevelData = {
             { ai: "interceptor" },
         ],
     },
-    boss: {},
+    boss: { kind: "kitsune" },
     // Dots are the breaths' ammunition here, and keep coming back: eaten
     // ones grow back (KDA-269) and the Splitters drop more (KDA-270).
     rules: { regrowDots: { seconds: 10 }, splitterDrops: true },

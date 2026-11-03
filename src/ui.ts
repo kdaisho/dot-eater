@@ -3,6 +3,7 @@ import { DEFAULT_BINDINGS, keyName, type Bindings } from "./bindings"
 import { ACTIONS, type Action } from "./input"
 import type { StageSlot } from "./progress"
 import type { AnimalId, AnimalInfo } from "./roster"
+import { ANIMAL_SPRITES, paintSprite } from "./sprites"
 import { formatTicks, starList, starText, type ClearRating } from "./stars"
 
 function genConfetti(interval: number = 20) {
@@ -94,13 +95,17 @@ type Overlay = {
     keyHints?: boolean | number
 }
 
-// A character select card: emoji and name, the breath, the stat. With two
+// A character select card: sprite and name, the breath, the stat. With two
 // players, `players` are the ones whose cursor is on it.
 type Card = {
     animal: AnimalInfo
     selected: boolean
     players?: readonly { index: number; ready: boolean }[]
 }
+
+// A card's sprite canvas is this many pixels across: one a dot of the
+// 16x16 sprite and its outline. The CSS shows it at a whole multiple.
+const SPRITE_PIXELS = 18
 
 // The hints name each player's keys as bound (see setHintBindings):
 // keys[player][action] is the key's display name.
@@ -687,8 +692,17 @@ function cardRow(cards: readonly Card[]): HTMLElement {
             }
             li.appendChild(tags)
         }
+        // The character's pixel sprite, 1 canvas pixel a dot, scaled up
+        // with crisp pixels by the CSS.
+        const sprite = paintSprite(
+            document.createElement("canvas"),
+            { id: ANIMAL_SPRITES[animal.id] },
+            SPRITE_PIXELS
+        )
+        sprite.className = "card-sprite"
+        sprite.setAttribute("aria-hidden", "true")
+        li.appendChild(sprite)
         const parts = [
-            ["card-emoji", animal.emoji],
             ["card-name", animal.name],
             ["card-breath", animal.breathName],
             ["card-text", animal.breathText],
