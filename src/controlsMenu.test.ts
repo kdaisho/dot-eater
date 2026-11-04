@@ -35,7 +35,7 @@ describe("controlsRowValue", () => {
             "↓",
             "←",
             "→",
-            "Right Shift",
+            "Left Shift (Right Shift in 2P games)",
             "P",
             "Space",
             "A",
@@ -62,6 +62,17 @@ describe("controlsRowValue", () => {
             undefined,
             undefined,
         ])
+    })
+
+    // KDA-322: a 1-player game moves the default breath (see
+    // effectiveBindings); a rebound one is the same in both.
+    it("names one breath key once 1P rebinds it", () => {
+        const breath = (bindings: typeof DEFAULT_BINDINGS) =>
+            controlsRowValue({ kind: "key", action: "breath" }, bindings, 0)
+        expect(breath(rebind(DEFAULT_BINDINGS, 0, "breath", "KeyK"))).toBe("K")
+        expect(breath(rebind(DEFAULT_BINDINGS, 0, "breath", "ShiftLeft"))).toBe(
+            "Left Shift"
+        )
     })
 
     it("shows nothing for a player that doesn't exist", () => {

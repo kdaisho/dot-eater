@@ -2,8 +2,10 @@ import type { Random } from "./ai"
 import {
     captureButton,
     captureKey,
+    effectiveBindings,
     FIXED_PAUSE_KEY,
     sameBindings,
+    type Bindings,
 } from "./bindings"
 import { adminScreen, loadAdmin, saveAdmin, unlockAll } from "./admin"
 import { createAdminBadge } from "./adminBadge"
@@ -338,8 +340,10 @@ effects.motion()
 reducedMotion?.addEventListener?.("change", () => effects.motion())
 
 const input = new InputState()
-// Both players' keys, as bound in the settings (see applyBindings).
-const keys = new KeyboardSource(keyMapsFor(bindingsOf(settings)))
+// Both players' keys, as bound in the settings and as the screen's player
+// count uses them (see keyBindingsFor).
+let keyBindings = keyBindingsFor(screen, settings)
+const keys = new KeyboardSource(keyMapsFor(keyBindings))
 // Each player's input, by index (player 1 is 0): flow asks for player 2's
 // only in a 2-player mode.
 const tickInput: TickInput = {
@@ -556,6 +560,28 @@ function padAssignment(shown: Screen): PadAssignment {
         : "shared"
 }
 
+// The keys a screen uses: a 1-player game's breath may move to Left Shift
+// (see effectiveBindings). The opening and the title, where the mode is
+// still being chosen, use the bindings as they are. Settings follow the
+// screen they were opened over.
+function keyBindingsFor(shown: Screen, s: Settings): Bindings {
+    const base = baseScreen(shown)
+    const solo =
+        base.kind !== "opening" &&
+        base.kind !== "title" &&
+        playerCount(base.mode) === 1
+    return effectiveBindings(bindingsOf(s), solo ? 1 : 2)
+}
+
+// Rebuild the key maps only when the keys change: rebuilding lets go of
+// every held key.
+function applyKeyBindings() {
+    const next = keyBindingsFor(screen, settings)
+    if (sameBindings(next, keyBindings)) return
+    keyBindings = next
+    keys.setBindings(next)
+}
+
 function enter(prev: Screen, next: Screen) {
     screen = next
     pads.setAssignment(padAssignment(next))
@@ -646,15 +672,16 @@ function enter(prev: Screen, next: Screen) {
         applyDpad()
         effects.motion()
     }
+    applyKeyBindings()
     screenSound(audio, prev, next, settings)
     muteButton.update()
     showOverlay(next)
 }
 
-// Use the settings' bindings for the keyboard, the pads and the hints.
+// Use the settings' bindings for the pads and the hints. The keyboard
+// follows in applyKeyBindings.
 function applyBindings(s: Settings) {
     const bindings = bindingsOf(s)
-    keys.setBindings(bindings)
     pads.setBindings(bindings)
     setHintBindings(bindings)
 }

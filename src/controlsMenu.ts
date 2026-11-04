@@ -1,4 +1,9 @@
-import { bindingName, type Bindings, type PadAction } from "./bindings"
+import {
+    bindingName,
+    effectiveBindings,
+    type Bindings,
+    type PadAction,
+} from "./bindings"
 import type { Action } from "./input"
 
 // The controls screen's rows (see the controls screen in flow.ts). Pure, no
@@ -51,7 +56,9 @@ export function controlsRowLabel(row: ControlsRow): string {
 }
 
 // What a row shows after its label: the key's or button's name for
-// `player`; nothing for Reset and Back.
+// `player`; nothing for Reset and Back. A key a 1-player game moves (the
+// default breath, see effectiveBindings) names both: "Left Shift (Right
+// Shift in 2P games)".
 export function controlsRowValue(
     row: ControlsRow,
     bindings: Bindings,
@@ -60,8 +67,15 @@ export function controlsRowValue(
     const own = bindings.players[player]
     if (!own) return undefined
     switch (row.kind) {
-        case "key":
-            return bindingName(own.keys[row.action])
+        case "key": {
+            const name = bindingName(own.keys[row.action])
+            if (player !== 0) return name
+            const solo = effectiveBindings(bindings, 1).players[0]
+            const soloName = bindingName(solo.keys[row.action])
+            return soloName === name
+                ? name
+                : `${soloName} (${name} in 2P games)`
+        }
         case "pad":
             return bindingName(own.pad[row.action])
         default:

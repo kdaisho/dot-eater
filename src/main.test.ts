@@ -281,8 +281,8 @@ describe("main", () => {
         keyup("ArrowDown")
     })
 
-    it("passes a breath press (right Shift) to the game on one tick", () => {
-        press("ShiftRight")
+    it("passes a breath press (left Shift) to the game on one tick", () => {
+        press("ShiftLeft")
         const before = steps()
         vi.advanceTimersByTime(FRAMES_MS)
         const breaths = moves(before).map((m) => m.breath)
@@ -290,10 +290,21 @@ describe("main", () => {
         expect(breaths[0]).toBe(true)
     })
 
+    // KDA-322: Right Shift is 2P's breath, and a 1-player game has no 2P.
+    it("doesn't breathe with right Shift in a 1-player game", () => {
+        keydown("ShiftRight")
+        const before = steps()
+        vi.advanceTimersByTime(FRAMES_MS)
+        expect(moves(before).every((m) => !m.breath && !m.breathHeld)).toBe(
+            true
+        )
+        keyup("ShiftRight")
+    })
+
     // KDA-289: the breath charges while held and fires once let go, so the
     // game gets the hold as state on every tick, like a held arrow.
     it("passes a held breath key as held on every tick until let go", () => {
-        keydown("ShiftRight")
+        keydown("ShiftLeft")
         const before = steps()
         vi.advanceTimersByTime(FRAMES_MS)
         const held = moves(before)
@@ -304,11 +315,11 @@ describe("main", () => {
         ])
         expect(held.every((m) => m.breathHeld)).toBe(true)
         // Auto-repeat neither presses again nor lets go.
-        keydown("ShiftRight", true)
+        keydown("ShiftLeft", true)
         const repeat = steps()
         vi.advanceTimersByTime(FRAMES_MS)
         expect(moves(repeat).every((m) => m.breathHeld && !m.breath)).toBe(true)
-        keyup("ShiftRight")
+        keyup("ShiftLeft")
         const after = steps()
         vi.advanceTimersByTime(FRAMES_MS)
         expect(moves(after).every((m) => !m.breathHeld && !m.breath)).toBe(true)
@@ -317,12 +328,12 @@ describe("main", () => {
     it("drops a breath charge without firing when the window loses focus", () => {
         const game = drawnGame()
         const { breather } = game.players[0]
-        keydown("ShiftRight")
+        keydown("ShiftLeft")
         breather.charge = 0.5
         dispatchEvent(new Event("blur"))
         expect(screen()).toBe("pause")
         expect(breather.charge).toBeNull()
-        keyup("ShiftRight")
+        keyup("ShiftLeft")
     })
 
     it("drops a breath charge without firing when the tab is hidden", () => {
