@@ -136,6 +136,14 @@ describe("soundForEvent", () => {
             [{ type: "gameLost" }, "gameOver"],
             [{ type: "dotRegrown", at }, undefined],
             [{ type: "dotDropped", enemy: 0, at }, "dotDropped"],
+            [{ type: "presentDropped", at }, "present.dropped"],
+            [{ type: "presentExpired", at }, undefined],
+            ...(["heal", "hugeDot", "speed", "quake", "germ"] as const).map(
+                (content): [GameEvent, string] => [
+                    { type: "presentOpened", player: 0, at, content },
+                    `present.${content}`,
+                ]
+            ),
         ]
         for (const [event, sound] of cases)
             expect(soundForEvent(event), event.type).toBe(sound)

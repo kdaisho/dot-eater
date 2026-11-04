@@ -1,4 +1,5 @@
 import type { GameState } from "./game"
+import type { PresentContent } from "./present"
 import type { AnimalId } from "./roster"
 import type { Vec2 } from "./vec2"
 
@@ -121,6 +122,20 @@ export type GameEvent =
     // Co-op (KDA-316, see panic.ts): player `by`'s breath (or its Rush's
     // chain) struck `player`, on `at` (its cell), and panicked it.
     | { type: "playerPanicked"; player: number; by: number; at: Vec2 }
+    // A present box (KDA-324, see present.ts) dropped on `at`.
+    | { type: "presentDropped"; at: Vec2 }
+    // A player stepped onto the box on `at` and opened it: `content` is
+    // what was inside. For a Germ, `germ` is the Splitter's main slot (its
+    // index in GameState.enemies).
+    | {
+          type: "presentOpened"
+          player: number
+          at: Vec2
+          content: PresentContent
+          germ?: number
+      }
+    // The box on `at` ran out of time unopened and vanished.
+    | { type: "presentExpired"; at: Vec2 }
     // The stage is cleared: the game is won. Won by the last dot, it comes
     // from the outro once the players' glides are done (see settle in
     // game.ts); won by defeating the boss, as its defeat's effect ends

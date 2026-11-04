@@ -214,17 +214,23 @@ function outlined(dots: Dots, outline = OUTLINE): Dots {
 // emoji badges): frozen (an ice cube); and the heart over each enemy freed
 // when the final boss falls (KDA-303); the "!" over a panicked player
 // (KDA-316; it stays over KDA-317's panic frames, which read less at small
-// sizes).
+// sizes); the sweat drop on an enemy panicking in an Earthquake (KDA-324).
 export const BadgeId = {
     frozen: "frozen",
     heart: "heart",
     panic: "panic",
+    sweat: "sweat",
 } as const
 export type BadgeId = (typeof BadgeId)[keyof typeof BadgeId]
 
-export const BADGES: Readonly<
-    Record<BadgeId, { palette: Readonly<Record<string, string>>; grid: Grid }>
-> = {
+// A small piece of pixel art: a letter grid and its palette, as a badge
+// or the present box and its icons (see presentData.ts).
+export type PixelArt = {
+    palette: Readonly<Record<string, string>>
+    grid: Grid
+}
+
+export const BADGES: Readonly<Record<BadgeId, PixelArt>> = {
     frozen: {
         palette: { C: "#a8e4fc", W: "#fcfcfc", D: "#3cbcfc" },
         grid: [
@@ -252,11 +258,22 @@ export const BADGES: Readonly<
         palette: { Y: "#facc15", O: "#f97316" },
         grid: ["YY", "YY", "YY", "YO", "OO", "..", "YY", "OO"],
     },
+    sweat: {
+        palette: { B: "#3cbcfc", W: "#fcfcfc", b: "#1c74b8" },
+        grid: ["..B..", "..B..", ".BBB.", "BWBBB", "BWBBB", "BBBBb", ".bbb."],
+    },
 }
 
 // A badge's dots with the outline (in `outline`), as spritePixels.
 export function badgePixels(id: BadgeId, outline = OUTLINE): Dots {
-    const { palette, grid } = BADGES[id]
+    return artPixels(BADGES[id], outline)
+}
+
+// A piece of pixel art's dots with the outline (in `outline`).
+export function artPixels(
+    { palette, grid }: PixelArt,
+    outline = OUTLINE
+): Dots {
     return outlined(
         grid.map((row) =>
             Array.from(
@@ -268,13 +285,17 @@ export function badgePixels(id: BadgeId, outline = OUTLINE): Dots {
     )
 }
 
-// What the cache draws: a sprite's look or a badge.
-export type Drawable = SpriteLook | { badge: BadgeId }
+// What the cache draws: a sprite's look, a badge, or a piece of pixel art
+// under a name of its own (the name keys it in the cache, so one name must
+// always be the same art).
+export type Drawable = SpriteLook | { badge: BadgeId } | ArtDrawable
+export type ArtDrawable = { art: PixelArt; name: string }
 
 // The name a drawable's canvas is tagged with (data-sprite), and its key in
 // the cache with its size.
 export function drawableKey(d: Drawable): string {
     if ("badge" in d) return `badge:${d.badge}`
+    if ("art" in d) return `art:${d.name}`
     const def = SPRITES[d.id]
     const panic = d.panicked === true && def.panic !== undefined
     // The panic frame stands in for every walk frame.
@@ -329,9 +350,13 @@ export function paintSprite(
     outline = OUTLINE
 ): HTMLCanvasElement {
     const dots =
-        "badge" in d ? badgePixels(d.badge, outline) : spritePixels(d, outline)
+        "badge" in d
+            ? badgePixels(d.badge, outline)
+            : "art" in d
+              ? artPixels(d.art, outline)
+              : spritePixels(d, outline)
     rasterise(canvas, dots, px)
-    canvas.dataset.sprite = "badge" in d ? d.badge : d.id
+    canvas.dataset.sprite = "badge" in d ? d.badge : "art" in d ? d.name : d.id
     canvas.dataset.look = drawableKey(d)
     canvas.dataset.outline = outline
     return canvas
