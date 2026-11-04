@@ -14,6 +14,7 @@ import {
     isTouchFirst,
     SWIPE_DISTANCE,
     swipeDirection,
+    TAP_CHARGE_DELAY,
     TouchSource,
 } from "./touch"
 import { vec2 } from "./vec2"
@@ -330,13 +331,195 @@ describe("TouchSource", () => {
         expect(held()).toEqual(["down"])
     })
 
-    it("doesn't breathe or press anything on a tap", () => {
-        down(50, 50)
-        move(55, 52)
-        up(55, 52)
-        for (const action of ["breath", "up", "right"] as const) {
-            expect(p1().wasPressed(action)).toBe(false)
-        }
+    describe("breathing", () => {
+        let cancels: number
+
+        beforeEach(() => {
+            source.detach()
+            cancels = 0
+            source = new TouchSource(target, {
+                cancelCharge: () => cancels++,
+            })
+            source.attach(input)
+        })
+
+        it("breathes on a tap's lift, steering nothing", () => {
+            down(50, 50)
+            move(55, 52)
+            up(55, 52)
+            expect(p1().wasPressed("breath")).toBe(true)
+            expect(p1().isDown("breath")).toBe(false)
+            for (const action of ["up", "right"] as const) {
+                expect(p1().wasPressed(action)).toBe(false)
+            }
+            expect(held()).toEqual([])
+        })
+
+        it("doesn't breathe on the touch-down alone, every flick's start", () => {
+            down(50, 50)
+            source.tick(TAP_CHARGE_DELAY / 2)
+            expect(p1().wasPressed("breath")).toBe(false)
+            expect(p1().isDown("breath")).toBe(false)
+        })
+
+        it("doesn't breathe on a flick", () => {
+            down(50, 50)
+            up(50, 50 + SWIPE_DISTANCE)
+            expect(p1().wasPressed("breath")).toBe(false)
+            expect(held()).toEqual(["down"])
+        })
+
+        it("doesn't breathe for a finger that went SWIPE_DISTANCE and came back", () => {
+            down(50, 50)
+            move(50 + SWIPE_DISTANCE, 50)
+            move(50, 50)
+            up(50, 50)
+            expect(p1().wasPressed("breath")).toBe(false)
+        })
+
+        it("holds the breath past TAP_CHARGE_DELAY to charge it, and lets go on the lift", () => {
+            down(50, 50)
+            source.tick(TAP_CHARGE_DELAY - 0.01)
+            expect(p1().isDown("breath")).toBe(false)
+            source.tick(0.02)
+            expect(p1().wasPressed("breath")).toBe(true)
+            expect(p1().isDown("breath")).toBe(true)
+            // Holding on presses no more.
+            input.endTick()
+            source.tick(1)
+            expect(p1().wasPressed("breath")).toBe(false)
+            expect(p1().isDown("breath")).toBe(true)
+            up(52, 51)
+            // Let go and not pressed again, so the charge fires (chargeTick).
+            expect(p1().isDown("breath")).toBe(false)
+            expect(p1().wasPressed("breath")).toBe(false)
+            expect(cancels).toBe(0)
+        })
+
+        it("drops the charge unfired when the finger drags SWIPE_DISTANCE", () => {
+            down(50, 50)
+            source.tick(TAP_CHARGE_DELAY)
+            input.endTick()
+            move(50 + SWIPE_DISTANCE, 50)
+            expect(p1().isDown("breath")).toBe(false)
+            expect(cancels).toBe(1)
+            expect(held()).toEqual(["right"])
+            // The lift is a flick's: nothing more.
+            up(80, 50)
+            expect(p1().wasPressed("breath")).toBe(false)
+            expect(cancels).toBe(1)
+            // A finger that has dragged doesn't start charging.
+            down(0, 0, 2)
+            move(0, 40, 2)
+            source.tick(1)
+            expect(p1().isDown("breath")).toBe(false)
+        })
+
+        it("keeps a charge another control holds when the finger drags", () => {
+            down(50, 50)
+            source.tick(TAP_CHARGE_DELAY)
+            p1().press("breath", "key:ShiftRight")
+            move(50, 50 + SWIPE_DISTANCE)
+            expect(p1().isDown("breath")).toBe(true)
+            expect(cancels).toBe(0)
+        })
+
+        it("drops the charge of a cancelled touch, and doesn't breathe for one", () => {
+            down(50, 50)
+            source.tick(TAP_CHARGE_DELAY)
+            input.endTick()
+            pointer("pointercancel", 50, 50)
+            expect(p1().isDown("breath")).toBe(false)
+            expect(cancels).toBe(1)
+            down(50, 50, 2)
+            pointer("pointercancel", 50, 50, 2)
+            expect(p1().wasPressed("breath")).toBe(false)
+        })
+
+        it("breathes on a second finger's tap while the first steers on", () => {
+            down(100, 100, 1)
+            move(140, 100, 1)
+            down(300, 700, 2)
+            up(300, 700, 2)
+            expect(p1().wasPressed("breath")).toBe(true)
+            expect(held()).toEqual(["right"])
+            // Finger 1 still steers.
+            move(140, 40, 1)
+            expect(p1().heldSteps()[0]).toEqual(vec2(0, -1))
+        })
+
+        it("charges with a second finger while the first steers, firing on its lift", () => {
+            down(100, 100, 1)
+            move(140, 100, 1)
+            source.tick(1)
+            // The steering finger has dragged: it doesn't charge.
+            expect(p1().isDown("breath")).toBe(false)
+            down(300, 700, 2)
+            source.tick(TAP_CHARGE_DELAY)
+            expect(p1().isDown("breath")).toBe(true)
+            move(140, 40, 1)
+            expect(p1().isDown("breath")).toBe(true)
+            expect(p1().heldSteps()[0]).toEqual(vec2(0, -1))
+            up(300, 700, 2)
+            expect(p1().isDown("breath")).toBe(false)
+            expect(cancels).toBe(0)
+        })
+
+        it("isn't a tap on a button inside the board", () => {
+            source.detach()
+            // Stand-ins for the board and a button on it, as closest sees
+            // them.
+            const board = Object.assign(new EventTarget(), {
+                closest: () => null,
+            })
+            const button = Object.assign(new EventTarget(), {
+                closest: (selector: string) => selector,
+            })
+            source = new TouchSource(board)
+            source.attach(input)
+            const send = (to: EventTarget, type: string) => {
+                const event = Object.assign(
+                    new Event(type, { cancelable: true }),
+                    {
+                        pointerId: 1,
+                        pointerType: "touch",
+                        clientX: 0,
+                        clientY: 0,
+                    }
+                )
+                to.dispatchEvent(event)
+                return event
+            }
+            // Left to the button, its click included.
+            expect(send(button, "pointerdown").defaultPrevented).toBe(false)
+            source.tick(1)
+            expect(p1().isDown("breath")).toBe(false)
+            send(button, "pointerup")
+            expect(p1().wasPressed("breath")).toBe(false)
+            // The board itself still taps.
+            send(board, "pointerdown")
+            send(board, "pointerup")
+            expect(p1().wasPressed("breath")).toBe(true)
+        })
+
+        it("drops a charge when the page loses focus", () => {
+            source.detach()
+            const view = new EventTarget()
+            source = new TouchSource(target, {
+                view,
+                cancelCharge: () => cancels++,
+            })
+            source.attach(input)
+            down(50, 50)
+            source.tick(TAP_CHARGE_DELAY)
+            input.endTick()
+            view.dispatchEvent(new Event("blur"))
+            expect(p1().isDown("breath")).toBe(false)
+            expect(cancels).toBe(1)
+            // Its lift, if it comes, does nothing.
+            up(50, 50)
+            expect(p1().wasPressed("breath")).toBe(false)
+        })
     })
 
     describe("with two fingers on the board", () => {
