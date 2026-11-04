@@ -8,8 +8,8 @@ import type {
 // Touch source: flicks on the play area steer player 1, who keeps going
 // the way flicked without a finger on the screen, and stops at a flick back
 // the way it is going. Touch drives player 1 only; 2-player modes stay on
-// keyboard and pads. Breath is an on-screen button (dpad.ts), so a tap on
-// the board does nothing.
+// keyboard and pads. A tap on the board breathes, as the on-screen Breath
+// button (dpad.ts) and the breath key do (see the end of this comment).
 //
 // A finger that touches the board and drags SWIPE_DISTANCE (a flick, or a
 // drag that is still down) presses the way it went, by its stronger axis,
@@ -38,16 +38,32 @@ import type {
 // one is still down, that one steers next, measured from where it is now,
 // so it changes nothing until it drags SWIPE_DISTANCE.
 //
+// A finger that lifts before it has gone SWIPE_DISTANCE from where it
+// touched down is a tap, and breathes on the lift (not on the touch-down,
+// which starts every flick too). Held still past TAP_CHARGE_DELAY, it holds
+// the breath, which charges as holding the key does, and the lift fires it.
+// Dragging SWIPE_DISTANCE makes it a flick: it lets go of the breath and
+// drops the charge unfired (TouchOptions.cancelCharge). Any finger can tap,
+// so one steers while another breathes; the steering finger never taps,
+// since it has dragged. A press on a button inside the board is the
+// button's, not a tap or a flick. Time comes in through tick, once a game
+// tick, so the source reads no clock.
+//
 // A direction pressed by any other control (a key, a pad, the D-pad) drops
 // the flick's directions (PlayerInput.latch), so the newest input wins.
 // main lets go too when a game starts or ends, and the window losing focus
 // or the page being hidden lets go and forgets every finger, since their
-// lifts may never come. It has no DOM access beyond the injected event
+// lifts may never come; a charge held then, or by a cancelled touch, is
+// dropped unfired. It has no DOM access beyond the injected event
 // targets, so tests drive it with plain events.
 
 // How far (CSS pixels) a finger must drag before it steers, or steers
 // another way.
 export const SWIPE_DISTANCE = 24
+
+// How long (seconds) a finger rests on the board before it starts charging
+// the breath (a placeholder to tune at preview).
+export const TAP_CHARGE_DELAY = 0.2
 
 // The direction a finger moved, by its stronger axis, or undefined while it
 // hasn't moved `distance`. Screen y grows downwards.
@@ -98,6 +114,16 @@ type Finger = {
     // Where it last was.
     x: number
     y: number
+    // Where it touched down, which a tap must stay within SWIPE_DISTANCE of.
+    downX: number
+    downY: number
+    // Whether it has gone SWIPE_DISTANCE from there, so it is a flick and
+    // not a tap.
+    dragged: boolean
+    // Seconds it has been down, counted by tick until it charges.
+    heldFor: number
+    // Whether it holds the breath to charge it.
+    charging: boolean
 }
 
 export type TouchOptions = {
@@ -108,9 +134,17 @@ export type TouchOptions = {
     view?: EventTarget
     // The document, whose visibilitychange to hidden forgets every finger.
     doc?: EventTarget & { hidden?: boolean }
+    // Drop player 1's breath charge unfired: a charging finger turned into
+    // a flick, or its lift never comes. Letting go of the breath alone
+    // would fire it.
+    cancelCharge?: () => void
 }
 
 const DRAG = "touch:drag"
+
+function breathControl(pointerId: number): string {
+    return `touch:breath:${pointerId}`
+}
 
 export class TouchSource implements InputSource {
     private input: InputState | undefined
@@ -127,6 +161,7 @@ export class TouchSource implements InputSource {
     private readonly pointerTypes: readonly string[]
     private readonly view: EventTarget | undefined
     private readonly doc: (EventTarget & { hidden?: boolean }) | undefined
+    private readonly cancelCharge: () => void
 
     constructor(
         private readonly target: EventTarget,
@@ -135,6 +170,7 @@ export class TouchSource implements InputSource {
         this.pointerTypes = options.pointerTypes ?? ["touch", "pen"]
         this.view = options.view
         this.doc = options.doc
+        this.cancelCharge = options.cancelCharge ?? (() => {})
     }
 
     attach(input: InputState): void {
@@ -176,6 +212,18 @@ export class TouchSource implements InputSource {
         }
     }
 
+    // Move time on by `dt` seconds, once a game tick, before the game reads
+    // its input: a finger resting past TAP_CHARGE_DELAY starts charging.
+    tick(dt: number): void {
+        for (const [id, finger] of this.fingers) {
+            if (finger.dragged || finger.charging) continue
+            finger.heldFor += dt
+            if (finger.heldFor < TAP_CHARGE_DELAY) continue
+            finger.charging = true
+            this.player()?.press("breath", breathControl(id))
+        }
+    }
+
     // Let go of the flicked direction and its fallback, so the player
     // stops. Every finger still down is measured from where it is now, so
     // one only steers (or takes over) once it drags SWIPE_DISTANCE from
@@ -192,7 +240,7 @@ export class TouchSource implements InputSource {
     // Let go, and forget every finger on the board.
     private readonly forget = () => {
         this.release()
-        this.fingers.clear()
+        for (const id of this.fingers.keys()) this.lift(id, false)
         this.steering = undefined
     }
 
@@ -218,6 +266,9 @@ export class TouchSource implements InputSource {
     private readonly onDown = (event: Event) => {
         const p = this.pointer(event)
         if (!p || !this.input) return
+        // A button inside the board takes its own presses.
+        const target = event.target as Partial<Element> | null
+        if (target?.closest?.("button, [data-action]")) return
         // Keep the browser from turning the touch into a scroll, a zoom or
         // a mouse click.
         event.preventDefault()
@@ -225,18 +276,22 @@ export class TouchSource implements InputSource {
         // board (touch does this by itself; a pen may not), and lift it if
         // the capture is lost, as dpad.ts does.
         try {
-            const target = event.target as Partial<Element> | null
             target?.setPointerCapture?.(p.pointerId)
         } catch {
             // Not an active pointer (a synthetic event): nothing to capture.
         }
         // A pointer id seen again: its lift was missed.
-        if (this.fingers.has(p.pointerId)) this.lift(p.pointerId)
+        if (this.fingers.has(p.pointerId)) this.lift(p.pointerId, false)
         this.fingers.set(p.pointerId, {
             anchorX: p.clientX,
             anchorY: p.clientY,
             x: p.clientX,
             y: p.clientY,
+            downX: p.clientX,
+            downY: p.clientY,
+            dragged: false,
+            heldFor: 0,
+            charging: false,
         })
         // The first finger down steers; a later one only once it drags.
         this.steering ??= p.pointerId
@@ -248,6 +303,14 @@ export class TouchSource implements InputSource {
         if (!p || !finger) return
         finger.x = p.clientX
         finger.y = p.clientY
+        if (
+            !finger.dragged &&
+            swipeDirection(finger.x - finger.downX, finger.y - finger.downY)
+        ) {
+            // A flick now, not a tap: drop its charge.
+            finger.dragged = true
+            if (finger.charging) this.dropBreath(p.pointerId, finger)
+        }
         const dx = finger.x - finger.anchorX
         const dy = finger.y - finger.anchorY
         if (p.pointerId !== this.steering) {
@@ -276,12 +339,12 @@ export class TouchSource implements InputSource {
         if (!p || !this.fingers.has(p.pointerId)) return
         // A flick whose movement only shows on the lift still steers.
         this.onMove(event)
-        this.lift(p.pointerId)
+        this.lift(p.pointerId, true)
     }
 
     private readonly onCancel = (event: Event) => {
         const p = this.pointer(event)
-        if (p) this.lift(p.pointerId)
+        if (p) this.lift(p.pointerId, false)
     }
 
     // Steer the new way `direction` (see the top of the file): stop on the
@@ -307,14 +370,38 @@ export class TouchSource implements InputSource {
         player?.press(direction, DRAG)
     }
 
-    // A finger is gone; what it flicked stays held. If it steered, the
-    // newest finger left steers next, and every finger left is measured
-    // from where it is now, so none steers or takes over for a drift.
-    private lift(pointerId: number) {
-        if (!this.fingers.delete(pointerId)) return
+    // A finger is gone; what it flicked stays held. Lifted (`tapped`), a
+    // tap breathes, or fires its charge; cancelled, it drops the charge. If
+    // it steered, the newest finger left steers next, and every finger left
+    // is measured from where it is now, so none steers or takes over for a
+    // drift.
+    private lift(pointerId: number, tapped: boolean) {
+        const finger = this.fingers.get(pointerId)
+        if (!finger) return
+        this.fingers.delete(pointerId)
+        if (tapped && !finger.dragged) {
+            // Pressed and let go before the game reads it: a tap. Charging,
+            // letting go fires the charge.
+            const player = this.player()
+            if (!finger.charging)
+                player?.press("breath", breathControl(pointerId))
+            player?.release("breath", breathControl(pointerId))
+        } else if (finger.charging) {
+            this.dropBreath(pointerId, finger)
+        }
         if (pointerId !== this.steering) return
         this.steering = [...this.fingers.keys()].at(-1)
         for (const finger of this.fingers.values()) reanchor(finger)
+    }
+
+    // Let go of a finger's breath without firing it: the charge is dropped,
+    // unless another control (the key, the Breath button, another finger)
+    // still holds the breath.
+    private dropBreath(pointerId: number, finger: Finger) {
+        finger.charging = false
+        const player = this.player()
+        player?.release("breath", breathControl(pointerId))
+        if (player && !player.isDown("breath")) this.cancelCharge()
     }
 }
 

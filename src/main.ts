@@ -14,7 +14,7 @@ import { browserAudioContext, createAudio, volumesOf } from "./audio"
 import { RECORDED_TRACKS } from "./recorded"
 import { createMuteButton } from "./muteButton"
 import { playEventSounds, screenSound } from "./sound"
-import { energyHud } from "./breath"
+import { cancelCharge, energyHud } from "./breath"
 import {
     drawEndRoll,
     END_ROLL_HEIGHT,
@@ -245,7 +245,16 @@ const playArea = document.getElementById("play") ?? canvas
 const touchControls = createTouchControls()
 // Losing focus or hiding the page lets go of the drag, since the finger's
 // lift may never come.
-const touchSource = new TouchSource(playArea, { view: window, doc: document })
+// A tap on the board breathes, and a finger resting on it charges; one
+// that turns into a flick drops player 1's charge (see touch.ts).
+const touchSource = new TouchSource(playArea, {
+    view: window,
+    doc: document,
+    cancelCharge: () => {
+        const breather = gameOf(screen)?.players[0]?.breather
+        if (breather) cancelCharge(breather)
+    },
+})
 let dpadShown = false
 setControls(document, {
     touch,
@@ -467,6 +476,9 @@ const loop = createLoop({
 // the killing blow, which freezes the frame. What the game reported goes
 // to onGameEvents.
 function tick(dt: number) {
+    // Before the game reads its input: a finger resting on the board
+    // starts charging the breath.
+    touchSource.tick(dt)
     const game = gameOf(screen)
     const next = update(screen, tickInput, flowDeps(dt))
     // Before endTick, which clears the presses the recorder reads.
