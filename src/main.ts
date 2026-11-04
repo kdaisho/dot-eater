@@ -326,11 +326,9 @@ const effects = {
         rush.clear()
     },
     of(s: Screen): Effects {
-        // The facing guide the settings pick (KDA-247); see screenEffects.
         return screenEffects(s, {
             particles: particles.list,
             shake: () => shake.offset(Math.random),
-            guide: settings.facingGuide,
             reducedMotion: reducedMotion?.matches ?? false,
             rush: rush.flights,
         })

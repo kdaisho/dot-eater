@@ -1314,9 +1314,6 @@ function updatePlaying(
     deps: FlowDeps
 ): Screen {
     if (anyPressed(screen.mode, input, "pause")) return pauseIfPlaying(screen)
-    // The game plays by the saved Players setting (KDA-262) as it is on
-    // each tick, so a change made from pause applies once play resumes.
-    screen.game.playersBump = (deps.settings ?? defaultSettings()).playersBump
     const stepGame = deps.step ?? step
     const count = screen.game.players.length
     const moves =

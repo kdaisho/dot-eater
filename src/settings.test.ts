@@ -56,8 +56,6 @@ describe("defaultSettings", () => {
             muted: false,
             screenShake: null,
             showDpad: false,
-            facingGuide: "arrow",
-            playersBump: false,
         })
     })
 })
@@ -86,8 +84,6 @@ describe("parseSettings", () => {
             muted: true,
             screenShake: false,
             showDpad: true,
-            facingGuide: "aim",
-            playersBump: true,
         }
         expect(parseSettings(JSON.stringify(settings))).toEqual(settings)
     })
@@ -109,12 +105,6 @@ describe("parseSettings", () => {
         ["muted", "yes"],
         ["screenShake", 1],
         ["showDpad", null],
-        ["facingGuide", "arrows"],
-        ["facingGuide", 1],
-        ["facingGuide", null],
-        ["playersBump", "bump"],
-        ["playersBump", 1],
-        ["playersBump", null],
     ])("drops an invalid %s (%j) alone", (field, value) => {
         const parsed = parseSettings(saved({ [field]: value, muted: true }))
         expect(parsed).toEqual({ ...defaultSettings(), muted: true })
@@ -132,13 +122,26 @@ describe("parseSettings", () => {
         )
     })
 
-    it("reads a save from before the Players setting as pass through", () => {
-        const older = saved({ musicVolume: 3 })
-        expect(JSON.parse(older)).not.toHaveProperty("playersBump")
-        expect(parseSettings(older).playersBump).toBe(false)
-        expect(parseSettings(saved({ playersBump: true })).playersBump).toBe(
-            true
-        )
+    // KDA-315: the Facing guide and Players settings were removed. A save
+    // from before still loads, its other settings kept and those two left
+    // as fields nothing reads.
+    it("loads a save that still has the Facing guide and Players settings", () => {
+        const older = saved({
+            musicVolume: 3,
+            muted: true,
+            facingGuide: "aim",
+            playersBump: false,
+        })
+        expect(parseSettings(older)).toEqual({
+            ...defaultSettings(),
+            musicVolume: 3,
+            muted: true,
+            facingGuide: "aim",
+            playersBump: false,
+        })
+        expect(
+            loadSettings(memoryStorage({ [SETTINGS_KEY]: older }))
+        ).toMatchObject({ musicVolume: 3, muted: true })
     })
 
     it("keeps fields it doesn't know, for a later build", () => {

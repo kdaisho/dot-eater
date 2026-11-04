@@ -77,7 +77,7 @@ export const BOSS_BREATH: {
     // Seconds the breath stays on the cells it struck (its `blast` tile).
     shown: number
     // The colour of the warning tint on the cells it will hit while it winds
-    // up, drawn like a player's aim preview (see render.ts).
+    // up (see Tint in render.ts).
     warning: string
     // The glow on the boss while it winds up, as an "r, g, b" colour that
     // grows from glowFrom to glowTo opacity (see bossLooks).

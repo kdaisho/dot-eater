@@ -4,7 +4,6 @@ import { gameOf } from "../../src/flow"
 import { stages as levels } from "../../src/levels"
 import type { Recording } from "../../src/replay"
 import { hudOf, rulesOf, screenEffects } from "../../src/scene"
-import { defaultSettings } from "../../src/settings"
 import {
     clampCamera,
     drawTime,
@@ -17,9 +16,6 @@ import { effectsAt } from "./effects"
 import { rendererFor, type RendererSlot } from "./rendererSlot"
 import { boardOf, replayerFor, runOf, trackOf } from "./replayers"
 import type { TimeMap } from "./time"
-
-// The facing guide a player with default settings sees (see settings.ts).
-const GUIDE = defaultSettings().facingGuide
 
 export type GameplayClipProps = {
     // The run to show.
@@ -76,9 +72,8 @@ export function GameplayClip({
         if (!game) {
             renderer.clear()
         } else {
-            // What main's render() draws, with a default-settings player's
-            // facing guide, and the particles and shake worked out for
-            // this moment (see effects.ts).
+            // What main's render() draws, with the particles and shake
+            // worked out for this moment (see effects.ts).
             const effects = effectsAt(
                 run.ticks,
                 recording.seed,
@@ -95,7 +90,6 @@ export function GameplayClip({
                     particles: effects.particles,
                     reducedMotion: false,
                     shake: () => effects.shake,
-                    guide: GUIDE,
                 })
             )
         }

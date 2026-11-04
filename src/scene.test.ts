@@ -8,38 +8,36 @@ const playing = startLevel(levels, 0, ["dragon"], "solo")
 const sources = {
     particles: [],
     shake: () => vec2(0.1, -0.1),
-    guide: "arrow" as const,
     reducedMotion: false,
 }
 
 describe("screenEffects", () => {
-    it("shakes and previews aim while playing", () => {
+    it("shakes and shows the arrows while playing", () => {
         expect(screenEffects(playing, sources)).toEqual({
             stage: 1,
             particles: [],
             reducedMotion: false,
             shake: vec2(0.1, -0.1),
-            guide: "arrow",
-            aim: true,
+            arrows: true,
             bossBreath: true,
         })
     })
 
-    it("keeps the guide but neither shake nor aim while paused", () => {
+    it("keeps the arrows but doesn't shake while paused", () => {
         expect(screenEffects(pauseIfPlaying(playing), sources)).toEqual({
             stage: 1,
             particles: [],
             reducedMotion: false,
-            guide: "arrow",
+            arrows: true,
             bossBreath: true,
         })
     })
 
-    it("shakes but doesn't preview aim in the outro", () => {
+    it("shakes and shows the arrows in the outro", () => {
         const ending = { ...playing, kind: "ending" } as Screen
         const effects = screenEffects(ending, sources)
         expect(effects.shake).toEqual(vec2(0.1, -0.1))
-        expect(effects.aim).toBeUndefined()
+        expect(effects.arrows).toBe(true)
     })
 
     it("shows only the stage's tiles on other screens with a game", () => {

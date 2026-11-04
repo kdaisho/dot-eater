@@ -2351,13 +2351,10 @@ describe("createRenderer with a charging breath", () => {
     })
 })
 
-describe("createRenderer with the facing guide", () => {
+describe("createRenderer with the facing arrows", () => {
     afterEach(() => {
         vi.restoreAllMocks()
     })
-
-    // The aim preview while playing.
-    const AIM = { guide: "aim", aim: true } as const
 
     // A dotted corridor 9 cells long: player 1 at (1, 1) and, with two
     // players, player 2 at (7, 1) facing it. Both breathe the Dragon's
@@ -2399,117 +2396,9 @@ describe("createRenderer with the facing guide", () => {
             )
             .map((c) => Math.round((c.args[0] as number) / cell))
     }
-    // The edge's line segments.
-    const edges = (calls: ReturnType<typeof setup>["calls"]) =>
-        calls.filter((c) => c.name === "lineTo").length
-
-    it("tints the cells a charged breath would hit, in the player's colour", () => {
-        const { calls, canvas, renderer } = setup()
-        const state = game()
-        charge(state)
-        renderer.draw(state, 0, {}, {}, AIM)
-        expect(tinted(calls, canvas)).toEqual([2, 3])
-        // An edge round the line: its top and bottom along each cell, and
-        // its two ends.
-        expect(edges(calls)).toBe(2 * 2 + 2)
-    })
-
-    it("tints the cells of the level a held breath has charged to", () => {
-        const { calls, canvas, renderer } = setup()
-        const state = game()
-        charge(state)
-        // Held long enough for level 3: the Dragon's line is 4 cells.
-        state.players[0].breather.charge = CHARGE_SECONDS * 2
-        renderer.draw(state, 0, {}, {}, AIM)
-        expect(tinted(calls, canvas)).toEqual([2, 3, 4, 5])
-    })
-
-    it("draws the tint over the maze's tiles, under the characters", () => {
-        const { art, calls, renderer } = setup()
-        const state = game()
-        charge(state)
-        renderer.draw(state, 0, {}, {}, AIM)
-        const tint = calls.findIndex(
-            (c) => c.name === "fillRect" && c.fillStyle === PLAYER_COLORS[0]
-        )
-        const tiles = calls.findIndex(
-            (c) => c.name === "drawImage" && c.args[0] === art()?.canvas
-        )
-        const sprite = calls.findIndex((c) => drawnName(c) === "dragon")
-        expect(tiles).toBeGreaterThanOrEqual(0)
-        expect(tint).toBeGreaterThan(tiles)
-        expect(sprite).toBeGreaterThan(tint)
-    })
-
-    it("draws nothing while the breath isn't charged", () => {
-        const { calls, canvas, renderer } = setup()
-        renderer.draw(game(), 0, {}, {}, AIM)
-        expect(tinted(calls, canvas)).toEqual([])
-        expect(edges(calls)).toBe(0)
-    })
-
-    it("draws nothing unless asked (paused, end screens)", () => {
-        const { calls, canvas, renderer } = setup()
-        const state = game()
-        charge(state)
-        renderer.draw(state, 0, {}, {}, { guide: "aim" })
-        expect(tinted(calls, canvas)).toEqual([])
-        expect(edges(calls)).toBe(0)
-    })
-
-    it("tints both players' aims, each in its colour, overlapping", () => {
-        const { calls, canvas, renderer } = setup()
-        const state = game(2)
-        charge(state)
-        renderer.draw(state, 0, {}, {}, AIM)
-        expect(tinted(calls, canvas, 0)).toEqual([2, 3])
-        expect(tinted(calls, canvas, 1)).toEqual([5, 6])
-    })
-
-    it("draws no aim for a player out of play", () => {
-        const { calls, canvas, renderer } = setup()
-        const state = game(2)
-        charge(state)
-        takeOut(state.players[0], 3)
-        renderer.draw(state, 0, {}, {}, AIM)
-        expect(tinted(calls, canvas, 0)).toEqual([])
-        expect(tinted(calls, canvas, 1)).toEqual([5, 6])
-    })
-
-    it("draws no aim for a stunned player", () => {
-        const { calls, canvas, renderer } = setup()
-        const state = game(2)
-        charge(state)
-        stun(state.players[1])
-        renderer.draw(state, 0, {}, {}, AIM)
-        expect(tinted(calls, canvas, 0)).toEqual([2, 3])
-        expect(tinted(calls, canvas, 1)).toEqual([])
-    })
-
-    it("hides the aim outside the fog's light", () => {
-        const { calls, canvas, renderer } = setup()
-        const state = game()
-        charge(state)
-        // Held for level 2: 3 cells, the last out of the light.
-        state.players[0].breather.charge = CHARGE_SECONDS
-        renderer.draw(state, 0, {}, { fog: { radius: 1.5 } }, AIM)
-        expect(tinted(calls, canvas)).toEqual([2, 3])
-        // The edge of those two cells only: top and bottom of each, and
-        // the near end.
-        expect(edges(calls)).toBe(2 * 2 + 1)
-    })
-
-    it("draws no aim tint with the arrow guide", () => {
-        const { calls, canvas, renderer } = setup()
-        const state = game(2)
-        charge(state)
-        renderer.draw(state, 0, {}, {}, { guide: "arrow", aim: true })
-        expect(tinted(calls, canvas, 0)).toEqual([])
-        expect(tinted(calls, canvas, 1)).toEqual([])
-    })
 
     describe("the facing arrow", () => {
-        const ARROW = { guide: "arrow" } as const
+        const ARROW = { arrows: true } as const
         // A game whose players can all breathe, so they get their arrows.
         function charged(players?: number) {
             const state = game(players)
@@ -2631,14 +2520,16 @@ describe("createRenderer with the facing guide", () => {
             expect(arrows(calls, canvas)).toEqual([])
         })
 
-        it("draws none with the aim guide, or without a guide", () => {
-            for (const effects of [{ guide: "aim", aim: true } as const, {}]) {
-                const { calls, canvas, renderer } = setup()
-                const state = game(2)
-                charge(state)
-                renderer.draw(state, 0, {}, {}, effects)
-                expect(arrows(calls, canvas)).toEqual([])
-            }
+        it("draws none unless asked (end screens)", () => {
+            const { calls, canvas, renderer } = setup()
+            renderer.draw(charged(2), 0, {}, {}, {})
+            expect(arrows(calls, canvas)).toEqual([])
+        })
+
+        it("draws no aim tint", () => {
+            const { calls, canvas, renderer } = setup()
+            renderer.draw(charged(2), 0, {}, {}, ARROW)
+            for (const i of [0, 1]) expect(tinted(calls, canvas, i)).toEqual([])
         })
     })
 })

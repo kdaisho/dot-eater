@@ -6,7 +6,6 @@ import type { LevelRules, Stage } from "./level"
 import type { Particle } from "./particles"
 import type { Effects, Hud } from "./render"
 import type { RushFlight } from "./rushView"
-import type { FacingGuide } from "./settings"
 import type { Vec2 } from "./vec2"
 import { stunned, tallyText } from "./versus"
 
@@ -109,8 +108,6 @@ export type EffectSources = {
     particles: readonly Particle[]
     // This frame's shake offset; only asked for while the game moves.
     shake: () => Vec2
-    // The Facing guide setting.
-    guide: FacingGuide
     // A full charge's glow doesn't flicker with reduced motion.
     reducedMotion: boolean
     // The Boar's Rushes landing (see rushView.ts).
@@ -119,11 +116,10 @@ export type EffectSources = {
 
 // The effects drawn on `screen`: particles and shake show while
 // the game is played, paused or ending (none on other screens); a paused
-// game doesn't shake. The facing arrow shows with the rings, paused and
-// ending too; the aim preview only while playing. The boss's wind-up (its
-// glow and warning tint) shows on the board as the rings do. Every screen
-// with a level says which stage it is, so the maze keeps the stage's tiles
-// on the end screens too.
+// game doesn't shake. The facing arrows show with the rings, paused and
+// ending too. The boss's wind-up (its glow and warning tint) shows on the
+// board as the rings do. Every screen with a level says which stage it is,
+// so the maze keeps the stage's tiles on the end screens too.
 export function screenEffects(s: Screen, sources: EffectSources): Effects {
     const stage = stageOf(s)
     if (s.kind !== "playing" && s.kind !== "ending" && s.kind !== "paused") {
@@ -136,8 +132,7 @@ export function screenEffects(s: Screen, sources: EffectSources): Effects {
         ...(sources.rush ? { rush: sources.rush } : {}),
         reducedMotion: sources.reducedMotion,
         ...(moving ? { shake: sources.shake() } : {}),
-        guide: sources.guide,
-        ...(s.kind === "playing" ? { aim: true } : {}),
+        arrows: true,
         bossBreath: true,
     }
 }
