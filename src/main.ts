@@ -11,7 +11,8 @@ import { adminScreen, loadAdmin, saveAdmin, unlockAll } from "./admin"
 import { createAdminBadge } from "./adminBadge"
 import { createAdminPanel } from "./adminPanel"
 import { browserAudioContext, createAudio, volumesOf } from "./audio"
-import { RECORDED_TRACKS } from "./recorded"
+import { RECORDED_TRACKS, trackProgress } from "./recorded"
+import { SOUNDTRACK } from "./soundtrack"
 import { createMuteButton } from "./muteButton"
 import { playEventSounds, screenSound } from "./sound"
 import { cancelCharge, energyHud } from "./breath"
@@ -148,6 +149,7 @@ import {
     showCards,
     showSoundtrack,
     showToast,
+    showTrackProgress,
     type EndScreenView,
 } from "./ui"
 import { heading, isTouchDevice, isTouchFirst, TouchSource } from "./touch"
@@ -196,6 +198,8 @@ const muteButton = createMuteButton(document, {
         settings = { ...settings, muted }
         saveSettings(storage, settings)
         audio.setVolumes(volumesOf(settings))
+        // The soundtrack page says when sound is muted.
+        if (screen.kind === "soundtrack") showOverlay(screen)
     },
 })
 // Debug mode (admin.ts): on while this browser holds the hash of the
@@ -706,6 +710,7 @@ function render(alpha: number) {
         return renderer.clear()
     }
     openingLayer.hide()
+    if (screen.kind === "soundtrack") showPlayingProgress(screen)
     // The end roll draws on its own canvas, over everything.
     if (screen.kind === "endRoll") return renderEndRoll(screen)
     // Settings over a paused game show that game behind them.
@@ -752,6 +757,30 @@ function recordingName(recording: Recording, date: Date): string {
     return `dot-eater-stage${level + 1}-${mode}-${animals.join("+")}-${outcome}-${time}.json`
 }
 
+type SoundtrackScreen = Extract<Screen, { kind: "soundtrack" }>
+
+// Where soundtrack track `index` is: the music's place in its file while
+// it plays (the start until the file has loaded, or with no sound), else
+// the start.
+function soundtrackProgress(s: SoundtrackScreen, index: number) {
+    const entry = SOUNDTRACK[index]!
+    const recorded = RECORDED_TRACKS[entry.track]
+    const position =
+        index === s.playing && audio.music === entry.track
+            ? audio.musicPosition()
+            : undefined
+    return recorded
+        ? trackProgress(recorded, position)
+        : { elapsed: 0, length: 0 }
+}
+
+// The playing track's bar moves on every frame, in place.
+function showPlayingProgress(s: SoundtrackScreen) {
+    if (s.playing === undefined) return
+    const { elapsed, length } = soundtrackProgress(s, s.playing)
+    showTrackProgress(s.playing, elapsed, length)
+}
+
 function renderEndRoll(s: Extract<Screen, { kind: "endRoll" }>) {
     const canvas = showEndRoll(END_ROLL_WIDTH, END_ROLL_HEIGHT)
     const context = canvas.getContext("2d")
@@ -786,7 +815,16 @@ function showOverlay(s: Screen) {
         case "cards":
             return showCards()
         case "soundtrack":
-            return showSoundtrack()
+            return showSoundtrack({
+                tracks: SOUNDTRACK.map((entry, i) => ({
+                    name: entry.name,
+                    plays: entry.plays,
+                    ...soundtrackProgress(s, i),
+                })),
+                selected: s.selected,
+                ...(s.playing === undefined ? {} : { playing: s.playing }),
+                muted: settings.muted,
+            })
         case "settings": {
             const context = settingsContext(s, flowDeps(0))
             return showSettings(

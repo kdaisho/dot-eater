@@ -5,7 +5,6 @@ import type { GameEvent } from "./events"
 import {
     initialScreen,
     openingScreen,
-    PAGE_CHOICES,
     STORY_CARD_SECONDS,
     type Screen,
 } from "./flow"
@@ -21,6 +20,7 @@ import {
     soundForEvent,
 } from "./sound"
 import { breathSfx } from "./sfx"
+import { SOUNDTRACK } from "./soundtrack"
 import { vec2 } from "./vec2"
 
 const at = vec2(1, 1)
@@ -249,7 +249,7 @@ describe("musicForScreen", () => {
 })
 
 describe("the main menu's pages", () => {
-    it.each(PAGE_CHOICES)(
+    it.each(["tutorial", "cards"] as const)(
         "play the title tune on %s, confirm on the way in and go back out",
         (page) => {
             const screen: Screen = { kind: page, mode: "solo" }
@@ -263,6 +263,97 @@ describe("the main menu's pages", () => {
             expect(menuSound(screen, onPage)).toBe("back")
         }
     )
+})
+
+describe("the soundtrack page (KDA-321)", () => {
+    const page = (playing?: number, selected = 0): Screen => ({
+        kind: "soundtrack",
+        mode: "solo",
+        selected,
+        ...(playing === undefined ? {} : { playing }),
+    })
+    const onPage: Screen = { kind: "title", mode: "solo", on: "soundtrack" }
+
+    it("is quiet until a track is picked", () => {
+        expect(musicForScreen(page())).toBeUndefined()
+        expect(musicForScreen(page(undefined, 5))).toBeUndefined()
+    })
+
+    it("plays the track picked, by its place in SOUNDTRACK", () => {
+        SOUNDTRACK.forEach((entry, i) => {
+            expect(musicForScreen(page(i, 0))).toEqual({
+                track: entry.track,
+                paused: false,
+            })
+        })
+        expect(musicForScreen(page(0))?.track).toBe("opening")
+        expect(musicForScreen(page(1))?.track).toBe("stage1")
+        expect(musicForScreen(page(10))?.track).toBe("stage10")
+        expect(musicForScreen(page(11))?.track).toBe("endRoll")
+    })
+
+    it("confirms on the way in and on a pick, goes back on a stop and out", () => {
+        expect(menuSound(onPage, page())).toBe("confirm")
+        expect(menuSound(page(), page(undefined, 1))).toBe("menuMove")
+        expect(menuSound(page(undefined, 1), page(1, 1))).toBe("confirm")
+        expect(menuSound(page(1, 1), page(2, 2))).toBe("confirm")
+        expect(menuSound(page(1, 1), page(undefined, 1))).toBe("back")
+        expect(menuSound(page(1, 1), onPage)).toBe("back")
+    })
+
+    it("makes no move sound over a track playing", () => {
+        expect(menuSound(page(1, 1), page(1, 2))).toBeUndefined()
+    })
+
+    function audio() {
+        return {
+            unlock: vi.fn(),
+            setVolumes: vi.fn(),
+            playSfx: vi.fn(),
+            playMusic: vi.fn(),
+            stopMusic: vi.fn(),
+            pauseMusic: vi.fn(),
+            resumeMusic: vi.fn(),
+            unlocked: true,
+            music: undefined,
+            musicPaused: false,
+            musicPosition: () => undefined,
+        } satisfies Audio
+    }
+
+    it("stops the title tune on the way in", () => {
+        const a = audio()
+        screenSound(a, onPage, page(), settings)
+        expect(a.stopMusic).toHaveBeenCalled()
+        expect(a.playMusic).not.toHaveBeenCalled()
+    })
+
+    it("plays a pick, switches tracks and stops on a stop", () => {
+        const a = audio()
+        screenSound(a, page(), page(3, 3), settings)
+        expect(a.playMusic).toHaveBeenLastCalledWith("stage3")
+        expect(a.resumeMusic).toHaveBeenCalled()
+        screenSound(a, page(3, 3), page(4, 4), settings)
+        expect(a.playMusic).toHaveBeenLastCalledWith("stage4")
+        screenSound(a, page(4, 4), page(undefined, 4), settings)
+        expect(a.stopMusic).toHaveBeenCalledTimes(1)
+    })
+
+    it("brings the title tune back on leaving, from its start", () => {
+        const a = audio()
+        screenSound(a, page(3, 3), onPage, settings)
+        expect(a.playMusic).toHaveBeenLastCalledWith("title")
+        expect(a.playSfx).toHaveBeenCalledWith("back")
+    })
+
+    it("plays through the muted volumes when muted", () => {
+        const a = audio()
+        screenSound(a, page(), page(2, 2), { ...settings, muted: true })
+        expect(a.setVolumes).toHaveBeenCalledWith(
+            expect.objectContaining({ muted: true })
+        )
+        expect(a.playMusic).toHaveBeenLastCalledWith("stage2")
+    })
 })
 
 describe("menuSound", () => {

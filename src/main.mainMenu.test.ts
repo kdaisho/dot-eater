@@ -103,11 +103,14 @@ describe("main's main menu", () => {
             pressAndTick("Space")
             expect(screen()).toBe(page.screen)
             expect(title()).toBe(page.name)
-            expect(lines()[0]).toBe("Coming soon")
             expect(overlay()?.querySelector("[data-back]")).not.toBeNull()
-            // Confirm does nothing there yet.
-            pressAndTick("Space")
-            expect(screen()).toBe(page.screen)
+            // Confirm does nothing on a placeholder (the soundtrack has
+            // its own tests: main.soundtrack.test.ts).
+            if (page.screen !== "soundtrack") {
+                expect(lines()[0]).toBe("Coming soon")
+                pressAndTick("Space")
+                expect(screen()).toBe(page.screen)
+            }
             pressAndTick("Escape")
             expect(screen()).toBe("title")
             expect(selectedItem()).toBe(page.name)
