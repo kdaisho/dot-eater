@@ -9,6 +9,7 @@ import { storyCardTimedOut, type Screen } from "./flow"
 import { MusicTrackId, stageTrack } from "./music"
 import type { Settings } from "./settings"
 import { breathSfx, SfxId } from "./sfx"
+import { SOUNDTRACK } from "./soundtrack"
 
 // The effect a game event plays, if any. A dot growing back (KDA-269)
 // plays nothing: dots regrow about as often as they are eaten, so a sound for
@@ -80,12 +81,14 @@ export function playEventSounds(
     for (const id of eventSounds(events)) audio.playSfx(id)
 }
 
-// The tune a screen plays: the title's on the title, its pages and the
+// The tune a screen plays: the title's on the title, Tutorial and Cards and the
 // menus (the story menus too), the stage's while playing, frozen while paused
 // (settings opened from pause included). None from the ending outro on, so
 // the stage clear and game over jingles play alone; the result screens,
 // story mode's clear card and ending included, stay quiet. The end roll
-// plays its own track (endRoll.ts).
+// plays its own track (endRoll.ts). The soundtrack page (KDA-321) plays
+// the track picked there, and nothing until one is: leaving it for the
+// title brings the title tune back from its start.
 export type MusicCue = { track: MusicTrackId; paused: boolean }
 
 export function musicForScreen(screen: Screen): MusicCue | undefined {
@@ -96,10 +99,16 @@ export function musicForScreen(screen: Screen): MusicCue | undefined {
             return screen.stage === "title"
                 ? { track: MusicTrackId.opening, paused: false }
                 : undefined
+        case "soundtrack": {
+            const entry =
+                screen.playing === undefined
+                    ? undefined
+                    : SOUNDTRACK[screen.playing]
+            return entry && { track: entry.track, paused: false }
+        }
         case "title":
         case "tutorial":
         case "cards":
-        case "soundtrack":
         case "playSelect":
         case "storyMenu":
         case "stageSelect":
@@ -172,6 +181,15 @@ function sameScreenSound(prev: Screen, next: Screen): SfxId | undefined {
     }
     if (prev.kind === "stageSelect" && next.kind === "stageSelect")
         return prev.selected !== next.selected ? SfxId.menuMove : undefined
+    // A track picked confirms; stopping it goes back. No sound on top of
+    // the music for the cursor moving while a track plays.
+    if (prev.kind === "soundtrack" && next.kind === "soundtrack") {
+        if (prev.playing !== next.playing)
+            return next.playing === undefined ? SfxId.back : SfxId.confirm
+        return prev.selected !== next.selected && next.playing === undefined
+            ? SfxId.menuMove
+            : undefined
+    }
     if (prev.kind === "difficultySelect" && next.kind === "difficultySelect")
         return prev.difficulty !== next.difficulty ? SfxId.menuMove : undefined
     if (prev.kind === "characterSelect" && next.kind === "characterSelect") {
