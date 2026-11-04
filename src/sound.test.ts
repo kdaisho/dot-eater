@@ -5,6 +5,7 @@ import type { GameEvent } from "./events"
 import {
     initialScreen,
     openingScreen,
+    pageScreen,
     STORY_CARD_SECONDS,
     type Screen,
 } from "./flow"
@@ -260,10 +261,7 @@ describe("the main menu's pages", () => {
     it.each(["tutorial", "cards"] as const)(
         "play the title tune on %s, confirm on the way in and go back out",
         (page) => {
-            const screen: Screen =
-                page === "cards"
-                    ? { kind: page, mode: "solo", index: 0 }
-                    : { kind: page, mode: "solo" }
+            const screen: Screen = pageScreen(page, "solo")
             expect(musicForScreen(screen)).toEqual({
                 track: "title",
                 paused: false,

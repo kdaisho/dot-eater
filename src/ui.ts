@@ -7,6 +7,8 @@ import type { AnimalId, AnimalInfo } from "./roster"
 import { formatClock } from "./soundtrack"
 import { ANIMAL_SPRITES, paintSprite } from "./sprites"
 import { formatTicks, starList, starText, type ClearRating } from "./stars"
+import { TUTORIAL_TITLES } from "./tutorial"
+import { tutorialContent, type TutorialView } from "./tutorialView"
 
 function genConfetti(interval: number = 20) {
     return (count: number = 10) => {
@@ -101,6 +103,8 @@ type Overlay = {
     // .overlay-hint in the CSS), where the overlay is tapped instead. A
     // number marks only the lines from that index on.
     keyHints?: boolean | number
+    // A page's own content (the tutorial's), last.
+    content?: HTMLElement
 }
 
 // A character select card: sprite and name, the breath, the stat. With two
@@ -290,10 +294,15 @@ export function showSettings(items: readonly MenuItem[]) {
     })
 }
 
-// The main menu's pages (KDA-318), one function each. Tutorial is a
-// placeholder for now (KDA-319 replaces it).
-export function showTutorial() {
-    showComingSoon("tutorial", "Tutorial")
+// The tutorial (KDA-319): the page's title, its content (tutorialView.ts)
+// and Back.
+export function showTutorial(view: TutorialView) {
+    show({
+        id: "tutorial",
+        title: TUTORIAL_TITLES[view.page],
+        back: true,
+        content: tutorialContent(view),
+    })
 }
 
 // The Cards page (KDA-320) on card `index`: a page of its own
@@ -371,17 +380,6 @@ export function showTrackProgress(
     )
     const bar = row?.querySelector<HTMLElement>(".menu-progress")
     if (bar) fillProgress(bar, trackProgressOf(elapsed, length))
-}
-
-// A page that isn't built yet: its title, "Coming soon" and Back.
-function showComingSoon(id: string, title: string) {
-    show({
-        id,
-        title,
-        lines: ["Coming soon", "Esc or B to go back"],
-        keyHints: 1,
-        back: true,
-    })
 }
 
 // What the controls screen shows (see the controls screen in flow.ts).
@@ -616,6 +614,7 @@ function show({
     cards = [],
     back = false,
     keyHints = false,
+    content,
 }: Overlay) {
     hideOverlay()
 
@@ -691,6 +690,7 @@ function show({
     }
 
     if (cards.length > 0) panel.appendChild(cardRow(cards))
+    if (content) panel.appendChild(content)
 
     document.body.appendChild(panel)
     // The panel scrolls when it's taller than the window, and is rebuilt on

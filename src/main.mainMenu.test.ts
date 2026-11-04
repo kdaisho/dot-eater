@@ -52,15 +52,18 @@ function tap(selector: string) {
 const overlay = () => document.querySelector<HTMLElement>("#overlay")
 const screen = () => overlay()?.dataset.screen ?? "playing"
 const title = () => overlay()?.querySelector("h1")?.textContent
-const lines = () =>
-    [...(overlay()?.querySelectorAll("p") ?? [])].map((p) => p.textContent)
 const items = () =>
     [...(overlay()?.querySelectorAll("li") ?? [])].map((li) => li.textContent)
 const selectedItem = () => overlay()?.querySelector("li.selected")?.textContent
 
 const PAGES = [
-    { name: "Tutorial", screen: "tutorial", index: 2 },
-    { name: "Soundtrack", screen: "soundtrack", index: 4 },
+    { name: "Tutorial", screen: "tutorial", index: 2, heading: "How to play" },
+    {
+        name: "Soundtrack",
+        screen: "soundtrack",
+        index: 4,
+        heading: "Soundtrack",
+    },
 ] as const
 
 describe("main's main menu", () => {
@@ -102,15 +105,8 @@ describe("main's main menu", () => {
             expect(selectedItem()).toBe(page.name)
             pressAndTick("Space")
             expect(screen()).toBe(page.screen)
-            expect(title()).toBe(page.name)
+            expect(title()).toBe(page.heading)
             expect(overlay()?.querySelector("[data-back]")).not.toBeNull()
-            // Confirm does nothing on a placeholder (the soundtrack has
-            // its own tests: main.soundtrack.test.ts).
-            if (page.screen !== "soundtrack") {
-                expect(lines()[0]).toBe("Coming soon")
-                pressAndTick("Space")
-                expect(screen()).toBe(page.screen)
-            }
             pressAndTick("Escape")
             expect(screen()).toBe("title")
             expect(selectedItem()).toBe(page.name)

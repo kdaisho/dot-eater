@@ -156,6 +156,8 @@ import {
 } from "./ui"
 import { heading, isTouchDevice, isTouchFirst, TouchSource } from "./touch"
 import { OPENING_DRUM } from "./opening"
+import { tutorialPages } from "./tutorial"
+import { drawTutorialFrame } from "./tutorialView"
 import { createOpeningLayer, openingItemAt } from "./openingView"
 
 // The game opens on the opening (opening.ts) on every load. Tests of the
@@ -511,6 +513,7 @@ function tick(dt: number) {
             : 1
     if (next !== screen) enter(screen, next)
     const due = moved ? effects.tick(dt * scale) : []
+    if (screen.kind === "tutorial") tutorialClock += dt
     if (game && due.length > 0) playEvents(due, game)
     // The way player 1 is going, for the flicks (see TouchSource.follow).
     const player =
@@ -595,6 +598,13 @@ function applyKeyBindings() {
 
 function enter(prev: Screen, next: Screen) {
     screen = next
+    // Each tutorial page plays its scenes from their start.
+    if (
+        next.kind === "tutorial" &&
+        (prev.kind !== "tutorial" || prev.page !== next.page)
+    ) {
+        tutorialClock = 0
+    }
     pads.setAssignment(padAssignment(next))
     pads.setMenus(next.kind !== "playing")
     setControls(document, { playing: next.kind === "playing" })
@@ -700,6 +710,9 @@ function applyBindings(s: Settings) {
 // glides finish); other screens with a game keep the last picture still. Screens without one (title, stage select) show an
 // empty canvas rather than the previous game's board.
 let lastAlpha = 0
+// Seconds of ticks on the tutorial page showing: the time its scenes are
+// drawn at (see tutorialView.ts).
+let tutorialClock = 0
 
 function render(alpha: number) {
     if (screen.kind === "opening") {
@@ -713,6 +726,9 @@ function render(alpha: number) {
     }
     openingLayer.hide()
     if (screen.kind === "soundtrack") showPlayingProgress(screen)
+    if (screen.kind === "tutorial") {
+        drawTutorialFrame(tutorialClock, reducedMotion?.matches ?? false)
+    }
     // The Cards page made before the cards' font had loaded is made again.
     if (screen.kind === "cards" && cardsPageStale()) showOverlay(screen)
     // The end roll draws on its own canvas, over everything.
@@ -814,8 +830,16 @@ function showOverlay(s: Screen) {
                 }))
             )
         }
-        case "tutorial":
-            return showTutorial()
+        case "tutorial": {
+            const pages = tutorialPages(touch)
+            return showTutorial({
+                page: pages[Math.min(s.page, pages.length - 1)]!,
+                index: s.page,
+                count: pages.length,
+                bindings: bindingsOf(settings),
+                touch,
+            })
+        }
         case "cards":
             return showCards(s.index)
         case "soundtrack":
@@ -1051,22 +1075,23 @@ for (const type of ["focus", "keydown", "pointerdown"]) {
     })
 }
 
-// A swipe across the Cards page turns a card (swipeStep), as left or right
-// does: a swipe to the left shows the next one. The click it ends with, if
-// any, is dropped; a new press forgets that, in case none came.
+// A swipe across the Cards page turns a card, and across the tutorial a
+// page (swipeStep), as left or right does: a swipe to the left shows the
+// next one. Up and down scroll. The click it ends with, if any, is
+// dropped; a new press forgets that, in case none came.
+const swipes = (s: Screen) => s.kind === "cards" || s.kind === "tutorial"
 let swipeFrom: { x: number; y: number } | undefined
 let swiped = false
 document.addEventListener("pointerdown", (event) => {
     swiped = false
-    swipeFrom =
-        screen.kind === "cards"
-            ? { x: event.clientX, y: event.clientY }
-            : undefined
+    swipeFrom = swipes(screen)
+        ? { x: event.clientX, y: event.clientY }
+        : undefined
 })
 document.addEventListener("pointerup", (event) => {
     const from = swipeFrom
     swipeFrom = undefined
-    if (!from || screen.kind !== "cards") return
+    if (!from || !swipes(screen)) return
     const step = swipeStep(event.clientX - from.x, event.clientY - from.y)
     if (step === 0) return
     swiped = true

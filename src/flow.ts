@@ -38,6 +38,7 @@ import {
     type SettingsContext,
 } from "./settingsMenu"
 import { SOUNDTRACK } from "./soundtrack"
+import { tutorialPages } from "./tutorial"
 import { rateClear, type ClearRating } from "./stars"
 
 // The game's screens and the transitions between them:
@@ -68,10 +69,14 @@ import { rateClear, type ClearRating } from "./stars"
 // The title is the main menu (KDA-318; TITLE_CHOICES): the modes, then
 // the pages, then Settings. Each page (Tutorial, Cards, Soundtrack;
 // PAGE_CHOICES) is a screen of its own kind, and Back (the pause action)
-// returns to the title with the cursor on it. Tutorial is a placeholder
-// for now whose only way out is Back (KDA-319 builds it).
+// returns to the title with the cursor on it.
 //
 //   title <-> tutorial        title <-> cards        title <-> soundtrack
+//
+// The tutorial (KDA-319; tutorial.ts) is a row of pages, the Touch page
+// last on touch devices only. Left and right turn them, stopping at either
+// end; confirm goes to the next page, and on the last one back to the
+// title, as Back does from any page.
 //
 // The Cards page (KDA-320, cards.ts) shows one card at a time, opening on
 // No.01: left/right and up/down browse, wrapping round at either end, and
@@ -331,8 +336,13 @@ export type Screen =
           on?: Page | "settings"
       }
     // The main menu's pages (PAGE_CHOICES). `mode` is the title's, kept
-    // for Back. The Cards page has the card it shows (an index into CARDS).
-    | { kind: "tutorial"; mode: Mode }
+    // for Back. The tutorial has the page it shows (an index into
+    // tutorialPages), the Cards page the card (an index into CARDS).
+    | {
+          kind: "tutorial"
+          mode: Mode
+          page: number
+      }
     | { kind: "cards"; mode: Mode; index: number }
     | {
           kind: "soundtrack"
@@ -510,6 +520,7 @@ type TitleScreen = Extract<Screen, { kind: "title" }>
 type PageScreen = Extract<Screen, { kind: Page }>
 type CardsScreen = Extract<Screen, { kind: "cards" }>
 type SoundtrackScreen = Extract<Screen, { kind: "soundtrack" }>
+type TutorialScreen = Extract<Screen, { kind: "tutorial" }>
 type PausedScreen = Extract<Screen, { kind: "paused" }>
 type SettingsScreen = Extract<Screen, { kind: "settings" }>
 type ControlsScreen = Extract<Screen, { kind: "controls" }>
@@ -667,7 +678,7 @@ function updateScreen(
         case "title":
             return updateTitle(screen, input, deps)
         case "tutorial":
-            return updateTutorial(screen, input)
+            return updateTutorial(screen, input, deps)
         case "cards":
             return updateCards(screen, input)
         case "soundtrack":
@@ -915,16 +926,30 @@ function updateTitle(
 
 // A page as it opens from the title on `mode`.
 export function pageScreen(page: Page, mode: Mode): PageScreen {
-    if (page === "cards") return { kind: page, mode, index: 0 }
-    return page === "soundtrack"
-        ? { kind: page, mode, selected: 0 }
-        : { kind: page, mode }
+    if (page === "soundtrack") return { kind: page, mode, selected: 0 }
+    if (page === "tutorial") return { kind: page, mode, page: 0 }
+    return { kind: page, mode, index: 0 }
 }
 
-// The main menu's pages, one function each. Tutorial is a placeholder for
-// now that only goes back.
-function updateTutorial(screen: PageScreen, input: TickInput): Screen {
-    return updatePlaceholder(screen, input)
+// The main menu's pages, one function each.
+//
+// Back leaves for the title. Left and right (player 1's: keys, the D-pad,
+// the stick, a swipe) turn the pages, stopping at either end; confirm
+// goes to the next one, and from the last back to the title ("Done").
+function updateTutorial(
+    screen: TutorialScreen,
+    input: TickInput,
+    deps: FlowDeps
+): Screen {
+    if (input.wasPressed("pause")) return pageBack(screen)
+    const count = tutorialPages(deps.touch ?? false).length
+    if (input.wasPressed("confirm")) {
+        return screen.page >= count - 1
+            ? pageBack(screen)
+            : { ...screen, page: screen.page + 1 }
+    }
+    const page = moveAcross(Math.min(screen.page, count - 1), count, input, 0)
+    return page === screen.page ? screen : { ...screen, page }
 }
 
 // Left or up shows the card before, right or down the one after, wrapping
@@ -958,12 +983,6 @@ function updateSoundtrack(screen: SoundtrackScreen, input: TickInput): Screen {
         0
     )
     return selected === screen.selected ? screen : { ...screen, selected }
-}
-
-// Back (the pause action) returns to the title on the page; nothing else
-// does anything.
-function updatePlaceholder(screen: PageScreen, input: TickInput): Screen {
-    return input.wasPressed("pause") ? pageBack(screen) : screen
 }
 
 // The title a page goes back to: its cursor on the page, its mode kept.
