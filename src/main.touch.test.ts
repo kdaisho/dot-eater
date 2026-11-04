@@ -6,6 +6,7 @@ import { BUTTONS_SPACE, computeLayout, controlsSpace } from "./layout"
 import { levels, stages } from "./levels"
 import { ANIMAL_IDS } from "./roster"
 import { SETTINGS_KEY } from "./settings"
+import { TAP_CHARGE_DELAY } from "./touch"
 
 // main on a phone: overlays are tapped, a flick on the play area steers
 // (the player runs on after the lift, and a flick back stops it), the
@@ -212,13 +213,72 @@ describe("main on a touch screen", () => {
         vi.advanceTimersByTime(FRAMES_MS)
     })
 
-    it("doesn't breathe on a tap on the board", () => {
+    it("breathes on a tap on the board, on the lift", () => {
         const play = el("#play")
         const before = vi.mocked(step).mock.calls.length
         pointer(play, "pointerdown", 100, 100)
-        pointer(play, "pointerup", 100, 100)
         vi.advanceTimersByTime(FRAMES_MS)
         expect(moves(before).filter((m) => m.breath)).toHaveLength(0)
+        pointer(play, "pointerup", 100, 100)
+        const lifted = vi.mocked(step).mock.calls.length
+        vi.advanceTimersByTime(FRAMES_MS)
+        const after = moves(lifted)
+        expect(after.filter((m) => m.breath)).toHaveLength(1)
+        expect(after[0]).toMatchObject({ breath: true, breathHeld: false })
+    })
+
+    it("charges while a finger rests on the board, firing on the lift", () => {
+        const play = el("#play")
+        const from = vi.mocked(step).mock.calls.length
+        pointer(play, "pointerdown", 100, 100)
+        vi.advanceTimersByTime(TAP_CHARGE_DELAY * 1000 + FRAMES_MS)
+        const held = moves(from)
+        expect(held.filter((m) => m.breath)).toHaveLength(1)
+        expect(held.at(-1)?.breathHeld).toBe(true)
+        pointer(play, "pointerup", 100, 100)
+        const lifted = vi.mocked(step).mock.calls.length
+        vi.advanceTimersByTime(FRAMES_MS)
+        expect(moves(lifted).every((m) => !m.breath && !m.breathHeld)).toBe(
+            true
+        )
+    })
+
+    it("drops the charge unfired when the resting finger flicks", () => {
+        const play = el("#play")
+        pointer(play, "pointerdown", 100, 100)
+        vi.advanceTimersByTime(TAP_CHARGE_DELAY * 1000 + FRAMES_MS)
+        // Charging (step is mocked, so set it so).
+        const game = vi.mocked(step).mock.lastCall![0]
+        const breather = game.players[0].breather
+        breather.charge = 0.3
+        breather.armed = true
+        pointer(play, "pointermove", 140, 100)
+        expect(breather.charge).toBeNull()
+        expect(breather.armed).toBe(false)
+        const from = vi.mocked(step).mock.calls.length
+        vi.advanceTimersByTime(FRAMES_MS)
+        expect(moves(from).at(-1)).toMatchObject({
+            breathHeld: false,
+            held: [{ x: 1, y: 0 }],
+        })
+        pointer(play, "pointerup", 140, 100)
+        // Standing still, for the tests after.
+        vi.advanceTimersByTime(FRAMES_MS)
+        pointer(play, "pointerdown", 100, 100)
+        pointer(play, "pointerup", 60, 100)
+        vi.advanceTimersByTime(FRAMES_MS)
+    })
+
+    it("doesn't take a tap on the pause button for a tap on the board", () => {
+        const pause = el("#touch-controls [data-action=pause]")
+        const from = vi.mocked(step).mock.calls.length
+        pointer(pause, "pointerdown", 0, 0, 4)
+        pointer(pause, "pointerup", 0, 0, 4)
+        vi.advanceTimersByTime(FRAMES_MS)
+        expect(screen()).toBe("pause")
+        expect(moves(from).filter((m) => m.breath)).toHaveLength(0)
+        tap("#overlay li[data-index='0']")
+        expect(screen()).toBe("playing")
     })
 
     it.each(["breath"] as const)(

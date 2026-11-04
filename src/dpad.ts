@@ -11,7 +11,8 @@ import type {
 // DOM buttons rather than drawn on the canvas: each gets its own pointer
 // events, CSS places them beside or below the maze by orientation (see
 // controlsSpace in layout.ts), and the renderer stays as it is. Dragging on
-// the board steers too (touch.ts), with or without the D-pad.
+// the board steers too, and a tap on it breathes (touch.ts), with or
+// without the D-pad.
 //
 // The D-pad works like the keyboard: a direction is held while a finger is
 // on it, and sliding the finger round the pad changes direction without
