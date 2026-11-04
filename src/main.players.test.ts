@@ -1,7 +1,6 @@
 // @vitest-environment happy-dom
 import { describe, expect, it, vi } from "vite-plus/test"
 import {
-    bringBack,
     createGameState,
     step,
     takeOut,
@@ -87,7 +86,7 @@ describe("main with two players", () => {
             [...(overlay()?.querySelectorAll("li") ?? [])].map(
                 (li) => li.textContent
             )
-        ).toEqual(["1 player", "Co-op", "Versus", "Settings"])
+        ).toEqual(["1 player", "Co-op", "Settings"])
         expect(selectedItem()).toBe("1 player")
         pressAndTick("ArrowDown")
         expect(selectedItem()).toBe("Co-op")
@@ -182,14 +181,13 @@ describe("main with two players", () => {
         })
         expect(drawn.last?.[2]).not.toHaveProperty("players.0.out")
 
-        // A player out of play shows when it is back instead of its meter.
-        takeOut(game.players[1], 2.5)
+        // A player out of play shows OUT instead of its meter.
+        takeOut(game.players[1])
         vi.advanceTimersByTime(100)
         expect(drawn.last?.[2]).toMatchObject({
-            players: [{ score: 0 }, { score: 0, out: { respawnIn: 2.5 } }],
+            players: [{ score: 0 }, { score: 0, out: true }],
         })
         expect(drawn.last?.[2]).not.toHaveProperty("players.0.out")
-        bringBack(game, game.players[1])
 
         // Player 2 can pause, and resume.
         pressAndTick("KeyQ")

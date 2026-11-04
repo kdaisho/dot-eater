@@ -27,7 +27,7 @@ import {
 import { vec2 } from "./vec2"
 
 const DIRECTIONS: readonly DirectionAction[] = ["up", "down", "left", "right"]
-const END_KINDS = ["stageClear", "gameOver", "roundResult", "matchResult"]
+const END_KINDS = ["stageClear", "gameOver"]
 
 // A made-up player: each holds a direction for 20 ticks, pressing it on the
 // first, then turns a direction picked by `script`'s own seeded random;
@@ -276,7 +276,7 @@ describe("recording and replaying", () => {
 
     it.each<[Mode, number]>([
         ["coop", 2],
-        ["versus", 3],
+        ["coop", 3],
     ])("replays a %s run", (mode, level) => {
         const run = playRun(level, mode, 99, { max: 1500 })
         expect(run.recording.ticks[0].t).toHaveLength(playerCount(mode))

@@ -7,7 +7,6 @@ import type { Particle } from "./particles"
 import type { Effects, Hud } from "./render"
 import type { RushFlight } from "./rushView"
 import type { Vec2 } from "./vec2"
-import { stunned, tallyText } from "./versus"
 
 // What the renderer is given besides the game for a screen: the HUD, the
 // level's rules and the effects. Pure, no DOM: main.ts's render() draws
@@ -27,7 +26,7 @@ export function rulesOf(
 // The HUD for `game` on `screen`: the players' HUD, plus the boss's health,
 // the difficulty and, in a story run, the run total.
 export function hudOf(game: GameState, screen: Screen): Hud {
-    const hud = game.mode === "versus" ? versusHud(game, screen) : coopHud(game)
+    const hud = playersHud(game)
     const boss = bossHud(game)
     if (boss) hud.boss = boss
     if ("difficulty" in screen) {
@@ -49,36 +48,13 @@ export function hudOf(game: GameState, screen: Screen): Hud {
 // stage's score included: in place of the score with one player, and in
 // the middle (above the difficulty) with two, whose own scores stay.
 function withRunTotal(hud: Hud, total: number) {
-    if (hud.players) hud.round = `Total ${total}`
+    if (hud.players) hud.total = `Total ${total}`
     else hud.score = total
-}
-
-// The versus HUD: each player's dots, meter, stun or respawn countdown,
-// health, and the round tally. The result screens keep showing the round
-// just played as it was during play.
-function versusHud(game: GameState, s: Screen): Hud {
-    const match =
-        s.kind === "roundResult" || s.kind === "matchResult"
-            ? s.match.slice(0, -1)
-            : "match" in s
-              ? (s.match ?? [])
-              : []
-    return {
-        round: tallyText(match),
-        players: game.players.map((p, i) => ({
-            score: p.score,
-            dots: p.dots,
-            energy: energyHud(game, i),
-            health: healthHud(p),
-            ...(p.out ? { out: { respawnIn: p.respawnIn } } : {}),
-            ...(stunned(p) ? { stunned: p.stunnedFor } : {}),
-        })),
-    }
 }
 
 // The HUD: with one player its score, meter and health; with two, each
 // one's.
-function coopHud(game: GameState): Hud {
+function playersHud(game: GameState): Hud {
     if (game.players.length === 1) {
         return {
             score: totalScore(game),
@@ -91,7 +67,7 @@ function coopHud(game: GameState): Hud {
             score: p.score,
             energy: energyHud(game, i),
             health: healthHud(p),
-            ...(p.out ? { out: { respawnIn: p.respawnIn } } : {}),
+            ...(p.out ? { out: true } : {}),
         })),
     }
 }

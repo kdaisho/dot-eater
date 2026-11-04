@@ -18,7 +18,6 @@ import {
     Cell,
     CharacterId,
     ENEMY_IDS,
-    PLAYER_RESPAWN_DELAY,
     RESPAWN_BLINK,
     RESPAWN_DELAY,
     SPRITE_SCALE,
@@ -40,11 +39,8 @@ import {
     BOSS_SCALE,
     createRenderer,
     HALF_SCALE,
-    outLabel,
+    OUT_LABEL,
     PLAYER_COLORS,
-    IMMUNE_BADGE,
-    STUN_BADGE,
-    stunLabel,
     type Effects,
     CHARGE_AURA_ALPHA,
     CHARGE_AURA_BASE,
@@ -69,7 +65,7 @@ import {
 } from "./test/helpers"
 import { ART, STAGE_STYLES } from "./tiles"
 import { vec2 } from "./vec2"
-import { stun } from "./versus"
+import { panic } from "./panic"
 
 // canvas-confetti crashes under happy-dom; keep it out in case anything
 // imported here pulls it in.
@@ -1192,12 +1188,12 @@ describe("createRenderer", () => {
             const color = "rgba(255, 110, 20, 0.45)"
             addStatus(
                 enemy,
-                { name: "test.burning", look: { color, badge: "stunned" } },
+                { name: "test.burning", look: { color, badge: "frozen" } },
                 1
             )
             const { renderer, calls } = setup()
             renderer.draw(state, 0)
-            for (const name of ["tengu", "stunned"]) {
+            for (const name of ["tengu", "frozen"]) {
                 const drawn = calls.find((c) => drawnName(c) === name)!
                 expect(drawn.name, name).toBe("drawImage")
                 expect(drawn.globalAlpha, name).toBe(1)
@@ -1923,52 +1919,33 @@ describe("createRenderer with a player out of play", () => {
     it("doesn't draw it", () => {
         const { renderer, texts } = setup()
         const state = pair()
-        takeOut(state.players[0], PLAYER_RESPAWN_DELAY)
+        takeOut(state.players[0])
         renderer.draw(state, 0)
         expect(texts()).toEqual(["boar", "2"])
     })
 
-    it("shows its countdown, or that it is out for good, in place of its meter", () => {
+    it("shows OUT in place of its meter", () => {
         const { calls, renderer, texts } = setup()
         const meter = { energy: 50, max: 100, cost: 50, ready: true }
         const health = { health: 0, max: 100 }
         renderer.draw(pair(), 0, {
             players: [
-                { score: 30, energy: meter, health, out: { respawnIn: 2.5 } },
-                { score: 10, energy: meter, health, out: { respawnIn: null } },
+                { score: 30, energy: meter, health },
+                { score: 10, energy: meter, health, out: true },
             ],
         })
-        expect(texts().slice(0, 4)).toEqual([
-            "1P 30",
-            "back in 3",
-            "2P 10",
-            "OUT",
-        ])
-        expect(calls.filter((c) => c.name === "strokeRect")).toHaveLength(0)
-        // Each label fits its meter's slot.
-        const labels = calls.filter(
-            (c) =>
-                c.name === "fillText" &&
-                (c.args[0] === "back in 3" || c.args[0] === "OUT")
+        expect(texts().slice(0, 3)).toEqual(["1P 30", "2P 10", OUT_LABEL])
+        // The label fits its meter's slot.
+        const label = calls.find(
+            (c) => c.name === "fillText" && c.args[0] === OUT_LABEL
         )
-        expect(labels).toHaveLength(2)
-        for (const c of labels) expect(c.args[3]).toBeGreaterThan(0)
-    })
-
-    it("counts down in whole seconds, rounding up", () => {
-        expect(outLabel({ respawnIn: 3 })).toBe("back in 3")
-        expect(outLabel({ respawnIn: 2.01 })).toBe("back in 3")
-        expect(outLabel({ respawnIn: 2 })).toBe("back in 2")
-        expect(outLabel({ respawnIn: 0.2 })).toBe("back in 1")
-        // Due, waiting for its spawn to be clear.
-        expect(outLabel({ respawnIn: 0 })).toBe("back soon")
-        expect(outLabel({ respawnIn: null })).toBe("OUT")
+        expect(label?.args[3]).toBeGreaterThan(0)
     })
 
     it("lights the fog round the players in play only", () => {
         const { canvas, calls, renderer } = setup()
         const state = pair()
-        takeOut(state.players[0], PLAYER_RESPAWN_DELAY)
+        takeOut(state.players[0])
         renderer.draw(state, 0, {}, { fog: { radius: 2 } })
         const cell = parseFloat(canvas.style.width) / 13
         const lights = calls.filter((c) => c.name === "createRadialGradient")
@@ -1978,78 +1955,14 @@ describe("createRenderer with a player out of play", () => {
     it("keeps the light where they went out while nobody is in play", () => {
         const { calls, offscreen, renderer } = setup()
         const state = pair()
-        takeOut(state.players[0], PLAYER_RESPAWN_DELAY)
-        takeOut(state.players[1], PLAYER_RESPAWN_DELAY)
+        takeOut(state.players[0])
+        takeOut(state.players[1])
         renderer.draw(state, 0, {}, { fog: { radius: 2 } })
         expect(calls.some((c) => c.name === "createRadialGradient")).toBe(false)
         const lights = offscreen.flatMap((o) =>
             o.calls.filter((c) => c.name === "createRadialGradient")
         )
         expect(lights).toHaveLength(2)
-    })
-})
-
-describe("createRenderer in versus", () => {
-    afterEach(() => {
-        vi.restoreAllMocks()
-    })
-
-    function pair() {
-        return makeState(
-            [
-                [1, 1, 1, 1, 1, 1, 1],
-                [1, 2, 2, 2, 2, 2, 1],
-                [1, 1, 1, 1, 1, 1, 1],
-            ],
-            [
-                { x: 1, y: 1 },
-                { x: 5, y: 1 },
-            ],
-            [],
-            { breath: [BREATHS.owl, BREATHS.boar], mode: "versus" }
-        )
-    }
-
-    it("draws each player's dots, a stun in place of its meter, and the round tally", () => {
-        const { calls, renderer, texts } = setup()
-        const meter = { energy: 50, max: 100, cost: 50, ready: true }
-        renderer.draw(pair(), 0, {
-            round: "Round 2 · 1–0",
-            players: [
-                { score: 30, dots: 3, energy: meter, stunned: 1.2 },
-                { score: 60, dots: 6, energy: meter },
-            ],
-        })
-        expect(texts().slice(0, 4)).toEqual([
-            "1P ●3",
-            `${STUN_BADGE} 2`,
-            "2P ●6",
-            "Round 2 · 1–0",
-        ])
-        // Only player 2's meter.
-        expect(calls.filter((c) => c.name === "strokeRect")).toHaveLength(1)
-    })
-
-    it("counts a stun down in whole seconds, rounding up", () => {
-        expect(stunLabel(2)).toBe(`${STUN_BADGE} 2`)
-        expect(stunLabel(1.01)).toBe(`${STUN_BADGE} 2`)
-        expect(stunLabel(0.1)).toBe(`${STUN_BADGE} 1`)
-    })
-
-    it("marks a stunned player's sprite with the stun badge", () => {
-        const { renderer, texts } = setup()
-        const state = pair()
-        state.players[1].stunnedFor = 1
-        renderer.draw(state, 0)
-        expect(texts()).toEqual(["owl", "1", "boar", "2", STUN_BADGE])
-    })
-
-    it("marks a player immune after a stun with the immune badge", () => {
-        const { renderer, texts } = setup()
-        const state = pair()
-        state.players[1].stunImmuneFor = 1
-        renderer.draw(state, 0)
-        expect(texts()).toEqual(["owl", "1", "boar", "2", IMMUNE_BADGE])
     })
 })
 
@@ -2338,14 +2251,14 @@ describe("createRenderer with a charging breath", () => {
         expect(calls[sprite].globalAlpha).toBe(1)
     })
 
-    it("draws none while not charging, or while stunned", () => {
+    it("draws none while not charging, or while panicked", () => {
         const idle = setup()
         idle.renderer.draw(charging(), 0)
         expect(discs(idle.calls)).toEqual([])
         const dazed = setup()
         const state = charging()
         state.players[0].breather.charge = 0
-        stun(state.players[0])
+        panic(state.players[0])
         dazed.renderer.draw(state, 0)
         expect(discs(dazed.calls)).toEqual([])
     })
@@ -2370,7 +2283,7 @@ describe("createRenderer with the facing arrows", () => {
             { x: 7, y: 1 },
         ].slice(0, players)
         const state = makeState(corridor, starts, [], {
-            mode: players > 1 ? "versus" : "solo",
+            mode: players > 1 ? "coop" : "solo",
         })
         if (players > 1) state.players[1].breather.facing = vec2(-1, 0)
         return state
@@ -2464,15 +2377,15 @@ describe("createRenderer with the facing arrows", () => {
         it("draws none for a player out of play", () => {
             const { calls, canvas, renderer } = setup()
             const state = charged(2)
-            takeOut(state.players[1], 3)
+            takeOut(state.players[1])
             renderer.draw(state, 0, {}, {}, ARROW)
             expect(arrows(calls, canvas).map((a) => a.color)).toEqual([0])
         })
 
-        it("draws none for a stunned player", () => {
+        it("draws none for a panicked player", () => {
             const { calls, canvas, renderer } = setup()
             const state = charged(2)
-            stun(state.players[1])
+            panic(state.players[1])
             renderer.draw(state, 0, {}, {}, ARROW)
             expect(arrows(calls, canvas).map((a) => a.color)).toEqual([0])
         })
@@ -2762,7 +2675,7 @@ describe("createRenderer on a maze too big for the screen", () => {
         it("ignores a player out of play", () => {
             const { calls, frame, scroll } = bigSetup()
             const state = coop()
-            takeOut(state.players[1], PLAYER_RESPAWN_DELAY)
+            takeOut(state.players[1])
             frame(state)
             expect(scroll()).toEqual([0, MAX_Y])
             const sprite = calls.find((c) => drawnName(c) === "dragon")!
@@ -2776,8 +2689,8 @@ describe("createRenderer on a maze too big for the screen", () => {
             place(state.players[1], { x: 16, y: 9 })
             frame(state)
             const held = scroll()
-            takeOut(state.players[0], PLAYER_RESPAWN_DELAY)
-            takeOut(state.players[1], PLAYER_RESPAWN_DELAY)
+            takeOut(state.players[0])
+            takeOut(state.players[1])
             // Out far from where the view is.
             place(state.players[0], { x: 1, y: 19 })
             place(state.players[1], { x: 27, y: 19 })

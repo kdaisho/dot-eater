@@ -1,14 +1,7 @@
 import { describe, expect, it } from "vite-plus/test"
 import { bossDamage } from "../boss"
 import { addStatus, breathe, inPlay, type EnemyStatus } from "../breath"
-import {
-    AiType,
-    BOSS_HEALTH,
-    Cell,
-    ENEMY_DAMAGE,
-    MAX_HEALTH,
-    TICK_RATE,
-} from "../constants"
+import { AiType, BOSS_HEALTH, Cell, MAX_HEALTH, TICK_RATE } from "../constants"
 import {
     createGameState,
     DASH_SECONDS,
@@ -709,27 +702,6 @@ describe("the Boar's Rush", () => {
             expect(partner.health).toBe(MAX_HEALTH)
             expect(partner.out).toBe(false)
             expect(state.events.map((e) => e.type)).not.toContain("hurt")
-        })
-
-        it("hits a versus opponent it shoves for real", () => {
-            const flier = still(3, 1)
-            const state = makeState(hall, [vec2(1, 1), vec2(5, 1)], [flier], {
-                breath: boar,
-                health: MAX_HEALTH,
-                mode: "versus",
-            })
-            state.players[0].breather.energy = 100
-            breathe(state, state.players[0], 2)
-            const opponent = state.players[1]
-            expect(opponent.health).toBe(MAX_HEALTH - ENEMY_DAMAGE)
-            expect(state.events).toContainEqual({
-                type: "hurt",
-                player: 1,
-                at: vec2(7, 1),
-                damage: ENEMY_DAMAGE,
-            })
-            // The hit's knockback sends it on a cell, away from the flier.
-            expect(opponent.character.pos).toEqual(vec2(8, 1))
         })
 
         it("leaves a shoved partner unhurt by the enemy shoved right behind it", () => {

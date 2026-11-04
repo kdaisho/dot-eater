@@ -42,18 +42,10 @@ const deps: FlowDeps = {
 // Each screen's kind and whether anyone was off the floor, hopping, on it
 // (the game is the same object throughout, so it is checked as it goes).
 function playOut(level: number) {
-    let screen: Screen = startLevel(
-        stages,
-        level,
-        "dragon",
-        "solo",
-        [],
-        "medium",
-        {
-            total: 0,
-            from: "continue",
-        }
-    )
+    let screen: Screen = startLevel(stages, level, "dragon", "solo", "medium", {
+        total: 0,
+        from: "continue",
+    })
     if (screen.kind !== "playing") throw new Error("not playing")
     damageBoss(screen.game, screen.game.boss!.health)
     const screens: { kind: Screen["kind"]; hopping: boolean }[] = []

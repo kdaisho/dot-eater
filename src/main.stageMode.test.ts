@@ -134,10 +134,11 @@ describe("main in stage mode", () => {
         pressAndTick("Escape")
         pressAndTick("Escape")
 
-        // Versus shares the unlocks: stage 3 open, stage 4 locked.
+        // Co-op shares the unlocks: stage 3 open, stage 4 locked.
         pressAndTick("ArrowDown")
+        expect(selectedItem()).toBe("Co-op")
+        pressAndTick("Space")
         pressAndTick("ArrowDown")
-        expect(selectedItem()).toBe("Versus")
         pressAndTick("Space")
         expect(screen()).toBe("stage-select")
         expect(items()[2]).toBe(levels[2].name)

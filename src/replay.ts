@@ -5,7 +5,6 @@ import {
     startLevel,
     update,
     type FlowDeps,
-    type Match,
     type Mode,
     type Picks,
     type Run,
@@ -23,7 +22,7 @@ import { vec2, type Vec2 } from "./vec2"
 // Recording and replaying a run, for videos of real play.
 //
 // A recording is one run: from a `playing` screen as startLevel makes it
-// (stage, mode, characters and, in versus, the match so far) to the end
+// (stage, mode and characters) to the end
 // screen it reaches. It holds every tick's input and the seed of the
 // run's randomness (seededRandom), which is all the game reads, so feeding
 // the ticks back through flow's update replays the run exactly. `final`
@@ -88,8 +87,6 @@ export type Recording = {
     animals: Picks
     // Story mode only: the run before this stage.
     run?: Run
-    // Versus only: the rounds before this one.
-    match?: Match
     // Seeds the run's randomness (see seededRandom).
     seed: number
     ticks: TickRun[]
@@ -264,7 +261,6 @@ export function createRecorder(
                 mode: start.mode,
                 difficulty: start.difficulty,
                 animals: start.animals,
-                ...(start.match ? { match: start.match } : {}),
                 ...(start.run ? { run: start.run } : {}),
                 seed,
                 ticks: runs.map((run) => ({ ...run })),
@@ -379,7 +375,6 @@ export function createReplayer(
         recording.level,
         recording.animals,
         recording.mode,
-        recording.match,
         recording.difficulty,
         recording.run
     )

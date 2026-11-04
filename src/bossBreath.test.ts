@@ -18,12 +18,10 @@ import {
     BOSS_BREATH_WIND_UP,
     Cell,
     MAX_HEALTH,
-    PLAYER_RESPAWN_DELAY,
     TICK_RATE,
 } from "./constants"
 import type { GameEvent, GameEventType } from "./events"
 import {
-    bringBack,
     createGameState,
     drawnPos,
     HURT_INVULNERABLE_TICKS,
@@ -45,7 +43,6 @@ import {
     type MapLiteral,
 } from "./test/helpers"
 import { vec2, type Vec2 } from "./vec2"
-import { CATCH_DOTS } from "./versus"
 
 // The boss's breath (bossBreath.ts): where it reaches, who is in line,
 // its cadence through step(), and what it does to the players it strikes.
@@ -417,9 +414,9 @@ describe("bossBreathTarget", () => {
 
     it("ignores a player out of play, and has none with nobody in line", () => {
         const state = game([vec2(3, 3), vec2(8, 2)], vec2(5, 2), {
-            mode: "versus",
+            mode: "coop",
         })
-        takeOut(state.players[0], PLAYER_RESPAWN_DELAY)
+        takeOut(state.players[0])
         expect(bossBreathTarget(state)).toEqual({ player: 1, facing: right })
         place(state, vec2(8, 5), 1)
         expect(bossBreathTarget(state)).toBeNull()
@@ -572,25 +569,21 @@ describe("the boss's breath cadence", () => {
 
     it("doesn't wind up with nobody in play, but its cooldown runs", () => {
         const state = game([vec2(6, 1), vec2(6, 4)], vec2(1, 1), {
-            mode: "versus",
+            mode: "coop",
             ready: false,
         })
-        for (const p of state.players) takeOut(p, 100)
+        for (const p of state.players) takeOut(p)
         ticksWithout(state, "bossWindUp", EVERY)
         expect(state.boss!.breath.cooldown).toBe(0)
-        // Player 1 is back on its spawn, in line: at once.
-        bringBack(state, state.players[0])
-        tick(state)
-        expect(eventsOf(state, "bossWindUp")).toHaveLength(1)
     })
 
     it("calls off a wind-up once nobody is in play", () => {
         const state = game([vec2(6, 1), vec2(6, 4)], vec2(1, 1), {
-            mode: "versus",
+            mode: "coop",
         })
         tick(state)
         expect(eventsOf(state, "bossWindUp")).toHaveLength(1)
-        for (const p of state.players) takeOut(p, 100)
+        for (const p of state.players) takeOut(p)
         ticksWithout(state, "bossBreathed", WIND_UP * 2)
         expect(state.boss!.breath.windingUp).toBe(0)
         expect(state.boss!.breath.cooldown).toBe(0)
@@ -709,13 +702,12 @@ describe("the boss's breath striking", () => {
         expect(eventsOf(state, "playerCaught")).toHaveLength(1)
     })
 
-    it("knocks a versus player out by the versus rules", () => {
+    it("takes a co-op player out of its last health, for good", () => {
         const state = game([vec2(6, 2), vec2(8, 4)], vec2(1, 1), {
-            mode: "versus",
+            mode: "coop",
             health: BOSS_BREATH_DAMAGE,
         })
         const player = state.players[0]
-        player.dots = 12
         windUpToTheBrink(state)
         expect(tick(state)).toBeNull()
         expect(eventsOf(state, "playerCaught")).toEqual([
@@ -723,12 +715,9 @@ describe("the boss's breath striking", () => {
                 type: "playerCaught",
                 player: 0,
                 at: vec2(6, 2),
-                outForGood: false,
             },
         ])
         expect(player.out).toBe(true)
-        expect(player.respawnIn).toBe(PLAYER_RESPAWN_DELAY)
-        expect(player.dots).toBe(12 - CATCH_DOTS)
         expect(state.players[1].out).toBe(false)
     })
 })

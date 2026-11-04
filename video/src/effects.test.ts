@@ -26,7 +26,6 @@ const caught: GameEvent = {
     type: "playerCaught",
     player: 0,
     at: vec2(3, 3),
-    outForGood: false,
 }
 
 describe("effectsAt", () => {

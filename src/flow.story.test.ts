@@ -116,7 +116,7 @@ function storyGame(
 ): Screen {
     const run: Run = { total, from: "continue" }
     const animals = mode === "solo" ? "dragon" : (["dragon", "owl"] as const)
-    return startLevel(levels, level, animals, mode, [], "hard", run)
+    return startLevel(levels, level, animals, mode, "hard", run)
 }
 
 // Play `screen` until the game ends with `outcome`, scoring `points`, and
@@ -148,17 +148,6 @@ describe("the title", () => {
             })
         }
     )
-
-    it("doesn't offer story mode in versus: it goes to stage select", () => {
-        const title: Screen = { kind: "title", mode: "versus" }
-        expect(update(title, p1("confirm"), deps())).toEqual({
-            kind: "stageSelect",
-            mode: "versus",
-            selected: 0,
-        })
-        const select = update(title, p1("confirm"), deps())
-        expect(update(select, p1("pause"), deps())).toEqual(title)
-    })
 })
 
 describe("the choice of story or stage mode", () => {
@@ -644,7 +633,7 @@ describe("pausing a story run", () => {
 
     // KDA-305: the pause menu has Quit in every mode, to the title on the
     // mode the game was played in.
-    it.each(["solo", "coop", "versus"] as const)(
+    it.each(["solo", "coop"] as const)(
         "has Quit in stage mode too, to the title on %s",
         (mode) => {
             const picks: Picks =

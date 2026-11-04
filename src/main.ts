@@ -40,9 +40,7 @@ import { takeEvents, type GameEvent } from "./events"
 import {
     baseScreen,
     canContinue,
-    END_CHOICES,
     endChoices,
-    ROUND_CHOICES,
     gameOf,
     initialScreen,
     openingScreen,
@@ -132,11 +130,9 @@ import {
     showControls,
     showDifficultySelect,
     showGameOver,
-    showMatchResult,
     showPause,
     showRecordingBadge,
     showPlaySelect,
-    showRoundResult,
     showSettings,
     showStageClear,
     showStageSelect,
@@ -152,7 +148,6 @@ import {
 import { heading, isTouchDevice, isTouchFirst, TouchSource } from "./touch"
 import { OPENING_DRUM } from "./opening"
 import { createOpeningLayer, openingItemAt } from "./openingView"
-import { roundWins } from "./versus"
 
 // The game opens on the opening (opening.ts) on every load. Tests of the
 // rest of the game start on the title instead: their setup file sets
@@ -229,8 +224,8 @@ let focused = !document.hidden
 const touchFirst = isTouchFirst(window)
 
 // Gameplay recording, for videos (see replay.ts), on with ?record in the
-// URL. Each run (a game from its start in `playing` to its end screen; in
-// versus, each round) gets a fresh seed, and its game randomness comes from
+// URL. Each run (a game from its start in `playing` to its end screen)
+// gets a fresh seed, and its game randomness comes from
 // that seed; its ticks are recorded, and the recording downloads when the
 // run reaches its end screen. Without ?record nothing is recorded and the
 // game uses Math.random as always.
@@ -655,7 +650,6 @@ function enter(prev: Screen, next: Screen) {
         // The ending gets a burst on top.
         if (next.kind === "storyEnd") burst()
     }
-    if (next.kind === "matchResult" && prev.kind === "ending") celebrate(10)
     if (recordingOn) recordRuns(prev, next)
     // Every change on the settings and controls screens is saved, and
     // applied, at once.
@@ -740,13 +734,8 @@ function recordRuns(prev: Screen, next: Screen) {
 // e.g. dot-eater-stage1-solo-dragon-lost-2026-10-28T19-40-05.json: easy to
 // tell apart, and in time order when sorted by name.
 function recordingName(recording: Recording, date: Date): string {
-    const { level, mode, animals, final, match = [] } = recording
-    const outcome =
-        final.kind === "stageClear"
-            ? "won"
-            : final.kind === "gameOver"
-              ? "lost"
-              : `round${match.length + 1}`
+    const { level, mode, animals, final } = recording
+    const outcome = final.kind === "gameOver" ? "lost" : "won"
     const time = date.toISOString().slice(0, 19).replaceAll(":", "-")
     return `dot-eater-stage${level + 1}-${mode}-${animals.join("+")}-${outcome}-${time}.json`
 }
@@ -908,40 +897,8 @@ function showOverlay(s: Screen) {
             loadEndRollFont()
             showEndRoll(END_ROLL_WIDTH, END_ROLL_HEIGHT)
             return
-        case "roundResult": {
-            const last = s.match[s.match.length - 1]
-            return showRoundResult({
-                difficulty: DIFFICULTY_LABELS[s.difficulty],
-                round: s.match.length,
-                winner: last.winner,
-                dots: last.dots,
-                scores: last.scores,
-                wins: roundWins(s.match),
-                items: ROUND_CHOICES.map((c) => ({
-                    label: ROUND_LABELS[c],
-                    selected: c === s.choice,
-                })),
-            })
-        }
-        case "matchResult":
-            return showMatchResult({
-                difficulty: DIFFICULTY_LABELS[s.difficulty],
-                winner: s.winner,
-                rounds: s.match,
-                wins: roundWins(s.match),
-                items: END_CHOICES.map((c) => ({
-                    label: MATCH_LABELS[c],
-                    selected: c === s.choice,
-                })),
-            })
     }
 }
-
-// The round result's menu: Quit drops the match for stage select.
-const ROUND_LABELS = { nextRound: "Next round", quit: "Quit" } as const
-
-// The match result's menu: Retry plays a new match.
-const MATCH_LABELS = { retry: "Rematch", stageSelect: "Stage select" } as const
 
 const END_LABELS: Record<EndChoice, string> = {
     retry: "Retry",
@@ -970,7 +927,6 @@ function storyLabel(choice: StoryChoice): string {
 const MODE_LABELS: Record<Mode, string> = {
     solo: "1 player",
     coop: "Co-op",
-    versus: "Versus",
 }
 
 const TITLE_LABELS: Record<TitleChoice, string> = {

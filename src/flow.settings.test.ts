@@ -57,10 +57,9 @@ function press(screen: Screen, presses: Action[], d = deps()): Screen {
     return presses.reduce((s, action) => update(s, input([action]), d), screen)
 }
 
-// The title with the cursor on Settings (after the three modes; the mode
-// stays the last one passed, versus).
-const titleOnSettings = (): Screen =>
-    press(initialScreen(), ["down", "down", "down"])
+// The title with the cursor on Settings (after the two modes; the mode
+// stays the last one passed, co-op).
+const titleOnSettings = (): Screen => press(initialScreen(), ["down", "down"])
 
 // A paused game (1-player unless `mode` says co-op) with the cursor on
 // Settings.
@@ -87,7 +86,7 @@ describe("opening the settings", () => {
         )
         expect(settings).toEqual({
             kind: "settings",
-            mode: "versus",
+            mode: "coop",
             back: title,
             row: 0,
             settings: saved,
@@ -169,15 +168,15 @@ describe("Back from the settings", () => {
     })
 
     it("follows player 1 only from the title, even in a 2-player mode", () => {
-        const title = press(initialScreen(), ["down", "down", "down"])
-        expect(title).toMatchObject({ mode: "versus", onSettings: true })
+        const title = press(initialScreen(), ["down", "down"])
+        expect(title).toMatchObject({ mode: "coop", onSettings: true })
         const settings = press(title, ["confirm"])
         for (const action of ["down", "right", "pause"] as Action[]) {
             expect(update(settings, input([], [action]), deps())).toBe(settings)
         }
     })
 
-    it.each(["coop", "versus"] as const)(
+    it.each(["coop"] as const)(
         "from pause in %s, follows either player",
         (mode) => {
             const paused = pausedOnSettings(mode)
@@ -285,9 +284,9 @@ describe("the settings rows", () => {
 describe("selectItem on the title, pause and settings", () => {
     it("puts the title's cursor on Settings and back on a mode", () => {
         const title = initialScreen()
-        const onSettings = selectItem(title, 3)
+        const onSettings = selectItem(title, 2)
         expect(onSettings).toEqual({ ...title, onSettings: true })
-        expect(selectItem(onSettings, 3)).toBe(onSettings)
+        expect(selectItem(onSettings, 2)).toBe(onSettings)
         expect(update(onSettings, input(["confirm"]), deps())).toMatchObject({
             kind: "settings",
         })

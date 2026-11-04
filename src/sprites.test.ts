@@ -251,7 +251,7 @@ describe("the outline", () => {
         for (const [a, b] of changed) {
             expect([a, b]).toEqual(["#000000", "#d6d9e0"])
         }
-        expect(badgePixels("stunned", "#d6d9e0").flat()).toContain("#d6d9e0")
+        expect(badgePixels("frozen", "#d6d9e0").flat()).toContain("#d6d9e0")
     })
 })
 

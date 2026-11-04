@@ -6,8 +6,6 @@ import {
     overlayTap,
     showDifficultySelect,
     showGameOver,
-    showMatchResult,
-    showRoundResult,
     showStageClear,
     showStageSelect,
 } from "./ui"
@@ -107,26 +105,5 @@ describe("end screens' difficulty", () => {
         ])
         showGameOver({ difficulty: "Easy", score: 10, items: menu })
         expect(lines()).toEqual(["Difficulty Easy", "Score 10"])
-    })
-
-    it("shows it first on a versus round's and match's result", () => {
-        showRoundResult({
-            difficulty: "Hard",
-            round: 1,
-            winner: 0,
-            dots: [12, 9],
-            scores: [120, 90],
-            wins: [1, 0],
-            items: menu,
-        })
-        expect(lines()[0]).toBe("Difficulty Hard")
-        showMatchResult({
-            difficulty: "Hard",
-            winner: 0,
-            rounds: [{ winner: 0, dots: [12, 9] }],
-            wins: [2, 0],
-            items: menu,
-        })
-        expect(lines()[0]).toBe("Difficulty Hard")
     })
 })

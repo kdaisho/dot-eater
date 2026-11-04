@@ -153,7 +153,7 @@ describe("regrowing dots", () => {
         expect(state.players[1].character.pos).toEqual(vec2(7, 1))
         for (let i = 0; i < TICK_RATE * 2; i++) tick(state)
         expect(state.cells[1][7]).toBe(Cell.none)
-        takeOut(state.players[1], null)
+        takeOut(state.players[1])
         tick(state)
         expect(state.cells[1][7]).toBe(Cell.dot)
     })
@@ -192,9 +192,9 @@ describe("regrowing dots", () => {
         ])
     })
 
-    it("counts toward a versus player's dots", () => {
+    it("counts toward a co-op player's dots", () => {
         const state = regrowGame(hall, [vec2(1, 1), vec2(4, 1)], 1, {
-            mode: "versus",
+            mode: "coop",
         })
         // Player 1 eats (2, 1) and walks on past; player 2 takes it once
         // it is back.
