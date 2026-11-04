@@ -10,9 +10,8 @@ import { MusicTrackId, stageTrack } from "./music"
 import type { Settings } from "./settings"
 import { breathSfx, SfxId } from "./sfx"
 
-// The effect a game event plays, if any. playerRespawned plays nothing: a
-// versus player coming back makes no sound. Nor does a dot growing back
-// (KDA-269): dots regrow about as often as they are eaten, so a sound for
+// The effect a game event plays, if any. A dot growing back (KDA-269)
+// plays nothing: dots regrow about as often as they are eaten, so a sound for
 // it would echo every dot blip a few seconds later, often off screen; its
 // sparkle is enough.
 export function soundForEvent(event: GameEvent): SfxId | undefined {
@@ -50,13 +49,10 @@ export function soundForEvent(event: GameEvent): SfxId | undefined {
             return SfxId.hurt
         case "playerCaught":
             return SfxId.caught
-        case "playerStunned":
-            return SfxId.stunned
         case "gameWon":
             return SfxId.stageClear
         case "gameLost":
             return SfxId.gameOver
-        case "playerRespawned":
         case "dotRegrown":
             return undefined
     }
@@ -113,8 +109,6 @@ export function musicForScreen(screen: Screen): MusicCue | undefined {
         case "paused":
             return { track: stageTrack(screen.level), paused: true }
         case "ending":
-        case "roundResult":
-        case "matchResult":
         case "stageClear":
         case "gameOver":
         case "storyClear":

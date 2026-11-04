@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vite-plus/test"
-import { AiType, Cell, PLAYER_RESPAWN_DELAY, TICK_RATE } from "../constants"
+import { AiType, Cell } from "../constants"
 import { footprint } from "../boss"
 import {
     DEFAULT_DIFFICULTY,
@@ -9,7 +9,7 @@ import {
 } from "../difficulty"
 import { wrapDelta } from "../glide"
 import { DEFAULT_ANIMAL } from "../roster"
-import { createGameState, IDLE, step, takeOut } from "../game"
+import { createGameState } from "../game"
 import { parseLevel, SPAWN_GAP, type Cells, type Level } from "../level"
 import { slideReach } from "../ice"
 import { distanceMap, openNeighbours } from "../path"
@@ -169,34 +169,6 @@ describe("levels", () => {
                     expect(gap(player, other)).toBeGreaterThanOrEqual(SPAWN_GAP)
                 }
             }
-        }
-    )
-
-    // With both players out, player 1 coming back (as in versus) and
-    // player 2 for good, the game goes on: player 1 is back within a
-    // couple of seconds of its wait.
-    it.each(everyLevel)(
-        "stage %i (%s) brings a versus player back while nobody is in play",
-        (_n, _difficulty, level) => {
-            const state = createGameState(
-                level,
-                [DEFAULT_ANIMAL, DEFAULT_ANIMAL],
-                "versus"
-            )
-            const [p1, p2] = state.players
-            takeOut(p1, PLAYER_RESPAWN_DELAY)
-            takeOut(p2, null)
-            const max = (PLAYER_RESPAWN_DELAY + 2) * TICK_RATE
-            for (let i = 0; i < max && p1.out; i++) {
-                const outcome = step(
-                    state,
-                    1 / TICK_RATE,
-                    [IDLE, IDLE],
-                    () => 0
-                )
-                expect(outcome).toBeNull()
-            }
-            expect(p1.out).toBe(false)
         }
     )
 

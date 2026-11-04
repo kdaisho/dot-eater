@@ -308,12 +308,12 @@ describe("enemyBreathTarget", () => {
             player: 0,
             facing: up,
         })
-        takeOut(state.players[0], null)
+        takeOut(state.players[0])
         expect(enemyBreathTarget(state, enemy)).toEqual({
             player: 1,
             facing: left,
         })
-        takeOut(state.players[1], null)
+        takeOut(state.players[1])
         expect(enemyBreathTarget(state, enemy)).toBeNull()
     })
 })
@@ -449,20 +449,6 @@ describe("the breath, through step", () => {
         expect(eventsOf(state, "enemyWindUp")).toHaveLength(1)
     })
 
-    it("hurts either player in versus, as an enemy hit, not a stun", () => {
-        const state = game([vec2(3, 1), vec2(4, 1)], [breather(1, 1)], {
-            mode: "versus",
-        })
-        expect(ticksUntil(state, "enemyBreathed")).toBe(1 + WIND_UP)
-        expect(state.players.map((p) => p.health)).toEqual([
-            MAX_HEALTH - ENEMY_BREATH_DAMAGE,
-            MAX_HEALTH - ENEMY_BREATH_DAMAGE,
-        ])
-        expect(eventsOf(state, "hurt").map((e) => e.player)).toEqual([0, 1])
-        expect(eventsOf(state, "playerStunned")).toEqual([])
-        expect(state.players.every((p) => p.stunnedFor === 0)).toBe(true)
-    })
-
     it("doesn't breathe on the tick the last dot is eaten", () => {
         const map = textMap(["#######", "#    .#", "#######"]).map
         const state = game(vec2(4, 1), [breather(1, 1)], { map, health: 1 })
@@ -566,7 +552,7 @@ describe("calling the breath off", () => {
 
     it("is done while nobody is in play", () => {
         const { state, enemy } = windingUp()
-        takeOut(state.players[0], 10)
+        takeOut(state.players[0])
         tick(state)
         expect(enemy.breath!.windingUp).toBe(0)
     })

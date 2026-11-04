@@ -123,10 +123,6 @@ export function effectsForEvent(
             particles.burst("caught", event.at)
             shake.add(SHAKES.caught)
             return
-        case "playerStunned":
-            shake.add(SHAKES.stun)
-            return
-        case "playerRespawned":
         case "gameWon":
         case "gameLost":
             return

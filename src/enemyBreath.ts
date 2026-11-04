@@ -53,9 +53,8 @@ import { samePos, vec2, type Vec2 } from "./vec2"
 // - Hit: every player in play on one of its cells, or drawn within
 //   CATCH_DISTANCE of one (see struckPlayers in bossBreath.ts), is hurt
 //   through hurtPlayer for ENEMY_BREATH_DAMAGE, knocked away from the
-//   breather, with the usual invulnerability. In versus either player can
-//   be hit, as by any enemy (not a stun). Enemies and the boss never are.
-//   No breath on a tick the stage is already cleared (but in versus), as a
+//   breather, with the usual invulnerability. Enemies and the boss never
+//   are. No breath on a tick the stage is already cleared, as a
 //   touch on that tick costs nothing either.
 // - Between breaths it keeps its distance (see breatherStep in ai.ts).
 //
@@ -237,7 +236,7 @@ export function enemyBreathTarget(
 // over.
 export function tickEnemyBreaths(state: GameState) {
     const nobody = playersInPlay(state).length === 0
-    const over = cleared(state) && state.mode !== "versus"
+    const over = cleared(state)
     state.enemies.forEach((enemy, i) => {
         const breath = enemy.breath
         if (!breath) return

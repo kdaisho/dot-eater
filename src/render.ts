@@ -73,7 +73,6 @@ import {
 import { isSplitterHalf } from "./splitter"
 import {
     ANIMAL_SPRITES,
-    BadgeId,
     BOSS_SPRITES,
     createSpriteCache,
     drawSprite,
@@ -100,7 +99,7 @@ import {
     type MapArt,
     type TileStyle,
 } from "./tiles"
-import { stunImmune, stunned } from "./versus"
+import { panicked } from "./panic"
 
 // What the HUD strip above the maze shows. Fields left out aren't drawn.
 export type Hud = {
@@ -113,17 +112,16 @@ export type Hud = {
     // first: drawn in place of `score`, `energy` and `health`, player 1 on
     // the left and player 2 on the right, in their marker colours.
     players?: readonly PlayerHud[]
-    // Versus: the round and tally (e.g. "Round 2 · 1–0"), drawn in the
-    // middle. A co-op story run (KDA-271) puts its total there too
-    // ("Total 1230").
-    round?: string
+    // With two players, a co-op story run's (KDA-271) total so far
+    // ("Total 1230"), drawn in the middle.
+    total?: string
     // On a boss level, the boss's health (see bossHud in game.ts): the
     // stage's goal (KDA-267), drawn as a band along the bottom of the
     // strip, in every mode, so it shows wherever the boss is on the map.
     boss?: HealthHud
     // The difficulty's name (e.g. "Hard"), small: with one player between
     // the meter and the health gauge, with two in the middle (under the
-    // round in versus).
+    // total in a story run).
     difficulty?: string
 }
 
@@ -132,14 +130,9 @@ export type PlayerHud = {
     energy: EnergyHud
     // Its health gauge, drawn under its meter in its marker colour.
     health?: HealthHud
-    // Set while the player is out of play (see takeOut in game.ts): the
-    // seconds until it is back, or null if it is out for good. Drawn in
-    // place of its meter.
-    out?: { respawnIn: number | null }
-    // Versus: the player's dot count, drawn in place of its score.
-    dots?: number
-    // Versus: the seconds left of a stun, drawn in place of its meter.
-    stunned?: number
+    // Whether the player is out of play (see takeOut in game.ts): OUT is
+    // drawn in place of its meter.
+    out?: boolean
 }
 
 // Visual effects drawn with the game (KDA-213), none of them part of it.
@@ -238,7 +231,7 @@ const LABEL_SCALE = 0.4
 
 // The facing arrow (see Effects.arrows): a filled triangle in the player's
 // colour just outside its ring, pointing the way it faces, shown only while
-// its breath could fire (charged, not stunned).
+// its breath could fire (charged, not panicked).
 // Its tip is this far from the sprite's centre and its base this wide, in
 // cells.
 const ARROW_TIP = 0.7
@@ -1207,7 +1200,6 @@ function drawCharacters(
         rate: 1,
         facingX: null,
         marker: null,
-        badge: null,
         arrow: null,
         aura: null,
     })
@@ -1227,14 +1219,13 @@ function drawCharacters(
                           rate: player.rate,
                           facingX: player.breather.facing.x,
                           marker: marked ? i : null,
-                          badge: versusBadge(player),
                           arrow:
                               arrows &&
-                              !stunned(player) &&
+                              !panicked(player) &&
                               canBreathe(player.breather)
                                   ? { index: i, facing: player.breather.facing }
                                   : null,
-                          aura: stunned(player)
+                          aura: panicked(player)
                               ? null
                               : chargeAura(player.breather, reducedMotion),
                       },
@@ -1243,7 +1234,7 @@ function drawCharacters(
         ...free.map(enemySprite),
     ]
     for (const sprite of sprites) {
-        const { character, rate, marker, badge, arrow, aura } = sprite
+        const { character, rate, marker, arrow, aura } = sprite
         const isPlayer = character.id === CharacterId.player
         if (!isPlayer && !enemyVisible(character)) continue
         const index = isPlayer
@@ -1320,12 +1311,9 @@ function drawCharacters(
                 drawTile(ctx, tile, x - box / 2, y - box / 2, box)
             }
             if (marker !== null) drawMarker(ctx, marker, x, y, size)
-            // A stunned player (versus) wears the stun badge, and one
-            // immune just after a stun the immune badge, like a status's.
-            const badges = [
-                ...looks.flatMap((look) => (look.badge ? [look.badge] : [])),
-                ...(badge ? [badge] : []),
-            ]
+            const badges = looks.flatMap((look) =>
+                look.badge ? [look.badge] : []
+            )
             badges.forEach((id, i) => {
                 drawSprite(
                     ctx,
@@ -1569,7 +1557,7 @@ function drawArrow(
 // Score on the left, the health gauge on the right, the energy meter in the
 // middle. With two players (hud.players): player 1's score, meter and
 // health on the left, player 2's on the right, each in its marker colour,
-// and in versus the round in the middle. On a boss level, the boss's band
+// and in a story run the total in the middle. On a boss level, the boss's band
 // along the bottom under all of them. The difficulty goes where there is
 // room (see Hud).
 function drawHud(
@@ -1613,7 +1601,7 @@ function drawHud(
     }
 }
 
-// The difficulty label's text size, and the versus round's when it shares
+// The difficulty label's text size, and the run total's when it shares
 // the middle with it, as a fraction of the HUD strip's height.
 const LABEL_SIZE = 0.45
 
@@ -1683,9 +1671,7 @@ function drawPlayersHud(
         ctx.fillStyle = color
         ctx.textAlign = left ? "left" : "right"
         ctx.fillText(
-            player.dots === undefined
-                ? `${i + 1}P ${player.score}`
-                : `${i + 1}P ${DOT_MARK}${player.dots}`,
+            `${i + 1}P ${player.score}`,
             left ? pad : width - pad,
             height / 2
         )
@@ -1694,36 +1680,15 @@ function drawPlayersHud(
             ctx.textAlign = "center"
             // Squeezed into the meter's width, so it never runs into the
             // score on a narrow screen.
-            ctx.fillText(outLabel(player.out), meterLeft + w / 2, height / 2, w)
+            ctx.fillText(OUT_LABEL, meterLeft + w / 2, height / 2, w)
             return
         }
-        // With a health gauge, the meter (or the stun countdown) takes the
-        // top of the slot and the gauge the bottom.
+        // With a health gauge, the meter takes the top of the slot and the
+        // gauge the bottom.
         const meter = player.health
             ? { top: height * 0.1, h: height * 0.38 }
             : { top: height * 0.3, h: height * METER_HEIGHT }
-        if (player.stunned !== undefined) {
-            ctx.textAlign = "center"
-            const label = stunLabel(player.stunned)
-            const y = meter.top + meter.h / 2
-            ctx.save()
-            // Sized to the meter's band, so it stays clear of the gauge.
-            if (player.health) {
-                ctx.font = `${Math.round(meter.h * 1.1)}px monospace`
-            }
-            ctx.fillText(label, meterLeft + w / 2, y, w)
-            ctx.restore()
-        } else {
-            drawMeter(
-                ctx,
-                player.energy,
-                meterLeft,
-                meter.top,
-                w,
-                meter.h,
-                color
-            )
-        }
+        drawMeter(ctx, player.energy, meterLeft, meter.top, w, meter.h, color)
         if (player.health) {
             const top = height * 0.6
             drawGauge(
@@ -1737,14 +1702,14 @@ function drawPlayersHud(
             )
         }
     })
-    // The middle, between the two meters: the round and the difficulty, one
-    // above the other when there are both, the lower one clear of a boss
-    // band. Player 1's meter ends at 35% of the width, and player 2's starts
-    // at 65%.
+    // The middle, between the two meters: the run total and the
+    // difficulty, one above the other when there are both, the lower one
+    // clear of a boss band. Player 1's meter ends at 35% of the width, and
+    // player 2's starts at 65%.
     const middle = width * 0.3 - 2 * pad
-    if (hud.round !== undefined && hud.difficulty !== undefined) {
+    if (hud.total !== undefined && hud.difficulty !== undefined) {
         const size = height * LABEL_SIZE
-        drawLabel(ctx, hud.round, width / 2, height * 0.29, {
+        drawLabel(ctx, hud.total, width / 2, height * 0.29, {
             width: middle,
             size,
         })
@@ -1752,10 +1717,10 @@ function drawPlayersHud(
             width: middle,
             size,
         })
-    } else if (hud.round !== undefined) {
+    } else if (hud.total !== undefined) {
         ctx.fillStyle = COLORS.text
         ctx.textAlign = "center"
-        ctx.fillText(hud.round, width / 2, height / 2)
+        ctx.fillText(hud.total, width / 2, height / 2)
     } else if (hud.difficulty !== undefined) {
         drawLabel(ctx, hud.difficulty, width / 2, height / 2, {
             width: middle,
@@ -1764,37 +1729,9 @@ function drawPlayersHud(
     }
 }
 
-// Marks a versus player's dot count in the HUD.
-const DOT_MARK = "●"
-
-// What a stunned player's HUD slot shows: the whole seconds left (rounded
-// up), like an out player's "back in".
-export function stunLabel(seconds: number): string {
-    return `stunned ${Math.max(1, Math.ceil(seconds - 1e-9))}`
-}
-
-// Drawn on a stunned player's sprite.
-export const STUN_BADGE = BadgeId.stunned
-
-// Drawn on a versus player's sprite while it is immune to stuns, just after
-// one wore off (see STUN_IMMUNITY_SECONDS in versus.ts).
-export const IMMUNE_BADGE = BadgeId.immune
-
-// The badge a versus player's sprite wears: the stun badge while stunned,
-// the immune badge while immune, else none.
-function versusBadge(player: Player): BadgeId | null {
-    if (stunned(player)) return STUN_BADGE
-    return stunImmune(player) ? IMMUNE_BADGE : null
-}
-
-// What an out player's HUD slot shows: the whole seconds left until it is
-// back (rounded up, so it counts 3, 2, 1), "back soon" once it is due but
-// waiting for its spawn to be clear, or that it is out for good.
-export function outLabel(out: { respawnIn: number | null }): string {
-    if (out.respawnIn === null) return "OUT"
-    if (out.respawnIn <= 0) return "back soon"
-    return `back in ${Math.max(1, Math.ceil(out.respawnIn - 1e-9))}`
-}
+// What an out player's HUD slot shows in place of its meter: a co-op
+// player knocked out is out for good.
+export const OUT_LABEL = "OUT"
 
 // A health gauge: a bar `w` by `h` from (`left`, `top`), filled in `color`
 // up to the health left, framed in it too.

@@ -136,22 +136,22 @@ describe("the HUD's difficulty", () => {
         expect(label?.max).toBeLessThan(size(3).width * 0.3)
     })
 
-    it("goes under the round in versus, both in the middle", () => {
+    it("goes under a story run's total, both in the middle", () => {
         const { renderer, texts, size } = setup()
-        renderer.draw(pair("versus"), 0, {
-            round: "Round 2 · 1–0",
+        renderer.draw(pair("coop"), 0, {
+            total: "Total 1230",
             players: [
-                { score: 0, dots: 1, energy: meter, health },
-                { score: 0, dots: 2, energy: meter, health },
+                { score: 0, energy: meter, health },
+                { score: 0, energy: meter, health },
             ],
             difficulty: "Easy",
         })
-        const round = texts.find((t) => t.text === "Round 2 · 1–0")
+        const total = texts.find((t) => t.text === "Total 1230")
         const label = texts.find((t) => t.text === "Easy")
         const { width, hud } = size(3)
-        expect(round?.x).toBeCloseTo(width / 2)
+        expect(total?.x).toBeCloseTo(width / 2)
         expect(label?.x).toBeCloseTo(width / 2)
-        expect(round!.y).toBeLessThan(hud / 2)
+        expect(total!.y).toBeLessThan(hud / 2)
         expect(label!.y).toBeGreaterThan(hud / 2)
         expect(label!.y).toBeLessThan(hud)
     })

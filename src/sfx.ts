@@ -37,11 +37,9 @@ export const SfxId = {
     hurt: "hurt",
     // A player knocked out: its health gone.
     caught: "caught",
-    // Versus: a player stunned by the other's breath.
-    stunned: "stunned",
     // A Splitter dropped a dot (KDA-270): a soft, low plop.
     dotDropped: "dotDropped",
-    // Results: also fit a won or lost versus round.
+    // Results
     stageClear: "stageClear",
     gameOver: "gameOver",
     // Menus
@@ -445,12 +443,6 @@ export const SFX: Readonly<Record<SfxId, readonly Tone[]>> = {
             attack: 0.01,
         },
     ],
-    // A dizzy wobble: three falling chirps.
-    stunned: arpeggio(["G6", "E6", "C6"], 0.08, 0.08, {
-        wave: "triangle",
-        freqEnd: 900,
-        volume: 0.3,
-    }),
     // A soft, low plop, falling: quieter than the dot blip, since every
     // Splitter makes one every few seconds, wherever it is.
     dotDropped: [

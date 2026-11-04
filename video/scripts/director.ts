@@ -630,7 +630,6 @@ export function playScene(def: SceneDef, seed = def.seed): SceneRun {
         def.level,
         def.animals,
         def.mode,
-        [],
         def.difficulty ?? "medium"
     )
     if (start.kind !== "playing") throw new Error("Not playing")

@@ -22,8 +22,6 @@ export const SHAKES = {
     // The Boar's Rush ramming something (KDA-304): a jolt, under a hit's
     // (a ram that defeats or hurts adds that shake too).
     ram: 0.2,
-    // Versus: a player stunned by the other's breath.
-    stun: 0.2,
     // A player hurt with health left (KDA-257).
     hurt: 0.3,
     // The boss breathing (KDA-268), whoever it hits.

@@ -6,7 +6,6 @@ import {
     Cell,
     ENEMY_DAMAGE,
     MAX_HEALTH,
-    PLAYER_RESPAWN_DELAY,
     TICK_RATE,
 } from "./constants"
 import {
@@ -26,7 +25,6 @@ import {
     makeState,
     textMap,
 } from "./test/helpers"
-import { CATCH_DOTS } from "./versus"
 import { vec2, type Vec2 } from "./vec2"
 
 const east = vec2(1, 0)
@@ -182,17 +180,17 @@ describe("knockBack", () => {
     })
 
     it("doesn't move a player out of play", () => {
-        const state = roomState("versus")
+        const state = roomState("coop")
         state.players[0].out = true
         expect(knockBack(state, state.players[0], east)).toBe(false)
     })
 })
 
 describe("knockBack with players bumping", () => {
-    // Player 1 at (3, 2) and player 2 at `p2`, both at rest, in versus.
+    // Player 1 at (3, 2) and player 2 at `p2`, both at rest, in co-op.
     function pair(p2: Vec2 = vec2(4, 2)) {
         const state = makeState(room.map, [vec2(3, 2), p2], [], {
-            mode: "versus",
+            mode: "coop",
             health: MAX_HEALTH,
         })
         for (const p of state.players) p.character.moveProgress = 1
@@ -293,7 +291,7 @@ describe("hurtPlayer", () => {
     })
 
     it("doesn't hurt a player out of play", () => {
-        const state = roomState("versus")
+        const state = roomState("coop")
         state.players[1].out = true
         expect(hurtPlayer(state, state.players[1], 10, vec2(0, 0))).toBe(false)
         expect(state.players[1].health).toBe(MAX_HEALTH)
@@ -313,7 +311,6 @@ describe("hurtPlayer", () => {
                 type: "playerCaught",
                 player: 0,
                 at: vec2(3, 2),
-                outForGood: true,
             },
         ])
         // Already knocked out: nothing more.
@@ -333,24 +330,9 @@ describe("hurtPlayer", () => {
         p1.health = 5
         hurtPlayer(state, p1, ENEMY_DAMAGE, vec2(2.5, 2))
         expect(p1.out).toBe(true)
-        expect(p1.respawnIn).toBeNull()
         expect(p2.out).toBe(false)
         expect(state.events).toContainEqual(
-            expect.objectContaining({ type: "playerCaught", outForGood: true })
-        )
-    })
-
-    it("costs a versus player its dots and takes it out for a while at 0", () => {
-        const state = roomState("versus")
-        const p1 = state.players[0]
-        p1.dots = CATCH_DOTS + 2
-        p1.health = 5
-        hurtPlayer(state, p1, ENEMY_DAMAGE, vec2(2.5, 2))
-        expect(p1.dots).toBe(2)
-        expect(p1.out).toBe(true)
-        expect(p1.respawnIn).toBe(PLAYER_RESPAWN_DELAY)
-        expect(state.events).toContainEqual(
-            expect.objectContaining({ type: "playerCaught", outForGood: false })
+            expect.objectContaining({ type: "playerCaught" })
         )
     })
 })
@@ -378,16 +360,13 @@ describe("a knockback onto the last dot", () => {
 
     // Regression: clearing was checked before the hits, so the stage was
     // only won on the next tick.
-    it.each(["solo", "coop", "versus"] as const)(
-        "wins on that tick (%s)",
-        (mode) => {
-            const { state, outcome } = lastDotHit(mode)
-            expect(state.players[0].health).toBe(MAX_HEALTH - ENEMY_DAMAGE)
-            expect(state.players[0].character.pos).toEqual(vec2(1, 1))
-            expect(state.cells[1][1]).toBe(Cell.none)
-            expect(outcome).toBe("won")
-        }
-    )
+    it.each(["solo", "coop"] as const)("wins on that tick (%s)", (mode) => {
+        const { state, outcome } = lastDotHit(mode)
+        expect(state.players[0].health).toBe(MAX_HEALTH - ENEMY_DAMAGE)
+        expect(state.players[0].character.pos).toEqual(vec2(1, 1))
+        expect(state.cells[1][1]).toBe(Cell.none)
+        expect(outcome).toBe("won")
+    })
 })
 
 describe("playerVisible", () => {
@@ -409,7 +388,7 @@ describe("playerVisible", () => {
     })
 
     it("hides a player out of play", () => {
-        const state = roomState("versus")
+        const state = roomState("coop")
         state.players[1].out = true
         expect(playerVisible(state.players[1])).toBe(false)
     })

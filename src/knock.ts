@@ -1,9 +1,9 @@
-import { Cell, ENEMY_DAMAGE } from "./constants"
+import { Cell } from "./constants"
 import { damageBoss, inFootprint } from "./boss"
 import { defeatEnemy, inPlay, playersInPlay } from "./breath"
 import type { Character } from "./character"
 import { emit } from "./events"
-import { eatDot, hurtPlayer, type GameState, type Player } from "./game"
+import { eatDot, type GameState, type Player } from "./game"
 import { loopPos } from "./level"
 import { samePos, vec2, type Vec2 } from "./vec2"
 
@@ -19,8 +19,7 @@ import { samePos, vec2, type Vec2 } from "./vec2"
 //
 // - enemies shoved down the chain are only pushed, never defeated
 //   (regular enemies have no health);
-// - a player shoved down it takes no damage in solo and co-op (a push
-//   only), but in versus it is a real hit (see hurtPlayer);
+// - a player shoved down it takes no damage (a push only);
 // - the boss is too big to shove (2x2): the chain stops at it, and it
 //   takes a little damage, `bossDamage`.
 //
@@ -136,8 +135,8 @@ export function knockFlying(
             ),
         })
     }
-    // The shoved first, front to back, so the dots they pass are eaten and
-    // their hits land before the fliers leave.
+    // The shoved first, front to back, so the dots they pass are eaten
+    // before the fliers leave.
     for (const car of cars.slice(1).reverse()) {
         const moved = !samePos(car.cell, car.from)
         for (const enemy of car.enemies) {
@@ -146,13 +145,9 @@ export function knockFlying(
             enemy.lastPos = vec2(car.cell.x, car.cell.y)
             enemy.moveProgress = 0
         }
+        if (!moved) continue
         for (const player of car.players) {
-            if (moved) shove(state, player, car.from, car.cell, step)
-            // In versus the chain is a real hit, from the car behind it.
-            if (state.mode === "versus") {
-                const behind = vec2(car.cell.x - step.x, car.cell.y - step.y)
-                hurtPlayer(state, player, ENEMY_DAMAGE, behind)
-            }
+            shove(state, player, car.from, car.cell, step)
         }
     }
     for (const enemy of fliers) {
