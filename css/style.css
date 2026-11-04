@@ -458,6 +458,41 @@ body[data-dpad="on"][data-touch="on"] #play {
     margin-top: 4px;
 }
 
+/* The soundtrack's track playing (KDA-321) shows at full strength. */
+.overlay-menu li.playing {
+    opacity: 1;
+}
+
+/* A track's progress bar and time, on a line of its own under it. */
+.overlay-menu .menu-progress {
+    align-items: center;
+    display: flex;
+    font-size: 0.6em;
+    gap: 8px;
+    justify-content: center;
+    margin-top: 6px;
+}
+
+.overlay-menu .menu-bar {
+    background: rgba(255, 255, 255, 0.25);
+    display: block;
+    height: 4px;
+    max-width: 240px;
+    width: 50%;
+}
+
+.overlay-menu .menu-bar-fill {
+    background: #fff;
+    display: block;
+    height: 100%;
+    width: 0;
+}
+
+.overlay-menu .menu-time {
+    font-size: inherit;
+    font-variant-numeric: tabular-nums;
+}
+
 .overlay-menu li.locked {
     opacity: 0.3;
 }

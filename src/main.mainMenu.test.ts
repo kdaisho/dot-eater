@@ -3,7 +3,7 @@ import { beforeAll, describe, expect, it, vi } from "vite-plus/test"
 import type { Pad } from "./gamepad"
 
 // main's main menu (KDA-318) end to end: the title's entries in order, and
-// each placeholder page (Tutorial, Soundtrack) opened and left with the
+// the Tutorial and Soundtrack pages opened and left with the
 // keys, a pad and taps, back on its entry; the Cards page is
 // main.cards.test.ts's. (A separate file, since main is imported once per
 // module graph.)
@@ -103,11 +103,14 @@ describe("main's main menu", () => {
             pressAndTick("Space")
             expect(screen()).toBe(page.screen)
             expect(title()).toBe(page.name)
-            expect(lines()[0]).toBe("Coming soon")
             expect(overlay()?.querySelector("[data-back]")).not.toBeNull()
-            // Confirm does nothing there yet.
-            pressAndTick("Space")
-            expect(screen()).toBe(page.screen)
+            // Confirm does nothing on a placeholder (the soundtrack has
+            // its own tests: main.soundtrack.test.ts).
+            if (page.screen !== "soundtrack") {
+                expect(lines()[0]).toBe("Coming soon")
+                pressAndTick("Space")
+                expect(screen()).toBe(page.screen)
+            }
             pressAndTick("Escape")
             expect(screen()).toBe("title")
             expect(selectedItem()).toBe(page.name)

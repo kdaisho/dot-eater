@@ -92,3 +92,19 @@ export function loopOffset(track: RecordedTrack, position: number): number {
     if (position < loopEnd) return Math.max(0, position)
     return loopStart + ((position - loopEnd) % (loopEnd - loopStart))
 }
+
+// How far into its file a track is after `position` seconds of play (see
+// Audio.musicPosition), for the soundtrack page (KDA-321), and how long the
+// part that plays is: loopEnd, since the second cut past it is never heard.
+// No position (not playing, or no sound) is the start.
+export function trackProgress(
+    track: RecordedTrack,
+    position: number | undefined
+): { elapsed: number; length: number } {
+    const length = track.loopEnd
+    const elapsed =
+        position === undefined
+            ? 0
+            : Math.min(loopOffset(track, position), length)
+    return { elapsed, length }
+}
