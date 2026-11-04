@@ -377,6 +377,319 @@ body[data-dpad="on"][data-touch="on"] #play {
     padding: 0;
 }
 
+/* The tutorial (KDA-319, src/tutorialView.ts): the "Pixel kit" pages.
+   Pixel labels use Press Start 2P, the font the end roll bundles. --u is
+   a key's width on the drawn keyboard. */
+.tutorial {
+    --u: 28px;
+    align-items: center;
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+    padding-bottom: 12px;
+}
+
+@media (max-width: 600px) {
+    .tutorial {
+        --u: 17px;
+    }
+}
+
+.tutorial .tut-col {
+    align-items: center;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    max-width: 100%;
+}
+
+.tutorial .tut-row {
+    align-items: center;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px 22px;
+    justify-content: center;
+    max-width: 100%;
+}
+
+.tutorial .tut-line {
+    font-size: 18px;
+    line-height: 24px;
+    max-width: 40em;
+}
+
+.tutorial .tut-caption {
+    min-height: 48px;
+}
+
+.tutorial .tut-small,
+.tutorial .tut-hint {
+    font-size: 15px;
+    line-height: 20px;
+}
+
+.tutorial .tut-hint {
+    opacity: 0.85;
+}
+
+.tutorial .tut-tiny {
+    font-size: 12px;
+    line-height: 15px;
+    opacity: 0.8;
+}
+
+.tutorial .tut-px {
+    font-family: "Press Start 2P", monospace;
+    font-size: 10px;
+    line-height: 16px;
+}
+
+.tutorial .tut-name {
+    font-size: 8px;
+}
+
+.tutorial .p1c {
+    color: #60a5fa;
+}
+
+.tutorial .p2c {
+    color: #f87171;
+}
+
+/* The scenes and the pad: canvases scaled up with crisp pixels, never
+   wider than the overlay. */
+.tutorial .tut-pixels {
+    display: block;
+    height: auto;
+    image-rendering: pixelated;
+    max-width: 100%;
+}
+
+/* The keyboard: grey caps, each player's in its colour, Esc white; a lit
+   key is pressed down. */
+.tutorial .tut-kb {
+    flex: none;
+    height: calc(var(--u) * 6.25);
+    max-width: 100%;
+    position: relative;
+    width: calc(var(--u) * 18.5);
+}
+
+.tutorial .tut-cap {
+    align-items: center;
+    background: #5c5c5c;
+    box-shadow:
+        inset -2px -3px 0 #3c3c3c,
+        inset 2px 2px 0 #7c7c7c,
+        0 0 0 2px #000;
+    color: #bcbcbc;
+    display: flex;
+    font-family: "Press Start 2P", monospace;
+    font-size: 7px;
+    height: calc(var(--u) - 4px);
+    justify-content: center;
+    line-height: 1;
+    overflow: hidden;
+    position: absolute;
+    white-space: nowrap;
+}
+
+@media (max-width: 600px) {
+    .tutorial .tut-cap {
+        font-size: 5px;
+    }
+}
+
+.tutorial .tut-cap.p1,
+.tutorial .tut-chip.p1 {
+    background: #1c4c9c;
+    color: #fcfcfc;
+}
+
+.tutorial .tut-cap.p1 {
+    box-shadow:
+        inset -2px -3px 0 #0c2c5c,
+        inset 2px 2px 0 #3c7cfc,
+        0 0 0 2px #000;
+}
+
+.tutorial .tut-cap.p2,
+.tutorial .tut-chip.p2 {
+    background: #a81800;
+    color: #fcfcfc;
+}
+
+.tutorial .tut-cap.p2 {
+    box-shadow:
+        inset -2px -3px 0 #581000,
+        inset 2px 2px 0 #f85838,
+        0 0 0 2px #000;
+}
+
+.tutorial .tut-cap.esc,
+.tutorial .tut-chip.esc {
+    background: #bcbcbc;
+    color: #000;
+}
+
+.tutorial .tut-cap.esc {
+    box-shadow:
+        inset -2px -3px 0 #7c7c7c,
+        inset 2px 2px 0 #fcfcfc,
+        0 0 0 2px #000;
+}
+
+/* Arrows and other signs the pixel font lacks. */
+.tutorial .tut-cap.sym {
+    font-family: monospace;
+    font-size: 13px;
+    font-weight: bold;
+}
+
+.tutorial .tut-chip.sym {
+    font-family: monospace;
+    font-size: 15px;
+    font-weight: bold;
+}
+
+.tutorial .tut-cap.p1.lit,
+.tutorial .tut-chip.p1.lit {
+    background: #3cbcfc;
+    color: #000;
+}
+
+.tutorial .tut-cap.p2.lit,
+.tutorial .tut-chip.p2.lit {
+    background: #f87858;
+    color: #000;
+}
+
+.tutorial .tut-cap.lit {
+    box-shadow:
+        inset 2px 2px 0 rgba(0, 0, 0, 0.3),
+        0 0 0 2px #fcfcfc;
+    transform: translateY(2px);
+}
+
+/* A key or button named in the text. */
+.tutorial .tut-chip {
+    align-items: center;
+    background: #5c5c5c;
+    box-shadow:
+        0 0 0 2px #000,
+        inset -2px -2px 0 rgba(0, 0, 0, 0.35);
+    color: #fcfcfc;
+    display: inline-flex;
+    font-family: "Press Start 2P", monospace;
+    font-size: 8px;
+    height: 22px;
+    justify-content: center;
+    line-height: 1;
+    margin: 3px;
+    min-width: 22px;
+    padding: 0 6px;
+    vertical-align: middle;
+}
+
+.tutorial .tut-chip.pad {
+    border-radius: 50%;
+    min-width: 22px;
+    padding: 0;
+    width: 22px;
+}
+
+.tutorial .tut-chip.pad.wide {
+    border-radius: 11px;
+    padding: 0 8px;
+    width: auto;
+}
+
+/* A legend: what each key or button does, chips on the left. */
+.tutorial .tut-legend {
+    align-items: center;
+    display: grid;
+    gap: 6px 12px;
+    grid-template-columns: auto 1fr;
+}
+
+.tutorial .tut-legend > * {
+    text-align: left;
+}
+
+.tutorial .tut-legend .tut-head {
+    grid-column: span 2;
+}
+
+/* The game's Breath button (src/dpad.ts), ready. */
+.tutorial .tut-breath-button {
+    align-items: center;
+    background: rgba(245, 158, 11, 0.2);
+    border: 2px solid #f59e0b;
+    border-radius: 50%;
+    box-sizing: border-box;
+    display: flex;
+    font-size: 22px;
+    height: 52px;
+    justify-content: center;
+    width: 52px;
+}
+
+/* The page dots, "n/N", the hint, and on touch Prev and Next. */
+.tutorial .tut-nav {
+    align-items: center;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-top: 6px;
+    width: 100%;
+}
+
+.tutorial .tut-dots {
+    display: flex;
+    gap: 8px;
+    justify-content: center;
+}
+
+.tutorial .tut-dots i {
+    background: #7c7c7c;
+    box-shadow: 0 0 0 2px #000;
+    display: block;
+    height: 8px;
+    width: 8px;
+}
+
+.tutorial .tut-dots i.on {
+    background: #f8d838;
+}
+
+.tutorial .tut-count {
+    opacity: 0.75;
+}
+
+.tutorial .tut-navrow {
+    align-items: center;
+    display: flex;
+    gap: 12px;
+    justify-content: space-between;
+    width: 100%;
+}
+
+.tutorial .tut-button {
+    background: none;
+    border: 2px solid #fff;
+    border-radius: 8px;
+    color: #fff;
+    cursor: pointer;
+    font-size: 18px;
+    line-height: 44px;
+    padding: 0 18px;
+}
+
+.tutorial .tut-button.ghost {
+    border-color: rgba(255, 255, 255, 0.35);
+    opacity: 0.8;
+}
+
 /* Touch controls (src/dpad.ts). Hidden unless the body's data attributes
    (setControls) say otherwise. Above the maze, under the overlays. */
 .touch-controls > * {

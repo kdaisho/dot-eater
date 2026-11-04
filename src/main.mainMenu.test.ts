@@ -58,9 +58,14 @@ const items = () =>
 const selectedItem = () => overlay()?.querySelector("li.selected")?.textContent
 
 const PAGES = [
-    { name: "Tutorial", screen: "tutorial", index: 2 },
-    { name: "Cards", screen: "cards", index: 3 },
-    { name: "Soundtrack", screen: "soundtrack", index: 4 },
+    { name: "Tutorial", screen: "tutorial", index: 2, heading: "How to play" },
+    { name: "Cards", screen: "cards", index: 3, heading: "Cards" },
+    {
+        name: "Soundtrack",
+        screen: "soundtrack",
+        index: 4,
+        heading: "Soundtrack",
+    },
 ] as const
 
 describe("main's main menu", () => {
@@ -102,11 +107,12 @@ describe("main's main menu", () => {
             expect(selectedItem()).toBe(page.name)
             pressAndTick("Space")
             expect(screen()).toBe(page.screen)
-            expect(title()).toBe(page.name)
+            expect(title()).toBe(page.heading)
             expect(overlay()?.querySelector("[data-back]")).not.toBeNull()
-            // Confirm does nothing on a placeholder (the soundtrack has
-            // its own tests: main.soundtrack.test.ts).
-            if (page.screen !== "soundtrack") {
+            // Confirm does nothing on a placeholder (the soundtrack and
+            // the tutorial have their own tests: main.soundtrack.test.ts,
+            // main.tutorial.test.ts).
+            if (page.screen === "cards") {
                 expect(lines()[0]).toBe("Coming soon")
                 pressAndTick("Space")
                 expect(screen()).toBe(page.screen)

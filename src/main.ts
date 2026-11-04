@@ -152,8 +152,16 @@ import {
     showTrackProgress,
     type EndScreenView,
 } from "./ui"
-import { heading, isTouchDevice, isTouchFirst, TouchSource } from "./touch"
+import {
+    heading,
+    isTouchDevice,
+    isTouchFirst,
+    swipeDirection,
+    TouchSource,
+} from "./touch"
 import { OPENING_DRUM } from "./opening"
+import { tutorialPages } from "./tutorial"
+import { drawTutorialFrame } from "./tutorialView"
 import { createOpeningLayer, openingItemAt } from "./openingView"
 
 // The game opens on the opening (opening.ts) on every load. Tests of the
@@ -509,6 +517,7 @@ function tick(dt: number) {
             : 1
     if (next !== screen) enter(screen, next)
     const due = moved ? effects.tick(dt * scale) : []
+    if (screen.kind === "tutorial") tutorialClock += dt
     if (game && due.length > 0) playEvents(due, game)
     // The way player 1 is going, for the flicks (see TouchSource.follow).
     const player =
@@ -593,6 +602,13 @@ function applyKeyBindings() {
 
 function enter(prev: Screen, next: Screen) {
     screen = next
+    // Each tutorial page plays its scenes from their start.
+    if (
+        next.kind === "tutorial" &&
+        (prev.kind !== "tutorial" || prev.page !== next.page)
+    ) {
+        tutorialClock = 0
+    }
     pads.setAssignment(padAssignment(next))
     pads.setMenus(next.kind !== "playing")
     setControls(document, { playing: next.kind === "playing" })
@@ -698,6 +714,9 @@ function applyBindings(s: Settings) {
 // glides finish); other screens with a game keep the last picture still. Screens without one (title, stage select) show an
 // empty canvas rather than the previous game's board.
 let lastAlpha = 0
+// Seconds of ticks on the tutorial page showing: the time its scenes are
+// drawn at (see tutorialView.ts).
+let tutorialClock = 0
 
 function render(alpha: number) {
     if (screen.kind === "opening") {
@@ -711,6 +730,9 @@ function render(alpha: number) {
     }
     openingLayer.hide()
     if (screen.kind === "soundtrack") showPlayingProgress(screen)
+    if (screen.kind === "tutorial") {
+        drawTutorialFrame(tutorialClock, reducedMotion?.matches ?? false)
+    }
     // The end roll draws on its own canvas, over everything.
     if (screen.kind === "endRoll") return renderEndRoll(screen)
     // Settings over a paused game show that game behind them.
@@ -810,8 +832,16 @@ function showOverlay(s: Screen) {
                 }))
             )
         }
-        case "tutorial":
-            return showTutorial()
+        case "tutorial": {
+            const pages = tutorialPages(touch)
+            return showTutorial({
+                page: pages[Math.min(s.page, pages.length - 1)]!,
+                index: s.page,
+                count: pages.length,
+                bindings: bindingsOf(settings),
+                touch,
+            })
+        }
         case "cards":
             return showCards()
         case "soundtrack":
@@ -1095,6 +1125,27 @@ addEventListener("keydown", (event) => {
     const menu =
         screen.stage === "title" && screen.clock.seconds >= OPENING_DRUM
     if (!menu) tapAction("confirm")
+})
+
+// A swipe across the tutorial turns its pages, as the arrows do: a swipe
+// to the left brings the next page in (right), one to the right the last.
+// Up and down scroll the overlay. A tap is a click, as on any overlay.
+let swipe: { id: number; x: number; y: number } | undefined
+document.addEventListener("pointerdown", (event) => {
+    swipe =
+        screen.kind === "tutorial" && event.pointerType !== "mouse"
+            ? { id: event.pointerId, x: event.clientX, y: event.clientY }
+            : undefined
+})
+document.addEventListener("pointerup", (event) => {
+    const from = swipe
+    swipe = undefined
+    if (!from || from.id !== event.pointerId || screen.kind !== "tutorial") {
+        return
+    }
+    const way = swipeDirection(event.clientX - from.x, event.clientY - from.y)
+    if (way === "left") tapAction("right")
+    if (way === "right") tapAction("left")
 })
 
 function tapAction(action: Action) {

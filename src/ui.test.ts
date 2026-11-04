@@ -19,7 +19,6 @@ import {
     showTitle,
     showToast,
     showTrackProgress,
-    showTutorial,
 } from "./ui"
 import type { StageSlot } from "./progress"
 import { ANIMAL_IDS, AnimalId, ANIMALS } from "./roster"
@@ -79,10 +78,7 @@ describe("showTitle", () => {
 })
 
 describe("the main menu's pages", () => {
-    it.each([
-        [showTutorial, "tutorial", "Tutorial"],
-        [showCards, "cards", "Cards"],
-    ] as const)(
+    it.each([[showCards, "cards", "Cards"]] as const)(
         "shows a placeholder for %#: its title, Coming soon and Back",
         (show, id, name) => {
             show()

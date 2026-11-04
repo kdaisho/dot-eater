@@ -140,7 +140,7 @@ describe.each(PAGE_CHOICES)("the %s page", (page) => {
 })
 
 // The pages still to be built: Back is all they do.
-describe.each(["tutorial", "cards"] as const)("the %s placeholder", (page) => {
+describe.each(["cards"] as const)("the %s placeholder", (page) => {
     const title = () => down(TITLE_CHOICES.indexOf(page))
 
     it("stays put on any other input, player 2's Back included", () => {

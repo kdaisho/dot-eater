@@ -1800,7 +1800,7 @@ function drawGauge(
 // (KDA-289), the energy the level reached would spend, one segment a
 // level, is filled in the charge colour over it. `frame` colours the frame
 // (and the marks).
-function drawMeter(
+export function drawMeter(
     ctx: CanvasRenderingContext2D,
     meter: EnergyHud,
     left: number,

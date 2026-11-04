@@ -37,6 +37,7 @@ import {
     type SettingsContext,
 } from "./settingsMenu"
 import { SOUNDTRACK } from "./soundtrack"
+import { tutorialPages } from "./tutorial"
 import { rateClear, type ClearRating } from "./stars"
 
 // The game's screens and the transitions between them:
@@ -67,11 +68,15 @@ import { rateClear, type ClearRating } from "./stars"
 // The title is the main menu (KDA-318; TITLE_CHOICES): the modes, then
 // the pages, then Settings. Each page (Tutorial, Cards, Soundtrack;
 // PAGE_CHOICES) is a screen of its own kind, and Back (the pause action)
-// returns to the title with the cursor on it. Tutorial and Cards are
-// placeholders for now whose only way out is Back (KDA-319 and KDA-320
-// build them).
+// returns to the title with the cursor on it. Cards is a placeholder for
+// now whose only way out is Back (KDA-320 builds it).
 //
 //   title <-> tutorial        title <-> cards        title <-> soundtrack
+//
+// The tutorial (KDA-319; tutorial.ts) is a row of pages, the Touch page
+// last on touch devices only. Left and right turn them, stopping at either
+// end; confirm goes to the next page, and on the last one back to the
+// title, as Back does from any page.
 //
 // The soundtrack (KDA-321) lists the game's music (SOUNDTRACK in
 // soundtrack.ts), every track open: up/down or left/right move the cursor,
@@ -328,7 +333,12 @@ export type Screen =
       }
     // The main menu's pages (PAGE_CHOICES). `mode` is the title's, kept
     // for Back.
-    | { kind: "tutorial"; mode: Mode }
+    | {
+          kind: "tutorial"
+          mode: Mode
+          // The page showing, an index into tutorialPages.
+          page: number
+      }
     | { kind: "cards"; mode: Mode }
     | {
           kind: "soundtrack"
@@ -505,6 +515,7 @@ export type ScreenKind = Screen["kind"]
 type TitleScreen = Extract<Screen, { kind: "title" }>
 type PageScreen = Extract<Screen, { kind: Page }>
 type SoundtrackScreen = Extract<Screen, { kind: "soundtrack" }>
+type TutorialScreen = Extract<Screen, { kind: "tutorial" }>
 type PausedScreen = Extract<Screen, { kind: "paused" }>
 type SettingsScreen = Extract<Screen, { kind: "settings" }>
 type ControlsScreen = Extract<Screen, { kind: "controls" }>
@@ -662,7 +673,7 @@ function updateScreen(
         case "title":
             return updateTitle(screen, input, deps)
         case "tutorial":
-            return updateTutorial(screen, input)
+            return updateTutorial(screen, input, deps)
         case "cards":
             return updateCards(screen, input)
         case "soundtrack":
@@ -906,15 +917,31 @@ function updateTitle(
 
 // A page as it opens from the title on `mode`.
 export function pageScreen(page: Page, mode: Mode): PageScreen {
-    return page === "soundtrack"
-        ? { kind: page, mode, selected: 0 }
-        : { kind: page, mode }
+    if (page === "soundtrack") return { kind: page, mode, selected: 0 }
+    if (page === "tutorial") return { kind: page, mode, page: 0 }
+    return { kind: page, mode }
 }
 
 // The main menu's pages, one function each for their tickets to build on.
-// Tutorial and Cards are placeholders for now that only go back.
-function updateTutorial(screen: PageScreen, input: TickInput): Screen {
-    return updatePlaceholder(screen, input)
+// Cards is a placeholder for now that only goes back.
+//
+// Back leaves for the title. Left and right (player 1's: keys, the D-pad,
+// the stick, a swipe) turn the pages, stopping at either end; confirm
+// goes to the next one, and from the last back to the title ("Done").
+function updateTutorial(
+    screen: TutorialScreen,
+    input: TickInput,
+    deps: FlowDeps
+): Screen {
+    if (input.wasPressed("pause")) return pageBack(screen)
+    const count = tutorialPages(deps.touch ?? false).length
+    if (input.wasPressed("confirm")) {
+        return screen.page >= count - 1
+            ? pageBack(screen)
+            : { ...screen, page: screen.page + 1 }
+    }
+    const page = moveAcross(Math.min(screen.page, count - 1), count, input, 0)
+    return page === screen.page ? screen : { ...screen, page }
 }
 
 function updateCards(screen: PageScreen, input: TickInput): Screen {
