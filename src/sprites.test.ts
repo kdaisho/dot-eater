@@ -12,6 +12,7 @@ import {
     ENEMY_SPRITES,
     facesRight,
     mirrored,
+    panicGrid,
     spriteGrid,
     spritePixels,
     SPRITES,
@@ -301,5 +302,84 @@ describe("createSpriteCache", () => {
         expect(
             drawableKey({ id: SpriteId.dragon, mirror: true, panicked: true })
         ).toBe("dragon:0:mirror:panicked")
+    })
+})
+
+describe("the panic frames (KDA-317)", () => {
+    const characters = [
+        ...Object.values(ANIMAL_SPRITES),
+        ...Object.values(ENEMY_SPRITES),
+    ]
+
+    it("gives every animal and enemy one, the size of its walk frames, in its palette", () => {
+        expect(new Set(characters).size).toBe(13)
+        for (const id of characters) {
+            const def = SPRITES[id]
+            const panic = panicGrid(id)
+            expect(panic, id).toBeDefined()
+            expect(panic!.length, id).toBe(def.frames[0]!.length)
+            for (const row of panic!) {
+                expect(row.length, id).toBe(def.frames[0]![0]!.length)
+                for (const ch of row) {
+                    if (ch !== ".")
+                        expect(def.palette[ch], `${id} ${ch}`).toBeDefined()
+                }
+            }
+            expect(panic, id).not.toEqual(def.frames[0])
+        }
+    })
+
+    it("gives the bosses and the Splitter's half none: they keep their look", () => {
+        for (const id of [
+            ...Object.values(BOSS_SPRITES),
+            SpriteId.splitterHalf,
+        ]) {
+            expect(panicGrid(id), id).toBeUndefined()
+            expect(spriteGrid({ id, panicked: true }), id).toEqual(
+                spriteGrid({ id })
+            )
+            expect(drawableKey({ id, panicked: true }), id).toBe(
+                drawableKey({ id })
+            )
+        }
+    })
+
+    it("is what a panicked look draws, on any walk frame, mirrored as they are", () => {
+        for (const id of characters) {
+            for (const frame of [0, 1]) {
+                expect(spriteGrid({ id, frame, panicked: true }), id).toBe(
+                    panicGrid(id)
+                )
+            }
+            const plain = spritePixels({ id, panicked: true }, false)
+            const flipped = spritePixels(
+                { id, panicked: true, mirror: mirrored(id, true) },
+                false
+            )
+            expect(flipped, id).toEqual(
+                SPRITES[id].side
+                    ? plain.map((row) => [...row].reverse())
+                    : plain
+            )
+        }
+    })
+
+    it("is outlined and cached like the walk frames, under its own key", () => {
+        const id = SpriteId.penguin
+        const walk = spritePixels({ id })
+        const panic = spritePixels({ id, panicked: true })
+        expect(panic.length).toBe(walk.length)
+        expect(panic[0]!.length).toBe(walk[0]!.length)
+        expect(panic.flat()).toContain("#000000")
+        expect(drawableKey({ id, frame: 1, panicked: true })).toBe(
+            "penguin:0:panicked"
+        )
+        const make = vi.fn(() => document.createElement("canvas"))
+        const cache = createSpriteCache(make)
+        const scared = cache.get({ id, frame: 1, panicked: true }, 36)
+        expect(cache.get({ id, panicked: true }, 36)).toBe(scared)
+        expect(cache.get({ id }, 36)).not.toBe(scared)
+        expect(scared.dataset.look).toBe("penguin:0:panicked")
+        expect(make).toHaveBeenCalledTimes(2)
     })
 })
