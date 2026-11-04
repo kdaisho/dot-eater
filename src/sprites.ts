@@ -4,8 +4,8 @@
 //
 // The game draws a sprite with a 1-dot black outline round it (white parts
 // would vanish on the white floor otherwise), mirrored to face right if it
-// is a side view, on its walk frame, and for the Kitsune with as many tails
-// as it has health. Each such look is rasterised once per size to an
+// is a side view, on its walk frame (or its panic frame), and for the
+// Kitsune with as many tails as it has health. Each such look is rasterised once per size to an
 // offscreen canvas with image smoothing off (createSpriteCache), so a frame
 // only copies canvases. The pure parts (which grid, which frame, which
 // tails, each pixel's colour) are plain functions, tested without a canvas.
@@ -48,6 +48,10 @@ export type SpriteDef = {
     frames: readonly Grid[]
     // The final boss: its grid while it winds up its breath.
     windUp?: Grid
+    // Its panic frame (KDA-317): shown in place of the walk frames while it
+    // is panicked (a player) or stopped by a breath (an enemy). Every
+    // animal and enemy has one; the bosses and the Splitter's half don't.
+    panic?: Grid
     // The Kitsune: tail n is the digit n and its tip the n-th letter from
     // "a", so tails can be hidden one by one (see visibleTails).
     tails?: true
@@ -85,11 +89,8 @@ export const BOSS_SPRITES: Readonly<Record<BossKind, SpriteId>> = {
 
 // One way to draw a sprite: which frame, whether mirrored, whether winding
 // up (a sprite with a windUp grid) and how many tails show (a sprite with
-// tails; all of them when left out). `panicked` is set on a panicked
-// player (KDA-316, see panic.ts) and on an enemy panicking in an
-// Earthquake (KDA-324, EnemyStatus.panics); no sprite has a panic frame
-// yet (KDA-317 adds one per character), so for now it draws as usual,
-// under its own key, and render.ts adds the placeholder marks and motion.
+// tails; all of them when left out). `panicked` draws its panic frame
+// (KDA-317), on a sprite that has one, in place of its walk frame.
 export type SpriteLook = {
     id: SpriteId
     frame?: number
@@ -137,9 +138,16 @@ export function mirrored(id: SpriteId, right: boolean): boolean {
     return right && SPRITES[id].side
 }
 
+// Sprite `id`'s panic frame, if it has one (see SpriteDef.panic).
+export function panicGrid(id: SpriteId): Grid | undefined {
+    return SPRITES[id].panic
+}
+
 // The grid a look draws, before mirroring and tails.
 export function spriteGrid(look: SpriteLook): Grid {
     const def = SPRITES[look.id]
+    const panic = look.panicked ? panicGrid(look.id) : undefined
+    if (panic) return panic
     if (look.windUp && def.windUp) return def.windUp
     const frame = Math.min(look.frame ?? 0, def.frames.length - 1)
     return def.frames[Math.max(0, frame)]!
@@ -205,8 +213,8 @@ function outlined(dots: Dots, outline = OUTLINE): Dots {
 // A small badge on a character for a status (KDA-300, in place of the old
 // emoji badges): frozen (an ice cube); and the heart over each enemy freed
 // when the final boss falls (KDA-303); the "!" over a panicked player
-// (KDA-316, a placeholder until KDA-317's panic frames); the sweat drop on
-// an enemy panicking in an Earthquake (KDA-324).
+// (KDA-316; it stays over KDA-317's panic frames, which read less at small
+// sizes); the sweat drop on an enemy panicking in an Earthquake (KDA-324).
 export const BadgeId = {
     frozen: "frozen",
     heart: "heart",
@@ -289,10 +297,12 @@ export function drawableKey(d: Drawable): string {
     if ("badge" in d) return `badge:${d.badge}`
     if ("art" in d) return `art:${d.name}`
     const def = SPRITES[d.id]
-    const frame = Math.min(d.frame ?? 0, def.frames.length - 1)
+    const panic = d.panicked === true && def.panic !== undefined
+    // The panic frame stands in for every walk frame.
+    const frame = panic ? 0 : Math.min(d.frame ?? 0, def.frames.length - 1)
     const windUp = d.windUp && def.windUp ? ":windUp" : ""
     const tails = def.tails ? `:tails${d.tails ?? TAIL_COUNT}` : ""
-    const panicked = d.panicked ? ":panicked" : ""
+    const panicked = panic ? ":panicked" : ""
     return `${d.id}:${frame}${d.mirror ? ":mirror" : ""}${windUp}${tails}${panicked}`
 }
 

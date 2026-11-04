@@ -23,7 +23,7 @@ import {
     SPRITE_SCALE,
     TICK_RATE,
 } from "./constants"
-import { createCharacter } from "./character"
+import { createCharacter, type Character } from "./character"
 import { ENEMY_BREATH } from "./enemyBreath"
 import {
     createGameState,
@@ -48,6 +48,7 @@ import {
     CHARGE_AURA_GROWTH,
     CHARGE_FLICKER_HZ,
     chargeAura,
+    enemyPanicked,
     PANIC_JITTER,
     panicJitter,
 } from "./render"
@@ -2812,8 +2813,8 @@ describe("createRenderer drawing a Rush", () => {
     })
 })
 
-// KDA-316's placeholder for a panicked player, until KDA-317's panic
-// frames: a pixel "!" over its head and a jitter, and its look flagged.
+// A panicked player (KDA-316, KDA-317): its panic frame, a pixel "!" over
+// its head and a jitter.
 describe("a panicked player", () => {
     afterEach(() => {
         vi.restoreAllMocks()
@@ -2849,7 +2850,9 @@ describe("a panicked player", () => {
         expect(mark.size).toBeLessThan(body.size)
     })
 
-    it("is drawn with its look flagged panicked", () => {
+    // The look's key names the panic frame (sprites.test.ts checks a
+    // panicked look draws it); the cache paints it under that key.
+    it("is drawn on its panic frame; a calm player isn't", () => {
         const { calls, renderer } = setup()
         const state = coop()
         panic(state.players[1])
@@ -2978,5 +2981,50 @@ describe("present boxes", () => {
         })
         expect(shown).toContain(0)
         expect(shown).toContain(1)
+    })
+})
+
+// KDA-317: an enemy a breath stops is drawn on its panic frame.
+describe("a stopped enemy", () => {
+    const room = (enemy: Character) =>
+        makeState(
+            [
+                [1, 1, 1, 1, 1, 1],
+                [1, 0, 0, 0, 0, 1],
+                [1, 1, 1, 1, 1, 1],
+            ],
+            { x: 1, y: 1 },
+            [enemy]
+        )
+    const tenguLook = (enemy: Character) => {
+        const { calls, renderer } = setup()
+        renderer.draw(room(enemy), 0)
+        const drawn = calls.find((c) => drawnName(c) === "tengu")!
+        return (drawn.args[0] as HTMLCanvasElement).dataset.look
+    }
+
+    it("shows its panic frame while frozen, and its walk frame otherwise", () => {
+        const enemy = makeEnemy(3, 1)
+        expect(enemyPanicked(enemy)).toBe(false)
+        expect(tenguLook(enemy)).not.toContain("panicked")
+        addStatus(enemy, FROZEN, 1)
+        expect(enemyPanicked(enemy)).toBe(true)
+        expect(tenguLook(enemy)).toContain(":panicked")
+    })
+
+    it("keeps its walk frame under a status that doesn't stop it", () => {
+        const enemy = makeEnemy(3, 1)
+        addStatus(enemy, { name: "test.harmless", harmless: true }, 1)
+        expect(enemyPanicked(enemy)).toBe(false)
+        expect(tenguLook(enemy)).not.toContain("panicked")
+    })
+
+    it("gets no '!' over its head, only its badges", () => {
+        const enemy = makeEnemy(3, 1)
+        addStatus(enemy, FROZEN, 1)
+        const { calls, renderer } = setup()
+        renderer.draw(room(enemy), 0)
+        const names = calls.map(drawnName).filter((n) => n !== undefined)
+        expect(names).toEqual(["tengu", "frozen", "dragon"])
     })
 })

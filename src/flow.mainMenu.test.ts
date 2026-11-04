@@ -2,6 +2,7 @@ import { describe, expect, it } from "vite-plus/test"
 import {
     initialScreen,
     PAGE_CHOICES,
+    pageScreen,
     selectItem,
     TITLE_CHOICES,
     titleChoice,
@@ -112,7 +113,8 @@ describe.each(PAGE_CHOICES)("the %s page", (page) => {
     const title = () => down(index)
 
     it("opens from its entry, with the title's mode kept", () => {
-        expect(press(title(), ["confirm"])).toEqual({
+        expect(press(title(), ["confirm"])).toEqual(pageScreen(page, "coop"))
+        expect(press(title(), ["confirm"])).toMatchObject({
             kind: page,
             mode: "coop",
         })
@@ -124,6 +126,23 @@ describe.each(PAGE_CHOICES)("the %s page", (page) => {
         expect(titleChoice(asTitle(back))).toBe(page)
     })
 
+    it("ignores player 2's Back", () => {
+        const screen = press(title(), ["confirm"])
+        expect(update(screen, input([], ["pause"]), deps())).toBe(screen)
+    })
+
+    it("opens from a tap on its entry, then confirm", () => {
+        const tapped = selectItem(initialScreen(), index)
+        expect(tapped).toEqual({ kind: "title", mode: "solo", on: page })
+        expect(selectItem(tapped, index)).toBe(tapped)
+        expect(press(tapped, ["confirm"])).toEqual(pageScreen(page, "solo"))
+    })
+})
+
+// The pages still to be built: Back is all they do.
+describe.each(["tutorial", "cards"] as const)("the %s placeholder", (page) => {
+    const title = () => down(TITLE_CHOICES.indexOf(page))
+
     it("stays put on any other input, player 2's Back included", () => {
         const screen = press(title(), ["confirm"])
         for (const action of ["up", "down", "left", "right", "confirm"]) {
@@ -132,13 +151,6 @@ describe.each(PAGE_CHOICES)("the %s page", (page) => {
             )
         }
         expect(update(screen, input([], ["pause"]), deps())).toBe(screen)
-    })
-
-    it("opens from a tap on its entry, then confirm", () => {
-        const tapped = selectItem(initialScreen(), index)
-        expect(tapped).toEqual({ kind: "title", mode: "solo", on: page })
-        expect(selectItem(tapped, index)).toBe(tapped)
-        expect(press(tapped, ["confirm"])).toEqual({ kind: page, mode: "solo" })
     })
 
     it("has no menu to tap", () => {
