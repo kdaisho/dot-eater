@@ -68,6 +68,8 @@ import {
 import { ART, STAGE_STYLES } from "./tiles"
 import { vec2 } from "./vec2"
 import { panic } from "./panic"
+import { placeBox, PRESENT_SECONDS, QUAKE, QUAKE_SECONDS } from "./present"
+import { BOX_SIZE } from "./presentView"
 
 // canvas-confetti crashes under happy-dom; keep it out in case anything
 // imported here pulls it in.
@@ -2886,5 +2888,95 @@ describe("a panicked player", () => {
         p2.panickedFor = 1.47
         expect(panicJitter(p2, false)).toBe(-PANIC_JITTER)
         expect(panicJitter(p2, true)).toBe(0)
+    })
+})
+
+// KDA-324: present boxes, their opening and the Earthquake's panic.
+describe("present boxes", () => {
+    afterEach(() => {
+        vi.restoreAllMocks()
+    })
+
+    const room = [
+        [1, 1, 1, 1, 1, 1, 1],
+        [1, 0, 0, 0, 0, 0, 1],
+        [1, 0, 0, 0, 0, 0, 1],
+        [1, 1, 1, 1, 1, 1, 1],
+    ] as const
+    const named = (calls: ReturnType<typeof setup>["calls"], name: string) =>
+        calls.filter((c) => drawnName(c) === name)
+
+    it("draws a box on its cell, smaller than a sprite", () => {
+        const { calls, renderer } = setup()
+        const state = makeState(room, { x: 1, y: 1 })
+        placeBox(state, vec2(4, 2))
+        renderer.draw(state, 0)
+        const [box] = named(calls, "present.box")
+        expect(box).toBeDefined()
+        const player = spriteBox(named(calls, "dragon")[0]!)
+        const drawn = spriteBox(box!)
+        // 3 cells right of the player and 1 down.
+        const cell = (drawn.x - player.x) / 3
+        expect(drawn.y - player.y).toBeCloseTo(cell, 0)
+        expect(drawn.size / cell).toBeCloseTo(BOX_SIZE, 1)
+        expect(drawn.size).toBeLessThan(player.size)
+    })
+
+    it("blinks the box before it vanishes", () => {
+        const { calls, renderer } = setup()
+        const state = makeState(room, { x: 1, y: 1 })
+        placeBox(state, vec2(4, 2))
+        // 7.4 s in: in the slow blink's off part.
+        state.presents.boxes[0].left = PRESENT_SECONDS - 7.4
+        renderer.draw(state, 0)
+        expect(named(calls, "present.box")).toEqual([])
+        calls.length = 0
+        state.presents.boxes[0].left = PRESENT_SECONDS - 7.1
+        renderer.draw(state, 0)
+        expect(named(calls, "present.box")).toHaveLength(1)
+    })
+
+    it("draws an opening: the box, its lid, the icon and the label", () => {
+        const { calls, renderer, texts } = setup()
+        const state = makeState(room, { x: 1, y: 1 })
+        state.presents.reveals.push({
+            pos: vec2(1, 1),
+            player: 0,
+            content: "speed",
+            germ: null,
+            age: 0.35,
+        })
+        renderer.draw(state, 0)
+        expect(named(calls, "present.open")).toHaveLength(1)
+        expect(named(calls, "present.lid")).toHaveLength(1)
+        const icon = spriteBox(named(calls, "present.speed")[0]!)
+        const player = spriteBox(named(calls, "dragon")[0]!)
+        expect(icon.y).toBeLessThan(player.y)
+        expect(texts()).toContain("SPEED!")
+    })
+
+    it("draws a panicking enemy flagged panicked, with a sweat drop that blinks at the end", () => {
+        const { calls, renderer } = setup()
+        const enemy = makeEnemy(4, 2, AiType.chase)
+        const state = makeState(room, { x: 1, y: 1 }, [enemy])
+        renderer.draw(state, 0)
+        expect(named(calls, "sweat")).toEqual([])
+        addStatus(enemy, QUAKE, QUAKE_SECONDS)
+        calls.length = 0
+        renderer.draw(state, 0)
+        expect(named(calls, "sweat")).toHaveLength(1)
+        const oni = named(calls, "oni")[0]!
+        expect((oni.args[0] as HTMLCanvasElement).dataset.look).toContain(
+            ":panicked"
+        )
+        // In the warning, the drop is off now and then.
+        const shown = [0.55, 0.45, 0.35, 0.25].map((left) => {
+            enemy.statuses[0].left = left
+            calls.length = 0
+            renderer.draw(state, 0)
+            return named(calls, "sweat").length
+        })
+        expect(shown).toContain(0)
+        expect(shown).toContain(1)
     })
 })

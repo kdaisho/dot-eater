@@ -84,6 +84,7 @@ import {
     SPRITES,
     visibleTails,
     walkFrame,
+    type PixelArt,
     type SpriteCache,
     type SpriteLook,
 } from "./sprites"
@@ -101,6 +102,26 @@ import {
     type TileStyle,
 } from "./tiles"
 import { panicked } from "./panic"
+import { PresentContent, type Reveal } from "./present"
+import {
+    BOX,
+    HEAL_ICON,
+    HUGE_DOT_ICON,
+    hugeDotPalette,
+    LABEL_HEART,
+    QUAKE_ICON,
+    SPEED_ICON,
+} from "./presentData"
+import {
+    DOT,
+    germJump,
+    presentBob,
+    presentShown,
+    quakePanic,
+    REVEAL_COLORS,
+    REVEAL_LABELS,
+    revealFrame,
+} from "./presentView"
 
 // What the HUD strip above the maze shows. Fields left out aren't drawn.
 export type Hud = {
@@ -548,6 +569,7 @@ export function createRenderer(
             outline: spriteOutline(effects.stage),
         }
         if (fall) drawDefeatFloor(ctx, fall.defeat, fall.spot, fall.e)
+        drawPresents(ctx, art, state, cell, seen)
         drawBoss(ctx, art, state, alpha, cell, cols, rows, seen, windUp)
         if (fall && state.boss) {
             drawDefeatBoss(ctx, fall.defeat, state.boss, fall.spot, fall.e)
@@ -570,6 +592,7 @@ export function createRenderer(
                 ? rushFrame(effects.rush, state, alpha, TICK_MS / 1000)
                 : null
         )
+        drawReveals(ctx, art, state, alpha, cell, cols, rows, seen, style)
         if (effects.particles) drawParticles(ctx, effects.particles, cell, seen)
         if (fall && state.boss) {
             drawDefeatFx(ctx, fall.defeat, state.boss, fall.spot, fall.e)
@@ -1217,6 +1240,13 @@ function drawCharacters(
         panicked: false,
         jitter: 0,
     })
+    // Each Germ still jumping out of its box (KDA-324), by its main slot.
+    const jumps = new Map(
+        state.presents.reveals.flatMap((r) => {
+            const germ = r.germ === null ? undefined : state.enemies[r.germ]
+            return germ ? [[r.germ!, germJump(r, germ.pos)] as const] : []
+        })
+    )
     const held = state.enemies.filter((e) => hasStatus(e, "holds"))
     const free = state.enemies.filter((e) => !hasStatus(e, "holds"))
     // A player out of play (see takeOut in game.ts) isn't drawn, and one
@@ -1264,13 +1294,27 @@ function drawCharacters(
         )
         const pos = shift ? shifted(glided, shift, cols, rows) : glided
         if (fog && !isPlayer && !fog.visible(pos)) continue
+        // A present's Germ jumping out of its box, and an enemy panicking
+        // in an Earthquake (KDA-324, see presentView.ts).
+        const jump = isPlayer ? undefined : jumps.get(index)
+        if (jump?.hidden) continue
+        const leap = jump && !jump.hidden ? jump : null
+        const panicLeft = isPlayer
+            ? undefined
+            : character.statuses.find((s) => s.status.panics)?.left
+        const quake =
+            panicLeft === undefined
+                ? null
+                : quakePanic(panicLeft, index, reducedMotion)
         const looks = [
             ...character.statuses.flatMap((s) =>
                 s.status.look ? [s.status.look] : []
             ),
             ...(windUp && !isPlayer ? enemyBreathLooks(character) : []),
         ]
-        const scale = !isPlayer && isSplitterHalf(character) ? HALF_SCALE : 1
+        const scale =
+            (!isPlayer && isSplitterHalf(character) ? HALF_SCALE : 1) *
+            (leap?.scale ?? 1)
         const size = cell * SPRITE_SCALE * scale
         const faint = character.ai === AiType.interceptor && !isPlayer
         if (faint) ctx.globalAlpha = sneak(pos)
@@ -1284,7 +1328,10 @@ function drawCharacters(
             cols,
             rows
         )
-        if (sprite.panicked) look.panicked = true
+        if (sprite.panicked || quake) look.panicked = true
+        if (quake && quake.right !== null) {
+            look.mirror = mirrored(sprite.sprite, quake.right)
+        }
         const order = fall
             ? isPlayer
                 ? hopOrder(
@@ -1303,8 +1350,11 @@ function drawCharacters(
         const hop =
             fall && order >= 0 ? hopHeight(fall.defeat, order, fall.e) : 0
         for (const p of wrapCopies(pos, cols, rows)) {
-            const x = (p.x + 0.5 + jitter) * cell
-            const y = (p.y + 0.5 - hop) * cell
+            const x =
+                (p.x + 0.5 + jitter + (quake?.dx ?? 0) + (leap?.dx ?? 0)) * cell
+            const y =
+                (p.y + 0.5 - hop + (quake?.dy ?? 0) + (leap?.dy ?? 0)) * cell
+            if (quake?.dust != null) drawDust(ctx, quake.dust, x, y, cell)
             if (aura) {
                 ctx.globalAlpha = aura.alpha
                 ctx.fillStyle = aura.color
@@ -1340,9 +1390,10 @@ function drawCharacters(
                     art.outline
                 )
             }
-            const badges = looks.flatMap((look) =>
-                look.badge ? [look.badge] : []
-            )
+            const badges = [
+                ...looks.flatMap((look) => (look.badge ? [look.badge] : [])),
+                ...(quake?.badge ? [BadgeId.sweat] : []),
+            ]
             badges.forEach((id, i) => {
                 drawSprite(
                     ctx,
@@ -1406,6 +1457,247 @@ function drawFlier(
         drawSprite(ctx, art.sprites, look, 0, 0, size, art.dpr, art.outline)
         ctx.restore()
     }
+}
+
+// ---- Present boxes (KDA-324, see present.ts and presentView.ts) ----
+
+// The labels' text size, as a fraction of a cell (at least
+// LABEL_MIN_PX CSS pixels).
+const REVEAL_LABEL_SIZE = 0.3
+const REVEAL_LABEL_MIN_PX = 8
+const REVEAL_LABEL_FONT = '"Press Start 2P", monospace'
+// The dust a panicking enemy kicks up (quake look 2).
+const DUST_COLORS = ["#d6c7a8", "#b8a888", "#efe6d2"] as const
+const DUST_LIFE = 0.5
+
+// Draw `piece` (pixel art, see presentData.ts) centred on (x, y), `dots`
+// dots across its larger side (outline included) at DOT cells a dot,
+// squashed by `sx`/`sy` and faded by `alpha`.
+function drawArt(
+    ctx: CanvasRenderingContext2D,
+    art: Art,
+    piece: { art: PixelArt; name: string },
+    x: number,
+    y: number,
+    cell: number,
+    { scale = 1, sx = 1, sy = 1, alpha = 1 } = {}
+) {
+    const { grid } = piece.art
+    const dots = Math.max(grid.length, grid[0]?.length ?? 0) + 2
+    const size = dots * DOT * cell * scale
+    const squashed = sx !== 1 || sy !== 1
+    ctx.save()
+    ctx.globalAlpha = Math.max(0, Math.min(1, alpha))
+    if (squashed) {
+        ctx.translate(x, y)
+        ctx.scale(sx, sy)
+    }
+    const at = squashed ? { x: 0, y: 0 } : { x, y }
+    drawSprite(ctx, art.sprites, piece, at.x, at.y, size, art.dpr, art.outline)
+    ctx.restore()
+}
+
+// The box art, by part.
+const BOX_ART = {
+    closed: { art: BOX.closed, name: "present.box" },
+    open: { art: BOX.open, name: "present.open" },
+    lid: { art: BOX.lid, name: "present.lid" },
+}
+
+// The icon popping out of a box with `content`, in `style`'s dot colours
+// for the Huge dot; none for the Germ, whose Splitter jumps out instead.
+function revealIcon(
+    content: PresentContent,
+    style: TileStyle
+): { art: PixelArt; name: string } | null {
+    switch (content) {
+        case PresentContent.heal:
+            return { art: HEAL_ICON, name: "present.heal" }
+        case PresentContent.hugeDot:
+            return {
+                art: { ...HUGE_DOT_ICON, palette: hugeDotPalette(style) },
+                name: `present.hugeDot.${style.name}`,
+            }
+        case PresentContent.speed:
+            return { art: SPEED_ICON, name: "present.speed" }
+        case PresentContent.quake:
+            return { art: QUAKE_ICON, name: "present.quake" }
+        case PresentContent.germ:
+            return null
+    }
+}
+
+// The boxes on the map, under the characters: each one bobbing and
+// blinking by its age (presentShown, presentBob), BOX_SIZE across, on its
+// cell; and each box being opened (see revealFrame), squashing or shaking
+// closed, then its open body fading. In fog, those outside the light are
+// hidden.
+function drawPresents(
+    ctx: CanvasRenderingContext2D,
+    art: Art,
+    state: GameState,
+    cell: number,
+    fog: Sight | null
+) {
+    const { boxes, reveals } = state.presents
+    for (const box of boxes) {
+        if (fog && !fog.visible(box.pos)) continue
+        if (!presentShown(box)) continue
+        const x = (box.pos.x + 0.5) * cell
+        const y = (box.pos.y + 0.5 - presentBob(box) * DOT) * cell
+        drawArt(ctx, art, BOX_ART.closed, x, y, cell)
+    }
+    for (const r of reveals) {
+        if (fog && !fog.visible(r.pos)) continue
+        const frame = revealFrame(r).box
+        if (!frame) continue
+        drawArt(
+            ctx,
+            art,
+            frame.open ? BOX_ART.open : BOX_ART.closed,
+            (r.pos.x + 0.5 + frame.dx) * cell,
+            (r.pos.y + 0.5 + frame.dy) * cell,
+            cell,
+            { sx: frame.scaleX, sy: frame.scaleY, alpha: frame.alpha }
+        )
+    }
+}
+
+// What the boxes being opened let out, over the characters: the lid
+// flying off the box's cell, and the content's icon and label over the
+// opener's head (where its glide has it; at the box once it is out of
+// play). In fog, those whose box is outside the light are hidden.
+function drawReveals(
+    ctx: CanvasRenderingContext2D,
+    art: Art,
+    state: GameState,
+    alpha: number,
+    cell: number,
+    cols: number,
+    rows: number,
+    fog: Sight | null,
+    style: TileStyle
+) {
+    for (const r of state.presents.reveals) {
+        if (fog && !fog.visible(r.pos)) continue
+        const { lid, icon, label } = revealFrame(r)
+        if (lid) {
+            drawArt(
+                ctx,
+                art,
+                BOX_ART.lid,
+                (r.pos.x + 0.5 + lid.dx) * cell,
+                (r.pos.y + 0.5 + lid.dy) * cell,
+                cell,
+                { alpha: lid.alpha }
+            )
+        }
+        const opener = state.players[r.player]
+        const at =
+            opener && !opener.out
+                ? glidePos(opener.character, alpha, cols, rows, opener.rate)
+                : r.pos
+        const x = (at.x + 0.5) * cell
+        const y = (at.y + 0.5) * cell
+        const piece = revealIcon(r.content, style)
+        if (icon && piece) {
+            drawArt(
+                ctx,
+                art,
+                piece,
+                x + icon.dx * cell,
+                y + icon.dy * cell,
+                cell,
+                { scale: icon.scale, alpha: icon.alpha }
+            )
+        }
+        if (label) {
+            drawRevealLabel(
+                ctx,
+                art,
+                r,
+                x + label.dx * cell,
+                y + label.dy * cell,
+                cell,
+                label.alpha
+            )
+        }
+    }
+}
+
+// A reveal's label (REVEAL_LABELS, in REVEAL_COLORS) centred on (x, y),
+// outlined in black; the Heal's "+1" with a small heart after it.
+function drawRevealLabel(
+    ctx: CanvasRenderingContext2D,
+    art: Art,
+    r: Reveal,
+    x: number,
+    y: number,
+    cell: number,
+    alpha: number
+) {
+    const text = REVEAL_LABELS[r.content]
+    const px = Math.max(
+        REVEAL_LABEL_MIN_PX,
+        Math.round(cell * REVEAL_LABEL_SIZE)
+    )
+    const heart = r.content === PresentContent.heal
+    ctx.save()
+    ctx.globalAlpha = Math.max(0, Math.min(1, alpha))
+    ctx.font = `${px}px ${REVEAL_LABEL_FONT}`
+    ctx.textAlign = "left"
+    ctx.textBaseline = "middle"
+    // measureText may be missing in a stub context.
+    const width = ctx.measureText?.(text)?.width ?? text.length * px
+    const iconWidth = heart ? px * 1.15 : 0
+    const left = x - (width + iconWidth) / 2
+    ctx.lineJoin = "round"
+    ctx.lineWidth = Math.max(2, px * 0.32)
+    ctx.strokeStyle = "#111"
+    ctx.strokeText(text, left, y)
+    ctx.fillStyle = REVEAL_COLORS[r.content]
+    ctx.fillText(text, left, y)
+    ctx.restore()
+    if (heart) {
+        const piece = { art: LABEL_HEART, name: "present.labelHeart" }
+        // The heart, outline included, about as tall as the text.
+        const scale = (px * 1.05) / (6 * DOT * cell)
+        drawArt(ctx, art, piece, left + width + iconWidth / 2, y, cell, {
+            scale,
+            alpha,
+        })
+    }
+}
+
+// A puff of dust at a panicking enemy's feet, drawn at (x, y) (its
+// centre), `age` seconds old: a few motes flying out and up, shrinking and
+// fading over DUST_LIFE.
+function drawDust(
+    ctx: CanvasRenderingContext2D,
+    age: number,
+    x: number,
+    y: number,
+    cell: number
+) {
+    if (age >= DUST_LIFE) return
+    const motes = 6
+    const k = (1 - Math.exp(-3 * age)) / 3
+    const fade = 1 - age / DUST_LIFE
+    ctx.save()
+    for (let i = 0; i < motes; i++) {
+        const a = (i / motes) * Math.PI * 2
+        const v = 0.9 * (0.6 + (0.4 * ((i * 37) % 10)) / 10)
+        const mx = x + Math.cos(a) * v * k * cell
+        const my =
+            y + 0.35 * cell + (Math.sin(a) * v * k - 0.3 * age * age) * cell
+        const s = Math.max(1, 3 * DOT * cell * (1 - (0.5 * age) / DUST_LIFE))
+        ctx.globalAlpha = fade * 0.9
+        ctx.fillStyle = DUST_COLORS[i % DUST_COLORS.length]!
+        ctx.beginPath()
+        ctx.arc(mx, my, s / 2, 0, Math.PI * 2)
+        ctx.fill()
+    }
+    ctx.restore()
 }
 
 // How the boss's sprite looks (see drawBoss): its kind's, with the

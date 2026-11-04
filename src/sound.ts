@@ -7,6 +7,7 @@ import { volumesOf, type Audio } from "./audio"
 import type { GameEvent } from "./events"
 import { storyCardTimedOut, type Screen } from "./flow"
 import { MusicTrackId, stageTrack } from "./music"
+import type { PresentContent } from "./present"
 import type { Settings } from "./settings"
 import { breathSfx, SfxId } from "./sfx"
 
@@ -51,6 +52,13 @@ export function soundForEvent(event: GameEvent): SfxId | undefined {
             return SfxId.caught
         case "playerPanicked":
             return SfxId.panicked
+        case "presentDropped":
+            return SfxId.presentDropped
+        case "presentOpened":
+            return PRESENT_SFX[event.content]
+        case "presentExpired":
+            // Its puff is enough.
+            return undefined
         case "gameWon":
             return SfxId.stageClear
         case "gameLost":
@@ -58,6 +66,15 @@ export function soundForEvent(event: GameEvent): SfxId | undefined {
         case "dotRegrown":
             return undefined
     }
+}
+
+// The sound a present box (KDA-324) opens with, by what was inside.
+export const PRESENT_SFX: Readonly<Record<PresentContent, SfxId>> = {
+    heal: SfxId.presentHeal,
+    hugeDot: SfxId.presentHugeDot,
+    speed: SfxId.presentSpeed,
+    quake: SfxId.presentQuake,
+    germ: SfxId.presentGerm,
 }
 
 // The effects a tick's events play, each once (two dots eaten on one tick

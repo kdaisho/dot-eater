@@ -41,6 +41,14 @@ export const SfxId = {
     panicked: "panicked",
     // A Splitter dropped a dot (KDA-270): a soft, low plop.
     dotDropped: "dotDropped",
+    // Present boxes (KDA-324): one dropping, and a short pickup sound per
+    // content as one opens (a rumble for the Earthquake).
+    presentDropped: "present.dropped",
+    presentHeal: "present.heal",
+    presentHugeDot: "present.hugeDot",
+    presentSpeed: "present.speed",
+    presentQuake: "present.quake",
+    presentGerm: "present.germ",
     // Results
     stageClear: "stageClear",
     gameOver: "gameOver",
@@ -463,6 +471,77 @@ export const SFX: Readonly<Record<SfxId, readonly Tone[]>> = {
             volume: 0.12,
         },
     ],
+    // A box dropping: a light double tap, a little bright, so it is
+    // noticed over the defeat's chirps.
+    "present.dropped": arpeggio(["G5", "D6"], 0.06, 0.06, {
+        wave: "triangle",
+        volume: 0.2,
+    }),
+    // Heal: a warm rising third, like a sigh of relief.
+    "present.heal": arpeggio(["C5", "E5", "G5", "C6"], 0.06, 0.09, {
+        wave: "triangle",
+        volume: 0.3,
+    }),
+    // Huge dot: the dot blip's sweep, big and quick, then a sparkle.
+    "present.hugeDot": [
+        {
+            wave: "square",
+            at: 0,
+            duration: 0.12,
+            freq: 660,
+            freqEnd: 1760,
+            volume: 0.18,
+        },
+        ...arpeggio(["E6", "B6"], 0.05, 0.08, {
+            wave: "square",
+            volume: 0.12,
+        }).map((t) => ({ ...t, at: t.at + 0.12 })),
+    ],
+    // Speed boost: a fast upward whoosh.
+    "present.speed": [
+        {
+            wave: "sawtooth",
+            at: 0,
+            duration: 0.25,
+            freq: 220,
+            freqEnd: 1320,
+            volume: 0.15,
+        },
+        {
+            wave: "noise",
+            at: 0,
+            duration: 0.25,
+            freq: 800,
+            freqEnd: 3000,
+            volume: 0.15,
+        },
+    ],
+    // Earthquake: a deep rumble that rolls on under everything.
+    "present.quake": [
+        {
+            wave: "noise",
+            at: 0,
+            duration: 0.9,
+            freq: 160,
+            freqEnd: 60,
+            volume: 0.6,
+            attack: 0.03,
+        },
+        {
+            wave: "sine",
+            at: 0,
+            duration: 0.8,
+            freq: 55,
+            freqEnd: 35,
+            volume: 0.5,
+            attack: 0.03,
+        },
+    ],
+    // Germ: a sour falling wobble, bad luck.
+    "present.germ": arpeggio(["E4", "Eb4", "Bb3"], 0.08, 0.1, {
+        wave: "square",
+        volume: 0.2,
+    }),
     // A short rising jingle on a major chord.
     stageClear: [
         ...arpeggio(["C5", "E5", "G5"], 0.1, 0.1, {

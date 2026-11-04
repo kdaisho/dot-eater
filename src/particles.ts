@@ -69,6 +69,12 @@ export type BurstKind =
     | "drop"
     | "ram"
     | "flight"
+    | "presentPuff"
+    | "presentHeal"
+    | "presentHugeDot"
+    | "presentSpeed"
+    | "presentQuake"
+    | "presentGerm"
 
 export const BURSTS: Readonly<Record<BurstKind, ParticleLook>> = {
     // A few small crumbs where a dot was eaten.
@@ -172,6 +178,25 @@ export const BURSTS: Readonly<Record<BurstKind, ParticleLook>> = {
         jitter: 0.3,
         drag: 3,
     },
+    // A small grey puff where a present box (KDA-324) vanishes unopened,
+    // or opens.
+    presentPuff: {
+        colors: ["#d6d3d1", "#a8a29e", "#78716c"],
+        count: 8,
+        life: 0.45,
+        speed: 1.6,
+        spread: Math.PI * 2,
+        size: 0.1,
+        drag: 4,
+    },
+    // The sparkle burst as a box opens, in the colours of what was inside
+    // (the design page's, made a shade darker where they would vanish
+    // on the white floor).
+    presentHeal: sparkle(["#f43f5e", "#fb7185", "#be123c"]),
+    presentHugeDot: sparkle(["#ffd23f", "#f59e0b", "#7dd3fc"]),
+    presentSpeed: sparkle(["#8cc8ff", "#38bdf8", "#2f7fe0"]),
+    presentQuake: sparkle(["#d9b98a", "#a87a48", "#6b4a2a"]),
+    presentGerm: sparkle(["#84cc16", "#58a800", "#285000"]),
     // The debris of the final boss's big blast (KDA-301, the end of its
     // explosion chain): fire and smoke squares flung out all round, slowing
     // fast, as on the design page.
@@ -185,6 +210,20 @@ export const BURSTS: Readonly<Record<BurstKind, ParticleLook>> = {
         jitter: 0.6,
         drag: 3,
     },
+}
+
+// A present box's sparkle burst in `colors`: small squares all round.
+function sparkle(colors: readonly string[]): ParticleLook {
+    return {
+        colors,
+        count: 10,
+        life: 0.45,
+        speed: 2.2,
+        spread: Math.PI * 2,
+        size: 0.09,
+        drag: 3.5,
+        shape: "square",
+    }
 }
 
 // With reduced motion (prefers-reduced-motion): fewer particles (this

@@ -84,6 +84,16 @@ import { DEFAULT_ANIMAL, type AnimalId } from "./roster"
 import { createRegrow, dotGone, tickRegrow, type Regrow } from "./regrow"
 import { createSplitter, dropDot, tickDrops } from "./splitter"
 import { panicked, tickPanics } from "./panic"
+import {
+    ageReveals,
+    clearPresents,
+    createPresents,
+    dropPresents,
+    openPresents,
+    tickPresents,
+    type Presents,
+    type SpeedBoost,
+} from "./present"
 import { samePos, vec2, type Vec2 } from "./vec2"
 
 export type Outcome = "dead" | "won"
@@ -142,6 +152,12 @@ export type GameState = {
     // breath.ts), from the game's difficulty: RESPAWN_DELAY in a game with
     // none.
     respawnDelay: number
+    // The present boxes on the map and the ones being opened (KDA-324, see
+    // present.ts).
+    presents: Presents
+    // The game's difficulty, for the speed of an enemy that joins mid-game
+    // (a present's Germ); left out in a game with none.
+    difficulty?: Difficulty
 }
 
 // One player: its character on the board, plus everything else that is its
@@ -193,6 +209,9 @@ export type Player = {
     // boss pass through it without hurting it, and it is drawn blinking
     // (see playerVisible).
     invulnerableFor: number
+    // A present's Speed boost while it lasts (KDA-324, see present.ts),
+    // null otherwise: its character's speed is boosted meanwhile.
+    speedBoost: SpeedBoost | null
 }
 
 export type Spawns = {
@@ -313,6 +332,8 @@ export function createGameState(
         splitterDrops: level.rules.splitterDrops ?? false,
         respawnDelay:
             RESPAWN_DELAY * (difficulty ? RESPAWN_SCALE[difficulty] : 1),
+        presents: createPresents(),
+        ...(difficulty ? { difficulty } : {}),
     }
 }
 
@@ -374,6 +395,7 @@ export function newPlayer(character: Character, breath: BreathDef): Player {
         panicImmuneFor: 0,
         health: MAX_HEALTH,
         invulnerableFor: 0,
+        speedBoost: null,
     }
 }
 
@@ -824,6 +846,7 @@ export function step(
     state.ticks++
     tickEffects(state, dt)
     tickPanics(players, dt)
+    tickPresents(state, dt)
     for (const player of players) {
         if (player.invulnerableFor > 0) player.invulnerableFor--
     }
@@ -1023,7 +1046,13 @@ export function step(
         }
     }
 
+    // Present boxes (KDA-324, see present.ts): this tick's drops, then the
+    // boxes under the players open, before the touches count, so a quake
+    // opened this tick already makes the enemies harmless.
+    dropPresents(state, random)
+    openPresents(state, random)
     const outcome = checkEnd(state, start)
+    if (outcome) clearPresents(state)
     // The last dot is eaten as the move into its cell starts, a glide
     // before the eater is drawn there: its gameWon waits for settle. The
     // boss's fall starts its defeat (KDA-301), and its gameWon waits for
@@ -1078,6 +1107,7 @@ export function settle(state: GameState, dt: number): boolean {
     const glided = state.players.every(
         (p) => p.character.moveProgress >= 1 - EPSILON
     )
+    ageReveals(state, dt)
     if (defeat) {
         advanceDefeat(state, dt)
         return glided && defeatOver(defeat)

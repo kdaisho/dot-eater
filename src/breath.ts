@@ -110,6 +110,11 @@ export type EnemyStatus = {
     // respawning one does, warning that it is about to end (see
     // enemyVisible). Drawing only: nothing else changes.
     blinksBeforeEnd?: boolean
+    // The enemy is in a panic (an Earthquake's, KDA-324, see present.ts):
+    // drawn with its look flagged panicked (SpriteLook.panicked) and, until
+    // KDA-317 gives it a panic frame, trembling and hopping in place with
+    // a sweat drop (see quakePanic in presentView.ts). Drawing only.
+    panics?: boolean
     look?: Look
 }
 

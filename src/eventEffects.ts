@@ -2,7 +2,8 @@ import { BOSS_BREATH } from "./bossBreath"
 import { ENEMY_BREATH } from "./enemyBreath"
 import type { GameEvent } from "./events"
 import type { GameState } from "./game"
-import type { Particles } from "./particles"
+import type { BurstKind, Particles } from "./particles"
+import { PresentContent } from "./present"
 import { shakeEnabled, type Settings } from "./settings"
 import { SHAKES, type Shake } from "./shake"
 import { loopPos } from "./level"
@@ -127,10 +128,34 @@ export function effectsForEvent(
             // Its mark and jitter are drawn from the player (see render.ts).
             shake.add(SHAKES.panic)
             return
+        case "presentDropped":
+            // The box is drawn from the game (see presentView.ts).
+            return
+        case "presentOpened":
+            // A sparkle in the content's colours (the box, the icon and
+            // the label are drawn from the reveal); the Earthquake shakes
+            // the board.
+            particles.burst(PRESENT_SPARKLES[event.content], event.at)
+            if (event.content === PresentContent.quake) {
+                shake.add(SHAKES.quake)
+            }
+            return
+        case "presentExpired":
+            particles.burst("presentPuff", event.at)
+            return
         case "gameWon":
         case "gameLost":
             return
     }
+}
+
+// The sparkle a present box (KDA-324) opens with, by what was inside.
+export const PRESENT_SPARKLES: Readonly<Record<PresentContent, BurstKind>> = {
+    heal: "presentHeal",
+    hugeDot: "presentHugeDot",
+    speed: "presentSpeed",
+    quake: "presentQuake",
+    germ: "presentGerm",
 }
 
 // How much the effects move, from the system's reduced motion setting and
