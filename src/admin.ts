@@ -80,7 +80,6 @@ export function adminScreen(
                 level,
                 deps.lastAnimal ?? DEFAULT_ANIMAL,
                 "solo",
-                [],
                 difficulty,
                 run
             )

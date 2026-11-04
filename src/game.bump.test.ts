@@ -1,14 +1,6 @@
 import { describe, expect, it } from "vite-plus/test"
 import { addStatus, addTileEffect, type TileEffect } from "./breath"
-import {
-    AiType,
-    Cell,
-    PLAYER_RESPAWN_DELAY,
-    PLAYER_SPEED,
-    RESPAWN_BLOCK_GRACE,
-    MAX_HEALTH,
-    TICK_RATE,
-} from "./constants"
+import { AiType, Cell, PLAYER_SPEED, MAX_HEALTH, TICK_RATE } from "./constants"
 import type { Character } from "./character"
 import {
     IDLE,
@@ -74,7 +66,7 @@ function run(state: GameState, moves: readonly MoveInput[], ticks: number) {
 const posOf = (state: GameState, i: number) => state.players[i].character.pos
 
 describe("players bumping into each other", () => {
-    it.each(["coop", "versus"] as const)(
+    it.each(["coop"] as const)(
         "stops a player walking into the other in %s, waiting as at a wall",
         (mode) => {
             const state = game(vec2(4, 1), vec2(5, 1), { mode })
@@ -262,93 +254,9 @@ describe("players bumping into each other", () => {
 
     it("isn't blocked by a player out of play", () => {
         const state = game(vec2(4, 1), vec2(5, 1))
-        takeOut(state.players[1], PLAYER_RESPAWN_DELAY)
+        takeOut(state.players[1])
         run(state, [hold(east), IDLE], 1)
         expect(posOf(state, 0)).toEqual(vec2(5, 1))
-    })
-
-    describe("coming back onto a spawn the other player is on", () => {
-        // Player 1's spawn is (1, 1); player 2 stands on it.
-        function onSpawn(): GameState {
-            const state = game(vec2(1, 1), vec2(3, 1))
-            takeOut(state.players[0], 0)
-            const p2 = state.players[1].character
-            p2.pos = vec2(1, 1)
-            p2.lastPos = vec2(1, 1)
-            return state
-        }
-
-        it("waits while the other is on it, then comes back", () => {
-            const state = onSpawn()
-            const p1 = state.players[0]
-            run(state, [IDLE, IDLE], MOVE * 2)
-            expect(p1.out).toBe(true)
-            expect(p1.respawnIn).toBe(0)
-            // Player 2 steps off. The wait is checked before anyone
-            // moves, so player 1 is back on the next tick.
-            run(state, [IDLE, hold(east)], 1)
-            expect(posOf(state, 1)).toEqual(vec2(2, 1))
-            expect(p1.out).toBe(true)
-            run(state, [IDLE, IDLE], 1)
-            expect(p1.out).toBe(false)
-            expect(p1.character.pos).toEqual(vec2(1, 1))
-        })
-
-        it("waits while the other is moving onto it", () => {
-            const state = onSpawn()
-            const p2 = state.players[1].character
-            p2.lastPos = vec2(2, 1)
-            p2.moveProgress = 0.3
-            run(state, [IDLE, IDLE], 1)
-            expect(state.players[0].out).toBe(true)
-        })
-
-        // Spawn camping (PM call): after RESPAWN_BLOCK_GRACE held up by the
-        // other player, it comes back on the nearest free cell instead.
-        const GRACE_TICKS = RESPAWN_BLOCK_GRACE * TICK_RATE
-
-        it("comes back next to its spawn once the other has camped on it for RESPAWN_BLOCK_GRACE", () => {
-            const state = onSpawn()
-            const p1 = state.players[0]
-            run(state, [IDLE, IDLE], GRACE_TICKS - 1)
-            expect(p1.out).toBe(true)
-            run(state, [IDLE, IDLE], 1)
-            expect(p1.out).toBe(false)
-            expect(p1.character.pos).toEqual(vec2(2, 1))
-            expect(p1.character.lastPos).toEqual(vec2(2, 1))
-            expect(state.events).toContainEqual({
-                type: "playerRespawned",
-                player: 0,
-                at: vec2(2, 1),
-            })
-            expect(posOf(state, 1)).toEqual(vec2(1, 1))
-            expect(p1.spawnHeldFor).toBe(0)
-        })
-
-        it("still doesn't come back onto or next to an enemy", () => {
-            const state = onSpawn()
-            const sentry = makeEnemy(3, 1)
-            sentry.speed = 0
-            state.enemies.push(sentry)
-            state.spawns.enemies = [vec2(3, 1)]
-            run(state, [IDLE, IDLE], GRACE_TICKS)
-            // (2, 1), (3, 1) and (4, 1) are on or next to the enemy.
-            expect(state.players[0].out).toBe(false)
-            expect(posOf(state, 0)).toEqual(vec2(5, 1))
-        })
-
-        it("doesn't count a wait an enemy causes", () => {
-            const state = game(vec2(1, 1), vec2(6, 1))
-            const sentry = makeEnemy(2, 1)
-            sentry.speed = 0
-            state.enemies.push(sentry)
-            state.spawns.enemies = [vec2(2, 1)]
-            const p1 = state.players[0]
-            takeOut(p1, 0)
-            run(state, [IDLE, IDLE], GRACE_TICKS * 2)
-            expect(p1.out).toBe(true)
-            expect(p1.spawnHeldFor).toBe(0)
-        })
     })
 
     it("never blocks an enemy, and an enemy never blocks a player", () => {

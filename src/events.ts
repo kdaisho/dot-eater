@@ -115,22 +115,15 @@ export type GameEvent =
     // A hit that takes its last health reports a playerCaught instead.
     | { type: "hurt"; player: number; at: Vec2; damage: number }
     // A player was knocked out on `at` (its cell): a hit took its last
-    // health. `outForGood` is true when the player won't be back: in solo
-    // (the game is lost) and co-op; a versus player comes back later.
-    | { type: "playerCaught"; player: number; at: Vec2; outForGood: boolean }
-    // A player is back in play on its spawn, `at`, when its wait after a
-    // versus knockout is over.
-    | { type: "playerRespawned"; player: number; at: Vec2 }
-    // Versus: player `by`'s breath stunned `player`, on `at` (its cell).
-    | { type: "playerStunned"; player: number; by: number; at: Vec2 }
-    // The stage is cleared: the game is won. In versus this is the end of
-    // a round; whether it also ends the match is up to flow.ts (the next
-    // screen is roundResult or matchResult). Won by the last dot, it comes
+    // health. It won't be back: in solo the game is lost, and in co-op it
+    // is out for good.
+    | { type: "playerCaught"; player: number; at: Vec2 }
+    // The stage is cleared: the game is won. Won by the last dot, it comes
     // from the outro once the players' glides are done (see settle in
     // game.ts); won by defeating the boss, as its defeat's effect ends
     // (KDA-301, see bossDefeat.ts), when the clear jingle is due.
     | { type: "gameWon" }
-    // The game is lost (never in versus).
+    // The game is lost.
     | { type: "gameLost" }
 
 export type GameEventType = GameEvent["type"]

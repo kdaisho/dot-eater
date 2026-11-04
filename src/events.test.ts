@@ -12,7 +12,6 @@ import { takeEvents, type GameEvent, type GameEventType } from "./events"
 import {
     settle,
     step,
-    takeOut,
     type GameState,
     IDLE,
     type Mode,
@@ -332,8 +331,8 @@ function caughtGame(mode: Mode, health: number, players = 1): GameState {
     return makeState(hall, starts, [makeEnemy(1, 1)], { mode, health })
 }
 
-describe("hurt, playerCaught and playerRespawned", () => {
-    it("solo with health left: hurt, and nobody respawned", () => {
+describe("hurt and playerCaught", () => {
+    it("solo with health left: hurt", () => {
         const state = caughtGame("solo", MAX_HEALTH)
         expect(tick(state)).toBeNull()
         expect(state.events).toEqual([
@@ -349,7 +348,6 @@ describe("hurt, playerCaught and playerRespawned", () => {
                 type: "playerCaught",
                 player: 0,
                 at: vec2(1, 1),
-                outForGood: true,
             },
             { type: "gameLost" },
         ])
@@ -371,7 +369,6 @@ describe("hurt, playerCaught and playerRespawned", () => {
                 type: "playerCaught",
                 player: 0,
                 at: vec2(1, 1),
-                outForGood: true,
             },
         ])
     })
@@ -388,68 +385,6 @@ describe("hurt, playerCaught and playerRespawned", () => {
         )
         tick(state)
         expect(ofType(state, "hurt").map((e) => e.player)).toEqual([0, 1])
-    })
-
-    it("versus: knocked out, never for good", () => {
-        const state = caughtGame("versus", 1, 2)
-        tick(state)
-        expect(ofType(state, "playerCaught")).toEqual([
-            {
-                type: "playerCaught",
-                player: 0,
-                at: vec2(1, 1),
-                outForGood: false,
-            },
-        ])
-    })
-
-    it("reports a 2-player respawn on the tick the player is back", () => {
-        const state = makeState(hall, [vec2(1, 1), vec2(5, 1)], [], {
-            mode: "versus",
-        })
-        const p2 = state.players[1]
-        p2.character.pos = vec2(3, 1)
-        takeOut(p2, TICK * 2)
-        tick(state)
-        expect(state.events).toEqual([])
-        tick(state)
-        expect(state.events).toEqual([
-            { type: "playerRespawned", player: 1, at: vec2(5, 1) },
-        ])
-    })
-})
-
-describe("playerStunned", () => {
-    it("follows the breath that stunned, naming both players", () => {
-        const state = makeState(hall, [vec2(1, 1), vec2(2, 1)], [], {
-            mode: "versus",
-            breath: BREATHS[AnimalId.dragon],
-        })
-        state.players[0].breather.energy = 100
-        tick(state, [breath, { held: [], pressed: none }])
-        expect(state.events).toEqual([
-            {
-                type: "breathed",
-                player: 0,
-                animal: AnimalId.dragon,
-                at: vec2(1, 1),
-                facing: east,
-                // A tap's whole line: players don't stop it.
-                cells: [2, 3].map((x) => vec2(x, 1)),
-            },
-            { type: "playerStunned", player: 1, by: 0, at: vec2(2, 1) },
-        ])
-    })
-
-    it("isn't reported for a player already stunned", () => {
-        const state = makeState(hall, [vec2(1, 1), vec2(3, 1)], [], {
-            mode: "versus",
-            breath: BREATHS[AnimalId.owl],
-        })
-        state.players[0].breather.energy = 100
-        state.players[1].stunnedFor = 1
-        tick(state, [breath, { held: [], pressed: none }])
-        expect(ofType(state, "playerStunned")).toEqual([])
     })
 })
 
@@ -496,9 +431,9 @@ describe("gameWon", () => {
         expect(state.events).toEqual([])
     })
 
-    it("ends a versus round too", () => {
+    it("ends a co-op game too", () => {
         const state = makeState(corridor, [vec2(1, 1), vec2(1, 1)], [], {
-            mode: "versus",
+            mode: "coop",
         })
         const idle = { held: [], pressed: none }
         expect(playOut(state, [hold(east), idle])).toBe("won")

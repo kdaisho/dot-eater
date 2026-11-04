@@ -116,14 +116,10 @@ export const CATCH_DISTANCE = 0.6
 
 // Points for eating one dot.
 export const DOT_POINTS = 10
-// Seconds a player knocked out in versus stays out of play before it is
-// back at its own spawn (see takeOut in game.ts).
-export const PLAYER_RESPAWN_DELAY = 3
 // ---- Health (KDA-257; the numbers are placeholders to tune at preview) ----
 
-// A player's health at the start of every stage, and when it is back in
-// play in versus. A hit takes some off (see hurtPlayer in game.ts); at 0
-// the player is knocked out.
+// A player's health at the start of every stage. A hit takes some off
+// (see hurtPlayer in game.ts); at 0 the player is knocked out.
 export const MAX_HEALTH = 100
 // Health an enemy's touch costs.
 export const ENEMY_DAMAGE = 25
@@ -132,16 +128,6 @@ export const BOSS_DAMAGE = 40
 // Seconds after a hit in which the player can't be hurt again (counted in
 // ticks), blinking: enemies and the boss pass through it meanwhile.
 export const HURT_INVULNERABLE_SECONDS = 1.5
-
-// How far (in cells, centre to centre) every enemy and the boss must be
-// drawn from a player's spawn for it to come back there (see
-// clearOfEnemies in game.ts): far enough that nothing gliding in can catch it a tick later.
-export const RESPAWN_CLEAR_DISTANCE = 1.5
-// Seconds a player due back waits while the other player is on its spawn
-// or moving onto it (when players bump, KDA-262) before it comes back on
-// the nearest free cell instead (see tickPlayersOut in game.ts), so a
-// player can't camp on the other's spawn.
-export const RESPAWN_BLOCK_GRACE = 2
 
 // ---- Breaths (see breath.ts) ----
 

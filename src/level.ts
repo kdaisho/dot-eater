@@ -4,7 +4,6 @@ import {
     Cell,
     MAX_ENEMIES,
     MAX_HEALTH,
-    RESPAWN_CLEAR_DISTANCE,
     TICK_RATE,
 } from "./constants"
 import {
@@ -297,12 +296,10 @@ export function parseStage(data: LevelData): Stage {
     return stage as Stage
 }
 
-// While nobody is in play in a 2-player game, the enemies and the boss head
-// back to their own spawns, and a player waiting to come back needs its
-// spawn clear of them (see clearOfEnemies in game.ts). So no enemy or boss
-// spawn may be near a player spawn: the gap keeps a chaser circling its
-// spawn, a cell off it, out of the way.
-export const SPAWN_GAP = RESPAWN_CLEAR_DISTANCE + 1
+// How far (in cells, centre to centre) every enemy and boss spawn must be
+// from a player spawn, so nothing starts on top of a player: a chaser
+// circling its spawn, a cell off it, stays out of the way.
+export const SPAWN_GAP = 2.5
 
 // Enemy spawns (every one the map lists, so every difficulty's) and boss
 // spawns (by the nearest cell of its 2x2 footprint) within SPAWN_GAP of a

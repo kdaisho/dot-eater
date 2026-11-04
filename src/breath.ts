@@ -27,7 +27,6 @@ import {
     isWholeSplitter,
     splitSplitter,
 } from "./splitter"
-import { opponentsStruck, stun } from "./versus"
 import { allDirections, directions, samePos, vec2, type Vec2 } from "./vec2"
 
 // The breath system. Pure, no DOM: time comes in as `dt`, the breath press
@@ -452,12 +451,7 @@ export function cancelCharges(state: GameState) {
 // level's shape from its cell along its facing, run the breath's hook, and
 // pay (the level's energy, and the cooldown) unless the hook refused. What
 // it defeats scores for `who`.
-// Breaths don't affect players, except in versus: there the other player,
-// standing on any cell the breath strikes (as for enemies: the origin too
-// for a line, a cone or a spread), is stunned (see versus.ts), whatever
-// the breath, and the breath counts as fired even if the hook refused.
-// Only the strike stuns: tile effects it leaves don't. Returns true if the
-// breath happened.
+// Breaths don't affect players. Returns true if the breath happened.
 //
 // A boss in the way (see boss.ts) stops a line, a cone or a spread like a
 // wall would, except that its cells are covered: the big body takes the
@@ -534,8 +528,6 @@ export function breathe(
         },
     }
     const bossHit = body !== undefined && struck.some(body)
-    // In versus, the other player on a struck cell (see opponentsStruck).
-    const stuns = opponentsStruck(state, who, struck)
     const eventsBefore = state.events.length
     // Paid up front, so dots the hook has the player eat (the Boar's dash,
     // KDA-304) fill the meter after the cost is out of it, not into a full
@@ -543,7 +535,7 @@ export function breathe(
     breather.energy -= spent
     const fired = breath.fire(hit) !== false
     if (iceAdded) rebuildIce(state)
-    if (!fired && !bossHit && stuns.length === 0) {
+    if (!fired && !bossHit) {
         breather.energy += spent
         // A refused breath reports nothing (see events.ts), even if its
         // hook reported something before refusing.
@@ -562,16 +554,6 @@ export function breathe(
         cells: coveredCells(state, origin, reach, walls),
     })
     if (bossHit) damageBoss(state, toBoss, who)
-    for (const other of stuns) {
-        stun(other)
-        const { pos } = other.character
-        emit(state, {
-            type: "playerStunned",
-            player: state.players.indexOf(other),
-            by: player,
-            at: vec2(pos.x, pos.y),
-        })
-    }
     breather.cooldown = breath.cooldown
     return true
 }

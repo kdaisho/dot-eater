@@ -17,7 +17,7 @@ import { fixedRandom, parseFlat, sameAtEvery } from "./test/helpers"
 import { vec2 } from "./vec2"
 
 // Stage mode (KDA-272): stage select, reached from the title's choice of
-// story or stage mode (or straight from the title in versus), plays any
+// story or stage mode, plays any
 // stage story mode has unlocked; its end screens offer Retry and Stage
 // select, with no next stage, and stage select comes back on the stage
 // just played.
@@ -80,7 +80,7 @@ function played(level: number, outcome: Outcome, mode: Mode = "solo") {
 }
 
 describe("stage select in stage mode", () => {
-    it.each(["solo", "coop", "versus"] as const)(
+    it.each(["solo", "coop"] as const)(
         "starts an unlocked stage in %s",
         (mode) => {
             const next = update(select(1, mode), input(["confirm"]), deps())
@@ -93,7 +93,7 @@ describe("stage select in stage mode", () => {
         }
     )
 
-    it.each(["solo", "coop", "versus"] as const)(
+    it.each(["solo", "coop"] as const)(
         "can't confirm a locked slot in %s, by key or tap",
         (mode) => {
             const locked = select(2, mode)

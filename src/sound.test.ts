@@ -129,14 +129,9 @@ describe("soundForEvent", () => {
                 "breather.breath",
             ],
             [{ type: "hurt", player: 0, at, damage: 25 }, "hurt"],
-            [
-                { type: "playerCaught", player: 0, at, outForGood: false },
-                "caught",
-            ],
-            [{ type: "playerStunned", player: 1, by: 0, at }, "stunned"],
+            [{ type: "playerCaught", player: 0, at }, "caught"],
             [{ type: "gameWon" }, "stageClear"],
             [{ type: "gameLost" }, "gameOver"],
-            [{ type: "playerRespawned", player: 0, at }, undefined],
             [{ type: "dotRegrown", at }, undefined],
             [{ type: "dotDropped", enemy: 0, at }, "dotDropped"],
         ]
@@ -164,26 +159,17 @@ describe("eventSounds", () => {
         expect(
             eventSounds([
                 { type: "dotEaten", player: 0, at },
-                { type: "playerStunned", player: 1, by: 0, at },
+                { type: "hurt", player: 1, at, damage: 25 },
                 { type: "dotEaten", player: 1, at },
             ])
-        ).toEqual(["dot", "stunned"])
+        ).toEqual(["dot", "hurt"])
         expect(eventSounds([])).toEqual([])
-    })
-
-    it("makes a versus knockout and coming back one sound", () => {
-        expect(
-            eventSounds([
-                { type: "playerCaught", player: 0, at, outForGood: false },
-                { type: "playerRespawned", player: 1, at },
-            ])
-        ).toEqual(["caught"])
     })
 
     it("lets the game over jingle replace the catch that lost the game", () => {
         expect(
             eventSounds([
-                { type: "playerCaught", player: 0, at, outForGood: true },
+                { type: "playerCaught", player: 0, at },
                 { type: "gameLost" },
             ])
         ).toEqual(["gameOver"])

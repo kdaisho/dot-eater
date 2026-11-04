@@ -13,7 +13,7 @@ import { TICK_RATE } from "./constants"
 import { step, takeOut, type GameState, type MoveInput } from "./game"
 import { fixedRandom, makeState, testBreath, textMap } from "./test/helpers"
 import { vec2, type Vec2 } from "./vec2"
-import { stun } from "./versus"
+import { panic } from "./panic"
 
 // The charged breath (KDA-289, with the user): held, the breath charges a
 // level every CHARGE_SECONDS, up to MAX_CHARGE or what the meter pays for,
@@ -393,7 +393,7 @@ describe("charging with two players", () => {
         )
         const state = makeState(hall, [vec2(1, 1), vec2(8, 1)], [], {
             breath: breaths,
-            mode: "versus",
+            mode: "coop",
         })
         for (const p of state.players) p.breather.energy = 100
         return { state, levels }
@@ -415,15 +415,15 @@ describe("charging with two players", () => {
         expect(levels).toEqual([[4], [3]])
     })
 
-    it("drops a stunned player's charge, unfired", () => {
+    it("drops a panicked player's charge, unfired", () => {
         const { state, levels } = duel()
         const p2 = state.players[1]
         both(state, {}, { breath: true, breathHeld: true })
-        stun(p2)
+        panic(p2)
         both(state, {}, { breathHeld: true })
         expect(p2.breather.charge).toBeNull()
-        // Let go once the stun is over: nothing fires.
-        p2.stunnedFor = 0
+        // Let go once the panic is over: nothing fires.
+        p2.panickedFor = 0
         both(state, {}, {})
         expect(levels[1]).toEqual([])
         expect(p2.breather.energy).toBe(100)
@@ -433,7 +433,7 @@ describe("charging with two players", () => {
         const { state, levels } = duel()
         const p2 = state.players[1]
         both(state, {}, { breath: true, breathHeld: true })
-        takeOut(p2, 0.1)
+        takeOut(p2)
         both(state, {}, { breathHeld: true })
         expect(p2.breather.charge).toBeNull()
         expect(levels[1]).toEqual([])

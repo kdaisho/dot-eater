@@ -205,41 +205,20 @@ describe("effectsForEvent", () => {
     })
 
     it("a caught burst and the caught shake when a player is knocked out", () => {
-        for (const outForGood of [false, true]) {
-            const r = run({
-                type: "playerCaught",
-                player: 0,
-                at: vec2(2, 3),
-                outForGood,
-            })
-            expect(r.bursts).toEqual([{ kind: "caught", at: vec2(2, 3) }])
-            expect(r.shakes).toEqual([SHAKES.caught])
+        const r = run({ type: "playerCaught", player: 0, at: vec2(2, 3) })
+        expect(r.bursts).toEqual([{ kind: "caught", at: vec2(2, 3) }])
+        expect(r.shakes).toEqual([SHAKES.caught])
+    })
+
+    it.each([{ type: "gameWon" }, { type: "gameLost" }] as GameEvent[])(
+        "nothing for $type",
+        (event) => {
+            const r = run(event)
+            expect(r.bursts).toEqual([])
+            expect(r.emits).toEqual([])
+            expect(r.shakes).toEqual([])
         }
-    })
-
-    it("a small shake, no particles, when a player is stunned", () => {
-        const r = run({
-            type: "playerStunned",
-            player: 1,
-            by: 0,
-            at: vec2(2, 2),
-        })
-        expect(r.bursts).toEqual([])
-        expect(r.emits).toEqual([])
-        expect(r.shakes).toEqual([SHAKES.stun])
-        expect(SHAKES.stun).toBeLessThan(SHAKES.hit)
-    })
-
-    it.each([
-        { type: "playerRespawned", player: 0, at: vec2(1, 2) },
-        { type: "gameWon" },
-        { type: "gameLost" },
-    ] as GameEvent[])("nothing for $type", (event) => {
-        const r = run(event)
-        expect(r.bursts).toEqual([])
-        expect(r.emits).toEqual([])
-        expect(r.shakes).toEqual([])
-    })
+    )
 
     describe("a breath", () => {
         const breathed = (
@@ -359,7 +338,7 @@ describe("effectsForEvent", () => {
                 ],
                 [vec2(1, 1), vec2(4, 1)],
                 [],
-                { breath: [BREATHS.dragon, BREATHS.boar], mode: "versus" }
+                { breath: [BREATHS.dragon, BREATHS.boar], mode: "coop" }
             )
             for (const p of state.players) p.breather.energy = 100
             state.players[1].breather.facing = vec2(-1, 0)
@@ -393,9 +372,7 @@ describe("effectsForEvents", () => {
                     type: "playerCaught",
                     player: 0,
                     at: vec2(2, 2),
-                    outForGood: false,
                 },
-                { type: "playerRespawned", player: 0, at: vec2(1, 2) },
             ],
             room(),
             r.targets

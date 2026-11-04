@@ -99,7 +99,7 @@ function playing(
     animal: AnimalId = DEFAULT_ANIMAL,
     difficulty: Difficulty = DEFAULT_DIFFICULTY
 ): Extract<Screen, { kind: "playing" }> {
-    const screen = startLevel(levels, level, animal, "solo", [], difficulty)
+    const screen = startLevel(levels, level, animal, "solo", difficulty)
     if (screen.kind !== "playing") throw new Error("not playing")
     return screen
 }
@@ -1029,7 +1029,7 @@ describe("difficulty", () => {
     const d = (overrides: Partial<FlowDeps> = {}) =>
         deps({ levels: [tiers], ...overrides })
     const startHard = () =>
-        startLevel([tiers], 0, DEFAULT_ANIMAL, "solo", [], "hard")
+        startLevel([tiers], 0, DEFAULT_ANIMAL, "solo", "hard")
 
     it("starts from character select at the default difficulty", () => {
         const next = update(characterSelect(0), tickInput(["confirm"]), d())

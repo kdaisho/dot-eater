@@ -12,10 +12,7 @@ import {
     ENEMY_IDS,
     HURT_INVULNERABLE_SECONDS,
     MAX_HEALTH,
-    PLAYER_RESPAWN_DELAY,
     PLAYER_SPEED,
-    RESPAWN_BLOCK_GRACE,
-    RESPAWN_CLEAR_DISTANCE,
     RESPAWN_DELAY,
     TICK_RATE,
 } from "./constants"
@@ -39,7 +36,6 @@ import {
     gainEnergy,
     hasStatus,
     inPlay,
-    START_FACING,
     tickEffects,
     type ActiveTile,
     type BlockMap,
@@ -52,7 +48,6 @@ import {
     bossMove,
     bossTarget,
     createBoss,
-    footprint,
     squareDistance,
     type Boss,
 } from "./boss"
@@ -84,19 +79,18 @@ import {
     type Level,
 } from "./level"
 import { levels } from "./levels"
-import { distanceMap, openNeighbours } from "./path"
+import { distanceMap } from "./path"
 import { DEFAULT_ANIMAL, type AnimalId } from "./roster"
 import { createRegrow, dotGone, tickRegrow, type Regrow } from "./regrow"
 import { createSplitter, dropDot, tickDrops } from "./splitter"
-import { loseDots, stunned, tickStuns } from "./versus"
+import { panicked, tickPanics } from "./panic"
 import { samePos, vec2, type Vec2 } from "./vec2"
 
 export type Outcome = "dead" | "won"
 
-// How a game is played: by one player, or by two together (co-op) or
-// against each other (versus). The mode decides what running out of health
-// costs (see knockOut).
-export type Mode = "solo" | "coop" | "versus"
+// How a game is played: by one player, or by two together (co-op). The
+// mode decides what running out of health costs (see knockOut).
+export type Mode = "solo" | "coop"
 
 export type GameState = {
     // The rules the game is played by (see knockOut).
@@ -123,8 +117,7 @@ export type GameState = {
     // Only `step` counts, and it only runs during play (see flow.ts), so
     // pauses and the ending outro don't add to it.
     ticks: number
-    // Where everyone starts (copied from the level). A versus player
-    // knocked out comes back to its own (see bringBack).
+    // Where everyone starts (copied from the level).
     spawns: Spawns
     // What happened in the latest tick, in order (see events.ts). `step`
     // empties it first.
@@ -164,13 +157,11 @@ export type Player = {
     // Points so far: DOT_POINTS per dot eaten, plus what its breaths earn
     // (see totalScore for the whole game's).
     score: number
-    // Dots eaten so far, for the end screens' per-player breakdown. In
-    // versus a knockout also lowers it (CATCH_DOTS, see versus.ts), and it
-    // decides each round.
+    // Dots eaten so far, for the end screens' per-player breakdown.
     dots: number
     // The cell of the dot eaten on the player's latest move, or null if that
-    // move ate nothing (or the player hasn't moved since the start or
-    // coming back). The dot is gone from `cells` and scored at once, but the
+    // move ate nothing (or the player hasn't moved since the start). The
+    // dot is gone from `cells` and scored at once, but the
     // renderer keeps drawing it until the player's glide reaches it (see
     // eatenDotVisible in glide.ts). Purely visual.
     eatenAt: Vec2 | null
@@ -182,28 +173,20 @@ export type Player = {
     rate: number
     // Whether the player has been taken out of play (see takeOut): it isn't
     // drawn, doesn't move, breathe, eat or get hurt, enemies and the boss
-    // don't go after it, and its input is ignored. Only the 2-player rules
-    // take a player out (see knockOut); in solo a knockout loses the game.
+    // don't go after it, and its input is ignored. Only co-op takes a
+    // player out, for good (see knockOut); in solo a knockout loses the
+    // game.
     out: boolean
-    // While out, the seconds until it is back at its spawn (0 once due, while
-    // it waits for the spawn to be clear; see tickPlayersOut), or null if it
-    // is out for good. Null while in play.
-    respawnIn: number | null
-    // While out and due back, the seconds it has waited because the other
-    // player was on its spawn or moving onto it (when players bump); at
-    // RESPAWN_BLOCK_GRACE it comes back on the nearest free cell instead
-    // (see tickPlayersOut). 0 otherwise.
-    spawnHeldFor: number
-    // Seconds left of a versus stun (see stun in versus.ts), 0 when not
-    // stunned.
-    stunnedFor: number
-    // Seconds left of a versus stun's immunity (see STUN_IMMUNITY_SECONDS in
-    // versus.ts): once a stun wears off the player can't be stunned again
-    // until this is over. 0 when not immune.
-    stunImmuneFor: number
+    // Seconds left of a panic (see panic in panic.ts), 0 when not
+    // panicked.
+    panickedFor: number
+    // Seconds left of a panic's immunity (see PANIC_IMMUNITY_SECONDS in
+    // panic.ts): once a panic wears off the player can't panic again until
+    // this is over. 0 when not immune.
+    panicImmuneFor: number
     // Health left (KDA-257), from MAX_HEALTH down: a hit takes its damage
     // off (see hurtPlayer), and at 0 the player is knocked out. Full at the
-    // start of every stage, and when it is back in play (bringBack).
+    // start of every stage.
     health: number
     // Ticks left of the invulnerability after a hit (see
     // HURT_INVULNERABLE_TICKS), 0 when not invulnerable: enemies and the
@@ -387,10 +370,8 @@ export function newPlayer(character: Character, breath: BreathDef): Player {
         eatenAt: null,
         rate: 1,
         out: false,
-        respawnIn: null,
-        spawnHeldFor: 0,
-        stunnedFor: 0,
-        stunImmuneFor: 0,
+        panickedFor: 0,
+        panicImmuneFor: 0,
         health: MAX_HEALTH,
         invulnerableFor: 0,
     }
@@ -401,48 +382,11 @@ export function totalScore(state: GameState): number {
     return state.players.reduce((sum, p) => sum + p.score, 0)
 }
 
-// Put `player` back in play on its own spawn (or `at`, see
-// tickPlayersOut), as at the start of a game: ready to move, facing right,
-// nothing buffered, full health. Its score, energy and cooldown are kept.
-// A dot on the cell it comes back on is eaten (KDA-270). Nobody else is
-// touched.
-export function bringBack(state: GameState, player: Player, at?: Vec2) {
-    const index = state.players.indexOf(player)
-    const spawn = at ?? state.spawns.players[index]
-    const { character } = player
-    character.pos = vec2(spawn.x, spawn.y)
-    character.lastPos = vec2(spawn.x, spawn.y)
-    character.moveProgress = 1
-    player.breather.facing = vec2(START_FACING.x, START_FACING.y)
-    player.bufferedStep = vec2(0, 0)
-    player.eatenAt = null
-    player.rate = 1
-    player.out = false
-    player.respawnIn = null
-    player.spawnHeldFor = 0
-    player.stunnedFor = 0
-    player.stunImmuneFor = 0
-    player.health = MAX_HEALTH
-    player.invulnerableFor = 0
-    emit(state, {
-        type: "playerRespawned",
-        player: index,
-        at: vec2(spawn.x, spawn.y),
-    })
-    // A safety net (KDA-270): a player eats only by moving onto a cell, so a
-    // dot on the cell it comes back on would be stuck under it. Eat it
-    // there and then. Nothing should put one there (a Splitter doesn't drop
-    // on an awaited spawn, and spawns hold no map dots to regrow), but
-    // the nearest free cell of a held-up spawn can hold one.
-    eatDot(state, player, spawn)
-}
-
-// Take `player` out of play on its own (see Player.out), where it stands:
-// back at its spawn after `respawnAfter` seconds (see tickPlayersOut), or
-// never if it is null. Nothing else changes: the enemies, the boss, the dots
-// and the other player carry on. It stops dead (no glide left to draw) with
+// Take `player` out of play on its own (see Player.out), for good, where
+// it stands. Nothing else changes: the enemies, the boss, the dots and the
+// other player carry on. It stops dead (no glide left to draw) with
 // nothing buffered; its energy and score are kept.
-export function takeOut(player: Player, respawnAfter: number | null) {
+export function takeOut(player: Player) {
     const { character } = player
     character.lastPos = vec2(character.pos.x, character.pos.y)
     character.moveProgress = 1
@@ -450,109 +394,9 @@ export function takeOut(player: Player, respawnAfter: number | null) {
     player.eatenAt = null
     player.rate = 1
     player.out = true
-    player.respawnIn = respawnAfter
-    player.spawnHeldFor = 0
-    player.stunnedFor = 0
-    player.stunImmuneFor = 0
+    player.panickedFor = 0
+    player.panicImmuneFor = 0
     player.invulnerableFor = 0
-}
-
-// Whether `player` is out of play with no way back (see takeOut).
-export function outForGood(player: Player): boolean {
-    return player.out && player.respawnIn === null
-}
-
-// Count down every out player's wait by `dt` seconds, at the start of a
-// tick, and bring back each one whose wait is over (see bringBack). One
-// that is due waits on (at 0) while its spawn isn't clear: while an enemy
-// or the boss is near it (see clearOfEnemies), or, when players bump, the
-// other player is on it or moving onto it. It comes back on the first tick
-// its spawn is clear, before anyone moves, so it may move on that same
-// tick. Once the other player has held it up for RESPAWN_BLOCK_GRACE, it
-// comes back on the nearest free cell instead (see nearestFreeCell).
-function tickPlayersOut(state: GameState, dt: number) {
-    state.players.forEach((player, i) => {
-        if (!player.out || player.respawnIn === null) return
-        player.respawnIn = Math.max(0, player.respawnIn - dt)
-        if (player.respawnIn > EPSILON) return
-        player.respawnIn = 0
-        const spawn = state.spawns.players[i]
-        // Held up by the other player (only when players bump), it comes
-        // back on the nearest free cell instead once it has waited
-        // RESPAWN_BLOCK_GRACE for it, so nobody can camp on its spawn.
-        const camped = playerBlocks(state, player, spawn)
-        if (!camped) {
-            if (clearOfEnemies(state, spawn)) bringBack(state, player)
-            return
-        }
-        player.spawnHeldFor += dt
-        if (player.spawnHeldFor < RESPAWN_BLOCK_GRACE - EPSILON) return
-        const cell = nearestFreeCell(state, player, spawn)
-        if (cell) bringBack(state, player, cell)
-    })
-}
-
-// The nearest cell to `spawn` (breadth-first along open cells, direction
-// order on ties) that `player` may come back on: no other player there
-// (see playerBlocks) and clear of enemies and the boss (see
-// clearOfEnemies). Null if there is none.
-function nearestFreeCell(
-    state: GameState,
-    player: Player,
-    spawn: Vec2
-): Vec2 | null {
-    const seen = new Set([`${spawn.x},${spawn.y}`])
-    const queue = [spawn]
-    for (let head = 0; head < queue.length; head++) {
-        for (const cell of openNeighbours(state.cells, queue[head])) {
-            const key = `${cell.x},${cell.y}`
-            if (seen.has(key)) continue
-            seen.add(key)
-            if (
-                !playerBlocks(state, player, cell) &&
-                clearOfEnemies(state, cell)
-            ) {
-                return cell
-            }
-            queue.push(cell)
-        }
-    }
-    return null
-}
-
-// Whether a player may come back on `spawn` (its spawn, or the cell it
-// comes back on instead; see tickPlayersOut) as far as enemies go: no
-// enemy in play (harmless ones aside) and no undefeated boss is drawn
-// within RESPAWN_CLEAR_DISTANCE of it (the boss by its footprint's square),
-// or is in a move that ends on it or next to it. So nothing gliding in can
-// catch it on the tick it is back or the next; checking only for a catch
-// at once let an enemy just out of reach catch it a tick later. When
-// players bump, the other player standing on the spawn, or moving onto it,
-// holds it up too (see tickPlayersOut), so the two never share a cell.
-function clearOfEnemies(state: GameState, spawn: Vec2): boolean {
-    const cols = state.cells[0].length
-    const rows = state.cells.length
-    // `spawn` relative to `at`, the short way round.
-    const offset = (at: Vec2) =>
-        vec2(wrapDelta(spawn.x - at.x, cols), wrapDelta(spawn.y - at.y, rows))
-    const nextTo = (cell: Vec2) => {
-        const { x, y } = offset(cell)
-        return Math.abs(x) + Math.abs(y) <= 1
-    }
-    const near = (d: number) => d < RESPAWN_CLEAR_DISTANCE - EPSILON
-    const byEnemy = state.enemies.some((e) => {
-        if (!inPlay(e) || hasStatus(e, "harmless")) return false
-        const { x, y } = offset(drawnPos(e, cols, rows))
-        return near(Math.hypot(x, y)) || nextTo(e.pos)
-    })
-    if (byEnemy) return false
-    const { boss } = state
-    if (!boss || boss.defeated) return true
-    const fromBoss = offset(drawnPos(boss, cols, rows))
-    return !(
-        near(squareDistance(fromBoss, fromBoss)) ||
-        footprint(boss.pos).some(nextTo)
-    )
 }
 
 // Try to move `who` (player 1 unless given) one step, eating (and scoring)
@@ -785,9 +629,6 @@ export function hurtPlayer(
 // - solo: nothing more here; the game is lost (see lost).
 // - coop: it is out for good (takeOut); the game is lost once no player is
 //   in play.
-// - versus: it loses CATCH_DOTS of its dot count (not below 0) and is out
-//   for PLAYER_RESPAWN_DELAY seconds, then back at its spawn with full
-//   health (see tickPlayersOut). A versus game is never lost.
 function knockOut(state: GameState, player: Player) {
     const { pos } = player.character
     const at = vec2(pos.x, pos.y)
@@ -795,11 +636,7 @@ function knockOut(state: GameState, player: Player) {
         case "solo":
             break
         case "coop":
-            takeOut(player, null)
-            break
-        case "versus":
-            loseDots(player)
-            takeOut(player, PLAYER_RESPAWN_DELAY)
+            takeOut(player)
             break
         default: {
             // Compile-time check that every Mode is handled above.
@@ -811,7 +648,6 @@ function knockOut(state: GameState, player: Player) {
         type: "playerCaught",
         player: state.players.indexOf(player),
         at,
-        outForGood: state.mode !== "versus",
     })
 }
 
@@ -935,10 +771,9 @@ function wait(character: Glider) {
 // A player out of play (see takeOut) sits the tick out: its input is
 // ignored, it doesn't move, breathe or get hurt, and enemies and the boss
 // go after the players in play only (while nobody is, each heads back to
-// its own spawn). Its wait counts down first, with the breath timers,
-// so one that is back (see tickPlayersOut) plays the whole tick. A
-// player's invulnerability after a hit (Player.invulnerableFor) counts down
-// a tick at a time there too.
+// its own spawn). A player's invulnerability after a hit
+// (Player.invulnerableFor) counts down a tick at a time with the breath
+// timers.
 //
 // On ice (see ice.ts), a sliding character's move is its slide step, taken
 // at its normal move opportunity: input and AI are ignored until the slide
@@ -951,11 +786,11 @@ function wait(character: Glider) {
 // tap at once; see chargeTick), after the players' moves, from the cell
 // the player is moving into and along its new facing, and before the
 // enemies move, so it hits them where they stood at the start of the tick.
-// Player 1's breath fires first. Breaths don't affect players, except in
-// versus, where a breath stuns the other player (see versus.ts): a stunned
-// player ignores its input, finishes its glide (and, on ice, its slide) and
-// doesn't move on or breathe (a charge it was holding is dropped), and its
-// stun counts down with the breath timers. Enemies out of play don't move
+// Player 1's breath fires first. Breaths don't affect players. A panicked
+// player (see panic.ts) ignores its input, finishes its glide (and, on
+// ice, its slide) and doesn't move on or breathe (a charge it was holding
+// is dropped), and its panic counts down with the breath timers. Enemies
+// out of play don't move
 // or catch; held ones (e.g. frozen) don't move; harmless ones don't catch;
 // and enemies keep out of cells a tile effect blocks.
 //
@@ -987,8 +822,7 @@ export function step(
     state.events = []
     state.ticks++
     tickEffects(state, dt)
-    tickPlayersOut(state, dt)
-    tickStuns(players, dt)
+    tickPanics(players, dt)
     for (const player of players) {
         if (player.invulnerableFor > 0) player.invulnerableFor--
     }
@@ -1019,9 +853,8 @@ export function step(
         vec2(c.pos.x, c.pos.y)
     )
     players.forEach((player, i) => {
-        // A player stunned by an earlier player's breath on this same tick
-        // doesn't breathe either, and loses any charge.
-        if (player.out || stunned(player)) return cancelCharge(player.breather)
+        // A panicked player doesn't breathe, and loses any charge.
+        if (player.out || panicked(player)) return cancelCharge(player.breather)
         if (chargeTick(state, player, inputs[i] ?? IDLE, dt)) breathed = true
     })
     if (breathed) {
@@ -1052,8 +885,7 @@ export function step(
     // Cells as enemies see them, so blocked cells also end slides.
     const enemyCells = blocked ? blockedView(cells, blocked) : cells
     // What enemies and the boss go after: the players in play. While
-    // nobody is, each heads back to its own spawn instead, so none parks on
-    // a player's spawn and keeps it from coming back (see tickPlayersOut).
+    // nobody is, each heads back to its own spawn instead.
     // Random enemies and patrollers go their own way either way.
     const goingHome = !players.some((p) => !p.out)
     const aimed = players.flatMap((p, i) => (p.out ? [] : [i]))
@@ -1261,9 +1093,9 @@ export function settle(state: GameState, dt: number): boolean {
 // rest of the turn when its move is put off until the others have moved
 // (see defersMove), for the caller to run then; null once it is done.
 //
-// A player out of play ignores its input altogether. A stunned one (versus)
-// ignores it too: it finishes the glide it is in and, on ice, its slide
-// (PM decision), but makes no move of its own.
+// A player out of play ignores its input altogether. A panicked one (see
+// panic.ts) ignores it too: it finishes the glide it is in and, on ice,
+// its slide (PM decision), but makes no move of its own.
 function playerTurn(
     state: GameState,
     player: Player,
@@ -1273,12 +1105,12 @@ function playerTurn(
 ): (() => void) | null {
     if (player.out) return null
     const { character } = player
-    const isStunned = stunned(player)
-    if (!isStunned && !isZero(move.pressed)) player.bufferedStep = move.pressed
+    const frozen = panicked(player)
+    if (!frozen && !isZero(move.pressed)) player.bufferedStep = move.pressed
     // The rate was taken in tickStarts too, before anyone moved, so its
     // progress and its drawn path for collisions agree.
     if (!advance(character, dt * player.rate)) return null
-    const held = isStunned ? null : move.held
+    const held = frozen ? null : move.held
     const rest = () => {
         const moved = held
             ? movePlayerTick(state, player, held)
@@ -1299,7 +1131,7 @@ function playerTurn(
 // a player right behind the other follows it whichever player is first,
 // instead of turning off down an older held direction or waiting a tick.
 // Put off, nothing is tried or used up (the tap buffer stays); afterwards
-// it moves as usual. `held` is null for a stunned player, which only
+// it moves as usual. `held` is null for a panicked player, which only
 // slides.
 function defersMove(
     state: GameState,
@@ -1592,13 +1424,11 @@ function collides(
 // clears the stage even if a player is touched on that same tick, and
 // costs it nothing. Otherwise each player in play
 // and not invulnerable that an enemy or the boss touched this tick is hurt
-// (see touchedBy and hurtPlayer), player 1 first. In versus a touch on that
-// tick still counts (a knockout costs dots and takes the player out)
-// before the round is won, so the round is scored with it.
+// (see touchedBy and hurtPlayer), player 1 first.
 //
 // Clearing is checked again after the hits: a knockback that eats the
 // last dot of a level without a boss wins on this tick, in every mode,
-// with the hits (and, in versus, any knockout's dots) already counted.
+// with the hits already counted.
 //
 // The game is lost (see lost) once a hit has taken the solo player's last
 // health, or no co-op player is left in play.
@@ -1606,7 +1436,7 @@ export function checkEnd(
     state: GameState,
     start: TickStarts = tickStarts(state, 0)
 ): Outcome | null {
-    if (cleared(state) && state.mode !== "versus") return "won"
+    if (cleared(state)) return "won"
     state.players.forEach((player, i) => {
         if (player.out || player.invulnerableFor > 0) return
         const hit = touchedBy(state, start, i)
@@ -1628,15 +1458,13 @@ export function cleared(state: GameState): boolean {
 
 // Whether the game is lost, by its mode: in solo once the player's health
 // is gone (see knockOut), in co-op once no player is in play (each one
-// knocked out is out for good). A versus game is never lost.
+// knocked out is out for good).
 function lost(state: GameState): boolean {
     switch (state.mode) {
         case "solo":
             return state.players.some((p) => p.health <= 0)
         case "coop":
-            return state.players.every(outForGood)
-        case "versus":
-            return false
+            return state.players.every((p) => p.out)
         default: {
             // Compile-time check that every Mode is handled above.
             const unhandled: never = state.mode

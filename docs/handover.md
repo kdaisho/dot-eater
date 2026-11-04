@@ -58,7 +58,7 @@ The older modules are listed in `CLAUDE.md`. Newer or reshaped ones:
     - Quit from stage mode goes to the title; should it go to the stage select instead?
     - End roll: 15 cards in a 5×3 grid is tight vertically; staff credits now show ~3.3 s each.
     - Defaults we chose (user didn't answer): sprite outline on, light outline on dark floors (stages 8–10), Oni blue, walls fill the cell, per-stage fog tint, regrow markers, tunnel marks.
-- **Follow-ups not filed:** the per-dot eat sound and sparkle fire ~0.125 s before the sprite reaches the dot (KDA-302 left it). Remaining emoji: mute button, touch Breath button 💨, menu title icons, versus 💫/🛡️ badges.
+- **Follow-ups not filed:** the per-dot eat sound and sparkle fire ~0.125 s before the sprite reaches the dot (KDA-302 left it). Remaining emoji: mute button, touch Breath button 💨, menu title icons.
 - **Known gaps:** iOS before 17 has no `audioSession`; a tab on an old build during a deploy can cut stage 6+ progress; stage 7's middle patroller crosses the spawn corridor; `README.md` is out of date.
 - **Promo package (`video/`, another session's):** its tests run in our suite, so our PRs re-recorded scenes: the punch and guard scenes are deleted, promo3's fight is one Breather shot, the dragon scene's seed is 36, the boar scene's is 30, and the boss scene ends mid-outro. Tell that session's owner (the user) if asked.
 
@@ -67,7 +67,7 @@ The older modules are listed in `CLAUDE.md`. Newer or reshaped ones:
 All are in `docs/decisions.md` by topic. With the user in the Refinement round (settled):
 
 - **Punch and guard:** removed. **Breath:** keep the cooldown for firing so the boss can't be burst; only charging ignores it.
-- **Tengu:** about as fast as the animals. **Boar:** Rush, and a rammed enemy is defeated on the slam; shoved enemies are only pushed; a shoved player takes no damage in co-op, a real hit in versus; a boss hit by a flying enemy takes a little damage.
+- **Tengu:** about as fast as the animals. **Boar:** Rush, and a rammed enemy is defeated on the slam; shoved enemies are only pushed; a shoved player takes no damage; a boss hit by a flying enemy takes a little damage.
 - **Sprites:** variant C of every character; Owl C with bigger 3×3 pupils. **Mid-boss:** Kitsune, tails show its health. **Final boss:** the opening's boss. **Stage styles:** 1 C, 2 C, 3 B, 4 A, 5 A, 6 B, 7 A, 8 B, 9 C, 10 B (KDA-299 has the names).
 - **Boss defeats:** Kitsune "freeze-frame and burst", final boss "explosion chain", then everyone hops for joy. Design pages: sprites https://claude.ai/artifact/7iB8DBTZm6timchYVZDcja, stages https://claude.ai/artifact/4iQjJ92S949GWFckFmGZPP, defeats https://claude.ai/artifact/GPAWjs8h2xnNsN9eTFmUHL.
 

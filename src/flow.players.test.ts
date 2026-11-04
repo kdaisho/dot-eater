@@ -103,14 +103,13 @@ function playing(
 }
 
 describe("modes", () => {
-    it("offers 1 player first, then co-op and versus", () => {
-        expect(MODE_CHOICES).toEqual(["solo", "coop", "versus"])
+    it("offers 1 player first, then co-op", () => {
+        expect(MODE_CHOICES).toEqual(["solo", "coop"])
     })
 
     it("counts the players in each mode", () => {
         expect(playerCount("solo")).toBe(1)
         expect(playerCount("coop")).toBe(2)
-        expect(playerCount("versus")).toBe(2)
     })
 
     it("start the game by their own rules", () => {
@@ -118,15 +117,12 @@ describe("modes", () => {
             screen.kind === "playing" ? screen.game : null
         expect(game(startLevel(levels, 0, AnimalId.owl))?.mode).toBe("solo")
         const picks: Picks = [AnimalId.dragon, AnimalId.owl]
-        for (const mode of ["coop", "versus"] as const) {
-            expect(game(startLevel(levels, 0, picks, mode))?.mode).toBe(mode)
-        }
+        expect(game(startLevel(levels, 0, picks, "coop"))?.mode).toBe("coop")
     })
 
     it("records progress only for 1-player games", () => {
         expect(recordsProgress("solo")).toBe(true)
         expect(recordsProgress("coop")).toBe(false)
-        expect(recordsProgress("versus")).toBe(false)
     })
 })
 
@@ -139,16 +135,14 @@ describe("the title's mode select", () => {
         const solo = initialScreen()
         const coop = update(solo, input([["down"]]), deps())
         expect(coop).toEqual({ kind: "title", mode: "coop" })
-        const versus = update(coop, input([["down"]]), deps())
-        expect(versus).toEqual({ kind: "title", mode: "versus" })
-        const settings = update(versus, input([["down"]]), deps())
+        const settings = update(coop, input([["down"]]), deps())
         expect(settings).toEqual({
             kind: "title",
-            mode: "versus",
+            mode: "coop",
             onSettings: true,
         })
         expect(update(settings, input([["down"]]), deps())).toBe(settings)
-        expect(update(settings, input([["up"]]), deps())).toEqual(versus)
+        expect(update(settings, input([["up"]]), deps())).toEqual(coop)
         expect(update(coop, input([["up"]]), deps())).toEqual(solo)
         expect(update(solo, input([["up"]]), deps())).toBe(solo)
     })
@@ -162,32 +156,11 @@ describe("the title's mode select", () => {
         })
     })
 
-    it("goes straight on to stage select in versus", () => {
-        const title: Screen = { kind: "title", mode: "versus" }
-        expect(update(title, input([["confirm"]]), deps())).toEqual({
-            kind: "stageSelect",
-            mode: "versus",
-            selected: 0,
-        })
-    })
-
     it("follows player 1 only", () => {
         const title = initialScreen()
         expect(update(title, input([[], ["down", "confirm"]]), deps())).toBe(
             title
         )
-    })
-
-    it("is where versus stage select goes back to, on the same mode", () => {
-        const select: Screen = {
-            kind: "stageSelect",
-            mode: "versus",
-            selected: 1,
-        }
-        expect(update(select, input([["pause"]]), deps())).toEqual({
-            kind: "title",
-            mode: "versus",
-        })
     })
 })
 

@@ -252,9 +252,8 @@ describe("the difficulty picked", () => {
         ["solo", "dead", "gameOver"],
         ["coop", "won", "stageClear"],
         ["coop", "dead", "gameOver"],
-        ["versus", "won", "roundResult"],
     ] as const)(
-        "plays %s at it, shows it on the end screen (%s: %s), and Retry or Next round keeps it",
+        "plays %s at it, shows it on the end screen (%s: %s), and Retry keeps it",
         (mode, outcome, kind) => {
             const { screen, d } = play(mode, "superHard", outcome)
             expect(screen).toMatchObject({
