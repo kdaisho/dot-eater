@@ -3,9 +3,10 @@ import { beforeAll, describe, expect, it, vi } from "vite-plus/test"
 import type { Pad } from "./gamepad"
 
 // main's main menu (KDA-318) end to end: the title's entries in order, and
-// each page (Tutorial, Cards, Soundtrack) opened and left with the keys, a
-// pad and taps, back on its entry. (A separate file, since main is
-// imported once per module graph.)
+// each placeholder page (Tutorial, Soundtrack) opened and left with the
+// keys, a pad and taps, back on its entry; the Cards page is
+// main.cards.test.ts's. (A separate file, since main is imported once per
+// module graph.)
 
 vi.mock("canvas-confetti", () => ({ default: vi.fn() }))
 
@@ -59,7 +60,6 @@ const selectedItem = () => overlay()?.querySelector("li.selected")?.textContent
 
 const PAGES = [
     { name: "Tutorial", screen: "tutorial", index: 2 },
-    { name: "Cards", screen: "cards", index: 3 },
     { name: "Soundtrack", screen: "soundtrack", index: 4 },
 ] as const
 

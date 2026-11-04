@@ -15,6 +15,8 @@ import { RECORDED_TRACKS } from "./recorded"
 import { createMuteButton } from "./muteButton"
 import { playEventSounds, screenSound } from "./sound"
 import { cancelCharge, energyHud } from "./breath"
+import { swipeStep } from "./cards"
+import { cardsPageStale } from "./cardsView"
 import {
     drawEndRoll,
     END_ROLL_HEIGHT,
@@ -706,6 +708,8 @@ function render(alpha: number) {
         return renderer.clear()
     }
     openingLayer.hide()
+    // The Cards page made before the cards' font had loaded is made again.
+    if (screen.kind === "cards" && cardsPageStale()) showOverlay(screen)
     // The end roll draws on its own canvas, over everything.
     if (screen.kind === "endRoll") return renderEndRoll(screen)
     // Settings over a paused game show that game behind them.
@@ -784,7 +788,7 @@ function showOverlay(s: Screen) {
         case "tutorial":
             return showTutorial()
         case "cards":
-            return showCards()
+            return showCards(s.index)
         case "soundtrack":
             return showSoundtrack()
         case "settings": {
@@ -1009,6 +1013,28 @@ for (const type of ["focus", "keydown", "pointerdown"]) {
     })
 }
 
+// A swipe across the Cards page turns a card (swipeStep), as left or right
+// does: a swipe to the left shows the next one. The click it ends with, if
+// any, is dropped; a new press forgets that, in case none came.
+let swipeFrom: { x: number; y: number } | undefined
+let swiped = false
+document.addEventListener("pointerdown", (event) => {
+    swiped = false
+    swipeFrom =
+        screen.kind === "cards"
+            ? { x: event.clientX, y: event.clientY }
+            : undefined
+})
+document.addEventListener("pointerup", (event) => {
+    const from = swipeFrom
+    swipeFrom = undefined
+    if (!from || screen.kind !== "cards") return
+    const step = swipeStep(event.clientX - from.x, event.clientY - from.y)
+    if (step === 0) return
+    swiped = true
+    tapAction(step > 0 ? "right" : "left")
+})
+
 // Taps and clicks on the overlays: a menu item or card puts player 1's
 // cursor on it and confirms (on settings that flips a toggle or runs
 // Back), a slider's ◀ or ▶ puts the cursor on it and steps it (left or
@@ -1017,6 +1043,11 @@ for (const type of ["focus", "keydown", "pointerdown"]) {
 // While the controls screen waits for a key or button, any tap on the
 // overlay cancels, like Escape, so a phone isn't stuck on the prompt.
 document.addEventListener("click", (event) => {
+    // The click that ends a swipe is the swipe's, not a tap.
+    if (swiped) {
+        swiped = false
+        return
+    }
     if (screen.kind === "opening") return openingTap(event)
     const tap = overlayTap(event.target)
     if (tap && capturing()) {

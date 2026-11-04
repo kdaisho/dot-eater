@@ -107,7 +107,10 @@ describe("the main menu", () => {
     })
 })
 
-describe.each(PAGE_CHOICES)("the %s page", (page) => {
+// The placeholders; the Cards page has its own tests (flow.cards.test.ts).
+const PLACEHOLDERS = PAGE_CHOICES.filter((page) => page !== "cards")
+
+describe.each(PLACEHOLDERS)("the %s page", (page) => {
     const index = TITLE_CHOICES.indexOf(page)
     const title = () => down(index)
 

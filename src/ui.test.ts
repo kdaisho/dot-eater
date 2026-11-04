@@ -10,7 +10,6 @@ import {
     overlayTap,
     showCharacterSelect,
     showGameOver,
-    showCards,
     showPause,
     showSettings,
     showSoundtrack,
@@ -80,7 +79,6 @@ describe("showTitle", () => {
 describe("the main menu's pages", () => {
     it.each([
         [showTutorial, "tutorial", "Tutorial"],
-        [showCards, "cards", "Cards"],
         [showSoundtrack, "soundtrack", "Soundtrack"],
     ] as const)(
         "shows a placeholder for %#: its title, Coming soon and Back",

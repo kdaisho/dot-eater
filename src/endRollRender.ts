@@ -5,7 +5,21 @@
 // alone, so it can be paused, skipped or redrawn anywhere. DOM: it makes
 // the cards' offscreen canvases. No listeners or timers.
 
-import "@fontsource/press-start-2p/latin-400.css"
+import {
+    CARD_DEPTH,
+    cardFontReady,
+    cardSide,
+    canvasOf,
+    CREAM,
+    drawCardFace,
+    GOLD,
+    loadCardFont,
+    portrait,
+    rect,
+    rounded,
+    text,
+    type Ctx,
+} from "./cardArt"
 import { DIFFICULTY_LABELS, type Difficulty } from "./difficulty"
 import {
     CAST,
@@ -22,19 +36,12 @@ import {
     STAFF,
     type CastCard,
 } from "./endRoll"
-import {
-    drawPixels,
-    SpriteId,
-    SPRITES,
-    spritePixels,
-    type Dots,
-} from "./sprites"
+import { drawPixels, SpriteId, SPRITES } from "./sprites"
 
 export const END_ROLL_WIDTH = 256
 export const END_ROLL_HEIGHT = 224
 const W = END_ROLL_WIDTH
 const H = END_ROLL_HEIGHT
-const FONT = '8px "Press Start 2P"'
 
 const C = {
     black: "#000000",
@@ -49,18 +56,8 @@ const C = {
     menu: "#fca044",
     copy: "#f878f8",
     beam: "#fcd880",
-    cream: "#fcf0d0",
+    cream: CREAM,
 }
-// The title's Gold logo colours.
-const GOLD = {
-    bg: "#08001c",
-    face: "#f8b800",
-    light: "#fce0a8",
-    side: "#ac7c00",
-    dark: "#401800",
-}
-
-type Ctx = CanvasRenderingContext2D
 
 // ---------- sprites ----------
 
@@ -123,26 +120,6 @@ const HERO_SPRITES = CAST.filter((c) => c.who.kind === "animal").map(
 
 // ---------- helpers ----------
 
-function rect(g: Ctx, x: number, y: number, w: number, h: number, col: string) {
-    g.fillStyle = col
-    g.fillRect(Math.round(x), Math.round(y), Math.round(w), Math.round(h))
-}
-
-function text(
-    g: Ctx,
-    s: string,
-    x: number,
-    y: number,
-    col: string,
-    align: CanvasTextAlign = "center"
-) {
-    g.font = FONT
-    g.textAlign = align
-    g.textBaseline = "top"
-    g.fillStyle = col
-    g.fillText(s, Math.round(x), Math.round(y))
-}
-
 const typed = (s: string, t: number, cps = 40) =>
     s.slice(0, Math.max(0, Math.floor(t * cps)))
 const clamp01 = (v: number) => Math.min(1, Math.max(0, v))
@@ -159,15 +136,6 @@ function seeded(seed: number) {
         s = (s * 1664525 + 1013904223) >>> 0
         return s / 4294967296
     }
-}
-
-// A colour lightened (f > 0) or darkened (f < 0).
-function shade(hex: string, f: number): string {
-    const n = parseInt(hex.slice(1), 16)
-    const ch = [n >> 16, (n >> 8) & 255, n & 255].map((v) =>
-        Math.round(f > 0 ? v + (255 - v) * f : v * (1 + f))
-    )
-    return `rgb(${ch.join(",")})`
 }
 
 function prop(g: Ctx, name: string, x: number, y: number, s = 1) {
@@ -250,62 +218,12 @@ const CW = 96
 const CH = 120
 const MW = 32
 const MH = 40
-const CARD_DEPTH = 5
 
 type Card = {
     face: HTMLCanvasElement
     side: HTMLCanvasElement
     mini: HTMLCanvasElement
     miniSide: HTMLCanvasElement
-}
-
-function canvasOf(w: number, h: number): [HTMLCanvasElement, Ctx] {
-    const canvas = document.createElement("canvas")
-    canvas.width = w
-    canvas.height = h
-    const g = canvas.getContext("2d")
-    if (!g) throw new Error("no 2d context")
-    return [canvas, g]
-}
-
-// A rounded rectangle in pixel steps: corner radius 4, or 1 when small.
-function rounded(
-    g: Ctx,
-    x: number,
-    y: number,
-    w: number,
-    h: number,
-    col: string,
-    small = false
-) {
-    const cut = small ? [1] : [3, 2, 1, 1]
-    cut.forEach((c, i) => {
-        rect(g, x + c, y + i, w - 2 * c, 1, col)
-        rect(g, x + c, y + h - 1 - i, w - 2 * c, 1, col)
-    })
-    rect(g, x, y + cut.length, w, h - 2 * cut.length, col)
-}
-
-// The card's thickness: its shape in the gold's shadow colours.
-function side(w: number, h: number, small: boolean): HTMLCanvasElement {
-    const [canvas, g] = canvasOf(w, h)
-    rounded(g, 0, 0, w, h, GOLD.dark, small)
-    rounded(g, 1, 0, w - 2, h - 1, GOLD.side, small)
-    return canvas
-}
-
-// The portrait: the sprite's dots (no outline) less any clear rows at the
-// top and bottom (the Kitsune's head room), and how many pixels a mosaic
-// tile is: 4 for the 16x16 sprites, 3 for the bigger bosses, so every
-// portrait fits the card's 64 px window.
-function portrait(id: SpriteId): { rows: Dots; px: number } {
-    const dots = spritePixels({ id }, false)
-    const filled = (row: Dots[number]) => row.some((c) => c !== null)
-    const first = dots.findIndex(filled)
-    const last = dots.length - 1 - [...dots].reverse().findIndex(filled)
-    const rows = dots.slice(first, last + 1)
-    const span = Math.max(rows.length, rows[0]?.length ?? 0)
-    return { rows, px: span > 16 ? 3 : 4 }
 }
 
 // A side-view sprite faces left as drawn; mirrored, it runs right.
@@ -316,38 +234,10 @@ const runningRight = (id: SpriteId, frame = 0) => ({
 })
 
 function makeCard(card: CastCard, n: number): Card {
-    const { rows, px } = portrait(card.sprite)
+    const { rows } = portrait(card.sprite)
     const pw = rows[0]!.length
     const [face, f] = canvasOf(CW, CH)
-    rounded(f, 0, 0, CW, CH, GOLD.dark)
-    rounded(f, 1, 1, CW - 2, CH - 2, GOLD.side)
-    rounded(f, 1, 1, CW - 3, CH - 3, GOLD.light)
-    rounded(f, 2, 2, CW - 4, CH - 4, GOLD.face)
-    rounded(f, 6, 6, CW - 12, CH - 12, GOLD.dark)
-    rounded(f, 7, 7, CW - 14, CH - 14, C.cream)
-    // The mosaic: px blocks, each a tile with a 1 px seam, the
-    // character's with a lit corner.
-    const ox = (CW - pw * px) / 2
-    const oy = 12 + (64 - rows.length * px) / 2
-    rect(f, ox - 2, oy - 2, pw * px + 4, rows.length * px + 4, GOLD.dark)
-    rows.forEach((row, j) => {
-        for (let i = 0; i < row.length; i++) {
-            const dot = row[i]
-            const empty = dot === null || dot === undefined
-            const col = empty ? card.tile : dot
-            const x = ox + i * px
-            const y = oy + j * px
-            rect(f, x, y, px, px, shade(col, empty ? -0.18 : -0.3))
-            rect(f, x, y, px - 1, px - 1, col)
-            if (!empty) rect(f, x, y, 1, 1, shade(col, 0.5))
-        }
-    })
-    // The nameplate: the card's number on a gold bar.
-    const py = 84
-    rect(f, 14, py, CW - 28, 14, GOLD.dark)
-    rect(f, 15, py + 1, CW - 30, 12, GOLD.face)
-    rect(f, 15, py + 1, CW - 30, 1, GOLD.light)
-    text(f, `No.${String(n + 1).padStart(2, "0")}`, CW / 2, py + 4, GOLD.dark)
+    drawCardFace(f, card, n, CW, CH)
     // The small card for the finale grid: 1 px per portrait cell, its
     // window 16 px tall or as tall as a boss.
     const [mini, m] = canvasOf(MW, MH)
@@ -378,9 +268,9 @@ function makeCard(card: CastCard, n: number): Card {
     rect(m, 9, 30, MW - 18, 2, GOLD.face)
     return {
         face,
-        side: side(CW, CH, false),
+        side: cardSide(CW, CH, false),
         mini,
-        miniSide: side(MW, MH, true),
+        miniSide: cardSide(MW, MH, true),
     }
 }
 
@@ -388,15 +278,8 @@ function makeCard(card: CastCard, n: number): Card {
 // made again if they were first made without it.
 let cards: Card[] | undefined
 let cardsHaveFont = false
-function fontReady(): boolean {
-    try {
-        return document.fonts.check(FONT)
-    } catch {
-        return true
-    }
-}
 function cardsNow(): Card[] {
-    const ready = fontReady()
+    const ready = cardFontReady()
     if (!cards || (ready && !cardsHaveFont)) {
         cards = CAST.map(makeCard)
         cardsHaveFont = ready
@@ -406,11 +289,7 @@ function cardsNow(): Card[] {
 
 // Starts loading the font; call when the end roll comes on.
 export function loadEndRollFont() {
-    try {
-        void document.fonts.load(FONT).catch(() => undefined)
-    } catch {
-        // No font loading API: the fallback font is used.
-    }
+    loadCardFont()
 }
 
 // A canvas to put the moving shine on a card face.

@@ -1,5 +1,6 @@
 import confetti from "canvas-confetti"
 import { DEFAULT_BINDINGS, keyName, type Bindings } from "./bindings"
+import { cardsPage } from "./cardsView"
 import { ACTIONS, type Action } from "./input"
 import type { StageSlot } from "./progress"
 import type { AnimalId, AnimalInfo } from "./roster"
@@ -282,14 +283,17 @@ export function showSettings(items: readonly MenuItem[]) {
     })
 }
 
-// The main menu's pages (KDA-318), one function each for their tickets
-// (KDA-319, KDA-320, KDA-321) to replace. For now each is a placeholder.
+// The main menu's pages (KDA-318), one function each. Tutorial and
+// Soundtrack are placeholders for now (KDA-319, KDA-321 replace them).
 export function showTutorial() {
     showComingSoon("tutorial", "Tutorial")
 }
 
-export function showCards() {
-    showComingSoon("cards", "Cards")
+// The Cards page (KDA-320) on card `index`: a page of its own
+// (cardsView.ts), in the overlay's place.
+export function showCards(index: number) {
+    hideOverlay()
+    document.body.appendChild(cardsPage(index))
 }
 
 export function showSoundtrack() {

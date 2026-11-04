@@ -252,7 +252,10 @@ describe("the main menu's pages", () => {
     it.each(PAGE_CHOICES)(
         "play the title tune on %s, confirm on the way in and go back out",
         (page) => {
-            const screen: Screen = { kind: page, mode: "solo" }
+            const screen: Screen =
+                page === "cards"
+                    ? { kind: page, mode: "solo", index: 0 }
+                    : { kind: page, mode: "solo" }
             expect(musicForScreen(screen)).toEqual({
                 track: "title",
                 paused: false,
