@@ -1,6 +1,6 @@
 # Handover
 
-Last updated: 2026-11-02. Read `CLAUDE.md` first for project conventions.
+Last updated: 2026-11-03. Read `CLAUDE.md` first for project conventions.
 
 ## Where things stand
 
@@ -8,17 +8,18 @@ Last updated: 2026-11-02. Read `CLAUDE.md` first for project conventions.
     - Organize code & tooling (#2–#12), engine (#14–#21), characters & breaths (#37–#43), stages (#23–#34, #44, #46), controllers & 2-player (#49–#52), polish (#55–#66).
     - The "harder and more exciting" upgrade (#67–#97, KDA-257–287) and tougher enemies (#98–#103, KDA-288–293).
     - Presentation (no Linear issues): recorded music (#105, #109), the Gold opening (#106), the end roll (#107, #108, #110, #114, #122), admin debug mode (#111, #120), iOS sound and mute (#113), two feedback rounds (#115–#121).
-    - **Refinement milestone (2026-11-02, KDA-294–305, PRs #124–#132), all merged:**
+    - **Refinement milestone (2026-11-02/03, KDA-294–307, PRs #124–#135), all merged and deployed:**
         - Punch and guard removed (#127, KDA-294). The breath can be charged during the cooldown; a let-go charge fires when the cooldown ends (#124, KDA-295). The Tengu moves 3.5–4 cells/s, uncapped (#125, KDA-296). The clear jingle waits for the glide into the last dot (#126, KDA-302). "Quit to title" on every pause menu (#128, KDA-305).
         - The Boar's breath is **Rush** (#129, KDA-304): dash 1–3 cells, rammed enemies fly 2–6 cells and are defeated on the slam, chain pushes, walls break, the boss is staggered 0.6 s. `bossFight.test.ts` proves every animal can beat both bosses.
         - Pixel sprites replace all character emoji (#130, KDA-297/298/300): variant C of everything, Kitsune (stage 5) and the opening's final boss (stage 10). Per-stage pixel walls, floors, dots, fog tints and breath-effect tiles (#131, KDA-299/300).
         - Boss defeats (#132, KDA-301/303): Kitsune shatters (2.0 s), the final boss dies in an explosion chain (2.5 s), then everyone hops with hearts over the freed enemies (2.4 s).
-- **State:** `main` at `dceb688`, deploy run triggered by #132. 3508 tests passing on #132 (CI green). Open PRs: none.
-- **Not yet play-tested by the user:** all of the Refinement work. A preview of `main` runs at `http://127.0.0.1:5241/` (worktree `.claude/worktrees/preview-refine`, `pnpm dev --port 5241 --strictPort --host`; LAN `http://192.168.25.55:5241/`). It may be gone in a new session: restart it the same way after `git checkout --detach origin/main`.
+        - After play (2026-11-03): a Rush ram does 2× boss damage (`RAM_BOSS_SCALE`, `BreathDef.bossDamageScale`; #134, KDA-306). The Rush dash glides in `DASH_SECONDS` 0.1 s and the rammed enemy is drawn flying (`FLIGHT_SECONDS` 0.18, one spin) from the impact to its slam; `src/rushView.ts` holds the impact and defeat events until then, render-only (#135, KDA-307). The user approved it ("good") and asked to deploy.
+- **State:** `main` at `9e2a41f`, live on Pages (deploy run 41583974718, green on its second attempt). 3525 tests passing. Open PRs: none. Linear: every Refinement issue is Done.
+- **Play-tested so far:** the Rush (damage and timing). The rest of the Refinement work hasn't had feedback yet. A preview of `main` runs at `http://127.0.0.1:5241/` (worktree `.claude/worktrees/preview-refine`, `pnpm dev --port 5241 --strictPort --host`; LAN `http://192.168.25.55:5241/`). It may be gone in a new session: restart it the same way after `git checkout --detach origin/main`.
 
 ### Start here (new session)
 
-1. Offer the user a preview of `main` and collect feedback on the Refinement work, especially the placeholders below.
+1. Ask the user what the next tasks are (they said they have some). Offer a preview of `main` if they want to play first, and use the placeholders and visual questions below as prompts.
 2. File each piece of feedback as a Linear issue in project Dot Eater (milestone Refinement, or a new one), ship each as its own small PR, merge when CI and tests are green.
 
 ## Code map
@@ -47,7 +48,7 @@ The older modules are listed in `CLAUDE.md`. Newer or reshaped ones:
 ## Open questions and follow-ups
 
 - **Tuning to judge at preview** (all placeholders):
-    - Rush: reach `rushRange` 1,2,2,3,3; knock flight level+1; boss stagger `RAM_STAGGER` 0.6 s; chain into boss `CHAIN_BOSS_SHARE` 0.25; ram damage same per energy as other breaths (should the Boar get a bonus for its short reach?).
+    - Rush: reach `rushRange` 1,2,2,3,3; knock flight level+1; boss stagger `RAM_STAGGER` 0.6 s; chain into boss `CHAIN_BOSS_SHARE` 0.25; ram 2× boss damage (`RAM_BOSS_SCALE`); dash `DASH_SECONDS` 0.1, flight `FLIGHT_SECONDS` 0.18, `FLIGHT_TURNS` 1.
     - `TENGU_SPEED` 3.5/3.65/3.8/4: at Easy it equals the Boar, and stage 1's first enemy is near player speed.
     - A charge let go during the cooldown fires at its release level (it doesn't keep growing).
     - A short silence (up to one glide) between the music stopping and the clear jingle.
@@ -82,6 +83,8 @@ All are in `docs/decisions.md` by topic. With the user in the Refinement round (
 - **Gotchas:**
     - The local `gh` is 2.3.0: use `gh api`.
     - Plain `sleep` is blocked; poll in a bounded loop.
+    - The deploy's `pnpm test` can time out on a slow runner (8 heavy simulation tests hit their 30 s / 5 s limits on 2026-11-03 while the same code passed PR CI). Check the log: if it's only timeouts, rerun with `gh api -X POST repos/kdaisho/dot-eater/actions/runs/<id>/rerun-failed-jobs`. Raising those limits is an unfiled follow-up.
+    - `gh api .../actions/jobs/<id>/logs` needs `--allow-escape-sequences`, or it prints nothing useful.
     - A fresh worktree needs `pnpm install` before `pnpm check`, or check prints nothing.
     - Tests that are about line mechanics use `lineFire()` (`src/test/helpers.ts`), since the Dragon no longer fires a line.
     - Disk is tight: remove worktrees when done.
