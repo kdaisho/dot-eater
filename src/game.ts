@@ -786,7 +786,8 @@ function wait(character: Glider) {
 // tap at once; see chargeTick), after the players' moves, from the cell
 // the player is moving into and along its new facing, and before the
 // enemies move, so it hits them where they stood at the start of the tick.
-// Player 1's breath fires first. Breaths don't affect players. A panicked
+// Player 1's breath fires first. Breaths never hurt players, but one that
+// strikes the other player panics it (KDA-316, see panic.ts). A panicked
 // player (see panic.ts) ignores its input, finishes its glide (and, on
 // ice, its slide) and doesn't move on or breathe (a charge it was holding
 // is dropped), and its panic counts down with the breath timers. Enemies

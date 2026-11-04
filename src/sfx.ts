@@ -37,6 +37,8 @@ export const SfxId = {
     hurt: "hurt",
     // A player knocked out: its health gone.
     caught: "caught",
+    // Co-op: a player panicked by the other's breath (KDA-316).
+    panicked: "panicked",
     // A Splitter dropped a dot (KDA-270): a soft, low plop.
     dotDropped: "dotDropped",
     // Results
@@ -443,6 +445,12 @@ export const SFX: Readonly<Record<SfxId, readonly Tone[]>> = {
             attack: 0.01,
         },
     ],
+    // A startled yelp: two quick rising chirps up high, light and short,
+    // nothing like a hurt's thump (nobody is hurt).
+    panicked: arpeggio(["E6", "A6"], 0.07, 0.07, {
+        wave: "triangle",
+        volume: 0.25,
+    }),
     // A soft, low plop, falling: quieter than the dot blip, since every
     // Splitter makes one every few seconds, wherever it is.
     dotDropped: [

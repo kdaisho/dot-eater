@@ -85,13 +85,17 @@ export const BOSS_SPRITES: Readonly<Record<BossKind, SpriteId>> = {
 
 // One way to draw a sprite: which frame, whether mirrored, whether winding
 // up (a sprite with a windUp grid) and how many tails show (a sprite with
-// tails; all of them when left out).
+// tails; all of them when left out). `panicked` is set on a panicked
+// player (KDA-316, see panic.ts); no sprite has a panic frame yet (KDA-317
+// adds one per character), so for now it draws as usual, under its own
+// key, and render.ts adds the placeholder mark and jitter.
 export type SpriteLook = {
     id: SpriteId
     frame?: number
     mirror?: boolean
     windUp?: boolean
     tails?: number
+    panicked?: boolean
 }
 
 export const TAIL_COUNT = 9
@@ -199,10 +203,12 @@ function outlined(dots: Dots, outline = OUTLINE): Dots {
 
 // A small badge on a character for a status (KDA-300, in place of the old
 // emoji badges): frozen (an ice cube); and the heart over each enemy freed
-// when the final boss falls (KDA-303).
+// when the final boss falls (KDA-303); the "!" over a panicked player
+// (KDA-316, a placeholder until KDA-317's panic frames).
 export const BadgeId = {
     frozen: "frozen",
     heart: "heart",
+    panic: "panic",
 } as const
 export type BadgeId = (typeof BadgeId)[keyof typeof BadgeId]
 
@@ -232,6 +238,10 @@ export const BADGES: Readonly<
             "...P...",
         ],
     },
+    panic: {
+        palette: { Y: "#facc15", O: "#f97316" },
+        grid: ["YY", "YY", "YY", "YO", "OO", "..", "YY", "OO"],
+    },
 }
 
 // A badge's dots with the outline (in `outline`), as spritePixels.
@@ -259,7 +269,8 @@ export function drawableKey(d: Drawable): string {
     const frame = Math.min(d.frame ?? 0, def.frames.length - 1)
     const windUp = d.windUp && def.windUp ? ":windUp" : ""
     const tails = def.tails ? `:tails${d.tails ?? TAIL_COUNT}` : ""
-    return `${d.id}:${frame}${d.mirror ? ":mirror" : ""}${windUp}${tails}`
+    const panicked = d.panicked ? ":panicked" : ""
+    return `${d.id}:${frame}${d.mirror ? ":mirror" : ""}${windUp}${tails}${panicked}`
 }
 
 export type SpriteCache = {

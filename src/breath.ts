@@ -19,6 +19,7 @@ import type { EffectTile } from "./tiles"
 import { dashPlayer, type GameState, type Player } from "./game"
 import { knockFlying } from "./knock"
 import { loopPos, type Cells } from "./level"
+import { panicPlayers, playersStruck } from "./panic"
 import type { AnimalId } from "./roster"
 import type { BadgeId } from "./sprites"
 import {
@@ -451,7 +452,12 @@ export function cancelCharges(state: GameState) {
 // level's shape from its cell along its facing, run the breath's hook, and
 // pay (the level's energy, and the cooldown) unless the hook refused. What
 // it defeats scores for `who`.
-// Breaths don't affect players. Returns true if the breath happened.
+// A breath never hurts a player. The other player, standing on any cell it
+// strikes (as for enemies: the origin too for a line, a cone or a spread),
+// panics instead (KDA-316, see panic.ts), whatever the breath, and the
+// breath counts as fired even if the hook refused: it hit someone. Only
+// the strike panics: tile effects it leaves don't. Returns true if the
+// breath happened.
 //
 // A boss in the way (see boss.ts) stops a line, a cone or a spread like a
 // wall would, except that its cells are covered: the big body takes the
@@ -528,6 +534,8 @@ export function breathe(
         },
     }
     const bossHit = body !== undefined && struck.some(body)
+    // The other player on a struck cell, before the hook moves anyone.
+    const panics = playersStruck(state, who, struck)
     const eventsBefore = state.events.length
     // Paid up front, so dots the hook has the player eat (the Boar's dash,
     // KDA-304) fill the meter after the cost is out of it, not into a full
@@ -535,7 +543,7 @@ export function breathe(
     breather.energy -= spent
     const fired = breath.fire(hit) !== false
     if (iceAdded) rebuildIce(state)
-    if (!fired && !bossHit) {
+    if (!fired && !bossHit && panics.length === 0) {
         breather.energy += spent
         // A refused breath reports nothing (see events.ts), even if its
         // hook reported something before refusing.
@@ -554,6 +562,7 @@ export function breathe(
         cells: coveredCells(state, origin, reach, walls),
     })
     if (bossHit) damageBoss(state, toBoss, who)
+    panicPlayers(state, who, panics)
     breather.cooldown = breath.cooldown
     return true
 }

@@ -210,6 +210,18 @@ describe("effectsForEvent", () => {
         expect(r.shakes).toEqual([SHAKES.caught])
     })
 
+    it("a light shake and no burst when a player is panicked", () => {
+        const r = run({
+            type: "playerPanicked",
+            player: 1,
+            by: 0,
+            at: vec2(2, 3),
+        })
+        expect(r.bursts).toEqual([])
+        expect(r.shakes).toEqual([SHAKES.panic])
+        expect(SHAKES.panic).toBeLessThan(SHAKES.hurt)
+    })
+
     it.each([{ type: "gameWon" }, { type: "gameLost" }] as GameEvent[])(
         "nothing for $type",
         (event) => {

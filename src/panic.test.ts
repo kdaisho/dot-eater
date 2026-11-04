@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vite-plus/test"
-import { breathe } from "./breath"
+import { breathe, type BreathShape } from "./breath"
 import { BREATHS } from "./breaths"
-import { TICK_RATE } from "./constants"
+import { MAX_HEALTH, TICK_RATE } from "./constants"
 import { IDLE, step, takeOut, type GameState, type MoveInput } from "./game"
 import {
     panic,
@@ -13,11 +13,18 @@ import {
     tickPanics,
 } from "./panic"
 import { AnimalId } from "./roster"
-import { fixedRandom, makeEnemy, makeState, textMap } from "./test/helpers"
+import {
+    fixedRandom,
+    makeEnemy,
+    makeState,
+    testBreath,
+    textMap,
+} from "./test/helpers"
 import { vec2, type Vec2 } from "./vec2"
 
-// Panic is dormant (KDA-314; KDA-316 sets it off): nothing panics a player
-// yet, so these tests panic one directly.
+// Panic (KDA-316): a co-op breath that strikes the other player panics it
+// instead of hurting it. The mechanics are tested by panicking a player
+// directly; "a friendly breath" sets it off as the game does.
 
 const TICK = 1 / TICK_RATE
 const none = vec2(0, 0)
@@ -122,16 +129,212 @@ describe("playersStruck", () => {
         p2.panicImmuneFor = 1
         expect(playersStruck(state, p1, cells)).toEqual([])
     })
+})
 
-    it("isn't set off by a breath yet", () => {
-        const state = makeState(hall, [vec2(1, 1), vec2(3, 1)], [], {
+describe("a friendly breath", () => {
+    // A co-op game in the hall with player 1 at (1, 1), facing east, its
+    // meter full, breathing `breath`, and player 2 at `p2At` with full
+    // health.
+    function friendly(breath = BREATHS[AnimalId.dragon], p2At = vec2(3, 1)) {
+        const state = makeState(hall, [vec2(1, 1), p2At], [], {
             mode: "coop",
-            breath: [BREATHS[AnimalId.dragon], BREATHS[AnimalId.dragon]],
+            breath,
+            health: MAX_HEALTH,
+        })
+        const p1 = state.players[0]
+        p1.breather.energy = p1.breather.breath.maxEnergy
+        return state
+    }
+    const panics = (state: GameState) =>
+        state.events.filter((e) => e.type === "playerPanicked")
+
+    // Every shape, its fire hook doing nothing: player 2 on a cell it
+    // covers panics, unhurt. A self breath covers only the player's own
+    // cell, so player 2 stands on it there.
+    it.each<[string, BreathShape, Vec2]>([
+        ["line", { kind: "line", range: 3 }, vec2(3, 1)],
+        ["cone", { kind: "cone", range: 3 }, vec2(3, 1)],
+        ["area", { kind: "area", radius: 2 }, vec2(3, 1)],
+        ["flood", { kind: "flood", reach: 2 }, vec2(3, 1)],
+        ["spread", { kind: "spread", reach: 2 }, vec2(3, 1)],
+        ["self", { kind: "self" }, vec2(1, 1)],
+    ])("panics the other player on a %s's cells", (_, shape, p2At) => {
+        const state = friendly(testBreath({ shape: () => shape }), p2At)
+        const p2 = state.players[1]
+        expect(breathe(state, state.players[0])).toBe(true)
+        expect(panicked(p2)).toBe(true)
+        expect(p2.panickedFor).toBe(PANIC_SECONDS)
+        expect(p2.health).toBe(MAX_HEALTH)
+        expect(p2.out).toBe(false)
+        expect(panics(state)).toEqual([
+            { type: "playerPanicked", player: 1, by: 0, at: p2At },
+        ])
+        // Reported after the breath.
+        expect(state.events.map((e) => e.type)).toEqual([
+            "breathed",
+            "playerPanicked",
+        ])
+    })
+
+    it("lasts 1.5 s", () => {
+        expect(PANIC_SECONDS).toBe(1.5)
+    })
+
+    it("leaves a player off the breath's cells alone", () => {
+        const state = friendly(testBreath(), vec2(5, 1))
+        expect(breathe(state, state.players[0])).toBe(true)
+        expect(panicked(state.players[1])).toBe(false)
+        expect(panics(state)).toEqual([])
+    })
+
+    it("follows the Dragon's spread round a corner", () => {
+        // From (1, 1) east at level 2, 3 steps: (2, 1), (3, 1), then round
+        // the corner to (3, 2).
+        const corner = textMap([
+            "#######",
+            "#   ###",
+            "### ###",
+            "### ###",
+            "#######",
+            "#.#####",
+        ]).map
+        const state = makeState(corner, [vec2(1, 1), vec2(3, 2)], [], {
+            mode: "coop",
+            breath: BREATHS[AnimalId.dragon],
+            health: MAX_HEALTH,
+        })
+        const [p1, p2] = state.players
+        p1.breather.energy = p1.breather.breath.maxEnergy
+        expect(breathe(state, p1, 2)).toBe(true)
+        expect(panicked(p2)).toBe(true)
+        expect(p2.health).toBe(MAX_HEALTH)
+    })
+
+    it("counts as fired when it panics, even if its hook refused", () => {
+        const state = friendly(testBreath({ fire: () => false }))
+        const p1 = state.players[0]
+        expect(breathe(state, p1)).toBe(true)
+        expect(panicked(state.players[1])).toBe(true)
+        expect(p1.breather.energy).toBe(p1.breather.breath.maxEnergy - 10)
+        expect(p1.breather.cooldown).toBe(1)
+    })
+
+    it("can't panic a player again while it is immune", () => {
+        const state = friendly(testBreath({ cooldown: 0 }))
+        const [p1, p2] = state.players
+        breathe(state, p1)
+        tickPanics(state.players, PANIC_SECONDS)
+        expect(panicImmune(p2)).toBe(true)
+        state.events.length = 0
+        expect(breathe(state, p1)).toBe(true)
+        expect(panicked(p2)).toBe(false)
+        expect(panics(state)).toEqual([])
+        tickPanics(state.players, PANIC_IMMUNITY_SECONDS)
+        breathe(state, p1)
+        expect(panicked(p2)).toBe(true)
+    })
+
+    it("doesn't reset a panic in progress", () => {
+        const state = friendly(testBreath({ cooldown: 0 }))
+        const [p1, p2] = state.players
+        breathe(state, p1)
+        tickPanics(state.players, 1)
+        state.events.length = 0
+        breathe(state, p1)
+        expect(p2.panickedFor).toBe(PANIC_SECONDS - 1)
+        expect(panics(state)).toEqual([])
+    })
+
+    it("panics from the cells it strikes only, not the tiles it leaves", () => {
+        // The Skunk's cloud from (1, 1) covers (1, 1) to (3, 1) and lasts
+        // 5 s; player 2 walks into it from (6, 1) once it is breathed.
+        const state = friendly(BREATHS[AnimalId.skunk], vec2(6, 1))
+        const p2 = state.players[1]
+        step(state, TICK, [breath, IDLE], fixedRandom(0))
+        expect(state.tiles.some((t) => t.pos.x === 3)).toBe(true)
+        run(state, [IDLE, hold(west)], TICK_RATE * 2)
+        expect(p2.character.pos).toEqual(vec2(2, 1))
+        expect(panicked(p2)).toBe(false)
+    })
+
+    it("from the Boar's Rush, bumps into the other player and panics it", () => {
+        const state = friendly(BREATHS[AnimalId.boar], vec2(2, 1))
+        const [p1, p2] = state.players
+        expect(breathe(state, p1)).toBe(true)
+        expect(p1.character.pos).toEqual(vec2(1, 1))
+        expect(p2.character.pos).toEqual(vec2(2, 1))
+        expect(panicked(p2)).toBe(true)
+        expect(p2.health).toBe(MAX_HEALTH)
+    })
+
+    it("from the Rush's chain, shoves the other player and panics it", () => {
+        // The Boar rams the enemy on (2, 1), which flies 2 cells, shoving
+        // player 2 from (3, 1) to (5, 1).
+        const enemy = makeEnemy(2, 1)
+        const state = makeState(hall, [vec2(1, 1), vec2(3, 1)], [enemy], {
+            mode: "coop",
+            breath: BREATHS[AnimalId.boar],
+            health: MAX_HEALTH,
+        })
+        const [p1, p2] = state.players
+        p1.breather.energy = p1.breather.breath.maxEnergy
+        expect(breathe(state, p1)).toBe(true)
+        expect(p2.character.pos).toEqual(vec2(5, 1))
+        expect(panicked(p2)).toBe(true)
+        expect(p2.health).toBe(MAX_HEALTH)
+        expect(panics(state)).toEqual([
+            { type: "playerPanicked", player: 1, by: 0, at: vec2(5, 1) },
+        ])
+    })
+
+    it("from the Rush's chain, panics the other player against a wall", () => {
+        // Player 2 on (11, 1), the hall's end: the chain can't move.
+        const enemy = makeEnemy(10, 1)
+        const state = makeState(hall, [vec2(9, 1), vec2(11, 1)], [enemy], {
+            mode: "coop",
+            breath: BREATHS[AnimalId.boar],
+            health: MAX_HEALTH,
+        })
+        const [p1, p2] = state.players
+        p1.breather.energy = p1.breather.breath.maxEnergy
+        expect(breathe(state, p1)).toBe(true)
+        expect(p2.character.pos).toEqual(vec2(11, 1))
+        expect(panicked(p2)).toBe(true)
+        expect(p2.health).toBe(MAX_HEALTH)
+    })
+
+    it("lets the panicked player be hurt by an enemy as usual", () => {
+        const enemy = makeEnemy(5, 1)
+        enemy.speed = 0
+        const state = makeState(hall, [vec2(1, 1), vec2(5, 1)], [enemy], {
+            mode: "coop",
+            breath: testBreath({ shape: () => ({ kind: "line", range: 5 }) }),
+            health: MAX_HEALTH,
+        })
+        const [p1, p2] = state.players
+        p1.breather.energy = p1.breather.breath.maxEnergy
+        step(state, TICK, [breath, IDLE], fixedRandom(0))
+        expect(panicked(p2)).toBe(true)
+        expect(p2.health).toBeLessThan(MAX_HEALTH)
+        expect(state.events.map((e) => e.type)).toContain("hurt")
+    })
+
+    it("leaves solo play alone", () => {
+        const state = makeState(hall, vec2(1, 1), [], {
+            breath: testBreath({ shape: () => ({ kind: "self" }) }),
         })
         const p1 = state.players[0]
         p1.breather.energy = p1.breather.breath.maxEnergy
         expect(breathe(state, p1)).toBe(true)
-        expect(panicked(state.players[1])).toBe(false)
+        expect(panicked(p1)).toBe(false)
+        expect(panics(state)).toEqual([])
+    })
+
+    it("never panics the player breathing it", () => {
+        const state = friendly(testBreath({ shape: () => ({ kind: "self" }) }))
+        const p1 = state.players[0]
+        breathe(state, p1)
+        expect(panicked(p1)).toBe(false)
     })
 })
 

@@ -123,6 +123,10 @@ export function effectsForEvent(
             particles.burst("caught", event.at)
             shake.add(SHAKES.caught)
             return
+        case "playerPanicked":
+            // Its mark and jitter are drawn from the player (see render.ts).
+            shake.add(SHAKES.panic)
+            return
         case "gameWon":
         case "gameLost":
             return

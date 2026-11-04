@@ -134,6 +134,15 @@ export function createRushView(): RushView {
                         if (!rush) break
                         rush.atSlam.push(event)
                         continue
+                    case "playerPanicked": {
+                        // The other player, struck by the Rush or its
+                        // chain (KDA-316): at the impact, as the chain
+                        // starts sliding.
+                        const by = rushes.get(event.by)
+                        if (!by) break
+                        by.atImpact.push(event)
+                        continue
+                    }
                 }
                 now.push(event)
             }

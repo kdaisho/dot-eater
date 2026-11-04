@@ -48,6 +48,8 @@ import {
     CHARGE_AURA_GROWTH,
     CHARGE_FLICKER_HZ,
     chargeAura,
+    PANIC_JITTER,
+    panicJitter,
 } from "./render"
 import { SNEAK_ALPHA, SNEAK_FAR, SNEAK_NEAR, sneakAlpha } from "./intercept"
 import type { Particle } from "./particles"
@@ -2805,5 +2807,84 @@ describe("createRenderer drawing a Rush", () => {
         const { calls, renderer } = setup()
         renderer.draw(rammed(0).state, 0)
         expect(calls.some((c) => drawnName(c) === "tengu")).toBe(false)
+    })
+})
+
+// KDA-316's placeholder for a panicked player, until KDA-317's panic
+// frames: a pixel "!" over its head and a jitter, and its look flagged.
+describe("a panicked player", () => {
+    afterEach(() => {
+        vi.restoreAllMocks()
+    })
+
+    const corridor = [
+        [1, 1, 1, 1, 1, 1, 1],
+        [1, 0, 0, 0, 0, 0, 1],
+        [1, 1, 1, 1, 1, 1, 1],
+    ] as const
+    const coop = () =>
+        makeState(corridor, [vec2(1, 1), vec2(4, 1)], [], { mode: "coop" })
+    // Player 2's sprite (the second dragon drawn) and the panic marks.
+    const drawnP2 = (calls: ReturnType<typeof setup>["calls"]) => ({
+        sprite: calls.filter((c) => drawnName(c) === "dragon")[1]!,
+        marks: calls.filter((c) => drawnName(c) === "panic"),
+    })
+
+    it("gets a pixel '!' over its head; a calm player gets none", () => {
+        const { calls, renderer } = setup()
+        const state = coop()
+        renderer.draw(state, 0)
+        expect(drawnP2(calls).marks).toEqual([])
+        calls.length = 0
+        panic(state.players[1])
+        renderer.draw(state, 0)
+        const { sprite, marks } = drawnP2(calls)
+        expect(marks).toHaveLength(1)
+        const body = spriteBox(sprite)
+        const mark = spriteBox(marks[0]!)
+        expect(Math.abs(mark.x - body.x)).toBeLessThan(1)
+        expect(mark.y).toBeLessThan(body.y - body.size / 4)
+        expect(mark.size).toBeLessThan(body.size)
+    })
+
+    it("is drawn with its look flagged panicked", () => {
+        const { calls, renderer } = setup()
+        const state = coop()
+        panic(state.players[1])
+        renderer.draw(state, 0)
+        const look = (c: { args: unknown[] }) =>
+            (c.args[0] as HTMLCanvasElement).dataset.look
+        const [p1, p2] = calls.filter((c) => drawnName(c) === "dragon")
+        expect(look(p1!)).not.toContain("panicked")
+        expect(look(p2!)).toContain(":panicked")
+    })
+
+    it("jitters side to side, but not with reduced motion", () => {
+        const { calls, renderer } = setup()
+        const state = coop()
+        const p2 = state.players[1]
+        renderer.draw(state, 0)
+        const calm = spriteBox(drawnP2(calls).sprite).x
+        panic(p2)
+        const xAt = (panickedFor: number, reducedMotion = false) => {
+            p2.panickedFor = panickedFor
+            calls.length = 0
+            renderer.draw(state, 0, {}, {}, { reducedMotion })
+            return spriteBox(drawnP2(calls).sprite).x
+        }
+        expect(xAt(1.42)).toBeGreaterThan(calm)
+        expect(xAt(1.47)).toBeLessThan(calm)
+        expect(xAt(1.42, true)).toBe(calm)
+    })
+
+    it("jitters PANIC_JITTER cells either way, by its panic's countdown", () => {
+        const p2 = coop().players[1]
+        expect(panicJitter(p2, false)).toBe(0)
+        panic(p2)
+        p2.panickedFor = 1.42
+        expect(panicJitter(p2, false)).toBe(PANIC_JITTER)
+        p2.panickedFor = 1.47
+        expect(panicJitter(p2, false)).toBe(-PANIC_JITTER)
+        expect(panicJitter(p2, true)).toBe(0)
     })
 })

@@ -49,6 +49,8 @@ export function soundForEvent(event: GameEvent): SfxId | undefined {
             return SfxId.hurt
         case "playerCaught":
             return SfxId.caught
+        case "playerPanicked":
+            return SfxId.panicked
         case "gameWon":
             return SfxId.stageClear
         case "gameLost":
