@@ -79,7 +79,7 @@ vi.mock("canvas-confetti", () => ({ default: vi.fn() }))
 const HEALTH_COLOR = "#16a34a"
 
 // happy-dom has no 2D canvas, so record the calls on a stub context: every
-// method call is logged, with the fillStyle, strokeStyle, font,
+// method call is logged, with the fillStyle, strokeStyle, lineWidth, font,
 // globalAlpha and globalCompositeOperation set at the time, and property
 // writes are accepted. A gradient's colour stops are logged as
 // addColorStop calls, and createImageData gives real pixels.
@@ -89,12 +89,14 @@ function stubContext() {
         args: unknown[]
         fillStyle?: unknown
         strokeStyle?: unknown
+        lineWidth?: unknown
         font?: unknown
         globalAlpha?: unknown
         composite?: unknown
     }[] = []
     let fillStyle: unknown
     let strokeStyle: unknown
+    let lineWidth: unknown
     let font: unknown
     let globalAlpha: unknown = 1
     const saved: unknown[] = []
@@ -109,6 +111,7 @@ function stubContext() {
                         args,
                         fillStyle,
                         strokeStyle,
+                        lineWidth,
                         font,
                         globalAlpha,
                         composite,
@@ -137,6 +140,7 @@ function stubContext() {
             set(_target, name, value) {
                 if (name === "fillStyle") fillStyle = value
                 if (name === "strokeStyle") strokeStyle = value
+                if (name === "lineWidth") lineWidth = value
                 if (name === "font") font = value
                 if (name === "globalAlpha") globalAlpha = value
                 if (name === "globalCompositeOperation") composite = value
@@ -2594,6 +2598,30 @@ describe("createRenderer with the facing guide", () => {
             renderer.draw(state, 0, {}, {}, ARROW)
             expect(arrows(calls, canvas)).toEqual([
                 { color: 0, tip: [2.7, 1.5] },
+            ])
+        })
+
+        it("outlines it light inside and dark outside, under the fill", () => {
+            const { calls, canvas, renderer } = setup()
+            renderer.draw(charged(), 0, {}, {}, ARROW)
+            const fill = calls.findIndex(
+                (c) => c.name === "fill" && c.fillStyle === PLAYER_COLORS[0]
+            )
+            const start = calls
+                .slice(0, fill)
+                .map((c) => c.name)
+                .lastIndexOf("beginPath")
+            // The strokes on the arrow's own path, before its fill.
+            const strokes = calls
+                .slice(start, fill)
+                .filter((c) => c.name === "stroke")
+                .map((c) => ({ color: c.strokeStyle, width: c.lineWidth }))
+            const cell = cellOf(canvas)
+            const light = Math.max(1, cell * 0.06)
+            const dark = Math.max(1, cell * 0.03)
+            expect(strokes).toEqual([
+                { color: "#000000", width: 2 * (light + dark) },
+                { color: "#ffffff", width: 2 * light },
             ])
         })
 
