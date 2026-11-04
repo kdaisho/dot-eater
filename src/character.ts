@@ -48,6 +48,10 @@ export type Character = {
     // Breathers only (KDA-291): its breath's cooldown, wind-up and facing,
     // and how its AI moves this tick (see enemyBreath.ts).
     breath?: EnemyBreath
+    // True on both slots of a Germ, the Splitter a present box let out
+    // (KDA-324, see present.ts): once its halves are defeated it is gone
+    // for good, and neither it nor its halves drop a box.
+    germ?: true
 }
 
 export function createCharacter(

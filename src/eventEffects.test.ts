@@ -12,6 +12,7 @@ import {
 import { takeEvents, type GameEvent } from "./events"
 import { step, type GameState, type MoveInput } from "./game"
 import { BURSTS, createParticles, type ParticleLook } from "./particles"
+import type { PresentContent } from "./present"
 import { defaultSettings } from "./settings"
 import { createShake, SHAKES } from "./shake"
 import {
@@ -220,6 +221,23 @@ describe("effectsForEvent", () => {
         expect(r.bursts).toEqual([])
         expect(r.shakes).toEqual([SHAKES.panic])
         expect(SHAKES.panic).toBeLessThan(SHAKES.hurt)
+    })
+
+    // KDA-324.
+    it("a sparkle per content as a box opens, and a shake for the Earthquake", () => {
+        const at = vec2(2, 3)
+        const open = (content: PresentContent) =>
+            run({ type: "presentOpened", player: 0, at, content })
+        expect(open("heal").bursts).toEqual([{ kind: "presentHeal", at }])
+        expect(open("heal").shakes).toEqual([])
+        expect(open("germ").bursts).toEqual([{ kind: "presentGerm", at }])
+        const quake = open("quake")
+        expect(quake.bursts).toEqual([{ kind: "presentQuake", at }])
+        expect(quake.shakes).toEqual([SHAKES.quake])
+        expect(run({ type: "presentExpired", at }).bursts).toEqual([
+            { kind: "presentPuff", at },
+        ])
+        expect(run({ type: "presentDropped", at }).bursts).toEqual([])
     })
 
     it.each([{ type: "gameWon" }, { type: "gameLost" }] as GameEvent[])(

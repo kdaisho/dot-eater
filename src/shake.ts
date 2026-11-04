@@ -33,6 +33,9 @@ export const SHAKES = {
     // Co-op: a player panicked by the other's breath (KDA-316): light,
     // under a hurt's.
     panic: 0.15,
+    // A present's Earthquake (KDA-324): a small jolt of about 0.3 s, the
+    // enemies' panic is the rest.
+    quake: 0.55,
     // The boss's defeat (KDA-301, see bossDefeat.ts): the burst's shatter,
     // each small blast of the final boss's chain, and its big blast. The
     // killing blow itself doesn't shake: it is the hit-stop.

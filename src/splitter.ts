@@ -214,10 +214,12 @@ function freeCells(
 
 // The half at `i` was defeated (defeatEnemy has scored it and sent it to
 // its spawn): it is GONE. Once both halves are, the Splitter is whole again
-// in its main slot and back after GameState.respawnDelay.
+// in its main slot and back after GameState.respawnDelay; a Germ (see
+// present.ts) stays GONE, for good.
 export function halfDefeated(state: GameState, i: number) {
     state.enemies[i].respawnIn = GONE
     const [main, spare] = slots(state, i)
+    if (main.germ) return
     if (main.respawnIn > 0 && spare.respawnIn > 0) {
         makeWhole(main)
         main.respawnIn = state.respawnDelay

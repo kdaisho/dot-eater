@@ -40,6 +40,7 @@ import {
     type LevelVariant,
     type Stage,
 } from "../level"
+import { createPresents } from "../present"
 import { vec2, type Vec2 } from "../vec2"
 
 export type MapLiteral = readonly (readonly Cell[])[]
@@ -244,6 +245,7 @@ export function makeState(
         regrow: null,
         splitterDrops: false,
         respawnDelay: RESPAWN_DELAY,
+        presents: createPresents(),
     }
 }
 
