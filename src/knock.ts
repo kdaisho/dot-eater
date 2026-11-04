@@ -5,6 +5,7 @@ import type { Character } from "./character"
 import { emit } from "./events"
 import { eatDot, type GameState, type Player } from "./game"
 import { loopPos } from "./level"
+import { panicPlayers } from "./panic"
 import { samePos, vec2, type Vec2 } from "./vec2"
 
 // Knocked flying (KDA-304, the Boar's Rush; see BreathHit.knock in
@@ -19,7 +20,9 @@ import { samePos, vec2, type Vec2 } from "./vec2"
 //
 // - enemies shoved down the chain are only pushed, never defeated
 //   (regular enemies have no health);
-// - a player shoved down it takes no damage (a push only);
+// - a player shoved down it takes no damage (a push only), but panics
+//   (KDA-316, see panic.ts), even where the chain can't move: it was
+//   struck;
 // - the boss is too big to shove (2x2): the chain stops at it, and it
 //   takes a little damage, `bossDamage`.
 //
@@ -145,10 +148,12 @@ export function knockFlying(
             enemy.lastPos = vec2(car.cell.x, car.cell.y)
             enemy.moveProgress = 0
         }
-        if (!moved) continue
-        for (const player of car.players) {
-            shove(state, player, car.from, car.cell, step)
+        if (moved) {
+            for (const player of car.players) {
+                shove(state, player, car.from, car.cell, step)
+            }
         }
+        panicPlayers(state, by, car.players)
     }
     for (const enemy of fliers) {
         // Defeated where it slammed, so its defeat is reported there.

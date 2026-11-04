@@ -131,6 +131,7 @@ describe("soundForEvent", () => {
             ],
             [{ type: "hurt", player: 0, at, damage: 25 }, "hurt"],
             [{ type: "playerCaught", player: 0, at }, "caught"],
+            [{ type: "playerPanicked", player: 1, by: 0, at }, "panicked"],
             [{ type: "gameWon" }, "stageClear"],
             [{ type: "gameLost" }, "gameOver"],
             [{ type: "dotRegrown", at }, undefined],

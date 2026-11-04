@@ -19,6 +19,7 @@ import {
 } from "./game"
 import { BREATHS } from "./breaths"
 import { levels } from "./levels"
+import { panicked, PANIC_SECONDS } from "./panic"
 import { ANIMAL_IDS } from "./roster"
 import {
     fixedRandom,
@@ -402,9 +403,10 @@ describe("dots eaten", () => {
 
 describe("breaths in co-op", () => {
     // Player 1 breathes east along a hall with player 2 right in front of
-    // it and an enemy beyond: whatever the breath does, player 2 is left
-    // alone and can walk on through whatever it left behind.
-    it.each(ANIMAL_IDS)("never affect the partner: %s", (animal) => {
+    // it and an enemy beyond: whatever the breath does, player 2 isn't
+    // hurt, only panicked (KDA-316, see panic.test.ts), and once the panic
+    // is over it walks on through whatever the breath left behind.
+    it.each(ANIMAL_IDS)("never hurt the partner: %s", (animal) => {
         const map = textMap([
             "##########",
             "#        #",
@@ -426,9 +428,9 @@ describe("breaths in co-op", () => {
         expect(
             step(state, TICK, [{ ...IDLE, breath: true }, IDLE], fixedRandom(0))
         ).toBeNull()
-        // It fired (the Boar's Rush dashes on through the partner's cell:
-        // co-op players don't bump by default).
+        // It fired (the Boar's Rush bumps into the partner, and panics it).
         expect(p1.breather.energy).toBeLessThan(p1.breather.breath.maxEnergy)
+        expect(panicked(p2)).toBe(true)
         expect(p2.character.pos).toEqual(vec2(2, 1))
         expect(p2.character.lastPos).toEqual(vec2(2, 1))
         expect(p2.out).toBe(false)
@@ -438,8 +440,10 @@ describe("breaths in co-op", () => {
         expect(p2.breather.facing).toEqual(west)
         expect(state.ice[1][2]).toBe(false)
         expect(p2.health).toBe(MAX_HEALTH)
-        // Player 2 walks on through the breath's cells.
+        // Player 2 walks on through the breath's cells once it calms down.
+        run(state, [IDLE, IDLE], PANIC_SECONDS * TICK_RATE)
         run(state, [IDLE, hold(east)], MOVE)
         expect(p2.character.pos).toEqual(vec2(3, 1))
+        expect(p2.health).toBe(MAX_HEALTH)
     })
 })

@@ -73,6 +73,7 @@ import {
 import { isSplitterHalf } from "./splitter"
 import {
     ANIMAL_SPRITES,
+    BadgeId,
     BOSS_SPRITES,
     createSpriteCache,
     drawSprite,
@@ -280,6 +281,17 @@ const BOSS_GLOW_SCALE = 1.15
 // A status's pixel badge (BADGES in sprites.ts) is this size, as a
 // fraction of the sprite's.
 const BADGE_SCALE = 0.5
+
+// A panicked player (KDA-316, see panic.ts), until KDA-317 gives each
+// character a panic frame: a pixel "!" (BadgeId.panic) over its head,
+// PANIC_MARK_SCALE of the sprite tall, its middle PANIC_MARK_RISE of the
+// sprite above the sprite's middle; and its sprite jitters side to side,
+// PANIC_JITTER cells either way, PANIC_JITTER_HZ times a second (not with
+// reduced motion, where the mark alone shows it; see panicJitter).
+const PANIC_MARK_SCALE = 0.45
+const PANIC_MARK_RISE = 0.6
+export const PANIC_JITTER = 0.05
+export const PANIC_JITTER_HZ = 10
 
 export type RendererOptions = {
     // The window to fit; defaults to the global one.
@@ -1202,6 +1214,8 @@ function drawCharacters(
         marker: null,
         arrow: null,
         aura: null,
+        panicked: false,
+        jitter: 0,
     })
     const held = state.enemies.filter((e) => hasStatus(e, "holds"))
     const free = state.enemies.filter((e) => !hasStatus(e, "holds"))
@@ -1228,13 +1242,15 @@ function drawCharacters(
                           aura: panicked(player)
                               ? null
                               : chargeAura(player.breather, reducedMotion),
+                          panicked: panicked(player),
+                          jitter: panicJitter(player, reducedMotion),
                       },
                   ]
         ),
         ...free.map(enemySprite),
     ]
     for (const sprite of sprites) {
-        const { character, rate, marker, arrow, aura } = sprite
+        const { character, rate, marker, arrow, aura, jitter } = sprite
         const isPlayer = character.id === CharacterId.player
         if (!isPlayer && !enemyVisible(character)) continue
         const index = isPlayer
@@ -1268,6 +1284,7 @@ function drawCharacters(
             cols,
             rows
         )
+        if (sprite.panicked) look.panicked = true
         const order = fall
             ? isPlayer
                 ? hopOrder(
@@ -1286,7 +1303,7 @@ function drawCharacters(
         const hop =
             fall && order >= 0 ? hopHeight(fall.defeat, order, fall.e) : 0
         for (const p of wrapCopies(pos, cols, rows)) {
-            const x = (p.x + 0.5) * cell
+            const x = (p.x + 0.5 + jitter) * cell
             const y = (p.y + 0.5 - hop) * cell
             if (aura) {
                 ctx.globalAlpha = aura.alpha
@@ -1311,6 +1328,18 @@ function drawCharacters(
                 drawTile(ctx, tile, x - box / 2, y - box / 2, box)
             }
             if (marker !== null) drawMarker(ctx, marker, x, y, size)
+            if (sprite.panicked) {
+                drawSprite(
+                    ctx,
+                    art.sprites,
+                    { badge: BadgeId.panic },
+                    x,
+                    y - size * PANIC_MARK_RISE,
+                    size * PANIC_MARK_SCALE,
+                    art.dpr,
+                    art.outline
+                )
+            }
             const badges = looks.flatMap((look) =>
                 look.badge ? [look.badge] : []
             )
@@ -1450,6 +1479,17 @@ export function chargeAura(
         alpha: bright ? CHARGE_AURA_FULL_ALPHA : CHARGE_AURA_ALPHA / 2,
         scale,
     }
+}
+
+// How far a panicked player's sprite is drawn off its spot this frame, in
+// cells along x (see PANIC_JITTER): right on the first half of each
+// jitter, left on the second, timed by the panic's own countdown so it
+// keeps to the game; 0 when it isn't panicked or with reduced motion.
+export function panicJitter(player: Player, reducedMotion: boolean): number {
+    if (reducedMotion || !panicked(player)) return 0
+    return (player.panickedFor * PANIC_JITTER_HZ) % 1 < 0.5
+        ? PANIC_JITTER
+        : -PANIC_JITTER
 }
 
 // Particles (see particles.ts), each a disc or a square of its colour,

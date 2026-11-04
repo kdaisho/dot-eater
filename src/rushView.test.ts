@@ -193,6 +193,22 @@ describe("the Rush as drawn", () => {
         expect(seen.at(-1)).toEqual({ flier: undefined, a: 7, b: 8 })
     })
 
+    it("panics a shoved player at the impact (KDA-316)", () => {
+        const state = makeState(hall, [vec2(1, 1), vec2(5, 1)], [still(4, 1)], {
+            breath: boar,
+            mode: "coop",
+        })
+        state.players[0].breather.energy = boar.maxEnergy
+        state.players[0].character.moveProgress = 1
+        const { frames } = rush(state, 5, slamTick + 2)
+        expect(frames[0].played).toEqual(["breathed"])
+        expect(frames[impactTick].played).toEqual([
+            "rammed",
+            "knockedFlying",
+            "playerPanicked",
+        ])
+    })
+
     it("stops sliding a shoved player that moves on", () => {
         const state = makeState(hall, [vec2(1, 1), vec2(5, 1)], [still(3, 1)], {
             breath: boar,

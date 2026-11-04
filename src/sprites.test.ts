@@ -298,5 +298,8 @@ describe("createSpriteCache", () => {
             "finalBoss:0:windUp"
         )
         expect(drawableKey({ id: SpriteId.oni, windUp: true })).toBe("oni:0")
+        expect(
+            drawableKey({ id: SpriteId.dragon, mirror: true, panicked: true })
+        ).toBe("dragon:0:mirror:panicked")
     })
 })

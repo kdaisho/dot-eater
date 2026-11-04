@@ -30,6 +30,9 @@ export const SHAKES = {
     enemyBreath: 0.12,
     // A player knocked out: its health gone.
     caught: 0.7,
+    // Co-op: a player panicked by the other's breath (KDA-316): light,
+    // under a hurt's.
+    panic: 0.15,
     // The boss's defeat (KDA-301, see bossDefeat.ts): the burst's shatter,
     // each small blast of the final boss's chain, and its big blast. The
     // killing blow itself doesn't shake: it is the hit-stop.
