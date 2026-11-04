@@ -5,6 +5,7 @@ import {
     captureButton,
     captureKey,
     DEFAULT_BINDINGS,
+    effectiveBindings,
     isBindableButton,
     isBindableKey,
     keyName,
@@ -396,6 +397,66 @@ describe("sameBindings", () => {
         expect(sameBindings(moved, DEFAULT_BINDINGS)).toBe(false)
         const key = rebind(DEFAULT_BINDINGS, 0, "up", "KeyI")
         expect(sameBindings(DEFAULT_BINDINGS, key)).toBe(false)
+    })
+})
+
+// KDA-322: a 1-player game breathes with Left Shift by default.
+describe("effectiveBindings", () => {
+    // Which player and action each code drives, from the key maps.
+    const drives = (bindings: Bindings, code: string) =>
+        keyMapsFor(bindings).flatMap((map, i) =>
+            Object.hasOwn(map, code) ? [[i, map[code]]] : []
+        )
+
+    it("moves the default breath to Left Shift in a 1-player game", () => {
+        const solo = effectiveBindings(DEFAULT_BINDINGS, 1)
+        expect(solo.players[0].keys.breath).toBe("ShiftLeft")
+        expect(drives(solo, "ShiftLeft")).toEqual([[0, "breath"]])
+        // Right Shift goes to 2P's breath, a player a 1-player game
+        // doesn't have.
+        expect(drives(solo, "ShiftRight")).toEqual([[1, "breath"]])
+        // Nothing else moves, and the input is left alone.
+        expect(rebind(solo, 0, "breath", "ShiftRight")).toEqual(
+            DEFAULT_BINDINGS
+        )
+        expect(DEFAULT_BINDINGS.players[0].keys.breath).toBe("ShiftRight")
+    })
+
+    it("leaves 2-player games' bindings as they are", () => {
+        expect(effectiveBindings(DEFAULT_BINDINGS, 2)).toBe(DEFAULT_BINDINGS)
+        expect(drives(DEFAULT_BINDINGS, "ShiftRight")).toEqual([[0, "breath"]])
+    })
+
+    it("keeps a rebound breath key in both", () => {
+        const bound = rebind(DEFAULT_BINDINGS, 0, "breath", "KeyK")
+        for (const count of [1, 2]) {
+            const used = effectiveBindings(bound, count)
+            expect(used).toBe(bound)
+            expect(drives(used, "KeyK")).toEqual([[0, "breath"]])
+            expect(drives(used, "ShiftLeft")).toEqual([[1, "breath"]])
+        }
+    })
+
+    it("keeps a breath rebound to Left Shift, swapped with 2P's", () => {
+        const bound = rebind(DEFAULT_BINDINGS, 0, "breath", "ShiftLeft")
+        expect(bound.players[1].keys.breath).toBe("ShiftRight")
+        for (const count of [1, 2]) {
+            const used = effectiveBindings(bound, count)
+            expect(used).toBe(bound)
+            expect(drives(used, "ShiftLeft")).toEqual([[0, "breath"]])
+        }
+    })
+
+    it("keeps Right Shift when Left Shift is another of 1P's keys", () => {
+        const bound = rebind(DEFAULT_BINDINGS, 0, "pause", "ShiftLeft")
+        expect(effectiveBindings(bound, 1)).toBe(bound)
+    })
+
+    it("takes Left Shift from whichever 2P action holds it", () => {
+        const bound = rebind(DEFAULT_BINDINGS, 1, "confirm", "ShiftLeft")
+        const solo = effectiveBindings(bound, 1)
+        expect(drives(solo, "ShiftLeft")).toEqual([[0, "breath"]])
+        expect(drives(solo, "ShiftRight")).toEqual([[1, "confirm"]])
     })
 })
 

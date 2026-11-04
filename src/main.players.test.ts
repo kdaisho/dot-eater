@@ -6,6 +6,7 @@ import {
     step,
     takeOut,
     type GameState,
+    type MoveInput,
     type Outcome,
 } from "./game"
 import { MAX_HEALTH } from "./constants"
@@ -152,6 +153,20 @@ describe("main with two players", () => {
         ])
         keyup("ArrowLeft")
         keyup("KeyS")
+
+        // Each Shift breathes for its own player: Right Shift is still 1P's
+        // in a 2-player game (KDA-322 moves it only in 1-player ones).
+        const breathOf = (code: string) => {
+            keydown(code)
+            vi.advanceTimersByTime(100)
+            const moves = vi.mocked(step).mock.lastCall?.[2] as MoveInput[]
+            const held = moves.map((m) => m.breathHeld)
+            keyup(code)
+            vi.advanceTimersByTime(100)
+            return held
+        }
+        expect(breathOf("ShiftRight")).toEqual([true, false])
+        expect(breathOf("ShiftLeft")).toEqual([false, true])
 
         // The HUD shows each player's score, meter and health.
         const game = drawn.last?.[0] as GameState

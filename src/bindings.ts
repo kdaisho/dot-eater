@@ -246,6 +246,28 @@ function withKey(
     })
 }
 
+// Player 1's breath key in a 1-player game when it is still the default
+// (KDA-322): the left hand fires while the right one is on the arrows.
+export const SOLO_BREATH_KEY = "ShiftLeft"
+
+// The bindings a game with `playerCount` players uses. 2-player games use
+// them as they are. A 1-player game moves player 1's breath from the
+// default Right Shift to Left Shift, swapping with whatever holds it (2P's
+// breath by default; nobody plays 2P alone). A breath rebound to any other
+// key, or a Left Shift already on another of player 1's keys, stays put.
+export function effectiveBindings(
+    bindings: Bindings,
+    playerCount: number
+): Bindings {
+    if (playerCount !== 1) return bindings
+    const keys = bindings.players[0].keys
+    if (keys.breath !== DEFAULT_BINDINGS.players[0].keys.breath) {
+        return bindings
+    }
+    if (KEY_ACTIONS.some((a) => keys[a] === SOLO_BREATH_KEY)) return bindings
+    return rebind(bindings, 0, "breath", SOLO_BREATH_KEY)
+}
+
 // Read bindings from untrusted data (settings storage): never throws, and
 // always returns valid bindings.
 //
