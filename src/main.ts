@@ -16,6 +16,8 @@ import { SOUNDTRACK } from "./soundtrack"
 import { createMuteButton } from "./muteButton"
 import { playEventSounds, screenSound } from "./sound"
 import { cancelCharge, energyHud } from "./breath"
+import { swipeStep } from "./cards"
+import { cardsPageStale } from "./cardsView"
 import {
     drawEndRoll,
     END_ROLL_HEIGHT,
@@ -152,13 +154,7 @@ import {
     showTrackProgress,
     type EndScreenView,
 } from "./ui"
-import {
-    heading,
-    isTouchDevice,
-    isTouchFirst,
-    swipeDirection,
-    TouchSource,
-} from "./touch"
+import { heading, isTouchDevice, isTouchFirst, TouchSource } from "./touch"
 import { OPENING_DRUM } from "./opening"
 import { tutorialPages } from "./tutorial"
 import { drawTutorialFrame } from "./tutorialView"
@@ -733,6 +729,8 @@ function render(alpha: number) {
     if (screen.kind === "tutorial") {
         drawTutorialFrame(tutorialClock, reducedMotion?.matches ?? false)
     }
+    // The Cards page made before the cards' font had loaded is made again.
+    if (screen.kind === "cards" && cardsPageStale()) showOverlay(screen)
     // The end roll draws on its own canvas, over everything.
     if (screen.kind === "endRoll") return renderEndRoll(screen)
     // Settings over a paused game show that game behind them.
@@ -843,7 +841,7 @@ function showOverlay(s: Screen) {
             })
         }
         case "cards":
-            return showCards()
+            return showCards(s.index)
         case "soundtrack":
             return showSoundtrack({
                 tracks: SOUNDTRACK.map((entry, i) => ({
@@ -1077,6 +1075,29 @@ for (const type of ["focus", "keydown", "pointerdown"]) {
     })
 }
 
+// A swipe across the Cards page turns a card, and across the tutorial a
+// page (swipeStep), as left or right does: a swipe to the left shows the
+// next one. Up and down scroll. The click it ends with, if any, is
+// dropped; a new press forgets that, in case none came.
+const swipes = (s: Screen) => s.kind === "cards" || s.kind === "tutorial"
+let swipeFrom: { x: number; y: number } | undefined
+let swiped = false
+document.addEventListener("pointerdown", (event) => {
+    swiped = false
+    swipeFrom = swipes(screen)
+        ? { x: event.clientX, y: event.clientY }
+        : undefined
+})
+document.addEventListener("pointerup", (event) => {
+    const from = swipeFrom
+    swipeFrom = undefined
+    if (!from || !swipes(screen)) return
+    const step = swipeStep(event.clientX - from.x, event.clientY - from.y)
+    if (step === 0) return
+    swiped = true
+    tapAction(step > 0 ? "right" : "left")
+})
+
 // Taps and clicks on the overlays: a menu item or card puts player 1's
 // cursor on it and confirms (on settings that flips a toggle or runs
 // Back), a slider's ◀ or ▶ puts the cursor on it and steps it (left or
@@ -1085,6 +1106,11 @@ for (const type of ["focus", "keydown", "pointerdown"]) {
 // While the controls screen waits for a key or button, any tap on the
 // overlay cancels, like Escape, so a phone isn't stuck on the prompt.
 document.addEventListener("click", (event) => {
+    // The click that ends a swipe is the swipe's, not a tap.
+    if (swiped) {
+        swiped = false
+        return
+    }
     if (screen.kind === "opening") return openingTap(event)
     const tap = overlayTap(event.target)
     if (tap && capturing()) {
@@ -1125,27 +1151,6 @@ addEventListener("keydown", (event) => {
     const menu =
         screen.stage === "title" && screen.clock.seconds >= OPENING_DRUM
     if (!menu) tapAction("confirm")
-})
-
-// A swipe across the tutorial turns its pages, as the arrows do: a swipe
-// to the left brings the next page in (right), one to the right the last.
-// Up and down scroll the overlay. A tap is a click, as on any overlay.
-let swipe: { id: number; x: number; y: number } | undefined
-document.addEventListener("pointerdown", (event) => {
-    swipe =
-        screen.kind === "tutorial" && event.pointerType !== "mouse"
-            ? { id: event.pointerId, x: event.clientX, y: event.clientY }
-            : undefined
-})
-document.addEventListener("pointerup", (event) => {
-    const from = swipe
-    swipe = undefined
-    if (!from || from.id !== event.pointerId || screen.kind !== "tutorial") {
-        return
-    }
-    const way = swipeDirection(event.clientX - from.x, event.clientY - from.y)
-    if (way === "left") tapAction("right")
-    if (way === "right") tapAction("left")
 })
 
 function tapAction(action: Action) {

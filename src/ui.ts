@@ -1,5 +1,6 @@
 import confetti from "canvas-confetti"
 import { DEFAULT_BINDINGS, keyName, type Bindings } from "./bindings"
+import { cardsPage } from "./cardsView"
 import { ACTIONS, type Action } from "./input"
 import type { StageSlot } from "./progress"
 import type { AnimalId, AnimalInfo } from "./roster"
@@ -304,11 +305,11 @@ export function showTutorial(view: TutorialView) {
     })
 }
 
-// The main menu's pages (KDA-318), one function each for their tickets
-// (KDA-320) to replace. For now Cards is a placeholder.
-
-export function showCards() {
-    showComingSoon("cards", "Cards")
+// The Cards page (KDA-320) on card `index`: a page of its own
+// (cardsView.ts), in the overlay's place.
+export function showCards(index: number) {
+    hideOverlay()
+    document.body.appendChild(cardsPage(index))
 }
 
 // What the soundtrack page (KDA-321) shows: every track, in order.
@@ -379,17 +380,6 @@ export function showTrackProgress(
     )
     const bar = row?.querySelector<HTMLElement>(".menu-progress")
     if (bar) fillProgress(bar, trackProgressOf(elapsed, length))
-}
-
-// A page that isn't built yet: its title, "Coming soon" and Back.
-function showComingSoon(id: string, title: string) {
-    show({
-        id,
-        title,
-        lines: ["Coming soon", "Esc or B to go back"],
-        keyHints: 1,
-        back: true,
-    })
 }
 
 // What the controls screen shows (see the controls screen in flow.ts).

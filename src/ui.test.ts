@@ -10,7 +10,6 @@ import {
     overlayTap,
     showCharacterSelect,
     showGameOver,
-    showCards,
     showPause,
     showSettings,
     showSoundtrack,
@@ -75,23 +74,6 @@ describe("showTitle", () => {
         expect(lines()).toEqual(["Press Space to start"])
         expect(items()).toEqual([])
     })
-})
-
-describe("the main menu's pages", () => {
-    it.each([[showCards, "cards", "Cards"]] as const)(
-        "shows a placeholder for %#: its title, Coming soon and Back",
-        (show, id, name) => {
-            show()
-            expectSingle()
-            expect(overlay()?.dataset.screen).toBe(id)
-            expect(title()).toBe(name)
-            expect(lines()).toEqual(["Coming soon", "Esc or B to go back"])
-            expect(items()).toEqual([])
-            expect(
-                overlayTap(overlay()?.querySelector("[data-back]") ?? null)
-            ).toEqual({ kind: "back" })
-        }
-    )
 })
 
 describe("showSoundtrack", () => {

@@ -108,7 +108,10 @@ describe("the main menu", () => {
     })
 })
 
-describe.each(PAGE_CHOICES)("the %s page", (page) => {
+// Every page but Cards, which has its own tests (flow.cards.test.ts).
+const OTHER_PAGES = PAGE_CHOICES.filter((page) => page !== "cards")
+
+describe.each(OTHER_PAGES)("the %s page", (page) => {
     const index = TITLE_CHOICES.indexOf(page)
     const title = () => down(index)
 
@@ -136,26 +139,6 @@ describe.each(PAGE_CHOICES)("the %s page", (page) => {
         expect(tapped).toEqual({ kind: "title", mode: "solo", on: page })
         expect(selectItem(tapped, index)).toBe(tapped)
         expect(press(tapped, ["confirm"])).toEqual(pageScreen(page, "solo"))
-    })
-})
-
-// The pages still to be built: Back is all they do.
-describe.each(["cards"] as const)("the %s placeholder", (page) => {
-    const title = () => down(TITLE_CHOICES.indexOf(page))
-
-    it("stays put on any other input, player 2's Back included", () => {
-        const screen = press(title(), ["confirm"])
-        for (const action of ["up", "down", "left", "right", "confirm"]) {
-            expect(update(screen, input([action as Action]), deps())).toBe(
-                screen
-            )
-        }
-        expect(update(screen, input([], ["pause"]), deps())).toBe(screen)
-    })
-
-    it("has no menu to tap", () => {
-        const screen = press(title(), ["confirm"])
-        expect(selectItem(screen, 0)).toBe(screen)
     })
 })
 
