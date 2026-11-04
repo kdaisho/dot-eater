@@ -282,12 +282,14 @@ const BOSS_GLOW_SCALE = 1.15
 // fraction of the sprite's.
 const BADGE_SCALE = 0.5
 
-// A panicked player (KDA-316, see panic.ts), until KDA-317 gives each
-// character a panic frame: a pixel "!" (BadgeId.panic) over its head,
+// A panicked player (KDA-316, see panic.ts) is drawn on its panic frame
+// (KDA-317) with a pixel "!" (BadgeId.panic) over its head, kept since it
+// reads at small sizes where the face doesn't (PANIC_MARK: off drops it),
 // PANIC_MARK_SCALE of the sprite tall, its middle PANIC_MARK_RISE of the
 // sprite above the sprite's middle; and its sprite jitters side to side,
 // PANIC_JITTER cells either way, PANIC_JITTER_HZ times a second (not with
 // reduced motion, where the mark alone shows it; see panicJitter).
+const PANIC_MARK = true
 const PANIC_MARK_SCALE = 0.45
 const PANIC_MARK_RISE = 0.6
 export const PANIC_JITTER = 0.05
@@ -1168,7 +1170,8 @@ function drawCharacters(
     // (e.g. frozen, which players walk onto), the players (player 1 first),
     // then the other enemies. In fog, enemies outside the light are
     // hidden; the players are always in it. A defeated enemy is hidden until
-    // it blinks before coming back (enemyVisible). Statuses are drawn by
+    // it blinks before coming back (enemyVisible). A panicked player and a
+    // stopped enemy (enemyPanicked) show their panic frame. Statuses are drawn by
     // their Look: the colour as a disc behind the sprite, the pixel tile
     // over it (e.g. the frozen ice block), sized to the cell as the sprite
     // is to its box, and the badge as a small pixel badge at its top
@@ -1214,7 +1217,8 @@ function drawCharacters(
         marker: null,
         arrow: null,
         aura: null,
-        panicked: false,
+        panicked: enemyPanicked(enemy),
+        mark: false,
         jitter: 0,
     })
     const held = state.enemies.filter((e) => hasStatus(e, "holds"))
@@ -1243,6 +1247,7 @@ function drawCharacters(
                               ? null
                               : chargeAura(player.breather, reducedMotion),
                           panicked: panicked(player),
+                          mark: PANIC_MARK && panicked(player),
                           jitter: panicJitter(player, reducedMotion),
                       },
                   ]
@@ -1328,7 +1333,7 @@ function drawCharacters(
                 drawTile(ctx, tile, x - box / 2, y - box / 2, box)
             }
             if (marker !== null) drawMarker(ctx, marker, x, y, size)
-            if (sprite.panicked) {
+            if (sprite.mark) {
                 drawSprite(
                     ctx,
                     art.sprites,
@@ -1479,6 +1484,15 @@ export function chargeAura(
         alpha: bright ? CHARGE_AURA_FULL_ALPHA : CHARGE_AURA_ALPHA / 2,
         scale,
     }
+}
+
+// Whether enemy `enemy` is drawn on its panic frame (KDA-317): while a
+// breath stops it (a status that holds it: the Penguin's freeze). Enemies
+// the Skunk's stink turns back keep walking, so they don't count; a
+// stagger is the boss's only, and bosses keep their look. Anything else
+// that stops an enemy belongs here too.
+export function enemyPanicked(enemy: Character): boolean {
+    return hasStatus(enemy, "holds")
 }
 
 // How far a panicked player's sprite is drawn off its spot this frame, in
