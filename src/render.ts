@@ -1535,9 +1535,19 @@ function drawMarker(
     ctx.fillText(String(index + 1), x - size / 2, y + size / 2)
 }
 
+// The facing arrow's outline (KDA-325), so it reads on every stage's floor:
+// a white band round the triangle and a thin black edge outside that, the
+// sprite outline's idea with both colours at once (white shows on the dark
+// floors of stages 8 to 10, black on the light ones). Each is at least 1 px
+// wide, else this fraction of a cell.
+const ARROW_LIGHT = "#ffffff"
+const ARROW_DARK = "#000000"
+const ARROW_LIGHT_WIDTH = 0.06
+const ARROW_DARK_WIDTH = 0.03
+
 // Player `arrow.index`'s facing arrow, for its sprite centred at (x, y): a
 // filled triangle in its colour, its base just outside the ring and its tip
-// ARROW_TIP cells out along `facing` (a unit step).
+// ARROW_TIP cells out along `facing` (a unit step), in its outline.
 function drawArrow(
     ctx: CanvasRenderingContext2D,
     arrow: { index: number; facing: Vec2 },
@@ -1559,6 +1569,18 @@ function drawArrow(
     ctx.lineTo(x + fx * base - fy * half, y + fy * base + fx * half)
     ctx.lineTo(x + fx * base + fy * half, y + fy * base - fx * half)
     ctx.closePath()
+    // Strokes are centred on the path, so each is twice the width that
+    // shows outside it; the dark one goes first, the light one over it and
+    // the fill over both. Mitred corners keep the tip sharp.
+    const light = Math.max(1, cell * ARROW_LIGHT_WIDTH)
+    const dark = Math.max(1, cell * ARROW_DARK_WIDTH)
+    ctx.lineJoin = "miter"
+    ctx.strokeStyle = ARROW_DARK
+    ctx.lineWidth = 2 * (light + dark)
+    ctx.stroke()
+    ctx.strokeStyle = ARROW_LIGHT
+    ctx.lineWidth = 2 * light
+    ctx.stroke()
     ctx.fill()
     ctx.restore()
 }
