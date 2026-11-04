@@ -78,8 +78,8 @@ export function playEventSounds(
     for (const id of eventSounds(events)) audio.playSfx(id)
 }
 
-// The tune a screen plays: the title's on the title and the menus (the
-// story menus too), the stage's while playing, frozen while paused
+// The tune a screen plays: the title's on the title, its pages and the
+// menus (the story menus too), the stage's while playing, frozen while paused
 // (settings opened from pause included). None from the ending outro on, so
 // the stage clear and game over jingles play alone; the result screens,
 // story mode's clear card and ending included, stay quiet. The end roll
@@ -95,6 +95,9 @@ export function musicForScreen(screen: Screen): MusicCue | undefined {
                 ? { track: MusicTrackId.opening, paused: false }
                 : undefined
         case "title":
+        case "tutorial":
+        case "cards":
+        case "soundtrack":
         case "playSelect":
         case "storyMenu":
         case "stageSelect":
@@ -123,7 +126,11 @@ export function musicForScreen(screen: Screen): MusicCue | undefined {
 // screen, which is a step in).
 function isBack(prev: Screen, next: Screen): boolean {
     return (
-        (prev.kind === "playSelect" && next.kind === "title") ||
+        ((prev.kind === "playSelect" ||
+            prev.kind === "tutorial" ||
+            prev.kind === "cards" ||
+            prev.kind === "soundtrack") &&
+            next.kind === "title") ||
         (prev.kind === "storyMenu" && next.kind === "playSelect") ||
         (prev.kind === "stageSelect" &&
             (next.kind === "title" || next.kind === "playSelect")) ||
@@ -143,7 +150,7 @@ function sameScreenSound(prev: Screen, next: Screen): SfxId | undefined {
     if (prev.kind === "opening" && next.kind === "opening")
         return prev.choice !== next.choice ? SfxId.menuMove : undefined
     if (prev.kind === "title" && next.kind === "title")
-        return prev.mode !== next.mode || prev.onSettings !== next.onSettings
+        return prev.mode !== next.mode || prev.on !== next.on
             ? SfxId.menuMove
             : undefined
     if (prev.kind === "settings" && next.kind === "settings")

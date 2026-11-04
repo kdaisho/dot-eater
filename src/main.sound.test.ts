@@ -73,8 +73,7 @@ describe("main's sound", () => {
         expect(context.sources.length).toBeGreaterThan(0)
 
         // Settings: a music volume step applies at once.
-        pressAndTick("ArrowDown")
-        pressAndTick("ArrowDown")
+        for (let i = 0; i < 4; i++) pressAndTick("ArrowDown")
         pressAndTick("Space")
         expect(screen()).toBe("settings")
         pressAndTick("ArrowRight")
@@ -84,7 +83,7 @@ describe("main's sound", () => {
         pressAndTick("Escape")
 
         // Play, then pause: no new notes while paused.
-        for (let i = 0; i < 3; i++) pressAndTick("ArrowUp")
+        for (let i = 0; i < 5; i++) pressAndTick("ArrowUp")
         pressAndTick("Space")
         pressAndTick("ArrowDown")
         for (let i = 0; i < 4; i++) pressAndTick("Space")

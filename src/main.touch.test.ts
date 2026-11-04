@@ -134,7 +134,7 @@ describe("main on a touch screen", () => {
         expect(selectedItem()).toBe("Stage select")
         tap("#overlay [data-back]")
         expect(screen()).toBe("title")
-        expect(selectedItem()).toBe("Co-op")
+        expect(selectedItem()).toBe("2 Players")
         tap("#overlay li[data-index='0']")
         expect(screen()).toBe("play-select")
         tap("#overlay li[data-index='1']")

@@ -86,10 +86,17 @@ describe("main with two players", () => {
             [...(overlay()?.querySelectorAll("li") ?? [])].map(
                 (li) => li.textContent
             )
-        ).toEqual(["1 player", "Co-op", "Settings"])
-        expect(selectedItem()).toBe("1 player")
+        ).toEqual([
+            "1 Player",
+            "2 Players",
+            "Tutorial",
+            "Cards",
+            "Soundtrack",
+            "Settings",
+        ])
+        expect(selectedItem()).toBe("1 Player")
         pressAndTick("ArrowDown")
-        expect(selectedItem()).toBe("Co-op")
+        expect(selectedItem()).toBe("2 Players")
         pressAndTick("Space")
         expect(screen()).toBe("play-select")
         pressAndTick("ArrowDown")

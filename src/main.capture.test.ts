@@ -82,7 +82,7 @@ describe("main's controls capture", () => {
         pads = [pad()]
         tickFrame()
         // Title → Settings → Controls.
-        for (let i = 0; i < 3; i++) pressAndTick("ArrowDown")
+        for (let i = 0; i < 5; i++) pressAndTick("ArrowDown")
         pressAndTick("Space")
         for (let i = 0; i < 4; i++) pressAndTick("ArrowDown")
         pressAndTick("Space")
