@@ -108,7 +108,10 @@ describe("the main menu", () => {
     })
 })
 
-describe.each(PAGE_CHOICES)("the %s page", (page) => {
+// Every page but Cards, which has its own tests (flow.cards.test.ts).
+const OTHER_PAGES = PAGE_CHOICES.filter((page) => page !== "cards")
+
+describe.each(OTHER_PAGES)("the %s page", (page) => {
     const index = TITLE_CHOICES.indexOf(page)
     const title = () => down(index)
 
@@ -140,7 +143,7 @@ describe.each(PAGE_CHOICES)("the %s page", (page) => {
 })
 
 // The pages still to be built: Back is all they do.
-describe.each(["tutorial", "cards"] as const)("the %s placeholder", (page) => {
+describe.each(["tutorial"] as const)("the %s placeholder", (page) => {
     const title = () => down(TITLE_CHOICES.indexOf(page))
 
     it("stays put on any other input, player 2's Back included", () => {

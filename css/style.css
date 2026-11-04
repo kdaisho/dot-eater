@@ -99,6 +99,259 @@ body[data-dpad="on"][data-touch="on"] #play {
     width: min(100%, calc(100dvh * 256 / 224));
 }
 
+/* The Cards page (src/cardsView.ts), over everything like the end roll, in
+   its colours. --s is screen pixels per card pixel: the card as big as
+   fits (up to 2.2) under the bar, or on a phone the width less 16 px
+   gutters; the cards either side are 0.72 of it. --card-w and --card-h
+   are a card's size in card pixels, set by the page. */
+.cards-page {
+    --page-s: min(2.2px, calc((100dvh - 110px) / var(--card-h)));
+    --s: var(--page-s);
+    background: #08001c;
+    color: #fcfcfc;
+    display: flex;
+    flex-direction: column;
+    font-family: "Press Start 2P", monospace;
+    inset: 0;
+    overflow: hidden;
+    position: fixed;
+    z-index: 30;
+}
+
+.cards-page * {
+    font-family: inherit;
+    font-size: inherit;
+    line-height: inherit;
+    text-align: inherit;
+}
+
+.cards-stars {
+    height: 100%;
+    image-rendering: pixelated;
+    inset: 0;
+    object-fit: cover;
+    position: absolute;
+    width: 100%;
+}
+
+/* Back on the left, the title in the middle, the card's number on the
+   right, clear of the mute button. */
+.cards-bar {
+    align-items: center;
+    display: flex;
+    flex: none;
+    height: 52px;
+    justify-content: space-between;
+    padding: 0 56px 0 8px;
+    position: relative;
+}
+
+.cards-back {
+    background: none;
+    border: 0;
+    color: #fff;
+    cursor: pointer;
+    font-family: monospace;
+    font-size: 18px;
+    line-height: 44px;
+    opacity: 0.8;
+    padding: 0 8px;
+}
+
+.cards-title {
+    color: #f8b800;
+    font-size: 14px;
+    left: 50%;
+    line-height: 1;
+    position: absolute;
+    text-shadow: 2px 2px 0 #401800;
+    transform: translateX(-50%);
+}
+
+.cards-count {
+    color: #fca044;
+    font-size: 10px;
+    line-height: 1;
+}
+
+/* The card in the middle, the arrows beside it, the neighbours peeking in
+   from the sides, the dots under them. */
+.cards-stage {
+    align-items: center;
+    column-gap: 12px;
+    display: grid;
+    flex: 1;
+    grid-template-areas:
+        "lpeek prev card next rpeek"
+        "dots dots dots dots dots";
+    grid-template-columns: minmax(0, 1fr) auto auto auto minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr) auto;
+    min-height: 0;
+    padding-bottom: 14px;
+    position: relative;
+}
+
+.cards-current {
+    grid-area: card;
+    justify-self: center;
+}
+
+.cards-peek {
+    --s: calc(var(--page-s) * 0.72);
+    cursor: pointer;
+    opacity: 0.35;
+}
+
+.cards-peek.prev {
+    grid-area: lpeek;
+    justify-self: end;
+}
+
+.cards-peek.next {
+    grid-area: rpeek;
+    justify-self: start;
+}
+
+.cards-arrow {
+    background: none;
+    border: 0;
+    cursor: pointer;
+    display: grid;
+    height: 44px;
+    padding: 0;
+    place-items: center;
+    width: 36px;
+}
+
+.cards-arrow::before {
+    background: #f8b800;
+    clip-path: polygon(0 0, 100% 50%, 0 100%);
+    content: "";
+    filter: drop-shadow(3px 3px 0 #401800);
+    height: 24px;
+    width: 18px;
+}
+
+.cards-arrow.prev {
+    grid-area: prev;
+}
+
+.cards-arrow.prev::before {
+    clip-path: polygon(100% 0, 0 50%, 100% 100%);
+}
+
+.cards-arrow.next {
+    grid-area: next;
+}
+
+.cards-arrow:focus-visible,
+.cards-back:focus-visible {
+    outline: 2px solid #fff;
+    outline-offset: 3px;
+}
+
+.cards-dots {
+    display: flex;
+    gap: 12px;
+    grid-area: dots;
+    justify-content: center;
+}
+
+.cards-dot-group {
+    display: flex;
+    gap: 6px;
+}
+
+.cards-dot {
+    background: #3a2c66;
+    cursor: pointer;
+    display: block;
+    height: 8px;
+    width: 8px;
+}
+
+.cards-dot.on {
+    background: #f8b800;
+    box-shadow: 2px 2px 0 #401800;
+}
+
+/* A phone: the card fills the width, with the arrows and dots under it. */
+@media (max-width: 600px) {
+    .cards-page {
+        --page-s: min(
+            calc((100vw - 32px) / var(--card-w)),
+            calc((100dvh - 130px) / var(--card-h))
+        );
+    }
+
+    .cards-stage {
+        align-content: center;
+        grid-template-areas:
+            "card card card"
+            "prev dots next";
+        grid-template-columns: auto 1fr auto;
+        grid-template-rows: auto auto;
+        padding: 0 16px 8px;
+        row-gap: 12px;
+    }
+
+    .cards-peek {
+        display: none;
+    }
+}
+
+/* A card: its pixel canvas, and its text over the cream lower half
+   (sizes in card pixels, set by cardsView.ts). */
+.tcard {
+    height: calc(var(--s) * var(--card-h));
+    position: relative;
+    width: calc(var(--s) * var(--card-w));
+}
+
+.tcard-art {
+    display: block;
+    height: 100%;
+    image-rendering: pixelated;
+    width: 100%;
+}
+
+.tcard-text {
+    color: #401800;
+    display: flex;
+    flex-direction: column;
+    position: absolute;
+    text-align: left;
+}
+
+.tcard-row,
+.tcard-attack {
+    align-items: baseline;
+    display: flex;
+    gap: calc(var(--s) * 4);
+    justify-content: space-between;
+}
+
+.tcard-name.boss,
+.tcard-attack-value {
+    color: #d82800;
+}
+
+.tcard-tag,
+.tcard-ability,
+.tcard-lab,
+.tcard-foot {
+    color: #ac7c00;
+}
+
+.tcard-quote {
+    opacity: 0.8;
+}
+
+.tcard-rule {
+    border-top-color: #ac7c00;
+    border-top-style: solid;
+}
+
 .overlay {
     color: #fff;
     left: 50%;
