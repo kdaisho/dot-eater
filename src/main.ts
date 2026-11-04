@@ -56,6 +56,8 @@ import {
     STORY_CHOICES,
     storyStart,
     TITLE_CHOICES,
+    titleChoice,
+    choosingMode,
     update,
     type EndChoice,
     type Capture,
@@ -142,6 +144,9 @@ import {
     showStoryMenu,
     setHintBindings,
     showTitle,
+    showTutorial,
+    showCards,
+    showSoundtrack,
     showToast,
     type EndScreenView,
 } from "./ui"
@@ -551,30 +556,25 @@ function playEvents(events: readonly GameEvent[], game: GameState) {
     effects.events(events, game)
 }
 
-// How pads map to players on a screen. The title, where the mode is still
-// being chosen, shares every pad with player 1, so any pad can pick the
-// mode (and go back to 1 player). From stage select on, a 2-player mode
-// gives each pad its own player, so player 2's pad picks its character.
-// Settings follow the screen they were opened over.
+// How pads map to players on a screen. The title and its pages, where the
+// mode is still being chosen, share every pad with player 1, so any pad
+// can pick the mode (and go back to 1 player). From stage select on, a
+// 2-player mode gives each pad its own player, so player 2's pad picks its
+// character. Settings follow the screen they were opened over.
 function padAssignment(shown: Screen): PadAssignment {
     const screen = baseScreen(shown)
-    return screen.kind !== "opening" &&
-        screen.kind !== "title" &&
-        playerCount(screen.mode) > 1
+    return !choosingMode(screen) && playerCount(screen.mode) > 1
         ? "perPad"
         : "shared"
 }
 
 // The keys a screen uses: a 1-player game's breath may move to Left Shift
-// (see effectiveBindings). The opening and the title, where the mode is
-// still being chosen, use the bindings as they are. Settings follow the
-// screen they were opened over.
+// (see effectiveBindings). The opening, the title and its pages, where the
+// mode is still being chosen, use the bindings as they are. Settings follow
+// the screen they were opened over.
 function keyBindingsFor(shown: Screen, s: Settings): Bindings {
     const base = baseScreen(shown)
-    const solo =
-        base.kind !== "opening" &&
-        base.kind !== "title" &&
-        playerCount(base.mode) === 1
+    const solo = !choosingMode(base) && playerCount(base.mode) === 1
     return effectiveBindings(bindingsOf(s), solo ? 1 : 2)
 }
 
@@ -773,7 +773,7 @@ function showOverlay(s: Screen) {
         case "opening":
             return hideOverlay()
         case "title": {
-            const current: TitleChoice = s.onSettings ? "settings" : s.mode
+            const current = titleChoice(s)
             return showTitle(
                 TITLE_CHOICES.map((choice) => ({
                     label: TITLE_LABELS[choice],
@@ -781,6 +781,12 @@ function showOverlay(s: Screen) {
                 }))
             )
         }
+        case "tutorial":
+            return showTutorial()
+        case "cards":
+            return showCards()
+        case "soundtrack":
+            return showSoundtrack()
         case "settings": {
             const context = settingsContext(s, flowDeps(0))
             return showSettings(
@@ -934,15 +940,18 @@ function storyLabel(choice: StoryChoice): string {
     return `Continue (stage ${index + 1}: ${name})`
 }
 
-// The mode select's labels, one per mode; the title offers them all, in
-// MODE_CHOICES order, then Settings.
+// The mode select's labels, one per mode; the main menu offers them all, in
+// MODE_CHOICES order, then the pages and Settings.
 const MODE_LABELS: Record<Mode, string> = {
-    solo: "1 player",
-    coop: "Co-op",
+    solo: "1 Player",
+    coop: "2 Players",
 }
 
 const TITLE_LABELS: Record<TitleChoice, string> = {
     ...MODE_LABELS,
+    tutorial: "Tutorial",
+    cards: "Cards",
+    soundtrack: "Soundtrack",
     settings: "Settings",
 }
 

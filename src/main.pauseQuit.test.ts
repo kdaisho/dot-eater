@@ -42,7 +42,7 @@ describe("main's pause menu", () => {
         await import("./main")
 
         // Stage 1 in stage mode on 1 player.
-        expect(selectedItem()).toBe("1 player")
+        expect(selectedItem()).toBe("1 Player")
         pressAndTick("Space")
         pressAndTick("ArrowDown")
         pressAndTick("Space")
@@ -52,7 +52,7 @@ describe("main's pause menu", () => {
         pressAndTick("Space")
         quitFromPause()
         expect(screen()).toBe("title")
-        expect(selectedItem()).toBe("1 player")
+        expect(selectedItem()).toBe("1 Player")
 
         // Stage 1 in stage mode in co-op.
         pressAndTick("ArrowDown")
@@ -68,7 +68,7 @@ describe("main's pause menu", () => {
         pressAndTick("KeyE")
         quitFromPause()
         expect(screen()).toBe("title")
-        expect(selectedItem()).toBe("Co-op")
+        expect(selectedItem()).toBe("2 Players")
 
         // Neither quit stage has a best or stars.
         expect(localStorage.getItem(PROGRESS_KEY)).toBe(saved)

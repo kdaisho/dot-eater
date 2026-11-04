@@ -63,8 +63,16 @@ import { rateClear, type ClearRating } from "./stars"
 // the title (through the choice of story or stage mode for 1 player and
 // co-op; see story mode below).
 //
-// Settings open from the title's menu (its last entry, after the modes;
-// TITLE_CHOICES) and from the pause menu (PAUSE_CHOICES), and Back returns
+// The title is the main menu (KDA-318; TITLE_CHOICES): the modes, then
+// the pages, then Settings. Each page (Tutorial, Cards, Soundtrack;
+// PAGE_CHOICES) is a screen of its own kind, and Back (the pause action)
+// returns to the title with the cursor on it. For now each is a
+// placeholder whose only way out is Back; KDA-319, KDA-320 and KDA-321
+// build them.
+//
+//   title <-> tutorial        title <-> cards        title <-> soundtrack
+//
+// Settings open from the title's menu (its last entry; TITLE_CHOICES) and from the pause menu (PAUSE_CHOICES), and Back returns
 // to where they were opened, with the cursor still on Settings; from pause
 // that is the same paused game, which isn't stepped meanwhile.
 //
@@ -105,7 +113,7 @@ import { rateClear, type ClearRating } from "./stars"
 // There is no DOM access here: main feeds in one tick of input at a time,
 // renders whatever screen comes back and shows the matching overlay.
 //
-// The title is also the mode select (1 player or co-op; see
+// The title's first entries are the mode select (1 player or co-op; see
 // MODE_CHOICES). Every screen after it carries the `mode` picked there, up
 // to the end screens and back to stage select, so Retry keeps it.
 //
@@ -243,10 +251,17 @@ export type { Mode }
 // by its mode's rules (see knockOut in game.ts). Main labels each mode.
 export const MODE_CHOICES: readonly Mode[] = ["solo", "coop"]
 
-// The title's whole menu, in order: the modes, then Settings.
-export type TitleChoice = Mode | "settings"
+// The main menu's pages (KDA-318), in menu order: each opens a screen of
+// that kind, and Back returns to the title on it.
+export const PAGE_CHOICES = ["tutorial", "cards", "soundtrack"] as const
+export type Page = (typeof PAGE_CHOICES)[number]
+
+// The title's whole menu (the main menu), in order: the modes, the pages,
+// then Settings.
+export type TitleChoice = Mode | Page | "settings"
 export const TITLE_CHOICES: readonly TitleChoice[] = [
     ...MODE_CHOICES,
+    ...PAGE_CHOICES,
     "settings",
 ]
 
@@ -299,11 +314,16 @@ export type Screen =
     | {
           kind: "title"
           // The mode under the cursor, or the last one it was on while it
-          // is on Settings.
+          // is on another entry.
           mode: Mode
-          // Whether the cursor is on Settings rather than a mode.
-          onSettings?: boolean
+          // The entry under the cursor when it isn't a mode.
+          on?: Page | "settings"
       }
+    // The main menu's pages (PAGE_CHOICES), placeholders for now. `mode` is
+    // the title's, kept for Back.
+    | { kind: "tutorial"; mode: Mode }
+    | { kind: "cards"; mode: Mode }
+    | { kind: "soundtrack"; mode: Mode }
     | {
           kind: "settings"
           // The mode of the screen it was opened from.
@@ -468,6 +488,7 @@ export type Screen =
 export type ScreenKind = Screen["kind"]
 
 type TitleScreen = Extract<Screen, { kind: "title" }>
+type PageScreen = Extract<Screen, { kind: Page }>
 type PausedScreen = Extract<Screen, { kind: "paused" }>
 type SettingsScreen = Extract<Screen, { kind: "settings" }>
 type ControlsScreen = Extract<Screen, { kind: "controls" }>
@@ -624,6 +645,12 @@ function updateScreen(
             return updateOpening(screen, input, deps)
         case "title":
             return updateTitle(screen, input, deps)
+        case "tutorial":
+            return updateTutorial(screen, input)
+        case "cards":
+            return updateCards(screen, input)
+        case "soundtrack":
+            return updateSoundtrack(screen, input)
         case "settings":
             return updateSettings(screen, input, deps)
         case "controls":
@@ -694,14 +721,9 @@ export function selectItem(
         case "title": {
             if (!within(TITLE_CHOICES.length)) return screen
             const choice = TITLE_CHOICES[index]
-            if (choice === "settings") {
-                return screen.onSettings
-                    ? screen
-                    : { ...screen, onSettings: true }
-            }
-            return choice === screen.mode && !screen.onSettings
+            return choice === titleChoice(screen)
                 ? screen
-                : { kind: "title", mode: choice }
+                : titleOn(screen, choice)
         }
         case "playSelect":
             return within(PLAY_CHOICES.length) &&
@@ -831,26 +853,60 @@ function updateOpening(
     return next === index ? screen : { ...screen, choice: choices[next]! }
 }
 
+// The title's entry under the cursor.
+export function titleChoice(screen: TitleScreen): TitleChoice {
+    return screen.on ?? screen.mode
+}
+
+// The title with its cursor on `choice`, keeping the mode it was last on.
+function titleOn(screen: TitleScreen, choice: TitleChoice): TitleScreen {
+    return choice === "solo" || choice === "coop"
+        ? { kind: "title", mode: choice }
+        : { kind: "title", mode: screen.mode, on: choice }
+}
+
 // Up/down move over TITLE_CHOICES; confirm on a mode goes on to the choice
-// of story or stage mode in that mode, and on Settings opens them.
+// of story or stage mode in that mode, on a page opens it, and on Settings
+// opens them.
 function updateTitle(
     screen: TitleScreen,
     input: TickInput,
     deps: FlowDeps
 ): Screen {
     if (input.wasPressed("confirm")) {
-        const { mode } = screen
-        if (screen.onSettings) return openSettings(screen, deps)
+        const { mode, on } = screen
+        if (on === "settings") return openSettings(screen, deps)
+        if (on !== undefined) return { kind: on, mode }
         return { kind: "playSelect", mode, choice: PLAY_CHOICES[0] }
     }
-    const current: TitleChoice = screen.onSettings ? "settings" : screen.mode
-    const index = Math.max(0, TITLE_CHOICES.indexOf(current))
+    const index = Math.max(0, TITLE_CHOICES.indexOf(titleChoice(screen)))
     const next = moveCursor(index, TITLE_CHOICES.length, input)
-    if (next === index) return screen
-    const choice = TITLE_CHOICES[next]
-    return choice === "settings"
-        ? { ...screen, onSettings: true }
-        : { kind: "title", mode: choice }
+    return next === index ? screen : titleOn(screen, TITLE_CHOICES[next]!)
+}
+
+// The main menu's pages, one function each for their tickets to build on.
+// For now each is a placeholder that only goes back.
+function updateTutorial(screen: PageScreen, input: TickInput): Screen {
+    return updatePlaceholder(screen, input)
+}
+
+function updateCards(screen: PageScreen, input: TickInput): Screen {
+    return updatePlaceholder(screen, input)
+}
+
+function updateSoundtrack(screen: PageScreen, input: TickInput): Screen {
+    return updatePlaceholder(screen, input)
+}
+
+// Back (the pause action) returns to the title on the page; nothing else
+// does anything.
+function updatePlaceholder(screen: PageScreen, input: TickInput): Screen {
+    return input.wasPressed("pause") ? pageBack(screen) : screen
+}
+
+// The title a page goes back to: its cursor on the page, its mode kept.
+function pageBack(screen: PageScreen): TitleScreen {
+    return { kind: "title", mode: screen.mode, on: screen.kind }
 }
 
 // The pause action resumes, as does confirm on Resume (either player's, in
@@ -1456,6 +1512,18 @@ function stepCursor(
 export function baseScreen(screen: Screen): Screen {
     if (screen.kind === "controls") return baseScreen(screen.back)
     return screen.kind === "settings" ? screen.back : screen
+}
+
+// Whether the mode is still being chosen on this screen: the opening, the
+// title and the title's pages.
+export function choosingMode(
+    screen: Screen
+): screen is Extract<Screen, { kind: "opening" | "title" | Page }> {
+    return (
+        screen.kind === "opening" ||
+        screen.kind === "title" ||
+        (PAGE_CHOICES as readonly string[]).includes(screen.kind)
+    )
 }
 
 // The settings a settings or controls screen carries, as changed so far;

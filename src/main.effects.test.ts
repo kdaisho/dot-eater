@@ -116,7 +116,7 @@ describe("main's particles and shake", () => {
         expect(seen.particles!.reduced).toBe(true)
         expect(seen.shake!.enabled).toBe(false)
         // Title → Settings → Screen shake.
-        for (let i = 0; i < 3; i++) pressAndTick("ArrowDown")
+        for (let i = 0; i < 5; i++) pressAndTick("ArrowDown")
         expect(selectedItem()).toBe("Settings")
         pressAndTick("Space")
         for (let i = 0; i < 3; i++) pressAndTick("ArrowDown")
@@ -137,7 +137,7 @@ describe("main's particles and shake", () => {
         expect(seen.shake!.enabled).toBe(true)
         // Back to the title, then into a game.
         pressAndTick("Escape")
-        for (let i = 0; i < 3; i++) pressAndTick("ArrowUp")
+        for (let i = 0; i < 5; i++) pressAndTick("ArrowUp")
         pressAndTick("Space")
         pressAndTick("ArrowDown")
         pressAndTick("Space")

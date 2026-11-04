@@ -31,7 +31,7 @@ describe("main's settings", () => {
         await import("./main")
 
         // The title's menu ends with Settings.
-        for (let i = 0; i < 3; i++) pressAndTick("ArrowDown")
+        for (let i = 0; i < 5; i++) pressAndTick("ArrowDown")
         expect(selectedItem()).toBe("Settings")
         pressAndTick("Space")
         expect(screen()).toBe("settings")
@@ -60,7 +60,7 @@ describe("main's settings", () => {
         pressAndTick("Escape")
 
         // Play, pause and open the settings from the pause menu.
-        for (let i = 0; i < 3; i++) pressAndTick("ArrowUp")
+        for (let i = 0; i < 5; i++) pressAndTick("ArrowUp")
         pressAndTick("Space")
         pressAndTick("ArrowDown")
         pressAndTick("Space")

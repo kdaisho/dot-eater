@@ -138,11 +138,11 @@ describe("main with a gamepad", () => {
             pads = [pad(), pad([], 1)]
             padEvent("gamepadconnected", 1)
             vi.advanceTimersByTime(100)
-            expect(selectedItem()).toBe("1 player")
+            expect(selectedItem()).toBe("1 Player")
             tapPad(1, DOWN)
-            expect(selectedItem()).toBe("Co-op")
+            expect(selectedItem()).toBe("2 Players")
             tapPad(0, UP)
-            expect(selectedItem()).toBe("1 player")
+            expect(selectedItem()).toBe("1 Player")
             tapPad(1, A)
             expect(screen()).toBe("play-select")
             tapPad(0, DOWN)
@@ -172,7 +172,7 @@ describe("main with a gamepad", () => {
 
         it("gives pad 1 to player 1 and pad 2 to player 2 in 2-player", () => {
             tapPad(1, DOWN)
-            expect(selectedItem()).toBe("Co-op")
+            expect(selectedItem()).toBe("2 Players")
             tapPad(0, A)
             expect(screen()).toBe("play-select")
             // The choice of story or stage mode follows player 1, and pad
@@ -220,7 +220,7 @@ describe("main with a gamepad", () => {
             tapPad(0, START)
             expect(screen()).toBe("title")
             tapPad(1, UP)
-            expect(selectedItem()).toBe("1 player")
+            expect(selectedItem()).toBe("1 Player")
             tapPad(1, A)
             expect(screen()).toBe("play-select")
             tapPad(1, DOWN)

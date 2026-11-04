@@ -5,6 +5,7 @@ import type { GameEvent } from "./events"
 import {
     initialScreen,
     openingScreen,
+    PAGE_CHOICES,
     STORY_CARD_SECONDS,
     type Screen,
 } from "./flow"
@@ -246,13 +247,30 @@ describe("musicForScreen", () => {
     })
 })
 
+describe("the main menu's pages", () => {
+    it.each(PAGE_CHOICES)(
+        "play the title tune on %s, confirm on the way in and go back out",
+        (page) => {
+            const screen: Screen = { kind: page, mode: "solo" }
+            expect(musicForScreen(screen)).toEqual({
+                track: "title",
+                paused: false,
+            })
+            const onPage: Screen = { kind: "title", mode: "solo", on: page }
+            expect(menuSound(title, onPage)).toBe("menuMove")
+            expect(menuSound(onPage, screen)).toBe("confirm")
+            expect(menuSound(screen, onPage)).toBe("back")
+        }
+    )
+})
+
 describe("menuSound", () => {
     it("blips when a menu's cursor moves or a value changes", () => {
         expect(menuSound(title, { kind: "title", mode: "coop" })).toBe(
             "menuMove"
         )
         expect(
-            menuSound(title, { kind: "title", mode: "solo", onSettings: true })
+            menuSound(title, { kind: "title", mode: "solo", on: "settings" })
         ).toBe("menuMove")
         expect(menuSound(stageSelect, { ...stageSelect, selected: 1 })).toBe(
             "menuMove"

@@ -136,7 +136,7 @@ describe("main in stage mode", () => {
 
         // Co-op shares the unlocks: stage 3 open, stage 4 locked.
         pressAndTick("ArrowDown")
-        expect(selectedItem()).toBe("Co-op")
+        expect(selectedItem()).toBe("2 Players")
         pressAndTick("Space")
         pressAndTick("ArrowDown")
         pressAndTick("Space")

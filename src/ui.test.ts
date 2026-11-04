@@ -10,12 +10,15 @@ import {
     overlayTap,
     showCharacterSelect,
     showGameOver,
+    showCards,
     showPause,
     showSettings,
+    showSoundtrack,
     showStageClear,
     showStageSelect,
     showTitle,
     showToast,
+    showTutorial,
 } from "./ui"
 import type { StageSlot } from "./progress"
 import { ANIMAL_IDS, AnimalId, ANIMALS } from "./roster"
@@ -72,6 +75,27 @@ describe("showTitle", () => {
         expect(lines()).toEqual(["Press Space to start"])
         expect(items()).toEqual([])
     })
+})
+
+describe("the main menu's pages", () => {
+    it.each([
+        [showTutorial, "tutorial", "Tutorial"],
+        [showCards, "cards", "Cards"],
+        [showSoundtrack, "soundtrack", "Soundtrack"],
+    ] as const)(
+        "shows a placeholder for %#: its title, Coming soon and Back",
+        (show, id, name) => {
+            show()
+            expectSingle()
+            expect(overlay()?.dataset.screen).toBe(id)
+            expect(title()).toBe(name)
+            expect(lines()).toEqual(["Coming soon", "Esc or B to go back"])
+            expect(items()).toEqual([])
+            expect(
+                overlayTap(overlay()?.querySelector("[data-back]") ?? null)
+            ).toEqual({ kind: "back" })
+        }
+    )
 })
 
 describe("showStageSelect", () => {

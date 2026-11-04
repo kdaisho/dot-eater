@@ -282,6 +282,31 @@ export function showSettings(items: readonly MenuItem[]) {
     })
 }
 
+// The main menu's pages (KDA-318), one function each for their tickets
+// (KDA-319, KDA-320, KDA-321) to replace. For now each is a placeholder.
+export function showTutorial() {
+    showComingSoon("tutorial", "Tutorial")
+}
+
+export function showCards() {
+    showComingSoon("cards", "Cards")
+}
+
+export function showSoundtrack() {
+    showComingSoon("soundtrack", "Soundtrack")
+}
+
+// A page that isn't built yet: its title, "Coming soon" and Back.
+function showComingSoon(id: string, title: string) {
+    show({
+        id,
+        title,
+        lines: ["Coming soon", "Esc or B to go back"],
+        keyHints: 1,
+        back: true,
+    })
+}
+
 // What the controls screen shows (see the controls screen in flow.ts).
 export type ControlsView = {
     // Whose controls show (player 1 is 0).

@@ -141,7 +141,7 @@ describe("main in story mode", () => {
     it("goes through the new menus and back with the keys", () => {
         pressAndTick("Space")
         expect(screen()).toBe("play-select")
-        expect(overlay()?.querySelector("h1")?.textContent).toBe("1 player")
+        expect(overlay()?.querySelector("h1")?.textContent).toBe("1 Player")
         expect(items()).toEqual(["Story", "Stage select"])
         expect(selectedItem()).toBe("Story")
         pressAndTick("Space")
@@ -156,7 +156,7 @@ describe("main in story mode", () => {
         expect(selectedItem()).toBe("Story")
         pressAndTick("Escape")
         expect(screen()).toBe("title")
-        expect(selectedItem()).toBe("1 player")
+        expect(selectedItem()).toBe("1 Player")
     })
 
     it("taps into a run, with Back on the way", () => {
@@ -305,9 +305,9 @@ describe("main in story mode", () => {
         const before = localStorage.getItem(PROGRESS_KEY)
         const setItem = vi.spyOn(localStorage, "setItem")
         pressAndTick("ArrowDown")
-        expect(selectedItem()).toBe("Co-op")
+        expect(selectedItem()).toBe("2 Players")
         pressAndTick("Space")
-        expect(overlay()?.querySelector("h1")?.textContent).toBe("Co-op")
+        expect(overlay()?.querySelector("h1")?.textContent).toBe("2 Players")
         pressAndTick("Space")
         // The 1-player unlocks: every stage reached.
         expect(selectedItem()).toBe(

@@ -6,6 +6,7 @@ import {
     initialScreen,
     screenSettings,
     selectItem,
+    TITLE_CHOICES,
     update,
     type Capture,
     type FlowDeps,
@@ -65,7 +66,8 @@ function rowIndex(kind: string, action?: string): number {
 
 // The settings, opened from the title, with the cursor on Controls.
 function settingsOnControls(d = deps()): Screen {
-    const title = press(initialScreen(), ["down", "down"], d)
+    const toSettings = Array<Action>(TITLE_CHOICES.indexOf("settings"))
+    const title = press(initialScreen(), toSettings.fill("down"), d)
     const down = Array<Action>(4).fill("down")
     return press(title, ["confirm", ...down], d)
 }
@@ -362,7 +364,7 @@ describe("reset and back", () => {
         // Back again to the title, still on Settings.
         expect(press(settings, ["pause"])).toMatchObject({
             kind: "title",
-            onSettings: true,
+            on: "settings",
         })
     })
 

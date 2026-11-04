@@ -37,7 +37,7 @@ describe("main's mute button", () => {
 
         // The settings screen shows it, and the button there changes it
         // on the screen too, so the next change there keeps it.
-        for (let i = 0; i < 3; i++) pressAndTick("ArrowDown")
+        for (let i = 0; i < 5; i++) pressAndTick("ArrowDown")
         pressAndTick("Space")
         expect(screen()).toBe("settings")
         expect(items()).toContain("Mute On")
