@@ -37,8 +37,9 @@ import {
 import { vec2, type Vec2 } from "./vec2"
 
 // Two players in one game, through step(): each moves, eats, scores and
-// breathes on its own; they pass through each other; enemies and the boss
-// go after the nearer one; a catch of either costs a shared life.
+// breathes on its own; they bump into each other (see game.bump.test.ts);
+// enemies and the boss go after the nearer one; a catch of either costs a
+// shared life.
 
 const TICK = 1 / TICK_RATE
 const none = vec2(0, 0)
@@ -162,38 +163,18 @@ describe("two players", () => {
         expect(totalScore(state)).toBe(4 * DOT_POINTS)
     })
 
-    it("give a dot both step onto on the same tick to player 1", () => {
+    it("give a dot both head for on the same tick to player 1", () => {
         const state = makeState(corridor, [
             { x: 4, y: 1 },
             { x: 6, y: 1 },
         ])
         run(state, [hold(east), hold(west)], MOVE)
+        // Player 2 bumps into player 1 there and waits.
         expect(state.players[0].character.pos).toEqual(vec2(5, 1))
-        expect(state.players[1].character.pos).toEqual(vec2(5, 1))
+        expect(state.players[1].character.pos).toEqual(vec2(6, 1))
         expect(state.players[0].score).toBe(DOT_POINTS)
         expect(state.players[1].score).toBe(0)
         expect(state.players[1].eatenAt).toBeNull()
-    })
-
-    it("pass through each other", () => {
-        const state = makeState(corridor, [
-            { x: 4, y: 1 },
-            { x: 6, y: 1 },
-        ])
-        run(state, [hold(east), hold(west)], MOVE * 2)
-        expect(state.players[0].character.pos).toEqual(vec2(6, 1))
-        expect(state.players[1].character.pos).toEqual(vec2(4, 1))
-        for (const p of state.players) expect(p.health).toBe(1)
-    })
-
-    it("can share a cell", () => {
-        const state = makeState(corridor, [
-            { x: 4, y: 1 },
-            { x: 4, y: 1 },
-        ])
-        expect(run(state, [hold(east), hold(east)], MOVE * 2)).toBeNull()
-        expect(state.players[0].character.pos).toEqual(vec2(6, 1))
-        expect(state.players[1].character.pos).toEqual(vec2(6, 1))
     })
 
     it("win when either eats the last dot", () => {

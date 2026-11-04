@@ -1,9 +1,4 @@
-import {
-    FACING_GUIDES,
-    isFacingGuide,
-    VOLUME_MAX,
-    type Settings,
-} from "./settings"
+import { VOLUME_MAX, type Settings } from "./settings"
 
 // The settings screen's rows (see the settings screen in flow.ts). Pure, no
 // DOM. Each row is data: a label, a kind and how it reads and changes the
@@ -76,15 +71,6 @@ const SHAKE_OPTIONS = [
     { value: "off", label: "Off", setting: false },
 ] as const
 
-// How each facing guide reads on its row.
-const FACING_GUIDE_LABELS = { arrow: "Arrow", aim: "Aim" } as const
-
-// The Players row's options: settings.playersBump off or on.
-const PLAYERS_BUMP_OPTIONS = [
-    { value: "pass", label: "Pass through" },
-    { value: "bump", label: "Bump" },
-] as const
-
 // Shows a row only on the settings opened from the title (e.g. remapping,
 // which a game in progress shouldn't change under the players).
 export const titleOnly = (context: SettingsContext) => context.from === "title"
@@ -128,28 +114,6 @@ export const SETTINGS_ROWS: readonly SettingsRow[] = [
             const option = SHAKE_OPTIONS.find((o) => o.value === value)
             return option ? { ...s, screenShake: option.setting } : s
         },
-    },
-    {
-        // How the board shows which way each player faces (KDA-247).
-        id: "facingGuide",
-        label: "Facing guide",
-        kind: "choice",
-        options: FACING_GUIDES.map((value) => ({
-            value,
-            label: FACING_GUIDE_LABELS[value],
-        })),
-        get: (s) => s.facingGuide,
-        set: (s, facingGuide) =>
-            isFacingGuide(facingGuide) ? { ...s, facingGuide } : s,
-    },
-    {
-        // Whether players bump into each other in a 2-player game (KDA-262).
-        id: "playersBump",
-        label: "Players",
-        kind: "choice",
-        options: PLAYERS_BUMP_OPTIONS,
-        get: (s) => (s.playersBump ? "bump" : "pass"),
-        set: (s, value) => ({ ...s, playersBump: value === "bump" }),
     },
     {
         // The on-screen D-pad and breath button (dpad.ts), for touch play.

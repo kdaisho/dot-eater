@@ -19,13 +19,11 @@ import {
 import { enemyBreathLooks, enemyWarnings } from "./enemyBreath"
 import {
     affordable,
-    aimPreviews,
     canBreathe,
     chargeLevel,
     enemyVisible,
     hasStatus,
     MAX_CHARGE,
-    type AimPreview,
     type Breather,
     type EnergyHud,
     type Look,
@@ -72,7 +70,6 @@ import {
     type RushFlight,
     type RushFrame,
 } from "./rushView"
-import type { FacingGuide } from "./settings"
 import { isSplitterHalf } from "./splitter"
 import {
     ANIMAL_SPRITES,
@@ -152,15 +149,9 @@ export type Effects = {
     // How far to move the maze this frame, in cells (see shake.ts). The
     // HUD stays put.
     shake?: Vec2
-    // How to show which way each player faces (KDA-247; the Facing guide
-    // setting): "arrow", an arrow on each player in play, or "aim", the aim
-    // preview while `aim` is set too. Neither when left out.
-    guide?: FacingGuide
-    // Whether the aim preview may show (only while playing, not paused or
-    // on end screens): with `guide` "aim", each charged player's preview
-    // (see aimPreviews in breath.ts), a faint tint in its colour on the
-    // cells its breath would hit, under the dots.
-    aim?: boolean
+    // Whether each player in play shows which way it faces (KDA-247): an
+    // arrow on its ring (see drawArrow). None when left out.
+    arrows?: boolean
     // Whether the system asks for reduced motion: a full charge's glow
     // then doesn't flicker (see chargeAura).
     reducedMotion?: boolean
@@ -245,9 +236,9 @@ export const PLAYER_COLORS = ["#2563eb", "#dc2626"] as const
 const RING_WIDTH = 0.08
 const LABEL_SCALE = 0.4
 
-// The facing arrow (see Effects.guide): a filled triangle in the player's
+// The facing arrow (see Effects.arrows): a filled triangle in the player's
 // colour just outside its ring, pointing the way it faces, shown only while
-// its breath could fire (the aim preview's rule: charged, not stunned).
+// its breath could fire (charged, not stunned).
 // Its tip is this far from the sprite's centre and its base this wide, in
 // cells.
 const ARROW_TIP = 0.7
@@ -267,12 +258,12 @@ export const CHARGE_AURA_ALPHA = 0.45
 export const CHARGE_AURA_FULL_ALPHA = 0.6
 export const CHARGE_FLICKER_HZ = 8
 
-// The aim preview (see Effects.aim) is a tint in the player's colour: a
-// faint fill over each cell its breath would hit, and a slightly stronger
-// edge round the outside of those cells, this wide as a fraction of a cell.
-const AIM_FILL_ALPHA = 0.1
-const AIM_EDGE_ALPHA = 0.3
-const AIM_EDGE_WIDTH = 0.05
+// A warning tint (see Tint) is a faint fill over each cell it covers, and a
+// slightly stronger edge round the outside of those cells, this wide as a
+// fraction of a cell.
+const TINT_FILL_ALPHA = 0.1
+const TINT_EDGE_ALPHA = 0.3
+const TINT_EDGE_WIDTH = 0.05
 
 // Enemies look like what they do (ENEMY_SPRITES in sprites.ts, a Record
 // over AiType, so a new AI type without a sprite is a type error). A
@@ -534,8 +525,6 @@ export function createRenderer(
             ctx.scale(z, z)
             ctx.translate(-fall.spot.x, -fall.spot.y)
         }
-        const aims =
-            effects.aim && effects.guide === "aim" ? aimPreviews(state) : []
         const windUp = effects.bossBreath === true
         const style = styleFor(effects.stage)
         drawCells(
@@ -543,7 +532,7 @@ export function createRenderer(
             state,
             cell,
             seen,
-            tintsFor(state, aims, windUp),
+            tintsFor(state, windUp),
             mapArt(style, state, alpha),
             effectTile
         )
@@ -567,7 +556,7 @@ export function createRenderer(
             cols,
             rows,
             seen,
-            effects.guide === "arrow",
+            effects.arrows === true,
             effects.reducedMotion === true,
             windUp,
             effectTile,
@@ -820,7 +809,7 @@ function drawSharedDarkness(
 // The maze: its pixel tiles (`art`, the map's walls, floor, ice, dots,
 // rubble and tunnel marks, see tiles.ts) scaled onto the map with no
 // smoothing, so the pixels stay crisp. Then tile effects from breaths by
-// their Look: the colour over the cell, the aim and warning tints, and
+// their Look: the colour over the cell, the warning tints, and
 // each effect's pixel tile on top. In fog, the darkness covers the tiles
 // outside the light; only cells inside it get looks and tints.
 function drawCells(
@@ -860,7 +849,7 @@ function drawCells(
                     if (look.color) fillCell(x, y, look.color)
                 }
                 for (const color of tinted?.[y][x] ?? []) {
-                    ctx.globalAlpha = AIM_FILL_ALPHA
+                    ctx.globalAlpha = TINT_FILL_ALPHA
                     fillCell(x, y, color)
                     ctx.globalAlpha = 1
                 }
@@ -971,26 +960,18 @@ function tileLooks(state: GameState): Look[][][] | null {
 }
 
 // A faint tint over some cells, with a slightly stronger edge round them,
-// drawn under the dots: a player's aim preview in its colour, or the
-// boss's warning while it winds up its breath (see bossWarning).
+// drawn under the dots: the boss's warning while it winds up its breath
+// (see bossWarning), or a breather's.
 type Tint = { cells: readonly Vec2[]; color: string }
 
-// The tints to draw this frame: each aim preview in its player's colour
-// (player 1 first), then, with `windUp` (Effects.bossBreath), the boss's
-// warning if it is winding up, and each breather's that is (KDA-291). The
-// warnings come from their state and their own colours (BOSS_BREATH in
-// bossBreath.ts, ENEMY_BREATH in enemyBreath.ts), so nothing here knows the
-// breaths.
-function tintsFor(
-    state: GameState,
-    aims: readonly AimPreview[],
-    windUp: boolean
-): Tint[] {
-    const tints: Tint[] = aims.map(({ player, cells }) => ({
-        cells,
-        color: PLAYER_COLORS[player],
-    }))
-    if (!windUp) return tints
+// The tints to draw this frame: with `windUp` (Effects.bossBreath), the
+// boss's warning if it is winding up, and each breather's that is
+// (KDA-291). The warnings come from their state and their own colours
+// (BOSS_BREATH in bossBreath.ts, ENEMY_BREATH in enemyBreath.ts), so
+// nothing here knows the breaths.
+function tintsFor(state: GameState, windUp: boolean): Tint[] {
+    if (!windUp) return []
+    const tints: Tint[] = []
     const warning = bossWarning(state)
     if (warning && warning.cells.length > 0) tints.push(warning)
     tints.push(...enemyWarnings(state))
@@ -1023,9 +1004,9 @@ function drawTintEdge(
     const inTint = new Set(tint.cells.map((c) => `${c.x},${c.y}`))
     const has = (x: number, y: number) => inTint.has(`${x},${y}`)
     ctx.save()
-    ctx.globalAlpha = AIM_EDGE_ALPHA
+    ctx.globalAlpha = TINT_EDGE_ALPHA
     ctx.strokeStyle = tint.color
-    ctx.lineWidth = Math.max(1, cell * AIM_EDGE_WIDTH)
+    ctx.lineWidth = Math.max(1, cell * TINT_EDGE_WIDTH)
     ctx.beginPath()
     for (const { x, y } of tint.cells) {
         if (fog && !fog.visible(vec2(x, y))) continue

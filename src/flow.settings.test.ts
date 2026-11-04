@@ -161,10 +161,10 @@ describe("Back from the settings", () => {
 
     it("also by confirming the Back row", () => {
         const title = titleOnSettings()
-        const down = Array<Action>(7).fill("down")
+        const down = Array<Action>(5).fill("down")
         const settings = press(title, ["confirm", ...down])
         // Past Controls (title only), on Back.
-        expect(settings).toMatchObject({ row: 7 })
+        expect(settings).toMatchObject({ row: 5 })
         expect(press(settings, ["confirm"])).toBe(title)
     })
 
@@ -226,8 +226,8 @@ describe("the settings rows", () => {
     it("moves the cursor over the rows, stopping at either end", () => {
         const settings = open()
         expect(press(settings, ["up"])).toBe(settings)
-        const last = press(settings, Array<Action>(7).fill("down"))
-        expect(last).toMatchObject({ row: 7 })
+        const last = press(settings, Array<Action>(5).fill("down"))
+        expect(last).toMatchObject({ row: 5 })
         expect(press(last, ["down"])).toBe(last)
     })
 
@@ -319,21 +319,21 @@ describe("selectItem on the title, pause and settings", () => {
         expect(settingsOf(update(mute, input(["confirm"]), deps())).muted).toBe(
             true
         )
-        // A choice's ▶ or ◀ (Facing guide): the cursor on it, then right
+        // A choice's ▶ or ◀ (Screen shake): the cursor on it, then right
         // or left, wrapping round; confirm steps it forward.
-        const guide = selectItem(settings, 4)
-        expect(guide).toMatchObject({ row: 4 })
-        const aim = update(guide, input(["right"]), deps())
-        expect(settingsOf(aim).facingGuide).toBe("aim")
+        const shake = selectItem(settings, 3)
+        expect(shake).toMatchObject({ row: 3 })
+        const on = update(shake, input(["right"]), deps())
+        expect(settingsOf(on).screenShake).toBe(true)
         expect(
-            settingsOf(update(aim, input(["right"]), deps())).facingGuide
-        ).toBe("arrow")
+            settingsOf(update(on, input(["right"]), deps())).screenShake
+        ).toBe(false)
         expect(
-            settingsOf(update(guide, input(["left"]), deps())).facingGuide
-        ).toBe("aim")
+            settingsOf(update(shake, input(["left"]), deps())).screenShake
+        ).toBe(false)
         expect(
-            settingsOf(update(guide, input(["confirm"]), deps())).facingGuide
-        ).toBe("aim")
+            settingsOf(update(shake, input(["confirm"]), deps())).screenShake
+        ).toBe(true)
         // A slider's ▶: the cursor on it, then right.
         const effects = selectItem(settings, 1)
         expect(
@@ -344,27 +344,26 @@ describe("selectItem on the title, pause and settings", () => {
     it("counts the rows that show: Show D-pad only on touch devices", () => {
         const touch = deps({ touch: true })
         const settings = update(titleOnSettings(), input(["confirm"]), touch)
-        // Without touch: six rows, Controls, then Back (index 7) last.
-        expect(selectItem(settings, 8)).toBe(settings)
-        const dpad = selectItem(settings, 6, touch)
-        expect(dpad).toMatchObject({ row: 6 })
+        // Without touch: four rows, Controls, then Back (index 5) last.
+        expect(selectItem(settings, 6)).toBe(settings)
+        const dpad = selectItem(settings, 4, touch)
+        expect(dpad).toMatchObject({ row: 4 })
         expect(
             settingsOf(update(dpad, input(["confirm"]), touch)).showDpad
         ).toBe(true)
-        // With touch: Show D-pad, then Controls, then Back (index 8).
-        const controls = selectItem(settings, 7, touch)
+        // With touch: Show D-pad, then Controls, then Back (index 6).
+        const controls = selectItem(settings, 5, touch)
         expect(update(controls, input(["confirm"]), touch)).toMatchObject({
             kind: "controls",
         })
-        const back = selectItem(settings, 8, touch)
+        const back = selectItem(settings, 6, touch)
         expect(update(back, input(["confirm"]), touch)).toMatchObject({
             kind: "title",
         })
     })
 })
 
-describe("the Players setting in a game (KDA-262)", () => {
-    const bump = { ...defaultSettings(), playersBump: true }
+describe("players in a game (KDA-262, KDA-315)", () => {
     // Player 1 holding east, into player 2 (P and Q are side by side).
     const east: TickInput = {
         wasPressed: () => false,
@@ -373,32 +372,19 @@ describe("the Players setting in a game (KDA-262)", () => {
             pressed: vec2(0, 0),
         }),
     }
-    const coop = () =>
-        startLevel(levels, 0, [AnimalId.dragon, AnimalId.owl], "coop")
 
-    it.each([
-        ["Bump", bump, true],
-        ["Pass through", defaultSettings(), false],
-        ["nothing saved", undefined, false],
-    ] as const)("plays by %s", (_, settings, on) => {
-        const playing = coop()
-        const game = gameOf(playing)!
-        update(playing, east, deps(settings ? { settings } : {}))
-        expect(game.playersBump).toBe(on)
-        const p1 = game.players[0].character.pos
-        expect(p1).toEqual(on ? vec2(1, 1) : vec2(2, 1))
-    })
-
-    it("applies a change made from pause once play resumes", () => {
-        let screen = coop()
-        const game = gameOf(screen)!
-        screen = update(screen, input(), deps())
-        expect(game.playersBump).toBe(false)
-        // Paused, the setting changes (main saves it into deps.settings).
-        screen = press(screen, ["pause"])
-        screen = press(screen, ["confirm"], deps({ settings: bump }))
-        expect(screen.kind).toBe("playing")
-        update(screen, input(), deps({ settings: bump }))
-        expect(game.playersBump).toBe(true)
+    it("bump into each other, whatever an old save says", () => {
+        const old = { ...defaultSettings(), playersBump: false }
+        for (const settings of [undefined, old]) {
+            const playing = startLevel(
+                levels,
+                0,
+                [AnimalId.dragon, AnimalId.owl],
+                "coop"
+            )
+            const game = gameOf(playing)!
+            update(playing, east, deps(settings ? { settings } : {}))
+            expect(game.players[0].character.pos).toEqual(vec2(1, 1))
+        }
     })
 })

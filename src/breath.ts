@@ -27,7 +27,7 @@ import {
     isWholeSplitter,
     splitSplitter,
 } from "./splitter"
-import { opponentsStruck, stun, stunned } from "./versus"
+import { opponentsStruck, stun } from "./versus"
 import { allDirections, directions, samePos, vec2, type Vec2 } from "./vec2"
 
 // The breath system. Pure, no DOM: time comes in as `dt`, the breath press
@@ -647,24 +647,6 @@ export function aimCells(state: GameState, index = 0): Vec2[] {
     return [...reach.cells, ...walls].map((c) => vec2(c.x, c.y))
 }
 
-// One player's aim preview: its index and the cells its breath would hit.
-export type AimPreview = {
-    player: number
-    cells: readonly Vec2[]
-}
-
-// The aim previews to draw now (see render.ts): one per player that could
-// breathe this moment (in play, not stunned, and charged: the energy HUD's
-// ready rule, canBreathe), player 1 first, leaving out any whose breath
-// would hit nothing.
-export function aimPreviews(state: GameState): AimPreview[] {
-    return state.players.flatMap((p, player) => {
-        if (p.out || stunned(p) || !canBreathe(p.breather)) return []
-        const cells = aimCells(state, player)
-        return cells.length > 0 ? [{ player, cells }] : []
-    })
-}
-
 // The cells a breath covered, for its event (see "breathed" in events.ts):
 // what its shape reached, then the walls it acted on that the hook has just
 // opened (the Boar's tunnel), or with neither the player's own cell. The
@@ -1123,9 +1105,9 @@ export function tickEffects(state: GameState, dt: number) {
 // (direction order on ties). They arrive there at rest, not gliding. Cells
 // under a boss in play don't count as open: it treats an opened wall as a
 // wall, so it often waits right where they came from, and landing there
-// would be a catch they did nothing to earn. When players bump
-// (GameState.playersBump), a player isn't put on another player in play's
-// cell either, so the two never stack.
+// would be a catch they did nothing to earn. A player isn't put on another
+// player in play's cell either, as players bump (see playerBlocks in
+// game.ts), so the two never stack.
 function pushOutOfWall(state: GameState, pos: Vec2) {
     const boss = state.boss && !state.boss.defeated ? state.boss : null
     const open = (p: Vec2) =>
@@ -1133,7 +1115,6 @@ function pushOutOfWall(state: GameState, pos: Vec2) {
         !(boss && inFootprint(boss.pos, p))
     // Another player in play on `p`, which `c` mustn't be put on.
     const bumped = (c: Character, p: Vec2) =>
-        state.playersBump &&
         state.players.some(
             (o) => o.character !== c && !o.out && samePos(o.character.pos, p)
         )

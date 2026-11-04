@@ -1,6 +1,5 @@
-// Saved settings: volumes, mute, screen shake, the on-screen D-pad, the
-// facing guide, whether players bump into each other and the control
-// bindings.
+// Saved settings: volumes, mute, screen shake, the on-screen D-pad and the
+// control bindings.
 //
 // Like progress.ts: there is no DOM access here, storage is passed in
 // (window.localStorage in main), and every storage access is wrapped in
@@ -14,7 +13,9 @@
 // a save written by a later build loses nothing when this one saves it
 // back; keep them by spreading when changing a setting. New settings
 // (like the key bindings of KDA-215) are added as optional fields without a
-// version bump, as progress adds per-stage records.
+// version bump, as progress adds per-stage records. Settings that were
+// removed (the Facing guide and Players rows, KDA-315) are left in old
+// saves as such unknown fields, which nothing reads.
 
 import { DEFAULT_BINDINGS, parseBindings, type Bindings } from "./bindings"
 
@@ -24,15 +25,6 @@ export const SETTINGS_VERSION = 1
 
 // Volumes are whole steps from 0 (silent) to VOLUME_MAX.
 export const VOLUME_MAX = 10
-
-// How the game shows which way each player faces (KDA-247): an arrow on
-// the player's ring, or the aim preview (the cells a ready breath would hit).
-export const FACING_GUIDES = ["arrow", "aim"] as const
-export type FacingGuide = (typeof FACING_GUIDES)[number]
-
-export function isFacingGuide(value: unknown): value is FacingGuide {
-    return FACING_GUIDES.includes(value as FacingGuide)
-}
 
 export type Settings = {
     version: typeof SETTINGS_VERSION
@@ -46,11 +38,6 @@ export type Settings = {
     screenShake: boolean | null
     // Whether touch play shows an on-screen D-pad (KDA-214).
     showDpad: boolean
-    // The facing guide drawn on the board (see FacingGuide).
-    facingGuide: FacingGuide
-    // Whether players bump into each other in a 2-player game instead of
-    // passing through (KDA-262; see GameState.playersBump). Off by default.
-    playersBump: boolean
     // The keys and pad buttons (KDA-215); DEFAULT_BINDINGS when left out
     // (see bindingsOf). Checked with parseBindings when read.
     bindings?: Bindings
@@ -67,8 +54,6 @@ export function defaultSettings(): Settings {
         muted: false,
         screenShake: null,
         showDpad: false,
-        facingGuide: "arrow",
-        playersBump: false,
     }
 }
 
@@ -99,15 +84,7 @@ export function parseSettings(raw: string | null): Settings {
         return defaultSettings()
     }
     const defaults = defaultSettings()
-    const {
-        musicVolume,
-        effectsVolume,
-        muted,
-        screenShake,
-        showDpad,
-        facingGuide,
-        playersBump,
-    } = data
+    const { musicVolume, effectsVolume, muted, screenShake, showDpad } = data
     return {
         ...data,
         version: SETTINGS_VERSION,
@@ -121,13 +98,6 @@ export function parseSettings(raw: string | null): Settings {
                 ? screenShake
                 : defaults.screenShake,
         showDpad: typeof showDpad === "boolean" ? showDpad : defaults.showDpad,
-        facingGuide: isFacingGuide(facingGuide)
-            ? facingGuide
-            : defaults.facingGuide,
-        playersBump:
-            typeof playersBump === "boolean"
-                ? playersBump
-                : defaults.playersBump,
         // Left out when the save has none, so it keeps following the
         // defaults; otherwise valid, whatever was stored.
         ...(Object.hasOwn(data, "bindings")

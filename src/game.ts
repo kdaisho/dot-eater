@@ -111,14 +111,10 @@ export type GameState = {
     // Timed effects on cells from breaths (see TileEffect in breath.ts).
     tiles: ActiveTile[]
     // One or two players, player 1 first. Each has its own character,
-    // breath, energy, score and tap buffer. Players pass through each other
-    // unless playersBump is set.
+    // breath, energy, score and tap buffer. Players bump into each other
+    // (KDA-262): a player can't move into another's cell (see
+    // playerBlocks).
     players: Player[]
-    // Whether players bump into each other (KDA-262, the Players setting):
-    // a player can't move into another's cell (see playerBlocks). Off,
-    // they pass through each other. With one player it changes nothing.
-    // createGameState leaves it off; flow.ts sets it from the settings.
-    playersBump: boolean
     enemies: Character[]
     // The level's boss (see boss.ts), or null on a level without one. Not
     // an enemy: it has no enemy slot, and breath hooks never see it.
@@ -310,7 +306,6 @@ export function createGameState(
         floorIce: ice,
         tiles: [],
         players,
-        playersBump: false,
         enemies,
         boss: level.boss
             ? createBoss(
@@ -563,12 +558,10 @@ function clearOfEnemies(state: GameState, spawn: Vec2): boolean {
 // Try to move `who` (player 1 unless given) one step, eating (and scoring)
 // any dot there and recording it in its eatenAt (cleared when the step eats
 // nothing), and filling its energy meter. The player then faces that way.
-// Returns true if the player moved; false if a wall or, when players bump,
-// another player (see playerBlocks) blocked the step or the step was zero.
-// Enemies never block it (a frozen one included: the player walks over
-// it), and otherwise players pass through each other. It doesn't know about
-// sliding: that is up to the caller
-// (movePlayerTick).
+// Returns true if the player moved; false if a wall or another player (see
+// playerBlocks) blocked the step or the step was zero. Enemies never block
+// it (a frozen one included: the player walks over it). It doesn't know
+// about sliding: that is up to the caller (movePlayerTick).
 export function movePlayer(
     state: GameState,
     step: Vec2,
@@ -867,8 +860,7 @@ export function playerVisible(player: Player): boolean {
     return phase % 2 === 0
 }
 
-// Whether, when players bump (GameState.playersBump), another player in play
-// is on `cell` or moving into it (its logical cell, pos): `who` can't go
+// Whether another player in play is on `cell` or moving into it (its logical cell, pos): `who` can't go
 // there, as if it were a wall. Only pos counts, not the cell a player is
 // gliding out of, so one player can follow right behind the other. A
 // player out of play never blocks, and enemies and the boss ignore players
@@ -887,7 +879,6 @@ function blockingPlayer(
     who: Player,
     cell: Vec2
 ): Player | null {
-    if (!state.playersBump) return null
     return (
         state.players.find(
             (p) => p !== who && !p.out && samePos(p.character.pos, cell)
@@ -932,9 +923,9 @@ function wait(character: Glider) {
 // nothing changes after the game ends.
 //
 // Players move in order, player 1 first (so on a dot both step onto in the
-// same tick, player 1 eats it), and pass through each other, unless they
-// bump (GameState.playersBump): then a player can't move into the other's
-// cell and waits there as at a wall (see playerBlocks); a player held up
+// same tick, player 1 eats it), and bump into each other: a player can't
+// move into the other's cell and waits there as at a wall (see
+// playerBlocks); a player held up
 // only by one still to move this tick moves after it instead (see
 // defersMove), so the one behind follows whichever player is first. Each
 // enemy, and
@@ -1316,7 +1307,6 @@ function defersMove(
     held: readonly Vec2[] | null,
     pending: ReadonlySet<Player>
 ): boolean {
-    if (!state.playersBump) return false
     const { cells } = state
     const { character } = player
     // As slideTick sees it: a player walking on ice never slides.

@@ -154,9 +154,7 @@ describe("main's particles and shake", () => {
         expect(seen.particles!.list.length).toBeGreaterThan(0)
         expect(seen.effects?.particles).toBe(seen.particles!.list)
         expect(seen.effects?.shake).toBeDefined()
-        expect(seen.effects?.aim).toBe(true)
-        // The Facing guide setting's default.
-        expect(seen.effects?.guide).toBe("arrow")
+        expect(seen.effects?.arrows).toBe(true)
         expect(seen.effects?.bossBreath).toBe(true)
     })
 
@@ -186,10 +184,8 @@ describe("main's particles and shake", () => {
         // Still drawn, frozen, with no shake.
         expect(seen.effects?.particles).toBe(seen.particles!.list)
         expect(seen.effects?.shake).toBeUndefined()
-        // No aim preview while paused.
-        expect(seen.effects?.aim).toBeUndefined()
-        // The arrow still shows on the paused board.
-        expect(seen.effects?.guide).toBe("arrow")
+        // The arrows still show on the paused board.
+        expect(seen.effects?.arrows).toBe(true)
         expect(seen.effects?.bossBreath).toBe(true)
         pressAndTick("KeyP")
         expect(screen()).toBe("playing")

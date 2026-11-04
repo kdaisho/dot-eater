@@ -11,7 +11,6 @@ import {
 } from "./constants"
 import type { Character } from "./character"
 import {
-    createGameState,
     IDLE,
     step,
     takeOut,
@@ -19,15 +18,12 @@ import {
     type Mode,
     type MoveInput,
 } from "./game"
-import { levels } from "./levels"
-import { DEFAULT_ANIMAL } from "./roster"
 import { fixedRandom, makeEnemy, makeState, textMap } from "./test/helpers"
 import { vec2, type Vec2 } from "./vec2"
 
-// Players bumping into each other (KDA-262, the Players setting): with
-// GameState.playersBump set, a player can't move into the other's cell (the
-// one it is on or moving into) and waits there as at a wall. Off, they pass
-// through each other (see game.players.test.ts).
+// Players bumping into each other (KDA-262): a player can't move into the
+// other's cell (the one it is on or moving into) and waits there as at a
+// wall.
 
 const TICK = 1 / TICK_RATE
 const none = vec2(0, 0)
@@ -44,19 +40,16 @@ const hold = (d: Vec2): MoveInput => ({ held: [d], pressed: none })
 const HALL = ["###########", "#         #", "###########", "#.#########"]
 
 // A 2-player game (co-op unless `mode` says otherwise) on `rows` with the
-// players at `p1` and `p2`, both ready to move, bumping unless `bump` is
-// false.
+// players at `p1` and `p2`, both ready to move.
 function game(
     p1: Vec2,
     p2: Vec2,
     {
         rows = HALL,
-        bump = true,
         mode = "coop",
         enemies = [],
     }: {
         rows?: readonly string[]
-        bump?: boolean
         mode?: Mode
         enemies?: Character[]
     } = {}
@@ -66,7 +59,6 @@ function game(
         health: MAX_HEALTH,
         mode,
         ice,
-        playersBump: bump,
     })
     for (const { character } of state.players) character.moveProgress = 1
     return state
@@ -82,25 +74,6 @@ function run(state: GameState, moves: readonly MoveInput[], ticks: number) {
 const posOf = (state: GameState, i: number) => state.players[i].character.pos
 
 describe("players bumping into each other", () => {
-    it("is off in a new game", () => {
-        const state = createGameState(
-            levels[0],
-            [DEFAULT_ANIMAL, DEFAULT_ANIMAL],
-            "coop"
-        )
-        expect(state.playersBump).toBe(false)
-    })
-
-    it.each(["coop", "versus"] as const)(
-        "off, lets the players pass through each other in %s",
-        (mode) => {
-            const state = game(vec2(4, 1), vec2(6, 1), { bump: false, mode })
-            run(state, [hold(east), hold(west)], MOVE * 2)
-            expect(posOf(state, 0)).toEqual(vec2(6, 1))
-            expect(posOf(state, 1)).toEqual(vec2(4, 1))
-        }
-    )
-
     it.each(["coop", "versus"] as const)(
         "stops a player walking into the other in %s, waiting as at a wall",
         (mode) => {
@@ -262,21 +235,14 @@ describe("players bumping into each other", () => {
         expect(p1.pos).toEqual(vec2(4, 1))
     })
 
-    it("off, lets a slide carry a player through the other", () => {
-        const rows = ["#########", "# ~~~~~ #", "#########", "#.#######"]
-        const state = game(vec2(1, 1), vec2(5, 1), { rows, bump: false })
-        run(state, [hold(east), IDLE], MOVE * 7)
-        expect(posOf(state, 0)).toEqual(vec2(7, 1))
-    })
-
     describe("a regrowing wall", () => {
         // A wall at (5, 1) in the hall, opened for 1 s. Player 1 has
         // stepped from (4, 1) into it, and player 2 followed into (4, 1).
         const open: TileEffect = { name: "test.open", opensWall: true }
-        function inWall(bump = true): GameState {
+        function inWall(): GameState {
             const rows = [...HALL]
             rows[1] = "#    #    #"
-            const state = game(vec2(5, 1), vec2(4, 1), { rows, bump })
+            const state = game(vec2(5, 1), vec2(4, 1), { rows })
             addTileEffect(state, vec2(5, 1), open, 1)
             state.players[0].character.lastPos = vec2(4, 1)
             state.players[1].character.lastPos = vec2(3, 1)
@@ -292,12 +258,6 @@ describe("players bumping into each other", () => {
             // The nearest open cell free of player 2.
             expect(posOf(state, 0)).toEqual(vec2(6, 1))
         })
-
-        it("off, pushes a player back onto the other", () => {
-            const state = inWall(false)
-            expect(posOf(state, 0)).toEqual(vec2(4, 1))
-            expect(posOf(state, 1)).toEqual(vec2(4, 1))
-        })
     })
 
     it("isn't blocked by a player out of play", () => {
@@ -309,8 +269,8 @@ describe("players bumping into each other", () => {
 
     describe("coming back onto a spawn the other player is on", () => {
         // Player 1's spawn is (1, 1); player 2 stands on it.
-        function onSpawn(bump = true): GameState {
-            const state = game(vec2(1, 1), vec2(3, 1), { bump })
+        function onSpawn(): GameState {
+            const state = game(vec2(1, 1), vec2(3, 1))
             takeOut(state.players[0], 0)
             const p2 = state.players[1].character
             p2.pos = vec2(1, 1)
@@ -341,13 +301,6 @@ describe("players bumping into each other", () => {
             p2.moveProgress = 0.3
             run(state, [IDLE, IDLE], 1)
             expect(state.players[0].out).toBe(true)
-        })
-
-        it("comes back on top of the other when players pass through", () => {
-            const state = onSpawn(false)
-            run(state, [IDLE, IDLE], 1)
-            expect(state.players[0].out).toBe(false)
-            expect(posOf(state, 0)).toEqual(posOf(state, 1))
         })
 
         // Spawn camping (PM call): after RESPAWN_BLOCK_GRACE held up by the
@@ -413,7 +366,7 @@ describe("players bumping into each other", () => {
 
     it("changes nothing with one player", () => {
         const { map } = textMap(HALL)
-        const state = makeState(map, vec2(4, 1), [], { playersBump: true })
+        const state = makeState(map, vec2(4, 1))
         state.players[0].character.moveProgress = 1
         run(state, [hold(east)], MOVE * 2 + 1)
         expect(posOf(state, 0)).toEqual(vec2(7, 1))

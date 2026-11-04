@@ -128,9 +128,8 @@ the sound can't drift from the picture.
 - `src/GameplayClip.tsx`: a recording, a `TimeMap` and a camera. Replays to
   each frame's tick and draws with the real renderer at high resolution
   (`resolution`, default 4), so zooms stay sharp. The HUD, rules and effects
-  come from the game's own `src/scene.ts`, as main draws them, with a
-  default-settings player's facing guide. `room` keeps the bottom of the
-  frame clear of the board, e.g. for a caption.
+  come from the game's own `src/scene.ts`, as main draws them. `room` keeps
+  the bottom of the frame clear of the board, e.g. for a caption.
 - `src/effects.ts`: particles and screen shake worked out afresh for each
   frame from the run's events, seeded per tick, so they stay a pure
   function of game time.

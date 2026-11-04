@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vite-plus/test"
 import {
     aimCells,
-    aimPreviews,
     breathe,
     CHARGE_SECONDS,
     chargeTick,
@@ -9,11 +8,10 @@ import {
     type Breather,
 } from "./breath"
 import { BREATHS } from "./breaths"
-import { takeOut, type GameState } from "./game"
+import type { GameState } from "./game"
 import { ANIMAL_IDS, type AnimalId } from "./roster"
 import { lineFire, makeBoss, makeState, textMap } from "./test/helpers"
 import { vec2, type Vec2 } from "./vec2"
-import { stun } from "./versus"
 
 // The aim preview (KDA-247): where a breath would land, from the same shape
 // logic breathe uses.
@@ -285,73 +283,5 @@ describe("aimCells", () => {
                 breather.breath.maxEnergy - breather.breath.cost * level
             )
         })
-    })
-})
-
-describe("aimPreviews", () => {
-    const two = (breath: BreathDef = lineFire()) =>
-        makeState(
-            map,
-            [
-                { x: 1, y: 4 },
-                { x: 1, y: 3 },
-            ],
-            [],
-            { breath, mode: "versus" }
-        )
-
-    it("shows nothing while uncharged", () => {
-        expect(aimPreviews(aimer("dragon", { x: 1, y: 4 }))).toEqual([])
-    })
-
-    it("shows a charged player's aim", () => {
-        const state = aimer("dragon", { x: 1, y: 4 })
-        charge(state.players[0].breather)
-        expect(aimPreviews(state)).toEqual([
-            { player: 0, cells: aimCells(state) },
-        ])
-    })
-
-    it("shows nothing while cooling down, as the meter isn't ready", () => {
-        const state = aimer("dragon", { x: 1, y: 4 })
-        charge(state.players[0].breather)
-        state.players[0].breather.cooldown = 0.5
-        expect(aimPreviews(state)).toEqual([])
-    })
-
-    it("leaves out a breath that would hit nothing", () => {
-        const state = aimer("dragon", { x: 3, y: 3 })
-        charge(state.players[0].breather)
-        expect(aimPreviews(state)).toEqual([])
-    })
-
-    it("shows each charged player's aim, player 1 first", () => {
-        const state = two()
-        for (const p of state.players) charge(p.breather)
-        expect(aimPreviews(state).map((a) => a.player)).toEqual([0, 1])
-        expect(xy(aimPreviews(state)[1].cells)).toEqual([
-            [2, 3],
-            [3, 3],
-        ])
-    })
-
-    it("leaves out a player out of play", () => {
-        const state = two()
-        for (const p of state.players) charge(p.breather)
-        takeOut(state.players[0], 3)
-        expect(aimPreviews(state).map((a) => a.player)).toEqual([1])
-    })
-
-    it("leaves out a stunned player", () => {
-        const state = two()
-        for (const p of state.players) charge(p.breather)
-        stun(state.players[1])
-        expect(aimPreviews(state).map((a) => a.player)).toEqual([0])
-    })
-
-    it("shows a charging player's aim at the level reached", () => {
-        const state = aimer(lineFire(), { x: 1, y: 4 })
-        chargeTo(state.players[0].breather, 2)
-        expect(xy(aimPreviews(state)[0].cells)).toHaveLength(3)
     })
 })
