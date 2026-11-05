@@ -441,8 +441,47 @@ body[data-dpad="on"][data-touch="on"] #play {
     opacity: 1;
 }
 
-.overlay-menu li.selected::before {
-    content: "▶ ";
+/* A menu label's mark (data-mark, ui.ts): the cursor's ▶, or the playing
+   track's ♪. It hangs in a gutter just left of the label, out of the text
+   flow, so the centred labels stay put as the cursor moves. */
+.overlay-menu .menu-label {
+    position: relative;
+}
+
+.overlay-menu .menu-label[data-mark]::before {
+    content: attr(data-mark);
+    content: attr(data-mark) / "";
+    padding-right: 0.55em;
+    position: absolute;
+    right: 100%;
+    top: 0;
+}
+
+/* The playing track's ♪ bobs gently. */
+.overlay-menu li.playing .menu-label::before {
+    animation: menu-note-bob 0.8s steps(2) infinite;
+}
+
+@keyframes menu-note-bob {
+    to {
+        transform: translateY(-0.15em);
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .overlay-menu li.playing .menu-label::before {
+        animation: none;
+    }
+}
+
+/* Text for screen readers only. */
+.visually-hidden {
+    clip-path: inset(50%);
+    height: 1px;
+    overflow: hidden;
+    position: absolute;
+    white-space: nowrap;
+    width: 1px;
 }
 
 /* A setting's value, after its label. */

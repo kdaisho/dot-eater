@@ -154,7 +154,7 @@ describe("main's soundtrack page", () => {
         await pressAndTick("ArrowDown")
         expect(selectedItem()).toBe("Classic")
         await pressAndTick("Space")
-        expect(playingItem()).toBe("Classic ♪")
+        expect(playingItem()).toBe("Classic")
         expect(playingFile()).toEqual(file(1))
         expect(time(1)).toBe("0:00 / 0:57")
         // The bar follows the music.
@@ -165,7 +165,7 @@ describe("main's soundtrack page", () => {
         expect(selectedItem()).toBe("Wrap Maze")
         expect(playingFile()).toEqual(file(1))
         await pressAndTick("Space")
-        expect(playingItem()).toBe("Wrap Maze ♪")
+        expect(playingItem()).toBe("Wrap Maze")
         expect(playingFile()).toEqual(file(2))
         expect(time(1)).toBe("0:00 / 0:57")
         // Space on it again stops it, with no title tune.
@@ -178,7 +178,7 @@ describe("main's soundtrack page", () => {
         // title tune comes back.
         await tapPad(DOWN)
         await tapPad(A)
-        expect(playingItem()).toBe("Ice Rink ♪")
+        expect(playingItem()).toBe("Ice Rink")
         expect(playingFile()).toEqual(file(3))
         await tapPad(B)
         expect(screen()).toBe("title")
@@ -192,7 +192,7 @@ describe("main's soundtrack page", () => {
         expect(screen()).toBe("soundtrack")
         expect(selectedItem()).toBe("Opening")
         await tap("#overlay li[data-index='11']")
-        expect(playingItem()).toBe("End Roll ♪")
+        expect(playingItem()).toBe("End Roll")
         expect(playingFile()).toEqual(file(11))
         await tap("#overlay li[data-index='11']")
         expect(playingFile()).toBeUndefined()
