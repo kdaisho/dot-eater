@@ -68,6 +68,7 @@ import {
     type Difficulty,
 } from "./difficulty"
 import { emit, type GameEvent } from "./events"
+import { KNOCKOUT_SECONDS } from "./knockoutView"
 import { glidePos, moveStep, wrapDelta, type Glider } from "./glide"
 import { tickEnemyBreaths } from "./enemyBreath"
 import { slideStep, type IceMap } from "./ice"
@@ -138,6 +139,11 @@ export type GameState = {
     // starts. Won by defeating the boss, it is held too, for the defeat's
     // effect (see `defeat`). False otherwise.
     winHeld: boolean
+    // Seconds until the game's gameLost, once it is lost: the knockout
+    // that lost it plays out first (KDA-329, see knockoutView.ts), so the
+    // game over phrase and screen follow it (see settle). Null otherwise,
+    // and once gameLost is reported.
+    lossHeld: number | null
     // The boss's defeat as it plays out in the outro (KDA-301, see
     // bossDefeat.ts), from the tick it falls; null before, and on a level
     // without a boss.
@@ -327,6 +333,7 @@ export function createGameState(
         },
         events: [],
         winHeld: false,
+        lossHeld: null,
         defeat: null,
         regrow: createRegrow(level.rules.regrowDots, cells),
         splitterDrops: level.rules.splitterDrops ?? false,
@@ -1056,12 +1063,13 @@ export function step(
     // The last dot is eaten as the move into its cell starts, a glide
     // before the eater is drawn there: its gameWon waits for settle. The
     // boss's fall starts its defeat (KDA-301), and its gameWon waits for
-    // the effect, which settle plays out.
+    // the effect, which settle plays out. A loss is always a knockout's,
+    // on this tick, and its gameLost waits for the knockout's effect.
     if (outcome === "won" && boss !== null) {
         state.defeat = startDefeat(state, boss.kind === BossKind.final)
         state.winHeld = true
     } else if (outcome === "won") state.winHeld = true
-    else if (outcome) emit(state, { type: "gameLost" })
+    else if (outcome) state.lossHeld = KNOCKOUT_SECONDS
     return outcome
 }
 
@@ -1084,7 +1092,9 @@ function bossChaseStep(
 // alone). Nobody moves and nothing else changes (cells, score, health,
 // positions). Returns true once every player's glide is complete, i.e. the
 // players are drawn on their cells; a gameWon held back for the last dot
-// (GameState.winHeld) is reported then, once.
+// (GameState.winHeld) is reported then, once. After a loss it counts down
+// GameState.lossHeld, reports the gameLost once it runs out, and returns
+// true only from then.
 //
 // After a boss's fall (GameState.defeat, KDA-301) the outro is its defeat
 // as well: the timeline moves on by `dt` (see advanceDefeat, which reports
@@ -1115,6 +1125,12 @@ export function settle(state: GameState, dt: number): boolean {
     if (glided && state.winHeld) {
         state.winHeld = false
         emit(state, { type: "gameWon" })
+    }
+    if (state.lossHeld !== null) {
+        state.lossHeld -= dt
+        if (state.lossHeld > EPSILON) return false
+        state.lossHeld = null
+        emit(state, { type: "gameLost" })
     }
     return glided
 }

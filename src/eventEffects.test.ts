@@ -201,13 +201,12 @@ describe("effectsForEvent", () => {
         const r = run({ type: "hurt", player: 1, at: vec2(4, 1), damage: 25 })
         expect(r.bursts).toEqual([{ kind: "hurt", at: vec2(4, 1) }])
         expect(r.shakes).toEqual([SHAKES.hurt])
-        expect(BURSTS.hurt.count).toBeLessThan(BURSTS.caught.count)
         expect(SHAKES.hurt).toBeLessThan(SHAKES.caught)
     })
 
-    it("a caught burst and the caught shake when a player is knocked out", () => {
+    it("only the caught shake when a player is knocked out: its look is the knockout's", () => {
         const r = run({ type: "playerCaught", player: 0, at: vec2(2, 3) })
-        expect(r.bursts).toEqual([{ kind: "caught", at: vec2(2, 3) }])
+        expect(r.bursts).toEqual([])
         expect(r.shakes).toEqual([SHAKES.caught])
     })
 
@@ -407,7 +406,7 @@ describe("effectsForEvents", () => {
             room(),
             r.targets
         )
-        expect(r.bursts.map((b) => b.kind)).toEqual(["dot", "caught"])
+        expect(r.bursts.map((b) => b.kind)).toEqual(["dot"])
         expect(r.shakes).toEqual([SHAKES.caught])
     })
 })

@@ -22,10 +22,12 @@ function ticksWith(length: number, events: Record<number, GameEvent[]>) {
     }))
 }
 
+// A hit: a burst and a shake.
 const caught: GameEvent = {
-    type: "playerCaught",
+    type: "hurt",
     player: 0,
     at: vec2(3, 3),
+    damage: 25,
 }
 
 describe("effectsAt", () => {

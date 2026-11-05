@@ -62,7 +62,6 @@ export type BurstKind =
     | "dot"
     | "defeat"
     | "hurt"
-    | "caught"
     | "bossHit"
     | "bossDefeat"
     | "regrow"
@@ -108,16 +107,6 @@ export const BURSTS: Readonly<Record<BurstKind, ParticleLook>> = {
         spread: Math.PI * 2,
         size: 0.1,
         drag: 2.5,
-    },
-    // Red sparks round a player who was knocked out.
-    caught: {
-        colors: ["#dc2626", "#f87171", "#7f1d1d"],
-        count: 18,
-        life: 0.7,
-        speed: 3,
-        spread: Math.PI * 2,
-        size: 0.13,
-        drag: 2,
     },
     // A splash of reds where a breath hit the boss.
     bossHit: {

@@ -121,7 +121,8 @@ export function effectsForEvent(
             shake.add(SHAKES.hurt)
             return
         case "playerCaught":
-            particles.burst("caught", event.at)
+            // Its flash, rings and crumble are drawn from the knockout
+            // (KDA-329, see knockoutView.ts).
             shake.add(SHAKES.caught)
             return
         case "playerPanicked":

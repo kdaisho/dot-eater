@@ -22,6 +22,7 @@ import {
 import { step, type MoveInput } from "./game"
 import { DEFAULT_DIFFICULTY, type Difficulty } from "./difficulty"
 import type { Action } from "./input"
+import { KNOCKOUT_SECONDS } from "./knockoutView"
 import type { Stage } from "./level"
 import { emptyProgress, markCleared, STAGE_COUNT } from "./progress"
 import { ANIMAL_IDS, AnimalId, DEFAULT_ANIMAL } from "./roster"
@@ -480,6 +481,9 @@ describe("playing", () => {
         game.enemies[0].lastPos = vec2(at.x, at.y)
         screen = update(screen, tickInput(), d)
         expect(screen.kind).toBe("ending")
+        // The knockout plays out first (KDA-329): two 1 s ticks.
+        screen = update(screen, tickInput([], east), d)
+        expect(screen.kind).toBe("ending")
         screen = update(screen, tickInput([], east), d)
         expect(screen.kind).toBe("gameOver")
         expect(gameOf(screen)).toBe(gameOf(start))
@@ -488,6 +492,27 @@ describe("playing", () => {
 })
 
 describe("ending", () => {
+    // KDA-329: the game over screen and phrase came on the tick of the
+    // knockout, over its effect.
+    it("holds the game over screen and its gameLost for the knockout", () => {
+        const d = deps({ levels: [sameAtEvery(trap)], dt: 1 / TICK_RATE })
+        let screen: Screen = startLevel([sameAtEvery(trap)], 0)
+        const game = gameOf(screen)!
+        game.players[0].health = 1
+        screen = update(screen, tickInput([], east), d)
+        expect(screen.kind).toBe("ending")
+        expect(game.events.map((e) => e.type)).toContain("playerCaught")
+        const held = Math.round(KNOCKOUT_SECONDS * TICK_RATE)
+        for (let i = 1; i < held; i++) {
+            screen = update(screen, tickInput(["confirm"], east), d)
+            expect(screen.kind).toBe("ending")
+            expect(game.events.map((e) => e.type)).not.toContain("gameLost")
+        }
+        screen = update(screen, tickInput([], east), d)
+        expect(screen.kind).toBe("gameOver")
+        expect(game.events.map((e) => e.type)).toContain("gameLost")
+    })
+
     // Regression: the stage-clear screen came up on the tick the last dot was
     // eaten, with the player drawn still a cell short of it, and it never
     // arrived.
@@ -830,13 +855,16 @@ describe("after the game ends", () => {
         // Mid-glide, so the outro has something to settle.
         game.players[0].character.moveProgress =
             before.players[0].character.moveProgress = 0
-        for (let i = 0; i < 20; i++) {
+        // The outro lasts as long as the knockout (KDA-329): 1.3 s, under
+        // the 100 ticks here.
+        for (let i = 0; i < 50; i++) {
             screen = update(screen, tickInput(["down"], east), d)
             screen = update(screen, tickInput(["up"], east), d)
         }
         expect(screen.kind).toBe("gameOver")
-        // Only moveProgress may change during the outro: up to 1 (40 ticks
-        // is plenty for every glide here), and never down.
+        // Only moveProgress may change during the outro: up to 1, and
+        // never down. Its countdown to the gameLost (lossHeld) runs out,
+        // and the gameLost is reported.
         const characters = (g: typeof game) => [
             g.players[0].character,
             ...g.enemies,
@@ -847,6 +875,8 @@ describe("after the game ends", () => {
         })
         const withoutProgress = (g: typeof game) => ({
             ...g,
+            lossHeld: null,
+            events: g.events.filter((e) => e.type !== "gameLost"),
             players: g.players.map((p) => ({
                 ...p,
                 character: { ...p.character, moveProgress: 0 },

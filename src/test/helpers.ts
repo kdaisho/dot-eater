@@ -241,6 +241,7 @@ export function makeState(
         },
         events: [],
         winHeld: false,
+        lossHeld: null,
         defeat: null,
         regrow: null,
         splitterDrops: false,

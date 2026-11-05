@@ -1,5 +1,7 @@
 // @vitest-environment happy-dom
 import { describe, expect, it, vi } from "vite-plus/test"
+import { TICK_RATE } from "./constants"
+import { KNOCKOUT_SECONDS } from "./knockoutView"
 import { stages as levels } from "./levels"
 import { tickCount, verify, type Recording } from "./replay"
 
@@ -88,11 +90,11 @@ describe("main with ?record", () => {
         const recording = JSON.parse(await blobs[0].text()) as Recording
         expect(recording.final.kind).toBe("gameOver")
         expect(recording.final.ticks).toBeGreaterThan(0)
-        // Beyond the game's own ticks, only the short ending outro: none
-        // of the time paused or in the settings.
+        // Beyond the game's own ticks, only the short ending outro (the
+        // knockout's, KDA-329): none of the time paused or in the settings.
         const extra = tickCount(recording) - recording.final.ticks
         expect(extra).toBeGreaterThan(0)
-        expect(extra).toBeLessThan(60)
+        expect(extra).toBeLessThan(KNOCKOUT_SECONDS * TICK_RATE + 30)
         expect(verify(recording, levels)).toBe(true)
 
         // Retry (once the end screen takes confirm) is a new run, recorded

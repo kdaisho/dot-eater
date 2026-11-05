@@ -10,8 +10,8 @@ import type { Vec2 } from "./vec2"
 // `step` (game.ts) empties GameState.events at its start and adds one
 // event per occurrence as it happens, in the order it happens. Nothing else
 // clears it, and `settle` (the outro) adds only the held gameWon (see
-// GameState.winHeld) and the cues of a boss's defeat (bossShattered,
-// bossBlast). Main reads a game's events once after each tick
+// GameState.winHeld), the held gameLost (GameState.lossHeld) and the cues
+// of a boss's defeat (bossShattered, bossBlast). Main reads a game's events once after each tick
 // with takeEvents, which also empties the list, so a tick that doesn't step
 // the game (pause, menus) reports nothing new.
 //
@@ -141,7 +141,8 @@ export type GameEvent =
     // game.ts); won by defeating the boss, as its defeat's effect ends
     // (KDA-301, see bossDefeat.ts), when the clear jingle is due.
     | { type: "gameWon" }
-    // The game is lost.
+    // The game is lost. It comes from the outro once the knockout that
+    // lost it has played (KDA-329, see GameState.lossHeld in game.ts).
     | { type: "gameLost" }
 
 export type GameEventType = GameEvent["type"]

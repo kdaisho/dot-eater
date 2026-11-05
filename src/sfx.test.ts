@@ -1,9 +1,10 @@
 import { describe, expect, it } from "vite-plus/test"
 import { BREATHS } from "./breaths"
 import { BOSS_BREATH_WIND_UP, ENEMY_BREATH_WIND_UP } from "./constants"
+import { KNOCKOUT_SECONDS, PILE_AT } from "./knockoutView"
 import { ANIMAL_IDS } from "./roster"
 import { BREATH_SFX, breathSfx, SFX, SFX_IDS, SfxId } from "./sfx"
-import { soundLength, type Tone } from "./tone"
+import { noteFreq, soundLength, type Tone } from "./tone"
 
 // What the engine needs to play a tone (exponential ramps need positive
 // levels and frequencies).
@@ -48,6 +49,48 @@ describe("the dot dropped sound", () => {
             Math.max(...SFX[id].map((tone) => tone.volume))
         expect(soundLength(SFX[SfxId.dotDropped])).toBeLessThanOrEqual(0.1)
         expect(loudest(SfxId.dotDropped)).toBeLessThan(loudest(SfxId.dot))
+    })
+})
+
+describe("the knockout sound (KDA-329)", () => {
+    const tones = SFX[SfxId.caught]
+
+    it("opens on a falling noise burst over a low triangle thud", () => {
+        const [burst, thud] = tones
+        expect(burst).toMatchObject({ wave: "noise", at: 0 })
+        expect(burst!.freqEnd).toBeLessThan(burst!.freq)
+        expect(thud).toMatchObject({
+            wave: "triangle",
+            freq: 150,
+            freqEnd: 40,
+        })
+        expect(thud!.at).toBeLessThan(0.05)
+    })
+
+    it("ticks seven times as it crumbles, from 0.5 s", () => {
+        const ticks = tones.filter((t) => t.wave === "noise" && t.at >= 0.5)
+        expect(ticks).toHaveLength(7)
+        for (const t of ticks) expect(t.duration).toBeLessThan(0.05)
+    })
+
+    it("ends on a falling C6 A5 F5 D5 arpeggio from 0.55 s, 0.08 s apart", () => {
+        const notes = tones.filter((t) => t.wave === "triangle" && t.at >= 0.5)
+        expect(notes.map((t) => t.freq)).toEqual(
+            ["C6", "A5", "F5", "D5"].map(noteFreq)
+        )
+        notes.forEach((t, i) => expect(t.at).toBeCloseTo(0.55 + i * 0.08))
+    })
+
+    it("is over before the knockout's effect ends, and as loud as the others", () => {
+        // The pile has landed by PILE_AT; the game over phrase comes at
+        // KNOCKOUT_SECONDS (see GameState.lossHeld), after the sound.
+        expect(soundLength(tones)).toBeLessThanOrEqual(PILE_AT)
+        expect(soundLength(tones)).toBeLessThan(KNOCKOUT_SECONDS)
+        const loudest = (id: SfxId) =>
+            Math.max(...SFX[id].map((tone) => tone.volume))
+        expect(loudest(SfxId.caught)).toBeLessThanOrEqual(
+            loudest(SfxId.bossDefeated)
+        )
     })
 })
 
