@@ -1307,13 +1307,19 @@ body[data-dpad="on"] .touch-breath {
    over every screen (the opening and end roll too) but under the admin
    panel. */
 #mute {
-    background: rgba(0, 0, 0, 0.5);
-    border: 1px solid rgba(255, 255, 255, 0.3);
-    border-radius: 8px;
+    /* A grey pixel key like the tutorial's caps: square, a 2px black
+       outline (inside its 36px), lit top left and shaded bottom right. */
+    align-items: center;
+    background: #5c5c5c;
+    border: 2px solid #000;
+    border-radius: 0;
+    box-shadow:
+        inset -2px -3px 0 #3c3c3c,
+        inset 2px 2px 0 #7c7c7c;
     cursor: pointer;
-    font-size: 18px;
+    display: flex;
     height: 36px;
-    line-height: 1;
+    justify-content: center;
     padding: 0;
     position: fixed;
     right: calc(8px + env(safe-area-inset-right, 0px));
@@ -1323,8 +1329,52 @@ body[data-dpad="on"] .touch-breath {
     z-index: 60;
 }
 
+/* The pixel speaker (muteButton.ts), 2px a dot. */
+#mute svg {
+    display: block;
+    height: 18px;
+    pointer-events: none;
+    width: 22px;
+}
+
+/* Muted: a darker key. */
+#mute.muted {
+    background: #3c3c3c;
+    box-shadow:
+        inset -2px -3px 0 #242424,
+        inset 2px 2px 0 #5c5c5c;
+}
+
+/* Pressed: down 2px, the bevel turned over. */
+#mute:active {
+    box-shadow:
+        inset 2px 3px 0 #3c3c3c,
+        inset -2px -2px 0 #7c7c7c;
+    transform: translateY(2px);
+}
+
+#mute.muted:active {
+    box-shadow:
+        inset 2px 3px 0 #242424,
+        inset -2px -2px 0 #5c5c5c;
+}
+
 #mute:focus-visible {
     outline: 2px solid #fff;
+    outline-offset: 0;
+}
+
+/* A bigger key for fingers, 3px a dot. */
+@media (pointer: coarse) {
+    #mute {
+        height: 44px;
+        width: 44px;
+    }
+
+    #mute svg {
+        height: 27px;
+        width: 33px;
+    }
 }
 
 /* The debug mode badge (src/adminBadge.ts): top left, opposite the mute
