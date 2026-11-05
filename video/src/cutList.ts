@@ -99,13 +99,16 @@ export type TitleLine = {
     // The beat of the shot (0 is its first; fractions allowed) it slams in
     // on.
     beat: number
-    // Its colour (paper when left out) and size in pixels (220).
+    // Its colour (paper when left out; the logo's gold for a logo line)
+    // and its letters' height in pixels (220), less if that is too wide
+    // for the frame.
     colour?: string
     size?: number
     // A block of colour behind it, slanted, like a caption.
     block?: string
-    // Heavy monospace (the ability words' face) instead of the display face.
-    mono?: boolean
+    // In the logo's 3D block letters instead of the menu font (see
+    // pixelType.ts).
+    logo?: boolean
 }
 
 export type TitleShot = ShotBase & {

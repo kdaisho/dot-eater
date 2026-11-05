@@ -6,14 +6,10 @@ import type { AnimalId } from "../../src/roster"
 export const INK = "#000"
 export const PAPER = "#fff"
 
-// The game's pixel font (Press Start 2P, as its cards and labels use),
-// loaded in index.ts, for every word on screen: names, ability words,
-// captions and the end card. It has one weight, and its letters are a
-// square em wide: PIXEL_SCALE sizes it to the space the old heavy
-// Helvetica took.
+// The promo's words are the game's own lettering (pixelType.ts): the
+// logo's block letters and the title menu's font. DISPLAY is for the odd
+// word still set as text.
 export const DISPLAY = '"Press Start 2P", monospace'
-export const MONO = DISPLAY
-export const PIXEL_SCALE = 0.6
 
 export type CharacterLook = {
     id: AnimalId

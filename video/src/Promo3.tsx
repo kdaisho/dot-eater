@@ -20,6 +20,7 @@ import {
     BOSS_DOWN_BEAT,
     CHARACTER_ORDER,
     END_EMOJI_BEATS,
+    END_FLOOR,
     promo3CutList,
     SECTIONS,
     type Scenes,
@@ -33,7 +34,7 @@ import { SONGS } from "./songs"
 // Return of the 8-Bit Era from its start (PROMO3_EXCERPT, about 55 s), from
 // the directed scenes. The song only, no game sound. The edit is
 // promo3Cuts.ts; this adds the song and what spans shots: the boss look,
-// the boss-down flash and confetti, and the end card's sprites.
+// the boss-down flash and confetti, and the end card's walls and walkers.
 
 export const PROMO3_FPS = 30
 
@@ -133,64 +134,79 @@ export function Promo3({ beats: file, song }: Promo3Props) {
                 <Vignette strength={boss * 0.8} />
                 <Letterbox amount={boss} />
             </Sequence>
-            <Sequence from={endFrom} name="End sprites">
-                <EndSprites
+            <Sequence from={endFrom} name="End floor">
+                <EndFloor
                     beats={END_EMOJI_BEATS.map((b) => at(b) - endFrom)}
-                    pulse={(f) => beats.pulse(f + endFrom)}
+                    beatFrames={beats.beatFrames}
                 />
             </Sequence>
         </AbsoluteFill>
     )
 }
 
-// The five characters along the end card's foot, each popping in on its
-// beat on a disc of its colour, then pulsing on the beat.
-function EndSprites({
+// The end card's stage: stage 1's red walls round the frame (their dark
+// edge, face and lit band, as tiles.ts draws a wall), and along the foot
+// the five stepping in one by one on their beats, walking on the beat
+// (their two walk frames in turn), a row of dots ahead of them.
+function EndFloor({
     beats,
-    pulse,
+    beatFrames,
 }: {
-    // The frame each pops in on, in CHARACTER_ORDER.
+    // The frame each steps in on, in CHARACTER_ORDER.
     beats: readonly number[]
-    pulse: (frame: number) => number
+    beatFrames: number
 }) {
     const frame = useCurrentFrame()
-    const p = pulse(frame)
+    const step = Math.floor(frame / beatFrames) % 2
+    const c = END_FLOOR
     return (
-        <AbsoluteFill
-            style={{
-                justifyContent: "flex-end",
-                alignItems: "center",
-                paddingBottom: 70,
-                pointerEvents: "none",
-            }}
-        >
-            <div style={{ display: "flex", gap: 44 }}>
-                {CHARACTER_ORDER.map((animal, i) => {
-                    const look = LOOKS[animal]
-                    return (
-                        <Slam key={animal} at={beats[i] ?? 0} from={2.6}>
-                            <div
-                                style={{
-                                    width: 150,
-                                    height: 150,
-                                    borderRadius: "50%",
-                                    backgroundColor: look.colour,
-                                    border: `6px solid ${PAPER}`,
-                                    display: "flex",
-                                    alignItems: "center",
-                                    justifyContent: "center",
-                                    transform: `scale(${1 + 0.08 * p})`,
-                                }}
-                            >
-                                <PixelSprite
-                                    look={{ id: ANIMAL_SPRITES[animal] }}
-                                    size={100}
-                                />
-                            </div>
-                        </Slam>
-                    )
-                })}
-            </div>
+        <AbsoluteFill style={{ pointerEvents: "none" }}>
+            <AbsoluteFill
+                style={{
+                    boxShadow: [
+                        `inset 0 0 0 10px ${c.K}`,
+                        `inset 0 0 0 40px ${c.W}`,
+                        `inset 0 0 0 46px ${c.H}`,
+                        `inset 0 0 0 54px ${c.K}`,
+                        `inset 0 0 0 64px ${c.s}`,
+                    ].join(", "),
+                }}
+            />
+            <AbsoluteFill
+                style={{
+                    flexDirection: "row",
+                    justifyContent: "center",
+                    alignItems: "flex-end",
+                    paddingBottom: 110,
+                    gap: 40,
+                }}
+            >
+                {CHARACTER_ORDER.map((animal, i) => (
+                    <Slam key={animal} at={beats[i] ?? 0} from={2.2}>
+                        <PixelSprite
+                            look={{
+                                id: ANIMAL_SPRITES[animal],
+                                mirror: true,
+                                frame: (step + i) % 2,
+                            }}
+                            size={130}
+                        />
+                    </Slam>
+                ))}
+                {Array.from({ length: 6 }, (_, k) => (
+                    <div
+                        key={k}
+                        style={{
+                            width: 26,
+                            height: 26,
+                            margin: "0 22px 52px",
+                            borderRadius: 6,
+                            backgroundColor: c.D,
+                            boxShadow: `inset 6px 6px 0 ${c.d}`,
+                        }}
+                    />
+                ))}
+            </AbsoluteFill>
         </AbsoluteFill>
     )
 }

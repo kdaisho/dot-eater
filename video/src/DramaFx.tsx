@@ -12,15 +12,10 @@ import {
     type ShakeOptions,
     type Transition,
 } from "./drama"
-import {
-    DISPLAY,
-    INK,
-    MONO,
-    PAPER,
-    PIXEL_SCALE,
-    type CharacterLook,
-} from "./palette"
+import { DISPLAY, INK, PAPER, type CharacterLook } from "./palette"
 import { PixelSprite } from "./PixelSprite"
+import type { LogoPalette } from "./pixelType"
+import { LogoWord, MenuWord } from "./PixelWord"
 import { ANIMAL_SPRITES } from "../../src/sprites"
 
 // The edit's drama as components. Each reads the frame of its enclosing
@@ -221,8 +216,9 @@ export function Slam({
     )
 }
 
-// A caption slamming in at `at` over gameplay: the character's colour
-// on black, in a slanted block.
+// A caption slamming in at `at` over gameplay: big 3D block letters, the
+// logo's (see pixelType.ts) lit in the character's colour, tilted, with a
+// white glow and a hard black shadow to stand off the board. No box.
 export function SlamCaption({
     text,
     at,
@@ -235,7 +231,7 @@ export function SlamCaption({
     at: number
     colour: string
     position?: "top" | "bottom" | "center"
-    // The font size in pixels.
+    // The letters' size: 1.5 times this many pixels tall at most.
     size?: number
     // Pixels from the frame's edge, e.g. more to clear a letterbox.
     inset?: number
@@ -259,23 +255,29 @@ export function SlamCaption({
             <Slam at={at} from={position === "center" ? 3 : 1.9} tilt={-4}>
                 <div
                     style={{
-                        fontFamily: DISPLAY,
-                        fontSize: size * PIXEL_SCALE,
-                        whiteSpace: "nowrap",
-                        lineHeight: 1,
-                        textTransform: "uppercase",
-                        color: colour,
-                        backgroundColor: INK,
-                        padding: "14px 44px 24px",
-                        transform: "skewX(-8deg)",
-                        boxShadow: `14px 14px 0 ${PAPER}`,
+                        transform: "rotate(-4deg)",
+                        filter: `drop-shadow(0 0 8px ${PAPER}) drop-shadow(10px 10px 0 ${INK})`,
                     }}
                 >
-                    {text}
+                    <LogoWord
+                        text={text}
+                        colour={colour}
+                        width={1300}
+                        height={size * 1.5}
+                    />
                 </div>
             </Slam>
         </AbsoluteFill>
     )
+}
+
+// The NAME on the slam card: the logo's block letters in white, outlined
+// black, so they read on black and on the character's colour.
+const CARD_NAME: LogoPalette = {
+    face: "#fcfcfc",
+    light: "#ffffff",
+    side: "#9a9a9a",
+    dark: "#000000",
 }
 
 // The character name slam: on black, the character's giant sprite slams in on frame
@@ -339,30 +341,27 @@ export function SlamCard({
                         }}
                     >
                         <Slam at={hits[1]} from={3} tilt={6}>
-                            <div
-                                style={{
-                                    fontFamily: DISPLAY,
-                                    fontSize: 250 * PIXEL_SCALE,
-                                    lineHeight: 0.86,
-                                    color: flipped ? INK : PAPER,
-                                }}
-                            >
-                                {look.name}
-                            </div>
+                            <LogoWord
+                                text={look.name}
+                                palette={CARD_NAME}
+                                width={900}
+                                height={200}
+                            />
                         </Slam>
                         <Slam at={hits[2]} from={3.6} tilt={-8}>
                             <div
                                 style={{
-                                    fontFamily: MONO,
-                                    fontSize: 200 * PIXEL_SCALE,
-                                    lineHeight: 1,
-                                    color: PAPER,
                                     backgroundColor: INK,
-                                    padding: "6px 34px 14px",
+                                    padding: "22px 34px",
                                     transform: "skewX(-8deg)",
                                 }}
                             >
-                                {look.ability}
+                                <MenuWord
+                                    text={look.ability}
+                                    colour={PAPER}
+                                    width={560}
+                                    height={84}
+                                />
                             </div>
                         </Slam>
                     </div>
@@ -431,7 +430,7 @@ export type TitleSlamLine = {
     colour?: string
     size?: number
     block?: string
-    mono?: boolean
+    logo?: boolean
 }
 
 // Bold lines slamming in one after another, centred, each with a jolt
@@ -471,19 +470,29 @@ export function TitleSlam({
                         >
                             <div
                                 style={{
-                                    fontFamily: l.mono ? MONO : DISPLAY,
-                                    fontSize: (l.size ?? 220) * PIXEL_SCALE,
-                                    lineHeight: 0.95,
-                                    whiteSpace: "nowrap",
-                                    color: l.colour ?? PAPER,
                                     ...(l.block && {
                                         backgroundColor: l.block,
-                                        padding: "8px 40px 18px",
+                                        padding: "22px 40px",
                                         transform: "skewX(-8deg)",
                                     }),
                                 }}
                             >
-                                {l.text}
+                                {l.logo ? (
+                                    <LogoWord
+                                        text={l.text}
+                                        {...(l.colour && { colour: l.colour })}
+                                        dot
+                                        width={1700}
+                                        height={l.size ?? 220}
+                                    />
+                                ) : (
+                                    <MenuWord
+                                        text={l.text}
+                                        colour={l.colour ?? PAPER}
+                                        width={1700}
+                                        height={l.size ?? 220}
+                                    />
+                                )}
                             </div>
                         </Slam>
                     ))}
