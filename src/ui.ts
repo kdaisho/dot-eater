@@ -330,9 +330,10 @@ export type SoundtrackView = {
 }
 
 // The soundtrack page: a row per track with its name, where it plays, a
-// progress bar and its time. The playing row is marked (♪), and the
-// cursor's row says what confirm does there (Play or Stop). main moves the
-// playing row's bar on with showTrackProgress.
+// progress bar and its time. Each row has at most one mark, left of its
+// name (see menuLabel): ♪ on the playing row, cursor or not, and ▶ on the
+// cursor's row otherwise. main moves the playing row's bar on with
+// showTrackProgress.
 export function showSoundtrack(view: SoundtrackView) {
     const muted = view.muted
         ? ["Sound is muted: turn it on with 🔇 at the top right"]
@@ -350,9 +351,8 @@ export function showSoundtrack(view: SoundtrackView) {
             const playing = i === view.playing
             const selected = i === view.selected
             return {
-                label: playing ? `${track.name} ♪` : track.name,
+                label: track.name,
                 selected,
-                ...(selected ? { value: playing ? "■ Stop" : "▶ Play" } : {}),
                 detail: track.plays,
                 progress: trackProgressOf(track.elapsed, track.length),
                 ...(playing ? { playing } : {}),
@@ -657,8 +657,15 @@ function show({
         menu.className = "overlay-menu"
         items.forEach((item, i) => {
             const li = document.createElement("li")
-            li.textContent = item.label
             li.dataset.index = String(i)
+            li.append(menuLabel(item))
+            if (item.playing) {
+                // The ♪ is drawn by the CSS, so say it in words.
+                const note = document.createElement("span")
+                note.className = "visually-hidden"
+                note.textContent = " (playing)"
+                li.append(note)
+            }
             if (item.value !== undefined) {
                 const value = document.createElement("span")
                 value.className = "menu-value"
@@ -696,6 +703,19 @@ function show({
     // The panel scrolls when it's taller than the window, and is rebuilt on
     // every cursor move, so bring the selection back into view each time.
     panel.querySelector(".selected")?.scrollIntoView({ block: "nearest" })
+}
+
+// A menu item's label. Its mark (data-mark), the cursor's ▶ or the playing
+// track's ♪, is drawn by the CSS in a gutter just left of it, out of the
+// text flow, so the centred label doesn't move with the cursor. The
+// playing mark wins over the cursor's.
+function menuLabel(item: MenuItem): HTMLElement {
+    const label = document.createElement("span")
+    label.className = "menu-label"
+    label.textContent = item.label
+    const mark = item.playing ? "♪" : item.selected ? "▶" : undefined
+    if (mark) label.dataset.mark = mark
+    return label
 }
 
 // A menu item's progress bar: the bar, then its text.
