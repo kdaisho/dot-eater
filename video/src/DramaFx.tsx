@@ -12,7 +12,16 @@ import {
     type ShakeOptions,
     type Transition,
 } from "./drama"
-import { DISPLAY, INK, MONO, PAPER, type CharacterLook } from "./palette"
+import {
+    DISPLAY,
+    INK,
+    MONO,
+    PAPER,
+    PIXEL_SCALE,
+    type CharacterLook,
+} from "./palette"
+import { PixelSprite } from "./PixelSprite"
+import { ANIMAL_SPRITES } from "../../src/sprites"
 
 // The edit's drama as components. Each reads the frame of its enclosing
 // Sequence and draws from the pure maths in drama.ts.
@@ -168,9 +177,7 @@ export function PulseText({
         <div
             style={{
                 fontFamily: DISPLAY,
-                fontWeight: 900,
                 textTransform: "uppercase",
-                letterSpacing: "-0.04em",
                 lineHeight: 0.9,
                 transform: `scale(${1 + amount * pulse})`,
                 ...style,
@@ -253,11 +260,9 @@ export function SlamCaption({
                 <div
                     style={{
                         fontFamily: DISPLAY,
-                        fontWeight: 900,
-                        fontSize: size,
+                        fontSize: size * PIXEL_SCALE,
                         whiteSpace: "nowrap",
                         lineHeight: 1,
-                        letterSpacing: "-0.04em",
                         textTransform: "uppercase",
                         color: colour,
                         backgroundColor: INK,
@@ -273,7 +278,7 @@ export function SlamCaption({
     )
 }
 
-// The character name slam: on black, the giant emoji slams in on frame
+// The character name slam: on black, the character's giant sprite slams in on frame
 // `at`, the NAME a beat later, the ability word (in the character's
 // colour) a beat after that, each with a jolt, a flash of colour and an
 // overshooting spring; `pulse` (0–1) then keeps it breathing on the beat.
@@ -289,7 +294,7 @@ export function SlamCard({
     // Frames per beat.
     beat: number
     pulse?: number
-    // The beats after `at` the emoji, name and ability word slam in on.
+    // The beats after `at` the sprite, name and ability word slam in on.
     steps?: readonly [number, number, number]
 }) {
     const frame = useCurrentFrame()
@@ -316,13 +321,13 @@ export function SlamCard({
                     <Slam at={hits[0]} from={4} tilt={-14}>
                         <div
                             style={{
-                                fontSize: 520,
-                                lineHeight: 1,
-                                fontFamily: DISPLAY,
                                 filter: `drop-shadow(22px 22px 0 ${flipped ? INK : look.colour})`,
                             }}
                         >
-                            {look.emoji}
+                            <PixelSprite
+                                look={{ id: ANIMAL_SPRITES[look.id] }}
+                                size={460}
+                            />
                         </div>
                     </Slam>
                     <div
@@ -337,10 +342,8 @@ export function SlamCard({
                             <div
                                 style={{
                                     fontFamily: DISPLAY,
-                                    fontWeight: 900,
-                                    fontSize: 250,
+                                    fontSize: 250 * PIXEL_SCALE,
                                     lineHeight: 0.86,
-                                    letterSpacing: "-0.05em",
                                     color: flipped ? INK : PAPER,
                                 }}
                             >
@@ -351,10 +354,8 @@ export function SlamCard({
                             <div
                                 style={{
                                     fontFamily: MONO,
-                                    fontWeight: 800,
-                                    fontSize: 200,
+                                    fontSize: 200 * PIXEL_SCALE,
                                     lineHeight: 1,
-                                    letterSpacing: "-0.02em",
                                     color: PAPER,
                                     backgroundColor: INK,
                                     padding: "6px 34px 14px",
@@ -471,12 +472,8 @@ export function TitleSlam({
                             <div
                                 style={{
                                     fontFamily: l.mono ? MONO : DISPLAY,
-                                    fontWeight: 900,
-                                    fontSize: l.size ?? 220,
+                                    fontSize: (l.size ?? 220) * PIXEL_SCALE,
                                     lineHeight: 0.95,
-                                    letterSpacing: l.mono
-                                        ? "-0.02em"
-                                        : "-0.05em",
                                     whiteSpace: "nowrap",
                                     color: l.colour ?? PAPER,
                                     ...(l.block && {

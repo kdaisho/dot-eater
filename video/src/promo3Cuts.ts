@@ -101,7 +101,7 @@ function openShots(scenes: Scenes): Shot[] {
     ]
 }
 
-// Each character, two bars, as v2 introduced them: a slam card (emoji,
+// Each character, two bars, as v2 introduced them: a slam card (sprite,
 // name, ability word) for two beats, then its charged ability for six,
 // landing in hard slow motion on the second bar's snare, with its colour,
 // caption and a zoom punch.
@@ -235,7 +235,7 @@ function endShots(): Shot[] {
         {
             kind: "title",
             name: "End card",
-            // Up, to leave the foot to the emoji (see Promo3).
+            // Up, to leave the foot to the sprites (see Promo3).
             offset: -70,
             durationBeats: 8,
             transition: "flash",
@@ -274,6 +274,6 @@ export function promo3CutList(scenes: Scenes): CutList {
     }
 }
 
-// The end card's five emoji pop in on these beats of the edit, one per
+// The end card's five sprites pop in on these beats of the edit, one per
 // character in CHARACTER_ORDER.
 export const END_EMOJI_BEATS: readonly number[] = [75, 76, 77, 78, 79]

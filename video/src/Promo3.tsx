@@ -13,7 +13,9 @@ import { CutSequence } from "./CutSequence"
 import { Confetti, Flash, Letterbox, Slam, Vignette } from "./DramaFx"
 import { excerptFrames, PROMO3_EXCERPT } from "./excerpts"
 import { loadBeats } from "./loadBeats"
-import { DISPLAY, INK, LOOKS, PAPER } from "./palette"
+import { INK, LOOKS, PAPER } from "./palette"
+import { PixelSprite } from "./PixelSprite"
+import { ANIMAL_SPRITES } from "../../src/sprites"
 import {
     BOSS_DOWN_BEAT,
     CHARACTER_ORDER,
@@ -31,7 +33,7 @@ import { SONGS } from "./songs"
 // Return of the 8-Bit Era from its start (PROMO3_EXCERPT, about 55 s), from
 // the directed scenes. The song only, no game sound. The edit is
 // promo3Cuts.ts; this adds the song and what spans shots: the boss look,
-// the boss-down flash and confetti, and the end card's emoji.
+// the boss-down flash and confetti, and the end card's sprites.
 
 export const PROMO3_FPS = 30
 
@@ -131,8 +133,8 @@ export function Promo3({ beats: file, song }: Promo3Props) {
                 <Vignette strength={boss * 0.8} />
                 <Letterbox amount={boss} />
             </Sequence>
-            <Sequence from={endFrom} name="End emoji">
-                <EndEmoji
+            <Sequence from={endFrom} name="End sprites">
+                <EndSprites
                     beats={END_EMOJI_BEATS.map((b) => at(b) - endFrom)}
                     pulse={(f) => beats.pulse(f + endFrom)}
                 />
@@ -143,7 +145,7 @@ export function Promo3({ beats: file, song }: Promo3Props) {
 
 // The five characters along the end card's foot, each popping in on its
 // beat on a disc of its colour, then pulsing on the beat.
-function EndEmoji({
+function EndSprites({
     beats,
     pulse,
 }: {
@@ -177,12 +179,13 @@ function EndEmoji({
                                     display: "flex",
                                     alignItems: "center",
                                     justifyContent: "center",
-                                    fontFamily: DISPLAY,
-                                    fontSize: 92,
                                     transform: `scale(${1 + 0.08 * p})`,
                                 }}
                             >
-                                {look.emoji}
+                                <PixelSprite
+                                    look={{ id: ANIMAL_SPRITES[animal] }}
+                                    size={100}
+                                />
                             </div>
                         </Slam>
                     )

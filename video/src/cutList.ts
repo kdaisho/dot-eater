@@ -88,7 +88,7 @@ export type CardShot = ShotBase & {
     kind: "card"
     // The character whose name slams in, one beat at a time.
     animal: AnimalId
-    // The beats of the shot its emoji, name and ability word slam in on
+    // The beats of the shot its sprite, name and ability word slam in on
     // ([0, 1, 2] when left out): e.g. [0, 0.25, 0.5] for a quick card.
     hits?: readonly [number, number, number]
 }

@@ -1,23 +1,22 @@
 import type { AnimalId } from "../../src/roster"
 
-// The v2 look: the game's clean black and white, plus one bold colour per
-// character for its slams, flashes and wipes.
+// The game's pixel look: its sprites and pixel font, black and white,
+// plus one bold colour per character for its slams, flashes and wipes.
 
 export const INK = "#000"
 export const PAPER = "#fff"
 
-// Bolder cousins of the game's type: Helvetica at its heaviest for names,
-// and a heavy monospace for the ability words.
-export const DISPLAY =
-    '"Helvetica Neue", Helvetica, Arial, "Apple Color Emoji", "Noto Color Emoji", sans-serif'
-export const MONO =
-    '"SF Mono", "JetBrains Mono", Menlo, Monaco, Consolas, "Apple Color Emoji", monospace'
+// The game's pixel font (Press Start 2P, as its cards and labels use),
+// loaded in index.ts, for every word on screen: names, ability words,
+// captions and the end card. It has one weight, and its letters are a
+// square em wide: PIXEL_SCALE sizes it to the space the old heavy
+// Helvetica took.
+export const DISPLAY = '"Press Start 2P", monospace'
+export const MONO = DISPLAY
+export const PIXEL_SCALE = 0.6
 
 export type CharacterLook = {
     id: AnimalId
-    // The promo's own emoji for the character (the game draws pixel
-    // sprites, see sprites.ts).
-    emoji: string
     // The name and ability word as the slam card shows them.
     name: string
     ability: string
@@ -33,7 +32,6 @@ export type CharacterLook = {
 export const LOOKS: Readonly<Record<AnimalId, CharacterLook>> = {
     dragon: {
         id: "dragon",
-        emoji: "🐉",
         name: "DRAGON",
         ability: "FIRE.",
         sound: "FWOOOSH!",
@@ -42,7 +40,6 @@ export const LOOKS: Readonly<Record<AnimalId, CharacterLook>> = {
     },
     penguin: {
         id: "penguin",
-        emoji: "🐧",
         name: "PENGUIN",
         ability: "ICE.",
         sound: "BRRR... CLONK!",
@@ -51,7 +48,6 @@ export const LOOKS: Readonly<Record<AnimalId, CharacterLook>> = {
     },
     owl: {
         id: "owl",
-        emoji: "🦉",
         name: "OWL",
         ability: "WIND.",
         sound: "HOO-WHOOOSH!",
@@ -60,7 +56,6 @@ export const LOOKS: Readonly<Record<AnimalId, CharacterLook>> = {
     },
     skunk: {
         id: "skunk",
-        emoji: "🦨",
         name: "SKUNK",
         ability: "STINK.",
         sound: "PFFFRRRT!",
@@ -69,7 +64,6 @@ export const LOOKS: Readonly<Record<AnimalId, CharacterLook>> = {
     },
     boar: {
         id: "boar",
-        emoji: "🐗",
         name: "BOAR",
         ability: "SMASH.",
         sound: "OINK-KABLAM!",
