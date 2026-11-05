@@ -10,6 +10,7 @@ import {
     type ControlFlags,
 } from "./dpad"
 import { InputState } from "./input"
+import { createMuteButton } from "./muteButton"
 import css from "../css/style.css?raw"
 
 afterEach(() => {
@@ -126,14 +127,43 @@ describe("touch controls' visibility", () => {
         ).toEqual(["touch-pause", "dpad", "touch-breath"])
     })
 
-    // Where the stylesheet puts each control shown, from its fixed
-    // position's insets and size (happy-dom lays nothing out). Buttons are
-    // border-box, as in browsers.
+    // A length in CSS pixels: "12px", or a calc() sum of them, a
+    // safe-area env() as its fallback (no notch).
+    function px(value: string): number {
+        const sum = value
+            .replace(/env\([^,)]+,\s*([^)]+)\)/g, "$1")
+            .replace(/^calc\((.*)\)$/, "$1")
+        return sum
+            .split("+")
+            .reduce((total, term) => total + parseFloat(term), 0)
+    }
+
+    type Box = { name: string; x: number; y: number; w: number; h: number }
+
+    // Where the stylesheet puts a fixed element, from its insets and size
+    // (happy-dom lays nothing out). Buttons are border-box, as in browsers.
+    function boxOf(el: Element, width: number, height: number): Box {
+        const style = getComputedStyle(el)
+        const w = px(style.width)
+        const h = px(style.height)
+        const x =
+            style.left !== "auto" && style.left !== ""
+                ? px(style.left)
+                : width - px(style.right) - w
+        const y =
+            style.top !== "auto" && style.top !== ""
+                ? px(style.top)
+                : height - px(style.bottom) - h
+        return { name: el.id || el.className, x, y, w, h }
+    }
+
+    // Where the stylesheet puts each control shown, and the mute button
+    // (muteButton.ts), over every screen.
     function boxesAt(
         width: number,
         height: number,
         flags: ControlFlags
-    ): { name: string; x: number; y: number; w: number; h: number }[] {
+    ): Box[] {
         const { happyDOM } = window as unknown as {
             happyDOM: {
                 setViewport(size: { width: number; height: number }): void
@@ -141,28 +171,18 @@ describe("touch controls' visibility", () => {
         }
         happyDOM.setViewport({ width, height })
         shownWith(flags)
+        document.getElementById("mute")?.remove()
+        createMuteButton(document, { isMuted: () => false, toggle: () => {} })
         const root = document.getElementById("touch-controls")!
-        return [...root.children]
+        return [...root.children, document.getElementById("mute")!]
             .filter((el) => getComputedStyle(el).display !== "none")
-            .map((el) => {
-                const style = getComputedStyle(el)
-                const px = (value: string) => parseFloat(value)
-                const w = px(style.width)
-                const h = px(style.height)
-                const x =
-                    style.left !== "auto" && style.left !== ""
-                        ? px(style.left)
-                        : width - px(style.right) - w
-                const y =
-                    style.top !== "auto" && style.top !== ""
-                        ? px(style.top)
-                        : height - px(style.bottom) - h
-                return { name: el.className, x, y, w, h }
-            })
+            .map((el) => boxOf(el, width, height))
     }
 
     // Regression (PR #79 review): at 320 px in portrait, Breath overlapped
-    // the D-pad by 17 px.
+    // the D-pad by 17 px. Regression (KDA-331): pause sat right under the
+    // mute button (both 8px in from the top-right corner, mute on top), so
+    // a tap there muted instead of pausing.
     it.each([
         [320, 568],
         [360, 740],
@@ -178,7 +198,7 @@ describe("touch controls' visibility", () => {
                 dpad,
                 playing: true,
             })
-            expect(boxes).toHaveLength(dpad ? 3 : 2)
+            expect(boxes).toHaveLength(dpad ? 4 : 3)
             for (const a of boxes) {
                 expect(a.x).toBeGreaterThanOrEqual(0)
                 expect(a.y).toBeGreaterThanOrEqual(0)
@@ -195,6 +215,49 @@ describe("touch controls' visibility", () => {
                 }
             }
         }
+    })
+
+    // KDA-331: pause is the mute button's size, 8px left of it, level with
+    // it, so the two read as a pair of keys.
+    it("puts pause just left of the mute button", () => {
+        const boxes = boxesAt(390, 844, {
+            touch: true,
+            buttons: true,
+            dpad: false,
+            playing: true,
+        })
+        const pause = boxes.find((b) => b.name === "touch-pause")!
+        const mute = boxes.find((b) => b.name === "mute")!
+        expect(pause.y).toBe(mute.y)
+        expect([pause.w, pause.h]).toEqual([mute.w, mute.h])
+        expect(pause.x + pause.w).toBe(mute.x - 8)
+    })
+
+    // happy-dom matches no (pointer: coarse), so this reads the rules
+    // there: the bigger finger-sized mute button moves pause further in.
+    it("keeps pause clear of the bigger mute button for fingers", () => {
+        const coarse = [...document.styleSheets]
+            .flatMap((sheet) => [...sheet.cssRules])
+            .filter(
+                (rule): rule is CSSMediaRule =>
+                    rule instanceof CSSMediaRule &&
+                    rule.conditionText.includes("pointer: coarse")
+            )
+            .flatMap((rule) => [...rule.cssRules])
+            .filter(
+                (rule): rule is CSSStyleRule => rule instanceof CSSStyleRule
+            )
+        const declared = (selector: string, property: string) =>
+            coarse
+                .filter((rule) => rule.selectorText.includes(selector))
+                .map((rule) => rule.style.getPropertyValue(property))
+                .find((value) => value !== "")
+        const muteWidth = px(declared("#mute", "width")!)
+        const pauseWidth = px(declared(".touch-pause", "width")!)
+        const pauseRight = px(declared(".touch-pause", "right")!)
+        expect(pauseWidth).toBe(muteWidth)
+        // The mute button's 8px in, its width and an 8px gap.
+        expect(pauseRight).toBe(8 + muteWidth + 8)
     })
 
     // KDA-294: breath has the corner to itself.

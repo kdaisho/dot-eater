@@ -1069,18 +1069,62 @@ body[data-dpad="on"][data-touch="on"] #play {
     transform: scale(0.92);
 }
 
-/* Pause: a small button in the top right corner, during play on touch
-   screens (there is no Esc key on a phone). */
+/* Pause: during play on touch screens (there is no Esc key on a phone),
+   top right, just left of the mute button (KDA-331: it sat under it, so a
+   tap there muted): the mute button's 8px in, its width and 8px more.
+   The same grey pixel key as the mute button (#mute), its size too, with
+   a pixel pause icon. */
 body[data-touch="on"][data-playing="on"] .touch-pause {
-    display: block;
+    display: flex;
 }
 
-.touch-pause {
-    font-size: 20px;
-    height: 44px;
-    right: 8px;
-    top: 8px;
-    width: 44px;
+.touch-controls .touch-pause {
+    align-items: center;
+    background: #5c5c5c;
+    border: 2px solid #000;
+    border-radius: 0;
+    box-shadow:
+        inset -2px -3px 0 #3c3c3c,
+        inset 2px 2px 0 #7c7c7c;
+    box-sizing: border-box;
+    height: 36px;
+    justify-content: center;
+    padding: 0;
+    right: calc(8px + 36px + 8px + env(safe-area-inset-right, 0px));
+    top: calc(8px + env(safe-area-inset-top, 0px));
+    width: 36px;
+}
+
+/* The pixel bars, 2px a dot, as the mute button's speaker. */
+.touch-pause svg {
+    display: block;
+    height: 18px;
+    pointer-events: none;
+    width: 22px;
+}
+
+/* Pressed: down 2px, the bevel turned over, as the mute button. */
+.touch-controls .touch-pause:active,
+.touch-controls .touch-pause.pressed {
+    background: #5c5c5c;
+    box-shadow:
+        inset 2px 3px 0 #3c3c3c,
+        inset -2px -2px 0 #7c7c7c;
+    transform: translateY(2px);
+}
+
+/* A bigger key for fingers, 3px a dot, as the mute button's. */
+@media (pointer: coarse) {
+    .touch-controls .touch-pause {
+        height: 44px;
+        right: calc(8px + 44px + 8px + env(safe-area-inset-right, 0px));
+        width: 44px;
+    }
+
+    .touch-pause svg {
+        height: 27px;
+        width: 33px;
+    }
 }
 
 /* The D-pad (bottom left), with Show D-pad on. */

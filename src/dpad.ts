@@ -5,6 +5,8 @@ import type {
     InputState,
     PlayerInput,
 } from "./input"
+import { pixelSvg } from "./pixelSvg"
+import type { PixelArt } from "./sprites"
 
 // On-screen touch buttons for player 1: pause and breath (on touch
 // screens, during play) and a D-pad (optional, off by default). They are
@@ -42,6 +44,22 @@ export function padDirection(
     return dy < 0 ? "up" : "down"
 }
 
+// The pause icon (11x9, as the mute button's speakers): two bars.
+export const PAUSE_ICON: PixelArt = {
+    palette: { W: "#fcfcfc" },
+    grid: [
+        ".WWW...WWW.",
+        ".WWW...WWW.",
+        ".WWW...WWW.",
+        ".WWW...WWW.",
+        ".WWW...WWW.",
+        ".WWW...WWW.",
+        ".WWW...WWW.",
+        ".WWW...WWW.",
+        ".WWW...WWW.",
+    ],
+}
+
 // Build the touch controls into `doc`'s body (once; an existing one is
 // returned as it is). Returns their container, which DpadSource attaches to.
 export function createTouchControls(doc: Document = document): HTMLElement {
@@ -51,8 +69,10 @@ export function createTouchControls(doc: Document = document): HTMLElement {
     root.id = "touch-controls"
     root.className = "touch-controls"
 
-    const pause = button(doc, "pause", "Pause", "⏸")
+    // A pixel key beside the mute button, styled as that one is.
+    const pause = button(doc, "pause", "Pause", "")
     pause.classList.add("touch-pause")
+    pause.append(pixelSvg(doc, PAUSE_ICON))
 
     const pad = doc.createElement("div")
     pad.className = "dpad"

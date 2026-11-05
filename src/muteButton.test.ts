@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 import { beforeEach, describe, expect, it } from "vite-plus/test"
-import { createMuteButton, MUTE_ICONS, pixelSvg } from "./muteButton"
+import { createMuteButton, MUTE_ICONS } from "./muteButton"
+import { pixelSvg } from "./pixelSvg"
 
 describe("MUTE_ICONS", () => {
     it("are 11x9 grids with a colour for every letter", () => {
