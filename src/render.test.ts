@@ -53,6 +53,13 @@ import {
     panicJitter,
 } from "./render"
 import { SNEAK_ALPHA, SNEAK_FAR, SNEAK_NEAR, sneakAlpha } from "./intercept"
+import {
+    KNOCKOUT_SECONDS,
+    PILE_AT,
+    RING_COLORS,
+    grey,
+    type Knockout,
+} from "./knockoutView"
 import type { Particle } from "./particles"
 import { createRushView, FLIGHT_SECONDS } from "./rushView"
 import { createSplitter } from "./splitter"
@@ -1955,6 +1962,123 @@ describe("createRenderer with a player out of play", () => {
         const cell = parseFloat(canvas.style.width) / 13
         const lights = calls.filter((c) => c.name === "createRadialGradient")
         expect(lights.map((c) => c.args[0])).toEqual([11.5 * cell])
+    })
+
+    // KDA-329: a knockout drawn in place of the player's sprite.
+    describe("knocked out", () => {
+        const knockout = (player: number, elapsed: number): Knockout => ({
+            player,
+            at: vec2(player === 0 ? 1 : 11, 1),
+            seed: 3,
+            elapsed,
+        })
+        const fills = (calls: ReturnType<typeof setup>["calls"]) =>
+            calls.filter((c) => c.name === "fillRect")
+
+        it("draws the knockout, not the sprite, of a solo player still in play", () => {
+            const { calls, renderer, texts } = setup()
+            const state = makeState(corridor, { x: 1, y: 1 })
+            renderer.draw(state, 0, {}, {}, { knockouts: [knockout(0, 0.2)] })
+            expect(texts()).not.toContain("dragon")
+            // Its sprite's dots, greying.
+            expect(fills(calls).length).toBeGreaterThan(100)
+        })
+
+        it("leaves a grey pile on its cell once it has crumbled", () => {
+            const { canvas, calls, renderer } = setup()
+            const state = makeState(corridor, { x: 1, y: 1 })
+            renderer.draw(
+                state,
+                0,
+                {},
+                {},
+                {
+                    knockouts: [knockout(0, KNOCKOUT_SECONDS)],
+                }
+            )
+            const cell = parseFloat(canvas.style.width) / 13
+            const greys = new Set([
+                "#000000",
+                "#fcfcfc",
+                "#bcbcbc",
+                "#7c7c7c",
+                "#3c3c3c",
+            ])
+            // The pile: grey dots in the lower half of its cell, no rings
+            // and no flash any more.
+            const pile = fills(calls).filter(
+                (c) =>
+                    typeof c.fillStyle === "string" &&
+                    greys.has(c.fillStyle) &&
+                    (c.args[0] as number) >= cell &&
+                    (c.args[0] as number) < 2 * cell
+            )
+            expect(pile.length).toBeGreaterThan(50)
+            for (const c of pile) {
+                expect(grey(c.fillStyle as string)).toBe(c.fillStyle)
+            }
+            expect(
+                fills(calls).some((c) => c.fillStyle === RING_COLORS[1])
+            ).toBe(false)
+            expect(PILE_AT).toBeLessThan(KNOCKOUT_SECONDS)
+        })
+
+        it("spreads its rings and flashes the maze at the start, no flash with reduced motion", () => {
+            const flashOf = (reducedMotion: boolean) => {
+                const { calls, renderer } = setup()
+                const state = makeState(corridor, { x: 1, y: 1 })
+                renderer.draw(
+                    state,
+                    0,
+                    {},
+                    {},
+                    {
+                        knockouts: [knockout(0, 0.1 - 0.06)],
+                        reducedMotion,
+                    }
+                )
+                const flash = fills(calls).filter(
+                    (c) =>
+                        c.fillStyle === RING_COLORS[0] &&
+                        (c.globalAlpha as number) > 0 &&
+                        (c.args[2] as number) > 100
+                )
+                return { flash, calls }
+            }
+            const { flash, calls } = flashOf(false)
+            expect(flash).toHaveLength(1)
+            // The white ring, dot by dot.
+            const ring = fills(calls).filter(
+                (c) =>
+                    c.fillStyle === RING_COLORS[0] && (c.args[2] as number) < 10
+            )
+            expect(ring.length).toBeGreaterThan(8)
+            expect(flashOf(true).flash).toHaveLength(0)
+        })
+
+        it("keeps the fallen player's light on its cell while its knockout plays", () => {
+            // Two lights go on a layer of their own (see
+            // drawSharedDarkness): count the gradients on every canvas.
+            const count = (elapsed: number) => {
+                const { calls, offscreen, renderer } = setup()
+                const state = pair()
+                takeOut(state.players[0])
+                renderer.draw(
+                    state,
+                    0,
+                    {},
+                    { fog: { radius: 2 } },
+                    {
+                        knockouts: [knockout(0, elapsed)],
+                    }
+                )
+                return [calls, ...offscreen.map((o) => o.calls)]
+                    .flat()
+                    .filter((c) => c.name === "createRadialGradient").length
+            }
+            expect(count(0.5)).toBe(2)
+            expect(count(KNOCKOUT_SECONDS)).toBe(1)
+        })
     })
 
     it("keeps the light where they went out while nobody is in play", () => {

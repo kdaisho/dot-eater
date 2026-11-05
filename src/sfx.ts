@@ -35,7 +35,8 @@ export const SfxId = {
     enemyBreath: "breather.breath",
     // A player hurt with health left (KDA-257): a short knock.
     hurt: "hurt",
-    // A player knocked out: its health gone.
+    // A player knocked out: its health gone (KDA-329, timed to the
+    // knockout's look in knockoutView.ts).
     caught: "caught",
     // Co-op: a player panicked by the other's breath (KDA-316).
     panicked: "panicked",
@@ -91,6 +92,10 @@ function arpeggio(
         freq: noteFreq(name),
     }))
 }
+
+// The knockout's crumble ticks (see caught below): one noise click each,
+// 0.07 s apart, at these filter centres, so they don't all sound alike.
+const CRUMBLE_TICKS = [2600, 1900, 3100, 2200, 2900, 2000, 2500] as const
 
 export const SFX: Readonly<Record<SfxId, readonly Tone[]>> = {
     // A quick upward blip; it plays several times a second, so it stays short
@@ -421,8 +426,7 @@ export const SFX: Readonly<Record<SfxId, readonly Tone[]>> = {
             attack: 0.01,
         },
     ],
-    // A short, dull thump with a crunch: less dramatic than the knockout's
-    // long fall.
+    // A short, dull thump with a crunch: less dramatic than the knockout.
     hurt: [
         {
             wave: "square",
@@ -441,17 +445,37 @@ export const SFX: Readonly<Record<SfxId, readonly Tone[]>> = {
             volume: 0.2,
         },
     ],
-    // The classic falling "caught" wail, for a knockout.
+    // A knockout (KDA-329, "Shockwave crumble"): a burst of noise sweeping
+    // down over a low thud as the rings go out, the crumble's tiny ticks
+    // as it falls into its pile, and a falling arpeggio over them.
     caught: [
         {
-            wave: "square",
+            wave: "noise",
             at: 0,
-            duration: 0.7,
-            freq: 880,
-            freqEnd: 90,
-            volume: 0.25,
-            attack: 0.01,
+            duration: 0.38,
+            freq: 5000,
+            freqEnd: 250,
+            volume: 0.6,
         },
+        {
+            wave: "triangle",
+            at: 0.02,
+            duration: 0.32,
+            freq: 150,
+            freqEnd: 40,
+            volume: 0.6,
+        },
+        ...CRUMBLE_TICKS.map((freq, i): Tone => ({
+            wave: "noise",
+            at: 0.5 + i * 0.07,
+            duration: 0.03,
+            freq,
+            volume: 0.12,
+        })),
+        ...arpeggio(["C6", "A5", "F5", "D5"], 0.08, 0.09, {
+            wave: "triangle",
+            volume: 0.14,
+        }).map((t) => ({ ...t, at: t.at + 0.55 })),
     ],
     // A startled yelp: two quick rising chirps up high, light and short,
     // nothing like a hurt's thump (nobody is hurt).

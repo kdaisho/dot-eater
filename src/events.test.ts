@@ -18,6 +18,7 @@ import {
     type MoveInput,
 } from "./game"
 import { glideT } from "./glide"
+import { KNOCKOUT_SECONDS } from "./knockoutView"
 import { AnimalId } from "./roster"
 import { createSplitter } from "./splitter"
 import {
@@ -343,14 +344,41 @@ describe("hurt and playerCaught", () => {
     it("solo with the last health: caught for good, then the game is lost", () => {
         const state = caughtGame("solo", ENEMY_DAMAGE)
         expect(tick(state)).toBe("dead")
+        // Its gameLost waits for the knockout's effect (KDA-329).
         expect(state.events).toEqual([
             {
                 type: "playerCaught",
                 player: 0,
                 at: vec2(1, 1),
             },
-            { type: "gameLost" },
         ])
+        expect(state.lossHeld).toBe(KNOCKOUT_SECONDS)
+    })
+
+    it("the gameLost comes from the outro once the knockout has played", () => {
+        const state = caughtGame("solo", ENEMY_DAMAGE)
+        expect(tick(state)).toBe("dead")
+        takeEvents(state)
+        const held = Math.round(KNOCKOUT_SECONDS * TICK_RATE)
+        for (let i = 1; i < held; i++) {
+            // Not over yet, and nothing reported.
+            expect(settle(state, TICK)).toBe(false)
+            expect(takeEvents(state)).toEqual([])
+        }
+        expect(settle(state, TICK)).toBe(true)
+        expect(takeEvents(state)).toEqual([{ type: "gameLost" }])
+        expect(state.lossHeld).toBeNull()
+        // Once.
+        expect(settle(state, TICK)).toBe(true)
+        expect(takeEvents(state)).toEqual([])
+    })
+
+    it("co-op: the last player out loses the game after its knockout", () => {
+        const state = caughtGame("coop", 1, 2)
+        state.players[1].out = true
+        expect(tick(state)).toBe("dead")
+        expect(state.events.map((e) => e.type)).toEqual(["playerCaught"])
+        expect(state.lossHeld).toBe(KNOCKOUT_SECONDS)
     })
 
     it("co-op with health left: hurt", () => {
@@ -447,7 +475,9 @@ describe("gameWon", () => {
         state.players[0].health = 1
         expect(playOut(state, IDLE)).toBe("dead")
         takeEvents(state)
-        while (!settle(state, TICK));
-        expect(state.events).toEqual([])
+        const events: GameEvent[] = []
+        while (!settle(state, TICK)) events.push(...takeEvents(state))
+        events.push(...takeEvents(state))
+        expect(events).toEqual([{ type: "gameLost" }])
     })
 })

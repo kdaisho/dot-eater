@@ -2,6 +2,7 @@ import { energyHud } from "./breath"
 import { DIFFICULTY_LABELS } from "./difficulty"
 import { runTotal, type Screen } from "./flow"
 import { bossHud, healthHud, totalScore, type GameState } from "./game"
+import type { Knockout } from "./knockoutView"
 import type { LevelRules, Stage } from "./level"
 import type { Particle } from "./particles"
 import type { Effects, Hud } from "./render"
@@ -88,6 +89,8 @@ export type EffectSources = {
     reducedMotion: boolean
     // The Boar's Rushes landing (see rushView.ts).
     rush?: readonly RushFlight[]
+    // The game's knockouts (KDA-329, see knockoutView.ts).
+    knockouts?: readonly Knockout[]
 }
 
 // The effects drawn on `screen`: particles and shake show while
@@ -95,15 +98,22 @@ export type EffectSources = {
 // game doesn't shake. The facing arrows show with the rings, paused and
 // ending too. The boss's wind-up (its glow and warning tint) shows on the
 // board as the rings do. Every screen with a level says which stage it is,
-// so the maze keeps the stage's tiles on the end screens too.
+// so the maze keeps the stage's tiles on the end screens too. Knockouts
+// (KDA-329) show on every screen with a game: a knocked-out player's pile
+// stays on the end screens too, in place of its sprite.
 export function screenEffects(s: Screen, sources: EffectSources): Effects {
     const stage = stageOf(s)
+    const knockouts =
+        sources.knockouts && sources.knockouts.length > 0
+            ? { knockouts: sources.knockouts }
+            : {}
     if (s.kind !== "playing" && s.kind !== "ending" && s.kind !== "paused") {
-        return stage === undefined ? {} : { stage }
+        return { ...(stage === undefined ? {} : { stage }), ...knockouts }
     }
     const moving = s.kind !== "paused"
     return {
         ...(stage === undefined ? {} : { stage }),
+        ...knockouts,
         particles: sources.particles,
         ...(sources.rush ? { rush: sources.rush } : {}),
         reducedMotion: sources.reducedMotion,

@@ -80,7 +80,8 @@ export const PRESENT_SFX: Readonly<Record<PresentContent, SfxId>> = {
 
 // The effects a tick's events play, each once (two dots eaten on one tick
 // are one blip), in the order they first happened. The game over jingle
-// replaces the catch that lost the game.
+// replaces a catch on the same tick, though the game's gameLost now waits
+// for the knockout's effect and sound (KDA-329, GameState.lossHeld).
 export function eventSounds(events: readonly GameEvent[]): SfxId[] {
     const ids = new Set<SfxId>()
     for (const event of events) {

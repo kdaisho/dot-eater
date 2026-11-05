@@ -105,6 +105,7 @@ import {
 } from "./progress"
 import { createParticles } from "./particles"
 import { createRushView } from "./rushView"
+import { createKnockoutView } from "./knockoutView"
 import { createRenderer, type Effects } from "./render"
 import {
     createRecorder,
@@ -323,6 +324,9 @@ const shake = createShake()
 // The Boar's Rushes landing (KDA-307): they hold back their ram's events
 // until the Boar gets there, and are drawn flying.
 const rush = createRushView()
+// Knockouts (KDA-329): drawn from their playerCaught, their piles staying
+// until a new game.
+const knockouts = createKnockoutView({ random: Math.random })
 const effects = {
     // Follow reduced motion and the Screen shake setting: on load, when the
     // settings change and when the system setting does.
@@ -333,18 +337,21 @@ const effects = {
     // The bursts and shakes for a tick's game events (see eventEffects.ts).
     events(events: readonly GameEvent[], game: GameState) {
         effectsForEvents(events, game, { particles, shake })
+        knockouts.take(events)
     },
     // Moves on by `dt`; a Rush's held events due by then are returned, for
     // their sounds and effects.
     tick(dt: number): readonly GameEvent[] {
         particles.update(dt)
         shake.update(dt)
+        knockouts.update(dt)
         return rush.update(dt)
     },
     reset() {
         particles.clear()
         shake.clear()
         rush.clear()
+        knockouts.clear()
     },
     of(s: Screen): Effects {
         return screenEffects(s, {
@@ -352,6 +359,7 @@ const effects = {
             shake: () => shake.offset(Math.random),
             reducedMotion: reducedMotion?.matches ?? false,
             rush: rush.flights,
+            knockouts: knockouts.knockouts,
         })
     },
 }

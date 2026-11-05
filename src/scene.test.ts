@@ -45,6 +45,20 @@ describe("screenEffects", () => {
         expect(screenEffects(end, sources)).toEqual({ stage: 1 })
     })
 
+    it("draws the knockouts while playing and on the end screens (KDA-329)", () => {
+        const knockouts = [{ player: 0, at: vec2(1, 1), seed: 1, elapsed: 0 }]
+        const withKnockouts = { ...sources, knockouts }
+        expect(screenEffects(playing, withKnockouts).knockouts).toBe(knockouts)
+        const end = { ...playing, kind: "gameOver", choice: "retry" } as Screen
+        expect(screenEffects(end, withKnockouts)).toEqual({
+            stage: 1,
+            knockouts,
+        })
+        expect(screenEffects(end, { ...sources, knockouts: [] })).toEqual({
+            stage: 1,
+        })
+    })
+
     it("names the stage by its number, 1 to 10", () => {
         const last = startLevel(levels, 9, ["dragon"], "solo")
         expect(stageOf(last)).toBe(10)

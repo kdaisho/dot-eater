@@ -62,6 +62,18 @@ import {
 import { sneakAlpha } from "./intercept"
 import { computeLayout, type Layout } from "./layout"
 import type { LevelRules } from "./level"
+import {
+    drawKnockoutBody,
+    drawKnockoutFlash,
+    drawKnockoutRings,
+    type KnockoutSpot,
+} from "./knockoutRender"
+import {
+    hidden as knockedOut,
+    knockoutLight,
+    knockoutTime,
+    type Knockout,
+} from "./knockoutView"
 import { particleAlpha, type Particle } from "./particles"
 import {
     rushFrame,
@@ -82,6 +94,7 @@ import {
     mirrored,
     SpriteId,
     SPRITES,
+    spritePixels,
     visibleTails,
     walkFrame,
     type PixelArt,
@@ -182,6 +195,9 @@ export type Effects = {
     // The Boar's Rushes still landing (KDA-307, see rushView.ts): each
     // rammed enemy drawn flying, and the chain in front sliding.
     rush?: readonly RushFlight[]
+    // The game's knockouts (KDA-329, see knockoutView.ts): each drawn in
+    // place of its player's sprite, its pile staying on its cell.
+    knockouts?: readonly Knockout[]
 }
 
 export type Renderer = {
@@ -241,6 +257,45 @@ const FOG_REACH = Math.SQRT1_2
 // Each player is drawn as its character's sprite (see sprites.ts).
 function playerSprite(player: Player): SpriteId {
     return ANIMAL_SPRITES[player.breather.breath.animal]
+}
+
+// Where and how a knockout (KDA-329) is drawn at its moment `t`: its
+// player's panic face (its standing frame, for a sprite without one),
+// facing the way it last did, outlined, in the middle of its cell.
+function knockoutSpot(
+    art: Art,
+    state: GameState,
+    knockout: Knockout,
+    t: number,
+    cell: number,
+    cols: number,
+    rows: number
+): KnockoutSpot | null {
+    const player = state.players[knockout.player]
+    if (!player) return null
+    const look = characterLook(
+        playerSprite(player),
+        player.character,
+        1,
+        player.rate,
+        player.breather.facing.x,
+        art.facing,
+        cols,
+        rows
+    )
+    const dots = spritePixels(
+        { ...look, frame: 0, panicked: true },
+        art.outline
+    )
+    return {
+        knockout,
+        t,
+        dots,
+        x: (knockout.at.x + 0.5) * cell,
+        y: (knockout.at.y + 0.5) * cell,
+        size: cell * SPRITE_SCALE,
+        cell,
+    }
 }
 
 // With two players, each one's sprite has a ring and a small number in its
@@ -528,8 +583,13 @@ export function createRenderer(
         if (screen.x !== 0 || screen.y !== 0) {
             ctx.translate(-screen.x, -screen.y)
         }
+        const tickSeconds = TICK_MS / 1000
+        const knockouts = (effects.knockouts ?? []).map((knockout) => ({
+            knockout,
+            t: knockoutTime(knockout, alpha, tickSeconds),
+        }))
         const fog = rules.fog
-            ? createFog(state, alpha, cols, rows, rules.fog.radius)
+            ? createFog(state, alpha, cols, rows, rules.fog.radius, knockouts)
             : null
         const seen = sight(fog, shot, viewport, cols, rows)
         // A shake moves everything in the maze, inside the still clip; the
@@ -576,6 +636,18 @@ export function createRenderer(
         if (fall && state.boss) {
             drawDefeatBoss(ctx, fall.defeat, state.boss, fall.spot, fall.e)
         }
+        // A knockout's sprite and pile under the characters, its rings
+        // over them; in fog, the sprite and pile only in the light.
+        const spots = knockouts.flatMap(({ knockout, t }) => {
+            const spot = knockoutSpot(art, state, knockout, t, cell, cols, rows)
+            return spot ? [spot] : []
+        })
+        const still = effects.reducedMotion === true
+        for (const spot of spots) {
+            if (seen.visible(spot.knockout.at)) {
+                drawKnockoutBody(ctx, spot, dpr, still)
+            }
+        }
         drawCharacters(
             ctx,
             art,
@@ -592,10 +664,12 @@ export function createRenderer(
             fall,
             effects.rush
                 ? rushFrame(effects.rush, state, alpha, TICK_MS / 1000)
-                : null
+                : null,
+            knockedOut(effects.knockouts ?? [])
         )
         drawReveals(ctx, art, state, alpha, cell, cols, rows, seen, style)
         if (effects.particles) drawParticles(ctx, effects.particles, cell, seen)
+        for (const spot of spots) drawKnockoutRings(ctx, spot, dpr)
         if (fall && state.boss) {
             drawDefeatFx(ctx, fall.defeat, state.boss, fall.spot, fall.e)
         }
@@ -614,6 +688,19 @@ export function createRenderer(
             )
         }
         ctx.restore()
+        // A knockout's flash covers the maze, not the HUD.
+        if (knockouts.length > 0) {
+            ctx.save()
+            ctx.translate(0, hudHeight)
+            drawKnockoutFlash(
+                ctx,
+                knockouts.map((k) => k.t),
+                viewport.width,
+                viewport.height,
+                effects.reducedMotion === true
+            )
+            ctx.restore()
+        }
         // The defeat's white flashes cover the maze, not the HUD.
         if (fall) {
             ctx.save()
@@ -652,7 +739,9 @@ export function createRenderer(
 // The fog for one frame: each player's light is centred on where it is
 // drawn (mid-glide), `radius` cells across times its breath's sightScale
 // (the Owl sees further), and anything wholly outside every light is
-// hidden.
+// hidden. A player knocked out of play (KDA-329) keeps a light on its cell
+// while its knockout plays, going out at the end (knockoutLight), so the
+// one who fell sees it.
 type Light = { pos: Vec2; radius: number }
 
 type Fog = {
@@ -667,16 +756,26 @@ function createFog(
     alpha: number,
     cols: number,
     rows: number,
-    radius: number
+    radius: number,
+    knockouts: readonly { knockout: Knockout; t: number }[] = []
 ): Fog {
     // Players out of play give no light, unless nobody is in play: then
     // the light stays where they went out.
     const inPlay = state.players.filter((p) => !p.out)
     const lit = inPlay.length > 0 ? inPlay : state.players
+    const sight = (p: Player) => radius * (p.breather.breath.sightScale ?? 1)
     const lights = lit.map((p) => ({
         pos: glidePos(p.character, alpha, cols, rows, p.rate),
-        radius: radius * (p.breather.breath.sightScale ?? 1),
+        radius: sight(p),
     }))
+    if (inPlay.length > 0) {
+        for (const { knockout, t } of knockouts) {
+            const player = state.players[knockout.player]
+            const left = knockoutLight(t)
+            if (!player?.out || left <= 0) continue
+            lights.push({ pos: knockout.at, radius: sight(player) * left })
+        }
+    }
     const wrap = fogWrap(state.cells)
     return {
         lights,
@@ -1185,7 +1284,8 @@ function drawCharacters(
     windUp: boolean,
     effectTile: EffectTiles,
     fall: DefeatScene | null = null,
-    rush: RushFrame | null = null
+    rush: RushFrame | null = null,
+    knocked: ReadonlySet<number> = new Set()
 ) {
     ctx.textAlign = "center"
     ctx.textBaseline = "middle"
@@ -1254,11 +1354,12 @@ function drawCharacters(
     const held = state.enemies.filter((e) => hasStatus(e, "holds"))
     const free = state.enemies.filter((e) => !hasStatus(e, "holds"))
     // A player out of play (see takeOut in game.ts) isn't drawn, and one
-    // invulnerable after a hit blinks (see playerVisible).
+    // invulnerable after a hit blinks (see playerVisible). A knocked-out
+    // one (`knocked`) is drawn by its knockout (KDA-329) instead.
     const sprites = [
         ...held.map(enemySprite),
         ...state.players.flatMap((player, i) =>
-            !playerVisible(player)
+            !playerVisible(player) || knocked.has(i)
                 ? []
                 : [
                       {
