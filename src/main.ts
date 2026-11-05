@@ -158,7 +158,7 @@ import {
 import { heading, isTouchDevice, isTouchFirst, TouchSource } from "./touch"
 import { OPENING_DRUM } from "./opening"
 import { tutorialPages } from "./tutorial"
-import { drawTutorialFrame } from "./tutorialView"
+import { drawTutorialFrame, tutorialZoom } from "./tutorialView"
 import { createOpeningLayer, openingItemAt } from "./openingView"
 
 // The game opens on the opening (opening.ts) on every load. Tests of the
@@ -291,7 +291,11 @@ const renderer = createRenderer(canvas, {
         },
     },
 })
-addEventListener("resize", () => renderer.resize())
+// The tutorial's drawings are sized to the window, so a resize redraws it.
+addEventListener("resize", () => {
+    renderer.resize()
+    if (screen.kind === "tutorial") showOverlay(screen)
+})
 
 function controlsRoom() {
     const shown = dpadShown ? "dpad" : touchFirst ? "buttons" : "none"
@@ -846,6 +850,7 @@ function showOverlay(s: Screen) {
                 count: pages.length,
                 bindings: bindingsOf(settings),
                 touch,
+                zoom: tutorialZoom(innerWidth, innerHeight),
             })
         }
         case "cards":

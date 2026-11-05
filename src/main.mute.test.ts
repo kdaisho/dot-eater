@@ -53,5 +53,6 @@ describe("main's mute button", () => {
         pressAndTick("Space")
         expect(selectedItem()).toBe("Mute On")
         expect(mute().getAttribute("aria-pressed")).toBe("true")
+        expect(mute().classList.contains("muted")).toBe(true)
     })
 })

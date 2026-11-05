@@ -23,6 +23,7 @@ import type { StageSlot } from "./progress"
 import { ANIMAL_IDS, AnimalId, ANIMALS } from "./roster"
 import { rateClear } from "./stars"
 import { MAX_HEALTH, TICK_RATE } from "./constants"
+import css from "../css/style.css?raw"
 
 // canvas-confetti touches a 2D canvas context on import, which happy-dom
 // doesn't provide.
@@ -114,22 +115,40 @@ describe("showSoundtrack", () => {
         expect(overlayTap(row(2)!)).toEqual({ kind: "item", index: 2 })
     })
 
-    it("highlights the cursor's row, which says Play or Stop", () => {
+    const label = (i: number) =>
+        row(i)?.querySelector<HTMLElement>(".menu-label")
+    const marks = () =>
+        [
+            ...(overlay()?.querySelectorAll<HTMLElement>(".menu-label") ?? []),
+        ].map((l) => l.dataset.mark)
+
+    it("marks the cursor's row with ▶ and nothing else, not in its text", () => {
         showSoundtrack(view)
         expect(selected()).toHaveLength(1)
         expect(row(0)?.classList.contains("selected")).toBe(true)
-        expect(row(0)?.querySelector(".menu-value")?.textContent).toBe("▶ Play")
-        expect(row(1)?.querySelector(".menu-value")).toBeNull()
-        showSoundtrack({ ...view, selected: 1, playing: 1 })
-        expect(row(1)?.querySelector(".menu-value")?.textContent).toBe("■ Stop")
+        expect(marks()).toEqual(["▶", undefined, undefined])
+        expect(label(0)?.textContent).toBe("Opening")
+        expect(overlay()?.querySelector(".menu-value")).toBeNull()
+        expect(overlay()?.textContent).not.toMatch(/Play|Stop|▶|♪/)
     })
 
-    it("marks the track playing, wherever the cursor is", () => {
+    it("marks the track playing with ♪, wherever the cursor is", () => {
         showSoundtrack({ ...view, selected: 2, playing: 1 })
         expect(row(1)?.classList.contains("playing")).toBe(true)
-        expect(row(1)?.textContent).toContain("Classic ♪")
         expect(overlay()?.querySelectorAll("li.playing")).toHaveLength(1)
-        expect(row(2)?.querySelector(".menu-value")?.textContent).toBe("▶ Play")
+        expect(marks()).toEqual([undefined, "♪", "▶"])
+        expect(label(1)?.textContent).toBe("Classic")
+        // Screen readers hear it in words.
+        expect(row(1)?.querySelector(".visually-hidden")?.textContent).toBe(
+            " (playing)"
+        )
+        expect(row(2)?.querySelector(".visually-hidden")).toBeNull()
+    })
+
+    it("shows ♪, not ▶, when the cursor is on the track playing", () => {
+        showSoundtrack({ ...view, selected: 1, playing: 1 })
+        expect(marks()).toEqual([undefined, "♪", undefined])
+        expect(overlay()?.querySelector(".menu-value")).toBeNull()
     })
 
     it("says when sound is muted, on phones too", () => {
@@ -362,6 +381,54 @@ describe("showSettings", () => {
         expect(selected()).toEqual(["Music volume ◀ 7 ▶"])
         const values = [...overlay()!.querySelectorAll(".menu-value")]
         expect(values.map((v) => v.textContent)).toEqual(["◀ 7 ▶", "Off"])
+    })
+
+    it("marks the cursor's label only, outside its text", () => {
+        showSettings([
+            { label: "Music volume", value: "◀ 7 ▶", selected: false },
+            {
+                label: "Mute",
+                value: "Off",
+                selected: true,
+                detail: "All sound",
+            },
+        ])
+        const labels = [
+            ...overlay()!.querySelectorAll<HTMLElement>("li > .menu-label"),
+        ]
+        expect(labels.map((l) => l.textContent)).toEqual([
+            "Music volume",
+            "Mute",
+        ])
+        expect(labels.map((l) => l.dataset.mark)).toEqual([undefined, "▶"])
+        // The value and detail come after the label, unmarked.
+        const row = overlay()!.querySelector("li.selected")!
+        expect(row.firstElementChild).toBe(labels[1])
+        expect(row.querySelector(".menu-value [data-mark]")).toBeNull()
+        expect(row.textContent).toBe("Mute Off All sound")
+    })
+})
+
+// The cursor's mark hangs left of the label, out of the text flow, so the
+// centred labels don't shift as it moves (KDA-328).
+describe("menu cursor CSS", () => {
+    const rule = (selector: string) => {
+        const start = css.indexOf(`${selector} {`)
+        return start < 0 ? undefined : css.slice(start, css.indexOf("}", start))
+    }
+
+    it("draws the mark out of flow, left of the label", () => {
+        const mark = rule(".overlay-menu .menu-label[data-mark]::before")
+        expect(mark).toContain("content: attr(data-mark)")
+        expect(mark).toContain("position: absolute")
+        expect(mark).toContain("right: 100%")
+        expect(rule(".overlay-menu .menu-label")).toContain(
+            "position: relative"
+        )
+    })
+
+    it("puts no mark in the row's own flow", () => {
+        expect(css).not.toMatch(/li\.selected::before/)
     })
 })
 
