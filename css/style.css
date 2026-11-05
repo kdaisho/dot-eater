@@ -101,12 +101,23 @@ body[data-dpad="on"][data-touch="on"] #play {
 
 /* The Cards page (src/cardsView.ts), over everything like the end roll, in
    its colours. --s is screen pixels per card pixel: the card as big as
-   fits (up to 2.2) under the bar, or on a phone the width less 16 px
-   gutters; the cards either side are 0.72 of it. --card-w and --card-h
-   are a card's size in card pixels, set by the page. */
+   fits, with the bar, arrows and dots, which grow with it (--u, a pixel
+   at the old 2.2 size, so they keep their look); on a phone the card is
+   the width less 16 px gutters and the rest keeps its size. In card
+   pixels the card's chrome is 44.5 tall (the bar, the dots and some air)
+   and 54.5 wide (the arrows and their gaps), plus 2 x 20 for the peeks
+   either side, which are 0.72 of the card and cut by the window edge.
+   Above the old 2.2, --s snaps down to whole screen pixels (half on a 2x
+   screen) so the pixel art stays even. --card-w and --card-h are a
+   card's size in card pixels, set by the page. */
 .cards-page {
-    --page-s: min(2.2px, calc((100dvh - 110px) / var(--card-h)));
+    --page-s: min(
+        calc(100dvh / (var(--card-h) + 44.5)),
+        calc(100vw / (var(--card-w) + 94.5))
+    );
     --s: var(--page-s);
+    --peek-s: calc(var(--page-s) * 0.72);
+    --u: calc(var(--s) / 2.2);
     background: #08001c;
     color: #fcfcfc;
     display: flex;
@@ -140,9 +151,9 @@ body[data-dpad="on"][data-touch="on"] #play {
     align-items: center;
     display: flex;
     flex: none;
-    height: 52px;
+    height: calc(var(--u) * 52);
     justify-content: space-between;
-    padding: 0 56px 0 8px;
+    padding: 0 max(56px, calc(var(--u) * 56)) 0 calc(var(--u) * 8);
     position: relative;
 }
 
@@ -152,25 +163,25 @@ body[data-dpad="on"][data-touch="on"] #play {
     color: #fff;
     cursor: pointer;
     font-family: monospace;
-    font-size: 18px;
-    line-height: 44px;
+    font-size: calc(var(--u) * 18);
+    line-height: calc(var(--u) * 44);
     opacity: 0.8;
-    padding: 0 8px;
+    padding: 0 calc(var(--u) * 8);
 }
 
 .cards-title {
     color: #f8b800;
-    font-size: 14px;
+    font-size: calc(var(--u) * 14);
     left: 50%;
     line-height: 1;
     position: absolute;
-    text-shadow: 2px 2px 0 #401800;
+    text-shadow: calc(var(--u) * 2) calc(var(--u) * 2) 0 #401800;
     transform: translateX(-50%);
 }
 
 .cards-count {
     color: #fca044;
-    font-size: 10px;
+    font-size: calc(var(--u) * 10);
     line-height: 1;
 }
 
@@ -178,7 +189,7 @@ body[data-dpad="on"][data-touch="on"] #play {
    from the sides, the dots under them. */
 .cards-stage {
     align-items: center;
-    column-gap: 12px;
+    column-gap: calc(var(--u) * 12);
     display: grid;
     flex: 1;
     grid-template-areas:
@@ -187,7 +198,7 @@ body[data-dpad="on"][data-touch="on"] #play {
     grid-template-columns: minmax(0, 1fr) auto auto auto minmax(0, 1fr);
     grid-template-rows: minmax(0, 1fr) auto;
     min-height: 0;
-    padding-bottom: 14px;
+    padding-bottom: calc(var(--u) * 14);
     position: relative;
 }
 
@@ -197,7 +208,7 @@ body[data-dpad="on"][data-touch="on"] #play {
 }
 
 .cards-peek {
-    --s: calc(var(--page-s) * 0.72);
+    --s: var(--peek-s);
     cursor: pointer;
     opacity: 0.35;
 }
@@ -217,19 +228,19 @@ body[data-dpad="on"][data-touch="on"] #play {
     border: 0;
     cursor: pointer;
     display: grid;
-    height: 44px;
+    height: calc(var(--u) * 44);
     padding: 0;
     place-items: center;
-    width: 36px;
+    width: calc(var(--u) * 36);
 }
 
 .cards-arrow::before {
     background: #f8b800;
     clip-path: polygon(0 0, 100% 50%, 0 100%);
     content: "";
-    filter: drop-shadow(3px 3px 0 #401800);
-    height: 24px;
-    width: 18px;
+    filter: drop-shadow(calc(var(--u) * 3) calc(var(--u) * 3) 0 #401800);
+    height: calc(var(--u) * 24);
+    width: calc(var(--u) * 18);
 }
 
 .cards-arrow.prev {
@@ -252,27 +263,50 @@ body[data-dpad="on"][data-touch="on"] #play {
 
 .cards-dots {
     display: flex;
-    gap: 12px;
+    gap: calc(var(--u) * 12);
     grid-area: dots;
     justify-content: center;
 }
 
 .cards-dot-group {
     display: flex;
-    gap: 6px;
+    gap: calc(var(--u) * 6);
 }
 
 .cards-dot {
     background: #3a2c66;
     cursor: pointer;
     display: block;
-    height: 8px;
-    width: 8px;
+    height: calc(var(--u) * 8);
+    width: calc(var(--u) * 8);
 }
 
 .cards-dot.on {
     background: #f8b800;
-    box-shadow: 2px 2px 0 #401800;
+    box-shadow: calc(var(--u) * 2) calc(var(--u) * 2) 0 #401800;
+}
+
+/* Past the old 2.2, whole screen pixels per card pixel, or half ones on
+   a 2x screen (where they are whole device pixels), where the browser
+   can round. */
+@supports (width: round(down, 1.7px, 1px)) {
+    .cards-page {
+        --snap: 1px;
+        --s: max(
+            min(2.2px, var(--page-s)),
+            round(down, var(--page-s), var(--snap))
+        );
+        --peek-s: max(
+            min(1.584px, calc(var(--page-s) * 0.72)),
+            round(down, calc(var(--page-s) * 0.72), var(--snap))
+        );
+    }
+
+    @media (min-resolution: 2x) {
+        .cards-page {
+            --snap: 0.5px;
+        }
+    }
 }
 
 /* A phone: the card fills the width, with the arrows and dots under it. */
@@ -282,6 +316,9 @@ body[data-dpad="on"][data-touch="on"] #play {
             calc((100vw - 32px) / var(--card-w)),
             calc((100dvh - 130px) / var(--card-h))
         );
+        --peek-s: var(--page-s);
+        --s: var(--page-s);
+        --u: 1px;
     }
 
     .cards-stage {
