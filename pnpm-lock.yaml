@@ -30,6 +30,9 @@ importers:
 
   video:
     dependencies:
+      '@fontsource/press-start-2p':
+        specifier: ^5.3.0
+        version: 5.3.0
       '@remotion/cli':
         specifier: 4.0.539
         version: 4.0.539(postcss@8.5.31)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(typescript@5.4.5)

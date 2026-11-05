@@ -88,7 +88,7 @@ export type CardShot = ShotBase & {
     kind: "card"
     // The character whose name slams in, one beat at a time.
     animal: AnimalId
-    // The beats of the shot its emoji, name and ability word slam in on
+    // The beats of the shot its sprite, name and ability word slam in on
     // ([0, 1, 2] when left out): e.g. [0, 0.25, 0.5] for a quick card.
     hits?: readonly [number, number, number]
 }
@@ -99,13 +99,16 @@ export type TitleLine = {
     // The beat of the shot (0 is its first; fractions allowed) it slams in
     // on.
     beat: number
-    // Its colour (paper when left out) and size in pixels (220).
+    // Its colour (paper when left out; the logo's gold for a logo line)
+    // and its letters' height in pixels (220), less if that is too wide
+    // for the frame.
     colour?: string
     size?: number
     // A block of colour behind it, slanted, like a caption.
     block?: string
-    // Heavy monospace (the ability words' face) instead of the display face.
-    mono?: boolean
+    // In the logo's 3D block letters instead of the menu font (see
+    // pixelType.ts).
+    logo?: boolean
 }
 
 export type TitleShot = ShotBase & {
