@@ -64,6 +64,25 @@ export type TutorialView = {
     count: number
     bindings: Bindings
     touch: boolean
+    // How much bigger than the phone layout the scenes, pad and keyboard
+    // are drawn: tutorialZoom of the window. 1 if left out.
+    zoom?: number
+}
+
+// How much to scale the tutorial's drawings up in a `width` x `height`
+// window: 1 (the phone layout) on small windows, then in quarter steps as
+// the window grows, up to 3. The tallest pages (Keyboard, Controller) are
+// about 410 + 450 x zoom pixels with the overlay's margins, so they still
+// fit the window's height.
+export function tutorialZoom(width: number, height: number): number {
+    const fit = Math.min(width / 900, (height - 410) / 450)
+    return Math.min(3, Math.max(1, Math.floor(fit * 4) / 4))
+}
+
+// Screen pixels per canvas pixel for a drawing shown `base` times at zoom
+// 1: as it is at zoom 1, and bigger in whole pixels, so it stays crisp.
+export function pixelScale(base: number, zoom: number): number {
+    return zoom <= 1 ? base : Math.max(1, Math.round(base * zoom))
 }
 
 // Something on the page that moves: drawn at the time, or with reduced
@@ -72,6 +91,9 @@ type Animator = { draw: (t: number) => void; still: number }
 
 // The page showing's animators. A new page replaces them.
 let animators: Animator[] = []
+
+// The page showing's zoom (TutorialView.zoom).
+let zoom = 1
 
 // Draw the page showing at `seconds` into it, or its still frames.
 export function drawTutorialFrame(seconds: number, reduced: boolean) {
@@ -82,8 +104,10 @@ export function drawTutorialFrame(seconds: number, reduced: boolean) {
 // Its scenes are drawn on their still frames until the next frame.
 export function tutorialContent(view: TutorialView): HTMLElement {
     animators = []
+    zoom = view.zoom ?? 1
     const root = el("div", "tutorial")
     root.dataset.page = view.page
+    root.style.setProperty("--z", String(zoom))
     root.append(PAGE_BODIES[view.page](view.bindings), nav(view))
     for (const a of animators) a.draw(a.still)
     return root
@@ -215,7 +239,10 @@ function keyboardPage(bindings: Bindings): HTMLElement {
     const solo = soloBreathKey(bindings)
     return col(
         board,
-        row(col(...[0, 1].map((player) => actStrip(player))), row(...legends)),
+        row(
+            col(...[0, 1].map((player) => actStrip(player, 2, false))),
+            row(...legends)
+        ),
         off.length > 0
             ? line(
                   "Not on the drawing: ",
@@ -229,11 +256,14 @@ function keyboardPage(bindings: Bindings): HTMLElement {
 }
 
 // Player `player`'s scene on the Keyboard and Controller pages: 1P's
-// Dragon, 2P's Penguin half a loop behind, each with its number.
-function actStrip(player: number, scale = 2): HTMLCanvasElement {
+// Dragon, 2P's Penguin half a loop behind, each with its number. The
+// Keyboard page's stay at their phone size (`grow` false), so the page
+// still fits a big window with the keyboard grown.
+function actStrip(player: number, scale = 2, grow = true): HTMLCanvasElement {
     return scene({
         cols: 10,
         scale,
+        grow,
         cycle: ACT_CYCLE,
         script: actScene,
         offset: player * ACT_OFFSET,
@@ -511,7 +541,10 @@ function glyph(
 
 type SceneOptions = {
     cols: number
+    // Screen pixels per canvas pixel at zoom 1; bigger with the zoom
+    // unless `grow` is false.
     scale: number
+    grow?: boolean
     cycle: number
     script: (u: number) => SceneState
     offset?: number
@@ -528,7 +561,8 @@ type SceneOptions = {
 function scene(o: SceneOptions): HTMLCanvasElement {
     const top = o.hud ? HUD_HEIGHT : 0
     const width = o.cols * CELL
-    const canvas = pixelCanvas(width, 2 * CELL + top, o.scale)
+    const scale = o.grow === false ? o.scale : pixelScale(o.scale, zoom)
+    const canvas = pixelCanvas(width, 2 * CELL + top, scale)
     canvas.classList.add("tut-scene")
     const g = context(canvas)
     const animal = o.animal ?? SpriteId.dragon
@@ -598,7 +632,7 @@ function scene(o: SceneOptions): HTMLCanvasElement {
 
 // An animal walking on the spot, facing right, for the Breath page's row.
 function walker(id: SpriteId): HTMLCanvasElement {
-    const canvas = pixelCanvas(18, 18, 3)
+    const canvas = pixelCanvas(18, 18, pixelScale(3, zoom))
     canvas.dataset.sprite = id
     const g = context(canvas)
     animators.push({
@@ -622,7 +656,7 @@ const LIT = ["#3cbcfc", "#f87858"]
 const BASE = ["#1c4c9c", "#a81800"]
 
 function padCanvas(bindings: Bindings, player: number): HTMLCanvasElement {
-    const canvas = pixelCanvas(PAD_W, PAD_H, 4)
+    const canvas = pixelCanvas(PAD_W, PAD_H, pixelScale(4, zoom))
     canvas.classList.add("tut-pad")
     const g = context(canvas)
     const pad = bindings.players[player]!.pad

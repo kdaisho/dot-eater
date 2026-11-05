@@ -1,3 +1,19 @@
+/* The type scale: every overlay's text (menus, settings, the tutorial,
+   toasts) takes its size from here. Each grows with the window's shorter
+   side, from a phone's size (the minimum) to a big monitor's (the
+   maximum). The --text-px sizes are for the Press Start 2P labels. */
+:root {
+    --text-title: clamp(32px, 22px + 2.6vmin, 56px);
+    --text-menu: clamp(28px, 22px + 1.55vmin, 42px);
+    --text-body: clamp(18px, 14px + 1.05vmin, 28px);
+    --text-small: clamp(15px, 12px + 0.8vmin, 22px);
+    --text-tiny: clamp(12px, 10px + 0.5vmin, 17px);
+    --text-px: clamp(10px, 7px + 0.8vmin, 16px);
+    --text-px-small: clamp(8px, 6px + 0.52vmin, 12px);
+    --leading: 1.35;
+    --leading-tight: 1.15;
+}
+
 body {
     align-items: center;
     background: #fff;
@@ -15,12 +31,17 @@ body {
     -webkit-tap-highlight-color: transparent;
     -webkit-touch-callout: none;
     user-select: none;
+    font-family: monospace;
+    font-size: var(--text-body);
+    line-height: var(--leading);
 }
 
+/* Everything takes the body's font (buttons and headings too); the views
+   set their sizes from the type scale. */
 body * {
-    font-family: monospace;
-    font-size: 30px;
-    line-height: 28px;
+    font-family: inherit;
+    font-size: inherit;
+    line-height: inherit;
     margin: 0;
     padding: 0;
     text-align: center;
@@ -390,7 +411,8 @@ body[data-dpad="on"][data-touch="on"] #play {
     color: #fff;
     cursor: pointer;
     display: block;
-    font-size: 18px;
+    font-size: var(--text-body);
+    /* A finger-sized row. */
     line-height: 44px;
     margin-right: auto;
     opacity: 0.8;
@@ -398,21 +420,25 @@ body[data-dpad="on"][data-touch="on"] #play {
 }
 
 .overlay-title {
-    margin-bottom: 30px;
+    font-size: var(--text-title);
+    line-height: var(--leading-tight);
+    margin-bottom: 1em;
 }
 
 .overlay-line {
-    font-size: 20px;
-    margin-bottom: 20px;
+    font-size: var(--text-body);
+    margin-bottom: 1em;
 }
 
 .overlay-menu {
+    font-size: var(--text-menu);
+    line-height: var(--leading-tight);
     list-style: none;
 }
 
 .overlay-menu li {
     cursor: pointer;
-    margin-bottom: 18px;
+    margin-bottom: 0.6em;
     opacity: 0.6;
 }
 
@@ -454,7 +480,8 @@ body[data-dpad="on"][data-touch="on"] #play {
 /* A short description, on a smaller line under the label. */
 .overlay-menu .menu-detail {
     display: block;
-    font-size: 0.75em;
+    font-size: var(--text-body);
+    line-height: var(--leading);
     margin-top: 4px;
 }
 
@@ -467,7 +494,7 @@ body[data-dpad="on"][data-touch="on"] #play {
 .overlay-menu .menu-progress {
     align-items: center;
     display: flex;
-    font-size: 0.6em;
+    font-size: var(--text-small);
     gap: 8px;
     justify-content: center;
     margin-top: 6px;
@@ -489,7 +516,6 @@ body[data-dpad="on"][data-touch="on"] #play {
 }
 
 .overlay-menu .menu-time {
-    font-size: inherit;
     font-variant-numeric: tabular-nums;
 }
 
@@ -504,6 +530,7 @@ body[data-dpad="on"][data-touch="on"] #play {
 /* Character select: a row of cards that wraps on narrow screens. */
 .overlay-cards {
     display: flex;
+    font-size: var(--text-small);
     flex-wrap: wrap;
     gap: 16px;
     justify-content: center;
@@ -517,7 +544,7 @@ body[data-dpad="on"][data-touch="on"] #play {
     box-sizing: border-box;
     opacity: 0.6;
     padding: 12px 8px;
-    width: 170px;
+    width: calc(var(--text-small) * 11.5);
 }
 
 .overlay-cards .card.selected {
@@ -546,7 +573,6 @@ body[data-dpad="on"][data-touch="on"] #play {
 
 .overlay-cards .card-players {
     display: flex;
-    font-size: 14px;
     font-weight: bold;
     gap: 8px;
     justify-content: center;
@@ -570,14 +596,9 @@ body[data-dpad="on"][data-touch="on"] #play {
 }
 
 .overlay-cards .card-name {
+    font-size: var(--text-menu);
+    line-height: var(--leading-tight);
     margin-bottom: 10px;
-}
-
-.overlay-cards .card-breath,
-.overlay-cards .card-text,
-.overlay-cards .card-stat {
-    font-size: 14px;
-    line-height: 18px;
 }
 
 .overlay-cards .card-breath {
@@ -609,12 +630,20 @@ body[data-dpad="on"][data-touch="on"] #play {
     }
 }
 
+/* A big window: the sprite at 4x. */
+@media (min-width: 1400px) and (min-height: 900px) {
+    .overlay-cards .card-sprite {
+        height: 72px;
+        width: 72px;
+    }
+}
+
 .toast {
     background: rgba(0, 0, 0, 0.8);
     border-radius: 8px;
     bottom: 24px;
     color: #fff;
-    font-size: 18px;
+    font-size: var(--text-body);
     left: 50%;
     padding: 10px 16px;
     pointer-events: none;
@@ -631,14 +660,17 @@ body[data-dpad="on"][data-touch="on"] #play {
 }
 
 /* The tutorial (KDA-319, src/tutorialView.ts): the "Pixel kit" pages.
-   Pixel labels use Press Start 2P, the font the end roll bundles. --u is
-   a key's width on the drawn keyboard. */
+   Pixel labels use Press Start 2P, the font the end roll bundles. --z is
+   how much bigger than the phone layout the drawings are (tutorialZoom,
+   set by tutorialView.ts on big windows), --u a key's width on the drawn
+   keyboard. */
 .tutorial {
-    --u: 28px;
+    --z: 1;
+    --u: calc(28px * var(--z));
     align-items: center;
     display: flex;
     flex-direction: column;
-    gap: 18px;
+    gap: calc(18px * var(--z));
     padding-bottom: 12px;
 }
 
@@ -652,7 +684,7 @@ body[data-dpad="on"][data-touch="on"] #play {
     align-items: center;
     display: flex;
     flex-direction: column;
-    gap: 12px;
+    gap: calc(12px * var(--z));
     max-width: 100%;
 }
 
@@ -660,25 +692,24 @@ body[data-dpad="on"][data-touch="on"] #play {
     align-items: center;
     display: flex;
     flex-wrap: wrap;
-    gap: 12px 22px;
+    gap: calc(12px * var(--z)) calc(22px * var(--z));
     justify-content: center;
     max-width: 100%;
 }
 
 .tutorial .tut-line {
-    font-size: 18px;
-    line-height: 24px;
+    font-size: var(--text-body);
     max-width: 40em;
 }
 
+/* Room for two lines, so the page doesn't jump as the caption changes. */
 .tutorial .tut-caption {
-    min-height: 48px;
+    min-height: calc(2em * var(--leading));
 }
 
 .tutorial .tut-small,
 .tutorial .tut-hint {
-    font-size: 15px;
-    line-height: 20px;
+    font-size: var(--text-small);
 }
 
 .tutorial .tut-hint {
@@ -686,19 +717,19 @@ body[data-dpad="on"][data-touch="on"] #play {
 }
 
 .tutorial .tut-tiny {
-    font-size: 12px;
-    line-height: 15px;
+    font-size: var(--text-tiny);
+    line-height: var(--leading-tight);
     opacity: 0.8;
 }
 
 .tutorial .tut-px {
     font-family: "Press Start 2P", monospace;
-    font-size: 10px;
-    line-height: 16px;
+    font-size: var(--text-px);
+    line-height: 1.6;
 }
 
 .tutorial .tut-name {
-    font-size: 8px;
+    font-size: var(--text-px-small);
 }
 
 .tutorial .p1c {
@@ -738,19 +769,13 @@ body[data-dpad="on"][data-touch="on"] #play {
     color: #bcbcbc;
     display: flex;
     font-family: "Press Start 2P", monospace;
-    font-size: 7px;
+    font-size: max(5px, calc(var(--u) / 4));
     height: calc(var(--u) - 4px);
     justify-content: center;
     line-height: 1;
     overflow: hidden;
     position: absolute;
     white-space: nowrap;
-}
-
-@media (max-width: 600px) {
-    .tutorial .tut-cap {
-        font-size: 5px;
-    }
 }
 
 .tutorial .tut-cap.p1,
@@ -795,13 +820,13 @@ body[data-dpad="on"][data-touch="on"] #play {
 /* Arrows and other signs the pixel font lacks. */
 .tutorial .tut-cap.sym {
     font-family: monospace;
-    font-size: 13px;
+    font-size: max(13px, calc(var(--u) * 0.46));
     font-weight: bold;
 }
 
 .tutorial .tut-chip.sym {
     font-family: monospace;
-    font-size: 15px;
+    font-size: calc(15px * var(--z));
     font-weight: bold;
 }
 
@@ -824,8 +849,9 @@ body[data-dpad="on"][data-touch="on"] #play {
     transform: translateY(2px);
 }
 
-/* A key or button named in the text. */
+/* A key or button named in the text: --c is its height. */
 .tutorial .tut-chip {
+    --c: calc(22px * var(--z));
     align-items: center;
     background: #5c5c5c;
     box-shadow:
@@ -834,26 +860,26 @@ body[data-dpad="on"][data-touch="on"] #play {
     color: #fcfcfc;
     display: inline-flex;
     font-family: "Press Start 2P", monospace;
-    font-size: 8px;
-    height: 22px;
+    font-size: calc(var(--c) * 0.36);
+    height: var(--c);
     justify-content: center;
     line-height: 1;
-    margin: 3px;
-    min-width: 22px;
-    padding: 0 6px;
+    margin: calc(3px * var(--z));
+    min-width: var(--c);
+    padding: 0 calc(var(--c) * 0.27);
     vertical-align: middle;
 }
 
 .tutorial .tut-chip.pad {
     border-radius: 50%;
-    min-width: 22px;
+    min-width: var(--c);
     padding: 0;
-    width: 22px;
+    width: var(--c);
 }
 
 .tutorial .tut-chip.pad.wide {
-    border-radius: 11px;
-    padding: 0 8px;
+    border-radius: calc(var(--c) / 2);
+    padding: 0 calc(var(--c) * 0.36);
     width: auto;
 }
 
@@ -861,7 +887,7 @@ body[data-dpad="on"][data-touch="on"] #play {
 .tutorial .tut-legend {
     align-items: center;
     display: grid;
-    gap: 6px 12px;
+    gap: calc(6px * var(--z)) calc(12px * var(--z));
     grid-template-columns: auto 1fr;
 }
 
@@ -881,10 +907,10 @@ body[data-dpad="on"][data-touch="on"] #play {
     border-radius: 50%;
     box-sizing: border-box;
     display: flex;
-    font-size: 22px;
-    height: 52px;
+    font-size: calc(22px * var(--z));
+    height: calc(52px * var(--z));
     justify-content: center;
-    width: 52px;
+    width: calc(52px * var(--z));
 }
 
 /* The page dots, "n/N", the hint, and on touch Prev and Next. */
@@ -907,8 +933,8 @@ body[data-dpad="on"][data-touch="on"] #play {
     background: #7c7c7c;
     box-shadow: 0 0 0 2px #000;
     display: block;
-    height: 8px;
-    width: 8px;
+    height: calc(8px * var(--z));
+    width: calc(8px * var(--z));
 }
 
 .tutorial .tut-dots i.on {
@@ -933,7 +959,8 @@ body[data-dpad="on"][data-touch="on"] #play {
     border-radius: 8px;
     color: #fff;
     cursor: pointer;
-    font-size: 18px;
+    font-size: var(--text-body);
+    /* A finger-sized button. */
     line-height: 44px;
     padding: 0 18px;
 }

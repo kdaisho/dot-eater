@@ -2,7 +2,7 @@
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test"
 import { DEFAULT_BINDINGS, rebind, type Bindings } from "./bindings"
 import { tutorialPages, type TutorialPage } from "./tutorial"
-import { drawTutorialFrame } from "./tutorialView"
+import { drawTutorialFrame, pixelScale, tutorialZoom } from "./tutorialView"
 import { hideOverlay, overlayTap, showTutorial } from "./ui"
 
 // The tutorial's pages as shown (KDA-319): each page's title and keys, the
@@ -190,5 +190,54 @@ describe("the scenes", () => {
         expect(phases()).toEqual(before)
         drawTutorialFrame(0.1, false)
         expect(phases()).not.toEqual(before)
+    })
+})
+
+describe("the tutorial's size", () => {
+    it("keeps the phone layout on phones and laptops", () => {
+        expect(tutorialZoom(375, 812)).toBe(1)
+        expect(tutorialZoom(812, 375)).toBe(1)
+        expect(tutorialZoom(1280, 800)).toBe(1)
+        expect(tutorialZoom(1440, 900)).toBe(1)
+    })
+
+    it("grows in quarter steps on big windows, as the height allows, up to 3", () => {
+        expect(tutorialZoom(1900, 1150)).toBe(1.5)
+        expect(tutorialZoom(2560, 1323)).toBe(2)
+        expect(tutorialZoom(1900, 600)).toBe(1)
+        expect(tutorialZoom(1000, 1400)).toBe(1)
+        expect(tutorialZoom(5120, 2880)).toBe(3)
+    })
+
+    it("draws at the phone scale at zoom 1, and in whole pixels above", () => {
+        expect(pixelScale(1.6, 1)).toBe(1.6)
+        expect(pixelScale(2, 1)).toBe(2)
+        expect(pixelScale(2, 1.25)).toBe(3)
+        expect(pixelScale(1.75, 1.5)).toBe(3)
+        expect(pixelScale(1.6, 2)).toBe(3)
+        expect(pixelScale(4, 2)).toBe(8)
+    })
+
+    it("scales the scenes and the drawings' sizes by the zoom", () => {
+        const width = () =>
+            document.querySelector<HTMLElement>(".tut-scene")?.style.width
+        const z = () =>
+            document
+                .querySelector<HTMLElement>(".tutorial")
+                ?.style.getPropertyValue("--z")
+        show("goal")
+        expect(width()).toBe("400px")
+        expect(z()).toBe("1")
+        const pages = tutorialPages(false)
+        showTutorial({
+            page: "goal",
+            index: pages.indexOf("goal"),
+            count: pages.length,
+            bindings: DEFAULT_BINDINGS,
+            touch: false,
+            zoom: 2,
+        })
+        expect(width()).toBe("800px")
+        expect(z()).toBe("2")
     })
 })
