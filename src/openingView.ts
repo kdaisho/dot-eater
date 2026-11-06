@@ -2,21 +2,37 @@
 // console's 256x224 and scaled up to fit, with crisp pixels. Text uses a
 // small built-in pixel font, so the opening needs no web font.
 
+import { levels } from "./levels"
 import {
     BOSS_ABOVE,
+    bossReveal,
+    dimPixels,
     LOGO_HOLD,
     logoTop,
+    mazeBox,
+    mazeCodes,
     OPENING_CHOICES,
     OPENING_DRUM,
     OPENING_HEIGHT as H,
     OPENING_WIDTH as W,
-    PACK,
+    packAt,
     packLap,
+    runnerFeet,
     runnerX,
     shine,
+    SKY_STARS,
+    starShown,
     type OpeningChoice,
 } from "./opening"
-import { drawPixels, SpriteId, spriteSize } from "./sprites"
+import {
+    drawPixels,
+    SpriteId,
+    spritePixels,
+    spriteSize,
+    type Dots,
+    type SpriteLook,
+} from "./sprites"
+import { createMapArt, spriteOutline, styleFor, updateMapArt } from "./tiles"
 
 // What a frame needs: the stage and its clock, and the menu's state.
 export type OpeningFrame = {
@@ -28,6 +44,7 @@ export type OpeningFrame = {
 }
 
 const BG = "#08001c"
+const BG_RGB = [0x08, 0x00, 0x1c] as const
 const MENU = "#fca044"
 const MENU_OFF = "#7c4800"
 const COPY = "#f878f8"
@@ -88,17 +105,50 @@ function text(
     })
 }
 
-// ---------- sprites: the game's (sprites.ts), at 1 pixel a dot ----------
+// ---------- the sky and the dark castle's maze ----------
 
-// The boss's minions running across, after the game's enemies, facing
-// left as drawn.
-const RUNNERS = [
-    SpriteId.oni,
-    SpriteId.fox,
-    SpriteId.robot,
-    SpriteId.snake,
-    SpriteId.wolf,
-] as const
+function sky(g: Ctx, seconds: number) {
+    rect(g, 0, 0, W, H, BG)
+    for (const s of SKY_STARS) {
+        if (!starShown(s, seconds)) continue
+        g.globalAlpha = 0.3 + s.p * 0.6
+        rect(g, s.x, s.y, 1, 1, s.p > 0.75 ? GOLD : WHITE)
+    }
+    g.globalAlpha = 1
+}
+
+// The final stage's map in its tiles (tiles.ts), dimmed over the sky,
+// painted once on first use; null without a 2D context for it.
+const FINAL = levels[levels.length - 1]!
+let mazeArt: HTMLCanvasElement | null | undefined
+
+function mazeCanvas(doc: Document): HTMLCanvasElement | null {
+    if (mazeArt !== undefined) return mazeArt
+    const { width, height } = mazeBox(FINAL.width, FINAL.height)
+    const canvas = doc.createElement("canvas")
+    canvas.width = width
+    canvas.height = height
+    const ctx = canvas.getContext("2d")
+    const image = ctx?.createImageData(width, height)
+    if (!ctx || !image) return (mazeArt = null)
+    const art = createMapArt(
+        styleFor(levels.length),
+        FINAL.width,
+        FINAL.height,
+        image.data
+    )
+    updateMapArt(art, mazeCodes(FINAL))
+    dimPixels(image.data, BG_RGB)
+    ctx.putImageData(image, 0, 0)
+    return (mazeArt = canvas)
+}
+
+function maze(g: Ctx) {
+    const art = mazeCanvas(g.canvas.ownerDocument)
+    if (!art) return
+    const { left, top } = mazeBox(FINAL.width, FINAL.height)
+    g.drawImage(art, left, top)
+}
 
 // ---------- the Dot Eater logo: gold 3D block letters, the O a dot ----
 
@@ -227,7 +277,8 @@ const SILHOUETTE: Readonly<Record<string, string>> = Object.fromEntries(
     "VDHRKG".split("").map((ch) => [ch, SHADOW])
 )
 
-// Dark until the drum; then red eyes that pulse, a glint on each, fangs.
+// Dark until the drum; then red eyes that pulse, a glint on each, fangs,
+// and its real colours fading in (bossReveal).
 function boss(g: Ctx, top: number, seconds: number) {
     const look = { id: SpriteId.finalBoss }
     const [w] = spriteSize(look)
@@ -245,6 +296,9 @@ function boss(g: Ctx, top: number, seconds: number) {
         F: lit ? WHITE : SHADOW,
     })
     if (!lit) return
+    // Its real colours fading in over the silhouette.
+    g.globalAlpha = bossReveal(seconds)
+    drawPixels(g, look, x, y, BOSS_SCALE)
     g.globalAlpha = 0.18 + 0.12 * pulse
     for (const [ex, ey] of EYES) {
         rect(
@@ -265,16 +319,37 @@ function boss(g: Ctx, top: number, seconds: number) {
     }
 }
 
+// A runner's dots, wrapped in the final stage's light outline (as the game
+// draws characters there), made once per sprite and frame.
+const OUTLINED = new Map<string, Dots>()
+function outlined(look: SpriteLook): Dots {
+    const key = `${look.id}:${look.frame ?? 0}`
+    let dots = OUTLINED.get(key)
+    if (!dots) {
+        dots = spritePixels(look, spriteOutline(levels.length))
+        OUTLINED.set(key, dots)
+    }
+    return dots
+}
+
+// The pack along the maze's bottom corridor, feet on its floor's last row.
 function stampede(g: Ctx, seconds: number) {
     const lap = packLap(seconds)
     if (lap === undefined) return
-    PACK.forEach(([lag, dy], k) => {
+    const feet = runnerFeet(FINAL.height)
+    packAt(seconds).forEach(({ id, lag, dy }, k) => {
         const x = runnerX(lag, lap)
-        if (x < -20 || x > W + 4) return
-        const hop = Math.floor(lap * 10 + k) % 2
+        if (x < -30 || x > W + 4) return
         // A step of the walk on each hop.
-        const look = { id: RUNNERS[k]!, frame: hop }
-        drawPixels(g, look, x, 174 + dy - hop, 1)
+        const hop = Math.floor(lap * 10 + k) % 2
+        const dots = outlined({ id, frame: hop })
+        // The outline adds a dot on every side.
+        const top = feet + dy - hop - (dots.length - 2)
+        dots.forEach((row, j) =>
+            row.forEach((color, i) => {
+                if (color !== null) rect(g, x - 1 + i, top + j, 1, 1, color)
+            })
+        )
     })
 }
 
@@ -316,7 +391,7 @@ function studioLogo(g: Ctx, prompt: boolean, seconds: number) {
 
 function title(g: Ctx, f: OpeningFrame) {
     const t = f.seconds
-    rect(g, 0, 0, W, H, BG)
+    sky(g, t)
     g.save()
     // A short shake on the drum hit.
     if (t >= OPENING_DRUM && t < OPENING_DRUM + 0.35) {
@@ -325,6 +400,8 @@ function title(g: Ctx, f: OpeningFrame) {
             Math.floor(t * 30) % 2 ? 2 : -1
         )
     }
+    // The maze comes in on the drum, as the boss's eyes light.
+    if (t >= OPENING_DRUM) maze(g)
     const top = logoTop(t)
     boss(g, top, t)
     logo(g, top)
@@ -336,7 +413,8 @@ function title(g: Ctx, f: OpeningFrame) {
             text(g, label, 104, 128 + i * 16, off ? MENU_OFF : MENU)
         })
         text(g, "▶", 90, 128 + OPENING_CHOICES.indexOf(f.choice) * 16, MENU)
-        text(g, "©2026 DAISHODESIGN", W / 2, 196, COPY, true)
+        // Below the maze, on the sky.
+        text(g, "©2026 DAISHODESIGN", W / 2, 204, COPY, true)
         stampede(g, t)
     }
     g.restore()
