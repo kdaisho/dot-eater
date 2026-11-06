@@ -24,6 +24,17 @@ import {
     END_ROLL_WIDTH,
     loadEndRollFont,
 } from "./endRollRender"
+import {
+    CONFETTI_SECONDS,
+    drawConfetti,
+    type ConfettiFrom,
+} from "./pixelConfetti"
+import {
+    drawStoryEnd,
+    STORY_END_HEIGHT,
+    STORY_END_WIDTH,
+    storyEndLabel,
+} from "./storyEndView"
 import { MAX_FRAME_MS, TICK_MS } from "./constants"
 import {
     DIFFICULTIES,
@@ -44,6 +55,7 @@ import {
     baseScreen,
     canContinue,
     endChoices,
+    endsTheStory,
     gameOf,
     initialScreen,
     openingScreen,
@@ -57,6 +69,7 @@ import {
     selectItem,
     settingsContext,
     STORY_CHOICES,
+    storyEndCard,
     storyStart,
     TITLE_CHOICES,
     titleChoice,
@@ -129,6 +142,7 @@ import {
     burst,
     celebrate,
     downloadFile,
+    hideConfetti,
     hideOverlay,
     hideToast,
     overlayTap,
@@ -150,6 +164,7 @@ import {
     showTitle,
     showTutorial,
     showCards,
+    showConfetti,
     showSoundtrack,
     showToast,
     showTrackProgress,
@@ -512,7 +527,12 @@ function tick(dt: number) {
     pendingCapture = {}
     const events = game ? takeEvents(game) : []
     if (game) onGameEvents(events, game)
-    if (game?.boss && events.some((e) => e.type === "gameWon")) burst()
+    if (game?.boss && events.some((e) => e.type === "gameWon")) {
+        // The ending's is pixel confetti (KDA-323); the Kitsune's, and a
+        // stage mode clear's, are still canvas-confetti.
+        if (endsTheStory(screen)) fireConfetti("middle")
+        else burst()
+    }
     // Effects move on only when this tick moved the game on: a step, or
     // the outro's settle. Not on a tick that pauses or resumes. In a boss
     // defeat's hit-stop they stand still with the glides (KDA-301).
@@ -526,6 +546,7 @@ function tick(dt: number) {
     if (next !== screen) enter(screen, next)
     const due = moved ? effects.tick(dt * scale) : []
     if (screen.kind === "tutorial") tutorialClock += dt
+    confettiClock += dt
     if (game && due.length > 0) playEvents(due, game)
     // The way player 1 is going, for the flicks (see TouchSource.follow).
     const player =
@@ -686,9 +707,10 @@ function enter(prev: Screen, next: Screen) {
                 )
             }
         }
-        celebrate(10)
-        // The ending gets a burst on top.
-        if (next.kind === "storyEnd") burst()
+        // The ending's ALL CLEAR card fires its own pixel confetti from its
+        // poppers (storyEndView.ts); the other clears sweep canvas-confetti
+        // across.
+        if (next.kind !== "storyEnd") celebrate(10)
     }
     if (recordingOn) recordRuns(prev, next)
     // Every change on the settings and controls screens is saved, and
@@ -726,7 +748,31 @@ let lastAlpha = 0
 // drawn at (see tutorialView.ts).
 let tutorialClock = 0
 
+// The ending's pixel confetti bursts (pixelConfetti.ts) on their own layer
+// over everything but the end roll, on a clock of ticks: when each was
+// fired, and from where.
+let confettiClock = 0
+let confettiBursts: { from: ConfettiFrom; at: number }[] = []
+function fireConfetti(from: ConfettiFrom) {
+    confettiBursts.push({ from, at: confettiClock })
+}
+function renderConfetti() {
+    confettiBursts = confettiBursts.filter(
+        (b) => confettiClock - b.at <= CONFETTI_SECONDS
+    )
+    if (confettiBursts.length === 0) return hideConfetti()
+    const canvas = showConfetti()
+    const g = canvas.getContext("2d")
+    if (!g) return
+    g.clearRect(0, 0, canvas.width, canvas.height)
+    for (const b of confettiBursts) {
+        const t = confettiClock - b.at
+        drawConfetti(g, t, b.from, canvas.width, canvas.height)
+    }
+}
+
 function render(alpha: number) {
+    renderConfetti()
     if (screen.kind === "opening") {
         openingLayer.show({
             stage: screen.stage,
@@ -745,6 +791,8 @@ function render(alpha: number) {
     if (screen.kind === "cards" && cardsPageStale()) showOverlay(screen)
     // The end roll draws on its own canvas, over everything.
     if (screen.kind === "endRoll") return renderEndRoll(screen)
+    // The ALL CLEAR card draws on its own canvas, over the frozen maze.
+    if (screen.kind === "storyEnd") renderStoryEnd(screen)
     // Settings over a paused game show that game behind them.
     const shown = baseScreen(screen)
     const game = gameOf(shown)
@@ -811,6 +859,17 @@ function showPlayingProgress(s: SoundtrackScreen) {
     if (s.playing === undefined) return
     const { elapsed, length } = soundtrackProgress(s, s.playing)
     showTrackProgress(s.playing, elapsed, length)
+}
+
+function renderStoryEnd(s: Extract<Screen, { kind: "storyEnd" }>) {
+    const card = storyEndCard(s, shownProgress())
+    const canvas = showStoryEnd(
+        STORY_END_WIDTH,
+        STORY_END_HEIGHT,
+        storyEndLabel(card)
+    )
+    const context = canvas.getContext("2d")
+    if (context) drawStoryEnd(context, s.shown.seconds, card)
 }
 
 function renderEndRoll(s: Extract<Screen, { kind: "endRoll" }>) {
@@ -979,17 +1038,8 @@ function showOverlay(s: Screen) {
                     },
                 ],
             })
-        case "storyEnd": {
-            const best = recordsProgress(s.mode)
-                ? progress.storyBests?.[s.difficulty]
-                : undefined
-            return showStoryEnd({
-                difficulty: DIFFICULTY_LABELS[s.difficulty],
-                runTotal: runTotal(s),
-                ...(best === undefined ? {} : { best }),
-                items: [{ label: "Continue", selected: true }],
-            })
-        }
+        case "storyEnd":
+            return renderStoryEnd(s)
         case "endRoll":
             loadEndRollFont()
             showEndRoll(END_ROLL_WIDTH, END_ROLL_HEIGHT)

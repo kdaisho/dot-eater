@@ -3,9 +3,13 @@ import { beforeAll, describe, expect, it, vi } from "vite-plus/test"
 import confetti from "canvas-confetti"
 import { END_ROLL } from "./endRoll"
 import { END_CONFIRM_DELAY, STORY_CARD_SECONDS } from "./flow"
-import type { GameState, Outcome } from "./game"
+import { step, type GameState, type Outcome } from "./game"
+import { createBoss } from "./boss"
+import { CONFETTI_SECONDS } from "./pixelConfetti"
+import { vec2 } from "./vec2"
 import type { Pad } from "./gamepad"
 import { levels } from "./levels"
+import { storyEndSeconds } from "./storyEnd"
 import { parseProgress, PROGRESS_KEY, STAGE_COUNT } from "./progress"
 import type { Hud } from "./render"
 
@@ -274,23 +278,60 @@ describe("main in story mode", () => {
         }
         expect(levels).toHaveLength(STAGE_COUNT)
         expect(levels[STAGE_COUNT - 1].name).toBe("Final boss")
+        // Let the last stage clear's confetti finish first.
+        vi.advanceTimersByTime(1000)
+        vi.mocked(confetti).mockClear()
+        // KDA-323: the final boss's clear jingle (its gameWon) fires pixel
+        // confetti on its own layer, not canvas-confetti, and the layer
+        // goes once the burst is over.
+        vi.mocked(step).mockImplementationOnce((game) => {
+            game.boss = createBoss(vec2(1, 1))
+            game.boss.defeated = true
+            game.events.push({ type: "gameWon" })
+            return null
+        })
+        vi.advanceTimersByTime(FRAMES_MS)
+        expect(confetti).not.toHaveBeenCalled()
+        expect(document.querySelector("#confetti")).not.toBeNull()
+        vi.mocked(step).mockImplementationOnce((game) => {
+            game.boss = null
+            return null
+        })
+        vi.advanceTimersByTime(CONFETTI_SECONDS * 1000 + 200)
+        expect(document.querySelector("#confetti")).toBeNull()
         end("won", 100)
         const total = (STAGE_COUNT - 1) * 100
+        // KDA-323: the ALL CLEAR card, a pixel canvas with no menu, and
+        // pixel confetti instead of canvas-confetti.
         expect(screen()).toBe("story-end")
-        expect(overlay()?.querySelector("h1")?.textContent).toBe("🎉 The end")
-        expect(lines()).toEqual([
-            "Difficulty Hard",
-            `Run total ${total}`,
-            `Best ${total}`,
-            "Thanks for playing!",
-        ])
+        const card = overlay()?.querySelector("canvas")
+        expect(card?.getAttribute("aria-label")).toBe(
+            `All clear. Hard. Run total ${total}. Best ${total}`
+        )
+        expect(overlay()?.querySelector("h1")).toBeNull()
+        expect(items()).toEqual([])
         expect(saved().storyBests).toEqual({ hard: total })
         expect(saved().stages.every((s) => s.cleared)).toBe(true)
-        // Continue starts the end roll, with its music; a press skips to
-        // THE END, and a press once that has shown goes to the title.
+        // Nothing a player presses or taps moves it on.
         waitConfirm()
         padTap(A)
+        padTap(START)
+        pressAndTick("Space")
+        pressAndTick("Escape")
+        card?.click()
+        vi.advanceTimersByTime(FRAMES_MS)
+        expect(screen()).toBe("story-end")
+        // It starts the end roll by itself, with its music; a press skips
+        // to THE END, and a press once that has shown goes to the title.
+        vi.advanceTimersByTime(
+            storyEndSeconds({
+                difficulty: "hard",
+                runTotal: total,
+                best: total,
+            }) * 1000
+        )
         expect(screen()).toBe("end-roll")
+        expect(confetti).not.toHaveBeenCalled()
         vi.advanceTimersByTime(5000)
         expect(screen()).toBe("end-roll")
         padTap(A)

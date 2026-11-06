@@ -16,6 +16,7 @@ import {
     FINALE_AT,
     SKIP_TO,
     STAFF,
+    STAFF_FROM,
     staffAt,
     lampPower,
     ufoAt,
@@ -89,6 +90,18 @@ describe("endRollPhase", () => {
     it("gives the cards time before THE END for the staff", () => {
         expect(FINALE_AT).toBeLessThan(END_ROLL.ending - 15)
     })
+
+    // KDA-323, end-roll fix 1: shorter cards give the finale 22.8 s, and
+    // THE END still lands on the music at 78 s.
+    it("runs the cast in 54 s and leaves the finale 22.8 s", () => {
+        expect(END_ROLL.perCard).toBe(3.6)
+        expect(CAST.length * END_ROLL.perCard).toBeCloseTo(54)
+        expect(FINALE_AT).toBeCloseTo(55.2)
+        expect(END_ROLL.ending).toBe(78)
+        expect(END_ROLL.ending - FINALE_AT).toBeCloseTo(22.8)
+        expect(endRollPhase(78 - 0.01).kind).toBe("finale")
+        expect(endRollPhase(78).kind).toBe("fade")
+    })
 })
 
 describe("cardStage", () => {
@@ -123,7 +136,7 @@ describe("beamX", () => {
     })
     it("follows each card, then sweeps left to right for the next", () => {
         const turn = start + perCard
-        expect(beamX(turn - fetch)).toBe(EXIT_X)
+        expect(beamX(turn - fetch)).toBeCloseTo(EXIT_X)
         expect(beamX(turn - fetch / 2)).toBeCloseTo((EXIT_X + ENTER_X) / 2, 0)
         expect(beamX(turn)).toBeCloseTo(ENTER_X)
         expect(beamX(turn + END_ROLL.slideIn)).toBe(STAGE_X)
@@ -151,6 +164,23 @@ describe("staffAt", () => {
             if (at) seen.add(at.index)
         }
         expect([...seen]).toEqual(STAFF.map((_, i) => i))
+    })
+
+    // KDA-323, fix 1: from 3.2 s into the finale, 4.9 s a credit, 4.5 of
+    // them readable.
+    it("starts the staff 3.2 s in and gives each 4.9 s, 4.5 on screen", () => {
+        expect(STAFF_FROM).toBe(3.2)
+        expect(staffAt(3.19)).toBeUndefined()
+        expect(staffAt(3.2)).toEqual({ index: 0, shown: 0 })
+        STAFF.forEach((_, i) => {
+            const from = 3.2 + i * 4.9
+            expect(staffAt(from + 0.01)).toMatchObject({ index: i })
+            expect(staffAt(from + 4.49)).toMatchObject({ index: i })
+            expect(staffAt(from + 4.51)).toBeUndefined()
+        })
+        expect(3.2 + STAFF.length * 4.9).toBeCloseTo(
+            END_ROLL.ending - FINALE_AT
+        )
     })
 })
 

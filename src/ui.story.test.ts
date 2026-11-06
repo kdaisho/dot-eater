@@ -134,30 +134,32 @@ describe("showStoryClear", () => {
     })
 })
 
+// KDA-323: the ALL CLEAR card is a pixel canvas (storyEndView.ts draws
+// it); the overlay has no text, menu or tap target of its own.
 describe("showStoryEnd", () => {
-    it("shows the run total, the best and thanks", () => {
-        showStoryEnd({
-            difficulty: "Easy",
-            runTotal: 4200,
-            best: 5000,
-            items: [{ label: "Title", selected: true }],
-        })
+    const label = "All clear. Easy. Run total 4200. Best 5000"
+
+    it("puts up a canvas over the backdrop, saying what the card says", () => {
+        const canvas = showStoryEnd(256, 224, label)
         expect(overlay()?.dataset.screen).toBe("story-end")
-        expect(title()).toBe("🎉 The end")
-        expect(lines()).toEqual([
-            "Difficulty Easy",
-            "Run total 4200",
-            "Best 5000",
-            "Thanks for playing!",
-        ])
+        expect(overlay()?.querySelector("canvas")).toBe(canvas)
+        expect(document.querySelector("#backdrop")).not.toBeNull()
+        expect([canvas.width, canvas.height]).toEqual([256, 224])
+        expect(canvas.getAttribute("aria-label")).toBe(label)
+        expect(title()).toBeUndefined()
+        expect(lines()).toEqual([])
+        expect(items()).toEqual([])
     })
 
-    it("leaves the best out when there is none to show", () => {
-        showStoryEnd({
-            runTotal: 4200,
-            items: [{ label: "Title", selected: true }],
-        })
-        expect(lines()).toEqual(["Run total 4200", "Thanks for playing!"])
+    it("keeps the same canvas while the card plays", () => {
+        const canvas = showStoryEnd(256, 224, label)
+        expect(showStoryEnd(256, 224, label)).toBe(canvas)
+        expect(document.querySelectorAll("#overlay")).toHaveLength(1)
+    })
+
+    it("has nothing to tap: a tap on it is on the panel", () => {
+        const canvas = showStoryEnd(256, 224, label)
+        expect(overlayTap(canvas)).toEqual({ kind: "panel" })
     })
 })
 

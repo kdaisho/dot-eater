@@ -1,7 +1,9 @@
 // Draws the end roll (endRoll.ts) on its own 256x224 canvas, in the look
 // of the title's Gold style: a night sky, a UFO spotlighting each card, thick gold
 // cards whose portraits are mosaics of raised tiles, speed lines, and
-// THE END in extruded block letters. Every frame is drawn from the time
+// THE END in extruded block letters. Its words are in the ending's 5x7
+// pixel font (pixelFont.ts, upper case only); only the cards' numbers
+// keep the cards' web font. Every frame is drawn from the time
 // alone, so it can be paused, skipped or redrawn anywhere. DOM: it makes
 // the cards' offscreen canvases. No listeners or timers.
 
@@ -17,7 +19,6 @@ import {
     portrait,
     rect,
     rounded,
-    text,
     type Ctx,
 } from "./cardArt"
 import { DIFFICULTY_LABELS, type Difficulty } from "./difficulty"
@@ -36,6 +37,7 @@ import {
     STAFF,
     type CastCard,
 } from "./endRoll"
+import { blockWord, pixelText as text } from "./pixelFont"
 import { drawPixels, SpriteId, SPRITES } from "./sprites"
 
 export const END_ROLL_WIDTH = 256
@@ -152,63 +154,6 @@ function prop(g: Ctx, name: string, x: number, y: number, s = 1) {
                 PALETTE[ch]
             )
         }
-    }
-}
-
-// ---------- block letters (the title's) ----------
-
-const GLYPHS: Record<string, readonly string[]> = {
-    T: ["11111", "..1..", "..1..", "..1..", "..1..", "..1..", "..1.."],
-    H: ["1...1", "1...1", "1...1", "11111", "1...1", "1...1", "1...1"],
-    E: ["11111", "1....", "1....", "1111.", "1....", "1....", "11111"],
-    N: ["1...1", "11..1", "1.1.1", "1..11", "1...1", "1...1", "1...1"],
-    D: ["1111.", "1...1", "1...1", "1...1", "1...1", "1...1", "1111."],
-}
-const CELL = 4
-const DEPTH = 4
-
-// A word in extruded gold block letters, centred on cx. `rise` (0 to 1)
-// pops the letters up one by one.
-function blockWord(g: Ctx, word: string, cx: number, y: number, rise = 1) {
-    const letters: { ch: string; x: number }[] = []
-    let x = 0
-    for (const ch of word) {
-        if (ch === " ") {
-            x += 10
-            continue
-        }
-        letters.push({ ch, x })
-        x += 5 * CELL + 4
-    }
-    const width = x - 4
-    const cells: { x: number; y: number }[] = []
-    letters.forEach((l, i) => {
-        const p = clamp01(rise * (letters.length + 2) - i)
-        if (p <= 0) return
-        const pop = p < 1 ? Math.round((1 - p) * 8) * 2 - (p > 0.6 ? 4 : 0) : 0
-        const wave = Math.round(Math.sin(i * 0.8) * 3)
-        const left = cx - width / 2 + l.x
-        GLYPHS[l.ch].forEach((row, r) => {
-            for (let k = 0; k < row.length; k++) {
-                if (row[k] === "1")
-                    cells.push({
-                        x: left + k * CELL,
-                        y: y + wave + pop + r * CELL,
-                    })
-            }
-        })
-    })
-    for (const c of cells)
-        rect(g, c.x - 1, c.y - 1, CELL + 2, CELL + 2, GOLD.dark)
-    for (let d = DEPTH; d >= 1; d--) {
-        for (const c of cells) {
-            rect(g, c.x + d - 1, c.y + d - 1, CELL + 2, CELL + 2, GOLD.dark)
-            rect(g, c.x + d, c.y + d, CELL, CELL, GOLD.side)
-        }
-    }
-    for (const c of cells) {
-        rect(g, c.x, c.y, CELL, CELL, GOLD.face)
-        rect(g, c.x, c.y, CELL, 1, GOLD.light)
     }
 }
 
@@ -480,6 +425,13 @@ function castCard(g: Ctx, all: Card[], index: number, u: number, t: number) {
     text(g, typed(card.line, v - 0.5), W / 2, 200, C.white)
 }
 
+// The finale's layout (KDA-323): the grid's rows (mini cards' middles)
+// from GRID_TOP, GRID_PITCH apart, so the grid ends at y 118; the staff
+// from STAFF_Y to about 176; the heroes run at 196 to 212; © at 214.
+const GRID_TOP = 22
+const GRID_PITCH = 38
+const STAFF_Y = 132
+
 function finale(g: Ctx, all: Card[], v: number, t: number) {
     backdrop(g, t)
     // The cards are dealt into three rows of 5 (the heroes, then the
@@ -493,14 +445,14 @@ function finale(g: Ctx, all: Card[], v: number, t: number) {
         const tx = W / 2 + (col - 2) * 40
         const x = W + 40 + (tx - W - 40) * easeOutBack(p)
         const wave = v > 3.2 ? hop(v - col * 0.08 - row * 0.3, 1, 4) : 0
-        drawMini(g, card, x, 24 + row * 43 - wave)
+        drawMini(g, card, x, GRID_TOP + row * GRID_PITCH - wave)
     })
     const staff = staffAt(v)
     if (staff) {
         const { role, names, icon } = STAFF[staff.index]
-        text(g, typed(role, staff.shown, 30), W / 2, 140, C.menu)
+        text(g, typed(role, staff.shown, 30), W / 2, STAFF_Y, C.menu)
         names.forEach((name, i) => {
-            const y = 158 + i * 16
+            const y = STAFF_Y + 18 + i * 14
             const last = i === names.length - 1
             const shown = staff.shown - 0.3 - i * 0.5
             // With an icon, the name and the icon are centred together.
@@ -527,10 +479,11 @@ function finale(g: Ctx, all: Card[], v: number, t: number) {
             )
         })
     }
+    text(g, "©2026 DAISHODESIGN", W / 2, 214, C.copy)
 }
 
 function theEnd(g: Ctx, u: number, y: number) {
-    blockWord(g, "THE END", W / 2, y, clamp01(u / 1.4))
+    blockWord(g, "THE END", W / 2, y, { rise: clamp01(u / 1.4) })
 }
 
 function ending(g: Ctx, all: Card[], u: number, difficulty: Difficulty) {

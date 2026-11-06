@@ -188,7 +188,8 @@ export const BURSTS: Readonly<Record<BurstKind, ParticleLook>> = {
     presentGerm: sparkle(["#84cc16", "#58a800", "#285000"]),
     // The debris of the final boss's big blast (KDA-301, the end of its
     // explosion chain): fire and smoke squares flung out all round, slowing
-    // fast, as on the design page.
+    // fast, as on the design page: 3 px squares at the 2x view's 20 px
+    // cells (KDA-323; they were left as discs before).
     bossDefeat: {
         colors: ["#f8d838", "#f87818", "#d82800", "#8a8a8a"],
         count: 34,
@@ -198,6 +199,7 @@ export const BURSTS: Readonly<Record<BurstKind, ParticleLook>> = {
         size: 0.15,
         jitter: 0.6,
         drag: 3,
+        shape: "square",
     },
 }
 

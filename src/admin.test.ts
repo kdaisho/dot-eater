@@ -91,17 +91,18 @@ describe("adminScreen", () => {
             animals: ["owl"],
             run: { total: 0 },
         })
-        const confirm: TickInput = {
-            wasPressed: (action) => action === "confirm",
+        const none: TickInput = {
+            wasPressed: () => false,
             move: () => ({ held: [], pressed: vec2(0, 0) }),
         }
+        // The ALL CLEAR card starts the end roll by itself (KDA-323).
         const flow: FlowDeps = {
             levels: stages,
             progress: emptyProgress(),
-            dt: 1,
+            dt: 10,
             random: fixedRandom(0),
         }
-        expect(update(screen, confirm, flow)).toMatchObject({
+        expect(update(screen, none, flow)).toMatchObject({
             kind: "endRoll",
             difficulty: "hard",
         })

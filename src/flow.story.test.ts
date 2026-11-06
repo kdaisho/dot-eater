@@ -8,6 +8,7 @@ import {
     startLevel,
     STORY_CARD_SECONDS,
     STORY_END_CHOICES,
+    storyEndCard,
     update,
     type FlowDeps,
     type Mode,
@@ -26,6 +27,7 @@ import {
     type Progress,
 } from "./progress"
 import { stages } from "./levels"
+import { STORY_END, storyEndSeconds } from "./storyEnd"
 import { fixedRandom, parseFlat, sameAtEvery } from "./test/helpers"
 import { vec2 } from "./vec2"
 
@@ -553,14 +555,78 @@ describe("the ending", () => {
         })
     })
 
-    it("starts the end roll on confirm, once the delay is over", () => {
+    // KDA-323: the ALL CLEAR card has no Continue. Its lines type in, it
+    // holds STORY_END.hold seconds, then the end roll starts by itself.
+    const roll = {
+        kind: "endRoll",
+        mode: "solo",
+        difficulty: "hard",
+        elapsed: { seconds: 0 },
+    } as const
+
+    it("starts the end roll by itself, once the card has typed in and held", () => {
         const end = finish(storyGame(last, 900), "won", 100)
-        expect(update(end, p1("confirm"), deps())).toBe(end)
-        expect(afterDelay(end, deps(), "confirm")).toEqual({
-            kind: "endRoll",
-            mode: "solo",
+        if (end.kind !== "storyEnd") throw new Error(end.kind)
+        const d = deps({ dt: 0.05 })
+        const seconds = storyEndSeconds(storyEndCard(end, d.progress))
+        expect(seconds).toBeGreaterThan(STORY_END.hold)
+        let screen: Screen = end
+        let ticks = 0
+        while (screen.kind === "storyEnd" && ticks < 1000) {
+            screen = update(screen, none, d)
+            ticks++
+        }
+        expect(screen).toEqual(roll)
+        // On the first tick at or after its length, not before.
+        expect(ticks).toBe(Math.ceil(seconds / 0.05 - 1e-6))
+    })
+
+    it("ignores every press while it shows: nothing skips or leaves it", () => {
+        const end = finish(storyGame(last, 900), "won", 100)
+        if (end.kind !== "storyEnd") throw new Error(end.kind)
+        const d = deps({ dt: 0.05 })
+        const seconds = storyEndSeconds(storyEndCard(end, d.progress))
+        const presses = [
+            p1("confirm"),
+            p1("pause"),
+            p1("breath"),
+            p1("left", "up"),
+            input([[], ["confirm", "pause"]]),
+        ]
+        let screen: Screen = end
+        for (let t = 0.05; t < seconds - 0.05; t += 0.05) {
+            for (const press of presses) {
+                expect(update(screen, press, { ...d, dt: 0 })).toBe(screen)
+            }
+            screen = update(screen, presses[0]!, d)
+            expect(screen.kind).toBe("storyEnd")
+        }
+        // A tap on it selects nothing.
+        expect(selectItem(screen, 0)).toBe(screen)
+    })
+
+    it("waits while the window is out of focus", () => {
+        const end = finish(storyGame(last, 900), "won", 100)
+        const away = deps({ dt: 1, focused: false })
+        let screen: Screen = end
+        for (let i = 0; i < 20; i++) screen = update(screen, none, away)
+        expect(screen).toBe(end)
+        expect(end).toMatchObject({ shown: { seconds: 0 } })
+        expect(update(screen, none, deps({ dt: 10 }))).toEqual(roll)
+    })
+
+    it("shows the best at the difficulty, in 1-player only", () => {
+        const end = finish(storyGame(last, 900), "won", 100)
+        if (end.kind !== "storyEnd") throw new Error(end.kind)
+        const progress = { ...emptyProgress(), storyBests: { hard: 5000 } }
+        expect(storyEndCard(end, progress)).toEqual({
             difficulty: "hard",
-            elapsed: { seconds: 0 },
+            runTotal: 1000,
+            best: 5000,
+        })
+        expect(storyEndCard({ ...end, mode: "coop" }, progress)).toEqual({
+            difficulty: "hard",
+            runTotal: 1000,
         })
     })
 

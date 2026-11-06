@@ -515,30 +515,66 @@ export function showStoryClear(view: StoryClearView) {
     })
 }
 
-// What the story mode's ending shows.
-export type StoryEndView = {
-    difficulty?: string
-    runTotal: number
-    // The best story score at the difficulty, this run's included; left
-    // out when there is none to show (a 2-player run records nothing).
-    best?: number
-    items: readonly MenuItem[]
+// The story mode's ending (KDA-323): the ALL CLEAR card, drawn on a
+// pixel canvas of `width` x `height` (storyEndView.ts) over the backdrop,
+// the frozen maze behind it. It has nothing to tap. `label` says what the
+// card says, for screen readers. It stays up while the card plays, so main
+// draws on the same canvas each frame. Returns that canvas.
+export function showStoryEnd(
+    width: number,
+    height: number,
+    label: string
+): HTMLCanvasElement {
+    const shown = document.querySelector<HTMLCanvasElement>(
+        "#overlay.story-end canvas"
+    )
+    if (shown) {
+        shown.setAttribute("aria-label", label)
+        return shown
+    }
+    hideOverlay()
+    const backdrop = document.createElement("div")
+    backdrop.id = "backdrop"
+    backdrop.className = "backdrop"
+    const page = document.createElement("div")
+    page.id = "overlay"
+    page.className = "story-end"
+    page.dataset.screen = "story-end"
+    const canvas = document.createElement("canvas")
+    canvas.width = width
+    canvas.height = height
+    canvas.setAttribute("role", "img")
+    canvas.setAttribute("aria-label", label)
+    page.appendChild(canvas)
+    document.body.append(backdrop, page)
+    return canvas
 }
 
-// The last stage of a story run is cleared: the run total, the best, and
-// thanks.
-export function showStoryEnd(view: StoryEndView) {
-    show({
-        id: "story-end",
-        title: "🎉 The end",
-        lines: [
-            ...difficultyLine(view.difficulty),
-            `Run total ${view.runTotal}`,
-            ...(view.best === undefined ? [] : [`Best ${view.best}`]),
-            "Thanks for playing!",
-        ],
-        items: view.items,
-    })
+// The pixel confetti's layer (pixelConfetti.ts): a canvas over the whole
+// window, under the end roll, that lets taps through. Its pixels are as
+// big as the end roll's would be in this window, so the bits match the
+// card's. Made on first use; hideConfetti takes it away.
+export function showConfetti(): HTMLCanvasElement {
+    let canvas = document.querySelector<HTMLCanvasElement>("#confetti")
+    if (!canvas) {
+        canvas = document.createElement("canvas")
+        canvas.id = "confetti"
+        canvas.className = "confetti"
+        canvas.setAttribute("aria-hidden", "true")
+        document.body.appendChild(canvas)
+    }
+    const w = window.innerWidth || 256
+    const h = window.innerHeight || 224
+    const scale = Math.max(1, Math.min(w / 256, h / 224))
+    const width = Math.ceil(w / scale)
+    const height = Math.ceil(h / scale)
+    if (canvas.width !== width) canvas.width = width
+    if (canvas.height !== height) canvas.height = height
+    return canvas
+}
+
+export function hideConfetti() {
+    document.getElementById("confetti")?.remove()
 }
 
 // The difficulty, the score, then with two players each one's share: on

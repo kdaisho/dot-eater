@@ -120,6 +120,43 @@ body[data-dpad="on"][data-touch="on"] #play {
     width: min(100%, calc(100dvh * 256 / 224));
 }
 
+/* The story end's ALL CLEAR card (src/storyEndView.ts): a pixel canvas
+   the end roll's size, clear round the card, over the backdrop. */
+.story-end {
+    align-items: center;
+    display: flex;
+    height: 100vh;
+    height: 100dvh;
+    justify-content: center;
+    left: 0;
+    position: fixed;
+    top: 0;
+    width: 100%;
+    z-index: 11;
+}
+
+.story-end canvas {
+    aspect-ratio: 256 / 224;
+    image-rendering: pixelated;
+    max-height: 100%;
+    max-width: 100%;
+    width: min(100%, calc(100dvh * 256 / 224));
+}
+
+/* The ending's pixel confetti (src/pixelConfetti.ts), over the game and
+   the card, under the end roll; taps go through. */
+.confetti {
+    height: 100vh;
+    height: 100dvh;
+    image-rendering: pixelated;
+    left: 0;
+    pointer-events: none;
+    position: fixed;
+    top: 0;
+    width: 100%;
+    z-index: 20;
+}
+
 /* The Cards page (src/cardsView.ts), over everything like the end roll, in
    its colours. --s is screen pixels per card pixel: the card as big as
    fits, with the bar, arrows and dots, which grow with it (--u, a pixel

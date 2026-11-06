@@ -593,7 +593,11 @@ describe("story mode (KDA-271)", () => {
         rating,
     } as const
     const storyClear: Screen = { kind: "storyClear", ...cleared, next: 1 }
-    const storyEnd: Screen = { kind: "storyEnd", ...cleared }
+    const storyEnd: Screen = {
+        kind: "storyEnd",
+        ...cleared,
+        shown: { seconds: 0 },
+    }
 
     it("plays the title tune on the story menus", () => {
         for (const screen of [playSelect, storyMenu])
@@ -640,6 +644,22 @@ describe("story mode (KDA-271)", () => {
         expect(menuSound(storyClear, playing(1))).toBe("confirm")
         expect(menuSound(ending, storyClear)).toBeUndefined()
         expect(menuSound(ending, storyEnd)).toBeUndefined()
+    })
+
+    // KDA-323: the ALL CLEAR card starts the end roll by itself, with its
+    // music and no confirm sound: nobody pressed anything.
+    it("starts the end roll quietly from the ALL CLEAR card", () => {
+        const roll: Screen = {
+            kind: "endRoll",
+            mode: "solo",
+            difficulty: "medium",
+            elapsed: { seconds: 0 },
+        }
+        expect(menuSound(storyEnd, roll)).toBeUndefined()
+        expect(musicForScreen(roll)).toEqual({
+            track: "endRoll",
+            paused: false,
+        })
     })
 
     // Regression: the card starting the next stage by itself played the

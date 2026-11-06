@@ -222,6 +222,16 @@ describe("createParticles", () => {
         expect(particles.list).toHaveLength(MAX_PARTICLES)
     })
 
+    // Regression (KDA-323): the final boss's debris fell back to discs,
+    // though it is meant to be pixel squares, 3 px at the 2x view.
+    it("flings the final boss's debris as squares", () => {
+        const particles = createParticles({ random: fixed(0.5) })
+        particles.burst("bossDefeat", vec2(0, 0))
+        expect(particles.list.length).toBeGreaterThan(0)
+        expect(particles.list.every((p) => p.shape === "square")).toBe(true)
+        expect(BURSTS.bossDefeat.size * 20).toBeCloseTo(3)
+    })
+
     it("clears every particle", () => {
         const particles = createParticles({ random: fixed(0.5) })
         particles.emit(LOOK, vec2(0, 0))
