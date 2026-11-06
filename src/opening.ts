@@ -1,10 +1,18 @@
 // The opening before the title: the studio logo, waiting for a press (which
 // is also the gesture that lets the browser play sound), then held alone,
 // then the Dot Eater logo rising to the opening track with the final boss
-// behind it. On the drum hit the boss's eyes flare and the menu (Start,
-// Continue) appears; the boss's minions then dash across every few
-// seconds, and the R's corner shines once they're gone. Timing and layout
+// behind it, under twinkling stars and over the dark castle's maze
+// (stage 10's, dimmed). On the drum hit the boss's eyes flare, its colours
+// fade in and the menu (Start, Continue) appears; a pack then dashes along
+// the maze's bottom corridor every few seconds (the boss's minions, or the
+// Kitsune chased by the heroes), and the R's corner shines once it's gone
+// (KDA-323, opening A with stage 10's maze behind). Timing and layout
 // here; flow.ts runs the screen and openingView.ts draws it. No DOM access.
+
+import { Cell } from "./constants"
+import type { Level } from "./level"
+import { spriteSize, type SpriteId } from "./sprites"
+import { ART, TileCode } from "./tiles"
 
 // The screen is drawn at the console's size and scaled up.
 export const OPENING_WIDTH = 256
@@ -40,26 +48,145 @@ export function logoTop(seconds: number): number {
     return Math.round(START_TOP + (LOGO_TOP - START_TOP) * p)
 }
 
-// The minions' pack: it first runs PACK_DELAY seconds after the drum, then
-// every PACK_LAP seconds, right to left at PACK_SPEED pixels a second.
+// The boss is a silhouette until the drum; then its real colours fade in
+// over BOSS_REVEAL seconds. How far in they are, 0–1.
+export const BOSS_REVEAL = 0.5
+export function bossReveal(seconds: number): number {
+    return Math.min(1, Math.max(0, (seconds - OPENING_DRUM) / BOSS_REVEAL))
+}
+
+// ---------- the sky: twinkling stars ----------
+
+// A star: its pixel, and a number in [0, 1) setting its brightness, its
+// colour and when it twinkles.
+export type SkyStar = { x: number; y: number; p: number }
+
+// 60 stars over the screen, the same on every load.
+export const SKY_STARS: readonly SkyStar[] = (() => {
+    let s = 7
+    const next = () => {
+        s = (s * 1664525 + 1013904223) >>> 0
+        return s / 4294967296
+    }
+    return Array.from({ length: 60 }, () => ({
+        x: Math.floor(next() * OPENING_WIDTH),
+        y: Math.floor(next() * OPENING_HEIGHT),
+        p: next(),
+    }))
+})()
+
+// Whether `star` shows `seconds` into the track: each is out for a sixth
+// of every 1.5 s, at its own moment.
+export function starShown(star: SkyStar, seconds: number): boolean {
+    return (seconds * 2 + star.p * 9) % 3 > 0.5
+}
+
+// ---------- the dark castle's maze behind it all ----------
+
+// Share of the maze's own colour kept when dimmed over the night sky.
+export const MAZE_KEEP = 0.4
+
+// Each cell's TileCode for drawing `level`'s map as it starts: walls,
+// floor and its dots (a boss stage's growing back), no ice or rubble.
+export function mazeCodes(level: Level): Uint8Array {
+    const rows = level.cells.length
+    const cols = level.cells[0]?.length ?? 0
+    const codes = new Uint8Array(cols * rows)
+    const regrow = level.rules.regrowDots !== undefined
+    level.cells.forEach((row, y) =>
+        row.forEach((cell, x) => {
+            let code: number =
+                cell === Cell.wall ? TileCode.wall : TileCode.floor
+            if (cell === Cell.dot) {
+                code |= TileCode.dot
+                if (regrow) code |= TileCode.regrow
+            }
+            codes[y * cols + x] = code
+        })
+    )
+    return codes
+}
+
+// Blend RGBA `pixels` in place towards `bg` ([r, g, b]), keeping `keep` of
+// each colour; clear pixels stay clear.
+export function dimPixels(
+    pixels: Uint8ClampedArray,
+    bg: readonly [number, number, number],
+    keep = MAZE_KEEP
+) {
+    for (let i = 0; i < pixels.length; i += 4) {
+        if (pixels[i + 3] === 0) continue
+        for (let c = 0; c < 3; c++) {
+            pixels[i + c] = Math.round(
+                pixels[i + c]! * keep + bg[c]! * (1 - keep)
+            )
+        }
+    }
+}
+
+// Where a `cols` x `rows` map's art (ART pixels a cell) sits: centred on
+// the screen, at whole pixels.
+export function mazeBox(cols: number, rows: number) {
+    const width = cols * ART
+    const height = rows * ART
+    return {
+        left: Math.floor((OPENING_WIDTH - width) / 2),
+        top: Math.floor((OPENING_HEIGHT - height) / 2),
+        width,
+        height,
+    }
+}
+
+// The runners' feet, for a map `rows` tall placed by mazeBox: the bottom
+// pixel row of its bottom corridor (the row above the outer wall).
+export function runnerFeet(rows: number): number {
+    return mazeBox(0, rows).top + (rows - 1) * ART - 1
+}
+
+// ---------- the pack ----------
+
+// It first runs PACK_DELAY seconds after the drum, then every PACK_LAP
+// seconds, right to left at PACK_SPEED pixels a second. Each runner is a
+// sprite (facing left as drawn), its lag behind the first (pixels) and its
+// height offset.
 export const PACK_DELAY = 0.9
 export const PACK_LAP = 7
 export const PACK_SPEED = 120
-// Each runner's lag behind the first (pixels) and its height offset.
-export const PACK: readonly (readonly [lag: number, dy: number])[] = [
-    [0, 0],
-    [26, 6],
-    [50, -4],
-    [78, 4],
-    [100, -2],
+export type Runner = { id: SpriteId; lag: number; dy: number }
+
+const pack = (
+    ids: readonly SpriteId[],
+    lag: (k: number) => number,
+    dys: readonly number[]
+): Runner[] => ids.map((id, k) => ({ id, lag: lag(k), dy: dys[k] ?? 0 }))
+
+// The boss's eight minions.
+export const MINION_PACK: readonly Runner[] = pack(
+    ["tengu", "oni", "fox", "robot", "ghost", "splitter", "snake", "wolf"],
+    (k) => k * 22,
+    [0, 5, -3, 3, -1, 4, -2, 2]
+)
+// The Kitsune, chased by the five heroes.
+export const HERO_PACK: readonly Runner[] = [
+    { id: "kitsune", lag: 0, dy: 2 },
+    ...pack(
+        ["dragon", "penguin", "owl", "skunk", "boar"],
+        (k) => 56 + k * 24,
+        [0, 4, -2, 3, -1]
+    ),
 ]
-// How wide a runner is drawn, in pixels.
-export const RUNNER_WIDTH = 16
 
 // Seconds into the pack's current run, or undefined before its first.
 export function packLap(seconds: number): number | undefined {
     const since = seconds - OPENING_DRUM - PACK_DELAY
     return since < 0 ? undefined : since % PACK_LAP
+}
+
+// Which pack runs `seconds` into the track: the minions on the first run
+// and every other one after, the Kitsune and the heroes in between.
+export function packAt(seconds: number): readonly Runner[] {
+    const run = Math.floor((seconds - OPENING_DRUM - PACK_DELAY) / PACK_LAP)
+    return run % 2 === 1 ? HERO_PACK : MINION_PACK
 }
 
 // A runner's left edge `lap` seconds into a run: it starts just off the
@@ -68,10 +195,20 @@ export function runnerX(lag: number, lap: number): number {
     return OPENING_WIDTH + 10 + lag - lap * PACK_SPEED
 }
 
-// Seconds into a run when its last runner has left the screen: the R's
-// corner shines then.
+// How wide a runner is drawn, in pixels (its sprite's width).
+export function runnerWidth(runner: Runner): number {
+    return spriteSize({ id: runner.id })[0]
+}
+
+// Seconds into a run when its last runner has left the screen, the same
+// for either pack (the longer one's): the R's corner shines then.
 export const PACK_GONE =
-    (OPENING_WIDTH + 10 + PACK[PACK.length - 1]![0] + RUNNER_WIDTH) / PACK_SPEED
+    (OPENING_WIDTH +
+        10 +
+        Math.max(
+            ...[...MINION_PACK, ...HERO_PACK].map((r) => r.lag + runnerWidth(r))
+        )) /
+    PACK_SPEED
 export const SHINE_SECONDS = 0.6
 
 // How far through the R's shine `seconds` into the track is, 0–1, or
