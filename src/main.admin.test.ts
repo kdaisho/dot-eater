@@ -74,8 +74,12 @@ describe("main's debug mode", () => {
         expect(admin()).toBeNull()
         expect(location.hash).toBe("")
         expect(screen()).toBe("story-end")
+        // The ALL CLEAR card takes no press, and starts the end roll by
+        // itself (KDA-323).
         vi.advanceTimersByTime(2000)
         pressAndTick("Space")
+        expect(screen()).toBe("story-end")
+        vi.advanceTimersByTime(4000)
         expect(screen()).toBe("end-roll")
 
         // Back to the title, then stage select: every stage open.

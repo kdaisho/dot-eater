@@ -179,8 +179,9 @@ export const END_ROLL = {
     // The first card comes in.
     start: 1.2,
     // Each card's turn: slide in, rest, slide out, then the spotlight
-    // sweeps back across to fetch the next card.
-    perCard: 4,
+    // sweeps back across to fetch the next card. 3.6 s each (KDA-323, the
+    // cast in 54 s), which leaves the finale 22.8 s for the staff.
+    perCard: 3.6,
     slideIn: 0.35,
     slideOut: 0.3,
     fetch: 0.3,
@@ -284,7 +285,8 @@ export function beamX(t: number): number {
 
 // The staff credit showing `v` seconds into the finale (index into STAFF),
 // and how long it has shown; undefined before the first and in the gaps.
-export const STAFF_FROM = 3.8
+// From 3.2 s in, each has 4.9 s, 4.5 of them on screen.
+export const STAFF_FROM = 3.2
 export function staffAt(
     v: number
 ): { index: number; shown: number } | undefined {

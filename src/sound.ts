@@ -244,6 +244,8 @@ export function menuSound(prev: Screen, next: Screen): SfxId | undefined {
     // The story clear card starting the next stage by itself: nobody
     // pressed anything, so no confirm.
     if (prev.kind === "storyClear" && storyCardTimedOut(prev)) return undefined
+    // The ALL CLEAR card always starts the end roll by itself (KDA-323).
+    if (prev.kind === "storyEnd") return undefined
     if (isBack(prev, next)) return SfxId.back
     return SfxId.confirm
 }

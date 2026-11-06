@@ -1,7 +1,9 @@
 // Draws the end roll (endRoll.ts) on its own 256x224 canvas, in the look
 // of the title's Gold style: a night sky, a UFO spotlighting each card, thick gold
 // cards whose portraits are mosaics of raised tiles, speed lines, and
-// THE END in extruded block letters. Every frame is drawn from the time
+// THE END in extruded block letters. Its words are in the ending's 5x7
+// pixel font (pixelFont.ts, upper case only); only the cards' numbers
+// keep the cards' web font. Every frame is drawn from the time
 // alone, so it can be paused, skipped or redrawn anywhere. DOM: it makes
 // the cards' offscreen canvases. No listeners or timers.
 
@@ -17,7 +19,6 @@ import {
     portrait,
     rect,
     rounded,
-    text,
     type Ctx,
 } from "./cardArt"
 import { DIFFICULTY_LABELS, type Difficulty } from "./difficulty"
@@ -36,6 +37,7 @@ import {
     STAFF,
     type CastCard,
 } from "./endRoll"
+import { blockWord, pixelText as text } from "./pixelFont"
 import { drawPixels, SpriteId, SPRITES } from "./sprites"
 
 export const END_ROLL_WIDTH = 256
@@ -152,63 +154,6 @@ function prop(g: Ctx, name: string, x: number, y: number, s = 1) {
                 PALETTE[ch]
             )
         }
-    }
-}
-
-// ---------- block letters (the title's) ----------
-
-const GLYPHS: Record<string, readonly string[]> = {
-    T: ["11111", "..1..", "..1..", "..1..", "..1..", "..1..", "..1.."],
-    H: ["1...1", "1...1", "1...1", "11111", "1...1", "1...1", "1...1"],
-    E: ["11111", "1....", "1....", "1111.", "1....", "1....", "11111"],
-    N: ["1...1", "11..1", "1.1.1", "1..11", "1...1", "1...1", "1...1"],
-    D: ["1111.", "1...1", "1...1", "1...1", "1...1", "1...1", "1111."],
-}
-const CELL = 4
-const DEPTH = 4
-
-// A word in extruded gold block letters, centred on cx. `rise` (0 to 1)
-// pops the letters up one by one.
-function blockWord(g: Ctx, word: string, cx: number, y: number, rise = 1) {
-    const letters: { ch: string; x: number }[] = []
-    let x = 0
-    for (const ch of word) {
-        if (ch === " ") {
-            x += 10
-            continue
-        }
-        letters.push({ ch, x })
-        x += 5 * CELL + 4
-    }
-    const width = x - 4
-    const cells: { x: number; y: number }[] = []
-    letters.forEach((l, i) => {
-        const p = clamp01(rise * (letters.length + 2) - i)
-        if (p <= 0) return
-        const pop = p < 1 ? Math.round((1 - p) * 8) * 2 - (p > 0.6 ? 4 : 0) : 0
-        const wave = Math.round(Math.sin(i * 0.8) * 3)
-        const left = cx - width / 2 + l.x
-        GLYPHS[l.ch].forEach((row, r) => {
-            for (let k = 0; k < row.length; k++) {
-                if (row[k] === "1")
-                    cells.push({
-                        x: left + k * CELL,
-                        y: y + wave + pop + r * CELL,
-                    })
-            }
-        })
-    })
-    for (const c of cells)
-        rect(g, c.x - 1, c.y - 1, CELL + 2, CELL + 2, GOLD.dark)
-    for (let d = DEPTH; d >= 1; d--) {
-        for (const c of cells) {
-            rect(g, c.x + d - 1, c.y + d - 1, CELL + 2, CELL + 2, GOLD.dark)
-            rect(g, c.x + d, c.y + d, CELL, CELL, GOLD.side)
-        }
-    }
-    for (const c of cells) {
-        rect(g, c.x, c.y, CELL, CELL, GOLD.face)
-        rect(g, c.x, c.y, CELL, 1, GOLD.light)
     }
 }
 
@@ -387,7 +332,7 @@ function dust(g: Ctx, lx: number, tx: number, t: number) {
     const r = seeded(11)
     for (let i = 0; i < 18; i++) {
         const f = (r() + t * (0.03 + r() * 0.03)) % 1
-        const y = 8 + f * (POOL_Y - 12)
+        const y = LAMP_Y + f * (POOL_Y - LAMP_Y - 4)
         const cx = lx + (tx - lx) * (y / POOL_Y)
         const x = cx + (r() - 0.5) * (8 + f * 120) + Math.sin(t * 2 + i) * 3
         if ((t * 3 + i) % 2 < 0.4) continue
@@ -401,11 +346,14 @@ function dust(g: Ctx, lx: number, tx: number, t: number) {
 // the card at `cardX`, with dust in the beam. The beam stutters now and
 // then (lampPower), as if the UFO's light were on the blink.
 const LAMP_X = 28
-const LAMP_Y = 27
+// The saucer hovers 2 px either side of SAUCER_Y (its top), so it stays
+// SAFE_EDGE clear of the top edge; its lamp is LAMP_Y.
+const SAUCER_Y = 13
+const LAMP_Y = SAUCER_Y + 26
 // `beamTo` is where the beam points; a card at `cardX` casts its shadow.
 function spotlight(g: Ctx, beamTo: number, t: number, cardX?: number) {
     const power = lampPower(t)
-    const y = 1 + Math.round(Math.sin(t * Math.PI * 0.8)) * 2
+    const y = SAUCER_Y + Math.round(Math.sin(t * Math.PI * 0.8)) * 2
     beam(g, LAMP_X, y + 26, beamTo, power)
     if (cardX !== undefined && power > 0.5) shadow(g, cardX)
     if (power === 1) dust(g, LAMP_X, beamTo, t)
@@ -435,7 +383,7 @@ function ufo(g: Ctx, t: number) {
     const p = ufoAt(t)
     if (p === undefined) return
     const x = W + 12 - p * (W + 30)
-    const y = 9 + Math.round(Math.sin(p * Math.PI * 3) * 2)
+    const y = 14 + Math.round(Math.sin(p * Math.PI * 3) * 2)
     g.globalAlpha = 0.5
     rect(g, x + 10, y + 2, 14, 1, C.sky)
     g.globalAlpha = 1
@@ -480,6 +428,29 @@ function castCard(g: Ctx, all: Card[], index: number, u: number, t: number) {
     text(g, typed(card.line, v - 0.5), W / 2, 200, C.white)
 }
 
+// Nothing rests closer than this to the top or bottom edge (of 224), so
+// the picture doesn't touch the window's edge when it fills a tall one.
+export const SAFE_EDGE = 12
+
+// The finale's layout (KDA-323), inside SAFE_EDGE: the grid's rows (mini
+// cards' middles) from GRID_TOP, GRID_PITCH apart, so the cards span y 16
+// to 134 with their depth (12 at the top of the wave's hop); the staff's
+// role at STAFF_Y, its names NAME_GAP and then NAME_PITCH below it, to
+// about 175; the heroes run at HEROES_Y to 200 (180 at the top of a hop);
+// © at COPY_Y to 211.
+export const FINALE_LAYOUT = {
+    gridTop: 36,
+    gridPitch: 38,
+    staffY: 140,
+    nameGap: 16,
+    namePitch: 12,
+    heroesY: 184,
+    copyY: 204,
+} as const
+const GRID_TOP = FINALE_LAYOUT.gridTop
+const GRID_PITCH = FINALE_LAYOUT.gridPitch
+const STAFF_Y = FINALE_LAYOUT.staffY
+
 function finale(g: Ctx, all: Card[], v: number, t: number) {
     backdrop(g, t)
     // The cards are dealt into three rows of 5 (the heroes, then the
@@ -493,14 +464,15 @@ function finale(g: Ctx, all: Card[], v: number, t: number) {
         const tx = W / 2 + (col - 2) * 40
         const x = W + 40 + (tx - W - 40) * easeOutBack(p)
         const wave = v > 3.2 ? hop(v - col * 0.08 - row * 0.3, 1, 4) : 0
-        drawMini(g, card, x, 24 + row * 43 - wave)
+        drawMini(g, card, x, GRID_TOP + row * GRID_PITCH - wave)
     })
     const staff = staffAt(v)
     if (staff) {
         const { role, names, icon } = STAFF[staff.index]
-        text(g, typed(role, staff.shown, 30), W / 2, 140, C.menu)
+        text(g, typed(role, staff.shown, 30), W / 2, STAFF_Y, C.menu)
         names.forEach((name, i) => {
-            const y = 158 + i * 16
+            const y =
+                STAFF_Y + FINALE_LAYOUT.nameGap + i * FINALE_LAYOUT.namePitch
             const last = i === names.length - 1
             const shown = staff.shown - 0.3 - i * 0.5
             // With an icon, the name and the icon are centred together.
@@ -523,14 +495,15 @@ function finale(g: Ctx, all: Card[], v: number, t: number) {
                 g,
                 runningRight(h, step),
                 x,
-                196 - hop(v + i * 0.2, 2, 4)
+                FINALE_LAYOUT.heroesY - hop(v + i * 0.2, 2, 4)
             )
         })
     }
+    text(g, "©2026 DAISHODESIGN", W / 2, FINALE_LAYOUT.copyY, C.copy)
 }
 
 function theEnd(g: Ctx, u: number, y: number) {
-    blockWord(g, "THE END", W / 2, y, clamp01(u / 1.4))
+    blockWord(g, "THE END", W / 2, y, { rise: clamp01(u / 1.4) })
 }
 
 function ending(g: Ctx, all: Card[], u: number, difficulty: Difficulty) {
@@ -581,15 +554,16 @@ function ending(g: Ctx, all: Card[], u: number, difficulty: Difficulty) {
             drawPixels(g, { id: SpriteId.finalBoss }, W / 2 + 8, 146 - b, 2)
         }
     } else {
-        // Easy and Medium: the Dragon's card over THE END.
-        if (u > 0.3) drawCard(g, all[0], W / 2, 66)
-        theEnd(g, u - 0.8, 140)
+        // Easy and Medium: the Dragon's card over THE END, its top
+        // SAFE_EDGE down.
+        if (u > 0.3) drawCard(g, all[0], W / 2, SAFE_EDGE + CH / 2)
+        theEnd(g, u - 0.8, 144)
         if (u > 3)
             text(
                 g,
                 DIFFICULTY_LABELS[difficulty].toUpperCase(),
                 W / 2,
-                182,
+                186,
                 C.menu
             )
     }

@@ -38,6 +38,7 @@ import {
     type SettingsContext,
 } from "./settingsMenu"
 import { SOUNDTRACK } from "./soundtrack"
+import { storyEndSeconds, type StoryEndCard } from "./storyEnd"
 import { tutorialPages } from "./tutorial"
 import { rateClear, type ClearRating } from "./stars"
 
@@ -201,8 +202,10 @@ import { rateClear, type ClearRating } from "./stars"
 // (FlowDeps.focused; a game that starts unfocused starts paused, so none
 // ever starts unwatched). When the next stage isn't built yet the card says "To
 // be continued" instead, and confirm goes to the title. Clearing the last
-// stage slot (STAGE_COUNT) goes to storyEnd, whose confirm starts the end
-// roll (endRoll.ts): the credits, timed to their music. A press during the
+// stage slot (STAGE_COUNT) goes to storyEnd, the ALL CLEAR card
+// (storyEnd.ts), which takes no input and starts the end roll by itself
+// once its lines have typed in and held (endRoll.ts): the credits, timed to
+// their music. A press during the
 // roll skips to its THE END, and a press there goes to the title. A lost stage goes to gameOver, whose menu in a run is
 // STORY_END_CHOICES: Retry plays the stage again from the run total it
 // started with, Quit goes to the title, as the pause menu's Quit does in
@@ -499,7 +502,9 @@ export type Screen =
           game: GameState
           run: Run
           rating: ClearRating
-          shown?: ShownFor
+          // How long the card has shown with the window focused, towards
+          // storyEndSeconds; its clock (see storyEnd.ts).
+          shown: ShownFor
       }
     | {
           // The end roll after storyEnd: the credits, then THE END for
@@ -711,7 +716,7 @@ function updateScreen(
         case "storyClear":
             return updateStoryClear(screen, input, deps)
         case "storyEnd":
-            return updateStoryEnd(screen, input, deps)
+            return updateStoryEnd(screen, deps)
         case "endRoll":
             return updateEndRoll(screen, input, deps)
         default: {
@@ -1503,14 +1508,46 @@ export function storyCardTimedOut(
     )
 }
 
-// The ending: confirm goes to the title.
+// What the story end card shows: the run's difficulty and total, and the
+// best story score at the difficulty (main records this run's first), in
+// 1-player only.
+export function storyEndCard(
+    screen: Extract<Screen, { kind: "storyEnd" }>,
+    progress: Progress
+): StoryEndCard {
+    const best = recordsProgress(screen.mode)
+        ? progress.storyBests?.[screen.difficulty]
+        : undefined
+    return {
+        difficulty: screen.difficulty,
+        runTotal: runTotal(screen),
+        ...(best === undefined ? {} : { best }),
+    }
+}
+
+// Whether `screen` is the play or the outro of a story run's last stage:
+// the one that goes on to storyEnd when won.
+export function endsTheStory(screen: Screen): boolean {
+    return (
+        (screen.kind === "playing" || screen.kind === "ending") &&
+        screen.run !== undefined &&
+        screen.level + 1 >= STAGE_COUNT
+    )
+}
+
+// The ending's ALL CLEAR card takes no input (no press skips or leaves
+// it): once its lines have typed in and held (storyEndSeconds), counted
+// only while the window is focused, the end roll starts by itself.
 function updateStoryEnd(
     screen: Extract<Screen, { kind: "storyEnd" }>,
-    input: TickInput,
     deps: FlowDeps
 ): Screen {
-    const ready = confirmReady(screen.shown, deps.dt)
-    return ready && input.wasPressed("confirm")
+    if (deps.focused !== false) screen.shown.seconds += deps.dt
+    // The epsilon absorbs float drift from summing dt.
+    const over =
+        screen.shown.seconds >=
+        storyEndSeconds(storyEndCard(screen, deps.progress)) - 1e-9
+    return over
         ? {
               kind: "endRoll",
               mode: screen.mode,
