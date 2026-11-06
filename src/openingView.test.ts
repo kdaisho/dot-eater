@@ -74,10 +74,18 @@ const BOSS_COLORS = new Set(
 )
 
 describe("drawOpening's title", () => {
-    it("draws the final stage's maze, dimmed, behind it from the start", () => {
+    it("draws no maze before the drum", () => {
+        for (const s of [0, 1, OPENING_DRUM - 0.01]) {
+            const { g, images } = recorder()
+            drawOpening(g, frame(s))
+            expect(images).toHaveLength(0)
+        }
+    })
+
+    it("draws the final stage's maze, dimmed, from the drum on", () => {
         const final = levels[levels.length - 1]!
         const box = mazeBox(final.width, final.height)
-        for (const s of [0, OPENING_DRUM - 1, OPENING_DRUM + 3]) {
+        for (const s of [OPENING_DRUM, OPENING_DRUM + 0.1, OPENING_DRUM + 3]) {
             const { g, images } = recorder()
             drawOpening(g, frame(s))
             expect(images).toHaveLength(1)
@@ -88,7 +96,7 @@ describe("drawOpening's title", () => {
             })
         }
         const { g, images } = recorder()
-        drawOpening(g, frame(1))
+        drawOpening(g, frame(OPENING_DRUM + 1))
         const pixels = images[0]!.image.pixels!
         // its colours show at 40% over the sky: the walls' light band (#8f70c2)
         // shows, nothing comes near full brightness

@@ -400,7 +400,8 @@ function title(g: Ctx, f: OpeningFrame) {
             Math.floor(t * 30) % 2 ? 2 : -1
         )
     }
-    maze(g)
+    // The maze comes in on the drum, as the boss's eyes light.
+    if (t >= OPENING_DRUM) maze(g)
     const top = logoTop(t)
     boss(g, top, t)
     logo(g, top)

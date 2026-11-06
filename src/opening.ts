@@ -1,9 +1,9 @@
 // The opening before the title: the studio logo, waiting for a press (which
 // is also the gesture that lets the browser play sound), then held alone,
 // then the Dot Eater logo rising to the opening track with the final boss
-// behind it, under twinkling stars and over the dark castle's maze
-// (stage 10's, dimmed). On the drum hit the boss's eyes flare, its colours
-// fade in and the menu (Start, Continue) appears; a pack then dashes along
+// behind it, under twinkling stars. On the drum hit the boss's eyes flare,
+// its colours fade in, the dark castle's maze (stage 10's, dimmed) appears
+// behind it all and the menu (Start, Continue) appears; a pack then dashes along
 // the maze's bottom corridor every few seconds (the boss's minions, or the
 // Kitsune chased by the heroes), and the R's corner shines once it's gone
 // (KDA-323, opening A with stage 10's maze behind). Timing and layout
