@@ -103,7 +103,6 @@ export const MUSIC_TRIM_DB: Partial<Record<MusicTrackId, number>> = {
     stage7: -1,
     stage8: 1.5,
     stage9: -2.5,
-    stage10: -1.5,
 }
 
 // A tune's trim as a gain.

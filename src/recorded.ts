@@ -6,7 +6,7 @@
 //
 // Loop points were found by matching the music on both sides of the jump,
 // then tuned by ear. Credits: djartmusic (the opening, stages 1–3, the end
-// roll), phantasticbeats (stage 6), moodmode (stages 7 and 8),
+// roll), phantasticbeats (stage 6), moodmode (stages 7, 8 and 10),
 // nocopyrightsound633 (stage 9).
 //
 // The end roll's track ends on its own (its last hit rings out by 86 s),
@@ -79,8 +79,8 @@ export const RECORDED_TRACKS: RecordedTracks = {
     [MusicTrackId.stage9]: { url: gauntlet, loopStart: 32.8, loopEnd: 141.867 },
     [MusicTrackId.stage10]: {
         url: bossFinal,
-        loopStart: 9.3956,
-        loopEnd: 169.3663,
+        loopStart: 23.9457,
+        loopEnd: 66.6124,
     },
     [MusicTrackId.endRoll]: { url: endRoll, loopStart: 0, loopEnd: 86.1 },
 }
