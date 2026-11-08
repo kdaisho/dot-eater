@@ -2,10 +2,12 @@
 // with its own ending. The game's copies (recorded.ts) are cut a second
 // past their loop end, since the game loops them, so they stop mid-phrase
 // when played straight through. These are made from the same originals,
-// evened out to -14 LUFS (true peak -1 dB) at 128 kbps: the level music
-// apps play at, louder than the game's -16. Haunted Halls and Gauntlet
-// are made to loop and have no ending, so they fade out over their last
-// 6 s. Only the player page loads them.
+// each as loud as its game copy with its MUSIC_TRIM_DB trim (audio.ts, set
+// by ear in the mixer), all 2 dB up for a car (about -13 to -17 LUFS),
+// peaks limited to -1 dBFS, 128 kbps. Haunted Halls and Gauntlet are made
+// to loop and have no ending, so they fade out over their last 6 s. Only
+// the player page loads them. A change to the trims means re-rendering
+// these.
 
 import classic from "./assets/soundtrack/01-classic.mp3"
 import wrapMaze from "./assets/soundtrack/02-wrap-maze.mp3"
