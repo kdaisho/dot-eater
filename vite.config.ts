@@ -6,6 +6,16 @@ export default defineConfig(async ({ command, mode, isPreview }) => ({
     // `vp preview` runs with command "serve", so also check isPreview to serve
     // the built files under the same base they reference.
     base: command === "build" || isPreview ? "/dot-eater/" : "/",
+    // Two pages: the game, and the soundtrack player (KDA-332) at
+    // /dot-eater/soundtrack/.
+    build: {
+        rolldownOptions: {
+            input: {
+                main: "index.html",
+                soundtrack: "soundtrack/index.html",
+            },
+        },
+    },
     // The admin passphrase (src/admin.ts) comes from ADMIN_PASSPHRASE, in
     // .env.local or the environment (the deploy's secret). Only its hash
     // goes in the bundle; without it debug mode can't be turned on. Not a
