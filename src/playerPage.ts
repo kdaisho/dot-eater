@@ -148,8 +148,9 @@ function start() {
     const root = el("main", "player")
     const header = el("header", "player-head")
     const back = el("a", "back", "◀ Game")
-    // The game is one folder up, in dev and on Pages alike.
-    back.href = "../"
+    // The game is one folder up, in dev and on Pages alike; it opens on
+    // the title on Soundtrack (KDA-333).
+    back.href = "../?from=soundtrack"
     header.append(back, el("h1", "player-title", "Soundtrack"))
 
     const now = el("section", "now")
@@ -358,10 +359,12 @@ function start() {
     audio.addEventListener("seeked", showPosition)
     audio.addEventListener("ratechange", showPosition)
 
-    // Space plays and pauses, the arrows skip, for a keyboard.
+    // Space plays and pauses, the arrows skip, Escape goes back to the game,
+    // as on the game's own pages.
     document.addEventListener("keydown", (e) => {
         if (e.target instanceof HTMLInputElement) return
-        if (e.key === " ") {
+        if (e.key === "Escape") back.click()
+        else if (e.key === " ") {
             e.preventDefault()
             togglePlay()
         } else if (e.key === "ArrowRight") goNext(false)
