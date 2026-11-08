@@ -12,12 +12,10 @@ import {
     showGameOver,
     showPause,
     showSettings,
-    showSoundtrack,
     showStageClear,
     showStageSelect,
     showTitle,
     showToast,
-    showTrackProgress,
 } from "./ui"
 import type { StageSlot } from "./progress"
 import { ANIMAL_IDS, AnimalId, ANIMALS } from "./roster"
@@ -74,100 +72,6 @@ describe("showTitle", () => {
         expect(title()).toBe("Dot Eater")
         expect(lines()).toEqual(["Press Space to start"])
         expect(items()).toEqual([])
-    })
-})
-
-describe("showSoundtrack", () => {
-    const view = {
-        tracks: [
-            { name: "Opening", plays: "The opening", elapsed: 0, length: 100 },
-            { name: "Classic", plays: "Stage 1", elapsed: 30.6, length: 57.7 },
-            { name: "Fog", plays: "Stage 4", elapsed: 0, length: 82.6 },
-        ],
-        selected: 0,
-    }
-    const row = (i: number) =>
-        overlay()?.querySelector<HTMLElement>(`li[data-index='${i}']`)
-    const fill = (i: number) =>
-        row(i)?.querySelector<HTMLElement>(".menu-bar-fill")?.style.width
-    const time = (i: number) => row(i)?.querySelector(".menu-time")?.textContent
-
-    it("lists every track with where it plays, a bar and its time", () => {
-        showSoundtrack(view)
-        expectSingle()
-        expect(overlay()?.dataset.screen).toBe("soundtrack")
-        expect(title()).toBe("Soundtrack")
-        expect(lines()).toEqual([
-            "↑ ↓ to choose, Space to play or stop, Esc or B to go back",
-        ])
-        expect(
-            [...(overlay()?.querySelectorAll(".menu-detail") ?? [])].map(
-                (d) => d.textContent
-            )
-        ).toEqual(["The opening", "Stage 1", "Stage 4"])
-        expect(time(0)).toBe("0:00 / 1:40")
-        expect(time(1)).toBe("0:30 / 0:57")
-        expect(fill(1)).toBe("53%")
-        expect(fill(2)).toBe("0%")
-        expect(
-            overlayTap(overlay()?.querySelector("[data-back]") ?? null)
-        ).toEqual({ kind: "back" })
-        expect(overlayTap(row(2)!)).toEqual({ kind: "item", index: 2 })
-    })
-
-    const label = (i: number) =>
-        row(i)?.querySelector<HTMLElement>(".menu-label")
-    const marks = () =>
-        [
-            ...(overlay()?.querySelectorAll<HTMLElement>(".menu-label") ?? []),
-        ].map((l) => l.dataset.mark)
-
-    it("marks the cursor's row with ▶ and nothing else, not in its text", () => {
-        showSoundtrack(view)
-        expect(selected()).toHaveLength(1)
-        expect(row(0)?.classList.contains("selected")).toBe(true)
-        expect(marks()).toEqual(["▶", undefined, undefined])
-        expect(label(0)?.textContent).toBe("Opening")
-        expect(overlay()?.querySelector(".menu-value")).toBeNull()
-        expect(overlay()?.textContent).not.toMatch(/Play|Stop|▶|♪/)
-    })
-
-    it("marks the track playing with ♪, wherever the cursor is", () => {
-        showSoundtrack({ ...view, selected: 2, playing: 1 })
-        expect(row(1)?.classList.contains("playing")).toBe(true)
-        expect(overlay()?.querySelectorAll("li.playing")).toHaveLength(1)
-        expect(marks()).toEqual([undefined, "♪", "▶"])
-        expect(label(1)?.textContent).toBe("Classic")
-        // Screen readers hear it in words.
-        expect(row(1)?.querySelector(".visually-hidden")?.textContent).toBe(
-            " (playing)"
-        )
-        expect(row(2)?.querySelector(".visually-hidden")).toBeNull()
-    })
-
-    it("shows ♪, not ▶, when the cursor is on the track playing", () => {
-        showSoundtrack({ ...view, selected: 1, playing: 1 })
-        expect(marks()).toEqual([undefined, "♪", undefined])
-        expect(overlay()?.querySelector(".menu-value")).toBeNull()
-    })
-
-    it("says when sound is muted, on phones too", () => {
-        showSoundtrack({ ...view, muted: true })
-        expect(lines()[0]).toBe(
-            "Sound is muted: turn it on with 🔇 at the top right"
-        )
-        const hints = overlay()?.querySelectorAll("p.overlay-hint")
-        expect(hints).toHaveLength(1)
-        expect(hints?.[0]?.textContent).toContain("to play or stop")
-    })
-
-    it("moves a row's bar and time on in place", () => {
-        showSoundtrack({ ...view, playing: 1 })
-        const before = row(1)
-        showTrackProgress(1, 45, 57.7)
-        expect(row(1)).toBe(before)
-        expect(time(1)).toBe("0:45 / 0:57")
-        expect(fill(1)).toBe("78%")
     })
 })
 

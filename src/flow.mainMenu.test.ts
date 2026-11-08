@@ -18,8 +18,9 @@ import { fixedRandom, parseFlat, sameAtEvery } from "./test/helpers"
 import { vec2 } from "./vec2"
 
 // The title's main menu (KDA-318): the modes, the pages (Tutorial, Cards,
-// Soundtrack) and Settings, each page a screen of its own that Back leaves
-// for the title, on that page.
+// Soundtrack) and Settings. Tutorial and Cards are screens of their own
+// that Back leaves for the title, on that page; Soundtrack leaves for the
+// player page (flow.soundtrack.test.ts).
 
 const levels = [
     parseFlat({
@@ -108,8 +109,11 @@ describe("the main menu", () => {
     })
 })
 
-// Every page but Cards, which has its own tests (flow.cards.test.ts).
-const OTHER_PAGES = PAGE_CHOICES.filter((page) => page !== "cards")
+// Every page but Cards and Soundtrack, which have their own tests
+// (flow.cards.test.ts, flow.soundtrack.test.ts).
+const OTHER_PAGES = PAGE_CHOICES.filter(
+    (page) => page !== "cards" && page !== "soundtrack"
+)
 
 describe.each(OTHER_PAGES)("the %s page", (page) => {
     const index = TITLE_CHOICES.indexOf(page)

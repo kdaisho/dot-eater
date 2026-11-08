@@ -557,33 +557,6 @@ body[data-dpad="on"][data-touch="on"] #play {
     top: 0;
 }
 
-/* The playing track's ♪ bobs gently. */
-.overlay-menu li.playing .menu-label::before {
-    animation: menu-note-bob 0.8s steps(2) infinite;
-}
-
-@keyframes menu-note-bob {
-    to {
-        transform: translateY(-0.15em);
-    }
-}
-
-@media (prefers-reduced-motion: reduce) {
-    .overlay-menu li.playing .menu-label::before {
-        animation: none;
-    }
-}
-
-/* Text for screen readers only. */
-.visually-hidden {
-    clip-path: inset(50%);
-    height: 1px;
-    overflow: hidden;
-    position: absolute;
-    white-space: nowrap;
-    width: 1px;
-}
-
 /* A setting's value, after its label. */
 .overlay-menu .menu-value {
     margin-left: 0.5em;
@@ -596,40 +569,6 @@ body[data-dpad="on"][data-touch="on"] #play {
     font-size: var(--text-body);
     line-height: var(--leading);
     margin-top: 4px;
-}
-
-/* The soundtrack's track playing (KDA-321) shows at full strength. */
-.overlay-menu li.playing {
-    opacity: 1;
-}
-
-/* A track's progress bar and time, on a line of its own under it. */
-.overlay-menu .menu-progress {
-    align-items: center;
-    display: flex;
-    font-size: var(--text-small);
-    gap: 8px;
-    justify-content: center;
-    margin-top: 6px;
-}
-
-.overlay-menu .menu-bar {
-    background: rgba(255, 255, 255, 0.25);
-    display: block;
-    height: 4px;
-    max-width: 240px;
-    width: 50%;
-}
-
-.overlay-menu .menu-bar-fill {
-    background: #fff;
-    display: block;
-    height: 100%;
-    width: 0;
-}
-
-.overlay-menu .menu-time {
-    font-variant-numeric: tabular-nums;
 }
 
 .overlay-menu li.locked {

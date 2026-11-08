@@ -4,7 +4,6 @@ import { cardsPage } from "./cardsView"
 import { ACTIONS, type Action } from "./input"
 import type { StageSlot } from "./progress"
 import type { AnimalId, AnimalInfo } from "./roster"
-import { formatClock } from "./soundtrack"
 import { ANIMAL_SPRITES, paintSprite } from "./sprites"
 import { formatTicks, starList, starText, type ClearRating } from "./stars"
 import { TUTORIAL_TITLES } from "./tutorial"
@@ -61,13 +60,7 @@ export type MenuItem = {
     steps?: boolean
     // A short description, on a smaller line under the label.
     detail?: string
-    // A progress bar under it: how far along (0–1), and the text after it.
-    progress?: ItemProgress
-    // Marked as playing (the soundtrack's track).
-    playing?: boolean
 }
-
-export type ItemProgress = { share: number; text: string }
 
 // What the end screens show.
 export type EndScreenView = {
@@ -310,76 +303,6 @@ export function showTutorial(view: TutorialView) {
 export function showCards(index: number) {
     hideOverlay()
     document.body.appendChild(cardsPage(index))
-}
-
-// What the soundtrack page (KDA-321) shows: every track, in order.
-export type SoundtrackView = {
-    tracks: readonly {
-        name: string
-        // Where it plays ("Stage 1").
-        plays: string
-        // Seconds into the file, and the length that plays.
-        elapsed: number
-        length: number
-    }[]
-    // The cursor's track and the one playing, indexes into `tracks`.
-    selected: number
-    playing?: number
-    // Sound is muted, so the page says so.
-    muted?: boolean
-}
-
-// The soundtrack page: a row per track with its name, where it plays, a
-// progress bar and its time. Each row has at most one mark, left of its
-// name (see menuLabel): ♪ on the playing row, cursor or not, and ▶ on the
-// cursor's row otherwise. main moves the playing row's bar on with
-// showTrackProgress.
-export function showSoundtrack(view: SoundtrackView) {
-    const muted = view.muted
-        ? ["Sound is muted: turn it on with 🔇 at the top right"]
-        : []
-    show({
-        id: "soundtrack",
-        title: "Soundtrack",
-        lines: [
-            ...muted,
-            `${keyPair("up", "down")} to choose, ${key("confirm")} to play or stop, Esc or B to go back`,
-        ],
-        keyHints: muted.length,
-        back: true,
-        items: view.tracks.map((track, i) => {
-            const playing = i === view.playing
-            const selected = i === view.selected
-            return {
-                label: track.name,
-                selected,
-                detail: track.plays,
-                progress: trackProgressOf(track.elapsed, track.length),
-                ...(playing ? { playing } : {}),
-            }
-        }),
-    })
-}
-
-function trackProgressOf(elapsed: number, length: number): ItemProgress {
-    return {
-        share: length > 0 ? Math.min(Math.max(elapsed / length, 0), 1) : 0,
-        text: `${formatClock(elapsed)} / ${formatClock(length)}`,
-    }
-}
-
-// Move the soundtrack row `index`'s bar and time on in place (main does it
-// every frame for the track playing), without rebuilding the overlay.
-export function showTrackProgress(
-    index: number,
-    elapsed: number,
-    length: number
-) {
-    const row = document.querySelector<HTMLElement>(
-        `#overlay[data-screen='soundtrack'] li[data-index='${index}']`
-    )
-    const bar = row?.querySelector<HTMLElement>(".menu-progress")
-    if (bar) fillProgress(bar, trackProgressOf(elapsed, length))
 }
 
 // What the controls screen shows (see the controls screen in flow.ts).
@@ -695,13 +618,6 @@ function show({
             const li = document.createElement("li")
             li.dataset.index = String(i)
             li.append(menuLabel(item))
-            if (item.playing) {
-                // The ♪ is drawn by the CSS, so say it in words.
-                const note = document.createElement("span")
-                note.className = "visually-hidden"
-                note.textContent = " (playing)"
-                li.append(note)
-            }
             if (item.value !== undefined) {
                 const value = document.createElement("span")
                 value.className = "menu-value"
@@ -715,10 +631,6 @@ function show({
                 detail.textContent = item.detail
                 li.append(" ", detail)
             }
-            if (item.progress !== undefined) {
-                li.append(progressBar(item.progress))
-            }
-            if (item.playing) li.classList.add("playing")
             if (item.selected) {
                 li.classList.add("selected")
                 li.setAttribute("aria-current", "true")
@@ -741,46 +653,15 @@ function show({
     panel.querySelector(".selected")?.scrollIntoView({ block: "nearest" })
 }
 
-// A menu item's label. Its mark (data-mark), the cursor's ▶ or the playing
-// track's ♪, is drawn by the CSS in a gutter just left of it, out of the
-// text flow, so the centred label doesn't move with the cursor. The
-// playing mark wins over the cursor's.
+// A menu item's label. Its mark (data-mark), the cursor's ▶, is drawn by
+// the CSS in a gutter just left of it, out of the text flow, so the
+// centred label doesn't move with the cursor.
 function menuLabel(item: MenuItem): HTMLElement {
     const label = document.createElement("span")
     label.className = "menu-label"
     label.textContent = item.label
-    const mark = item.playing ? "♪" : item.selected ? "▶" : undefined
-    if (mark) label.dataset.mark = mark
+    if (item.selected) label.dataset.mark = "▶"
     return label
-}
-
-// A menu item's progress bar: the bar, then its text.
-function progressBar(progress: ItemProgress): HTMLElement {
-    const el = document.createElement("span")
-    el.className = "menu-progress"
-    const bar = document.createElement("span")
-    bar.className = "menu-bar"
-    bar.setAttribute("role", "progressbar")
-    bar.setAttribute("aria-valuemin", "0")
-    bar.setAttribute("aria-valuemax", "100")
-    const fill = document.createElement("span")
-    fill.className = "menu-bar-fill"
-    bar.appendChild(fill)
-    const text = document.createElement("span")
-    text.className = "menu-time"
-    el.append(bar, text)
-    fillProgress(el, progress)
-    return el
-}
-
-function fillProgress(el: HTMLElement, { share, text }: ItemProgress) {
-    const percent = Math.round(share * 1000) / 10
-    const bar = el.querySelector<HTMLElement>(".menu-bar")
-    const fill = el.querySelector<HTMLElement>(".menu-bar-fill")
-    const time = el.querySelector<HTMLElement>(".menu-time")
-    bar?.setAttribute("aria-valuenow", String(percent))
-    if (fill) fill.style.width = `${percent}%`
-    if (time && time.textContent !== text) time.textContent = text
 }
 
 function cardRow(cards: readonly Card[]): HTMLElement {

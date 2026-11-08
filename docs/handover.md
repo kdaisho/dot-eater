@@ -34,7 +34,7 @@ Older modules are listed in `CLAUDE.md`. New or reshaped recently:
 | `cards.ts`, `cardsView.ts`, `cardArt.ts`         | Cards page data and view; the card frame shared with `endRollRender.ts`                          |
 | `panic.ts`                                       | Co-op panic: `panic`, `panicked`, `tickPanics`, `playersStruck`, `panicPlayers`, `PANIC_SECONDS` |
 | `present.ts`, `presentView.ts`, `presentData.ts` | Present box rules (drops, weights, contents, germ), reveal timing, pixel art                     |
-| `soundtrack.ts`                                  | Soundtrack track list and clock; `trackProgress` in `recorded.ts`                                |
+| `soundtrack.ts`, `playerPage.ts`, `playlist.ts`  | Soundtrack track list; the player page at `soundtrack/` (KDA-332/333), its queue logic           |
 | `flow.ts`                                        | Title menu (`TITLE_CHOICES`, `PAGE_CHOICES`), `pageScreen`/`pageBack` for the three pages        |
 | `bindings.ts`, `touch.ts`                        | `effectiveBindings` (solo Left Shift); flick-to-run, tap/hold to breathe (`TAP_CHARGE_DELAY`)    |
 

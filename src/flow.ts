@@ -37,7 +37,6 @@ import {
     type SettingsAction,
     type SettingsContext,
 } from "./settingsMenu"
-import { SOUNDTRACK } from "./soundtrack"
 import { storyEndSeconds, type StoryEndCard } from "./storyEnd"
 import { tutorialPages } from "./tutorial"
 import { rateClear, type ClearRating } from "./stars"
@@ -83,11 +82,10 @@ import { rateClear, type ClearRating } from "./stars"
 // No.01: left/right and up/down browse, wrapping round at either end, and
 // a tap on a card or an arrow goes to that card (selectItem).
 //
-// The soundtrack (KDA-321) lists the game's music (SOUNDTRACK in
-// soundtrack.ts), every track open: up/down or left/right move the cursor,
-// and confirm plays the track under it, or stops it if it is the one
-// playing. Moving the cursor leaves the playing track playing. It opens on
-// the first track with nothing playing; sound.ts plays what it says.
+// The soundtrack is a page of its own (KDA-333): the player at
+// soundtrack/index.html (playerPage.ts). Its screen here only says the
+// game is leaving for it; main goes there. Its back link returns to the
+// title on Soundtrack (titleFrom).
 //
 // Settings open from the title's menu (its last entry; TITLE_CHOICES) and from the pause menu (PAUSE_CHOICES), and Back returns
 // to where they were opened, with the cursor still on Settings; from pause
@@ -347,15 +345,8 @@ export type Screen =
           page: number
       }
     | { kind: "cards"; mode: Mode; index: number }
-    | {
-          kind: "soundtrack"
-          mode: Mode
-          // The cursor, an index into SOUNDTRACK.
-          selected: number
-          // The track playing, an index into SOUNDTRACK; none until one is
-          // picked.
-          playing?: number
-      }
+    // Leaving for the soundtrack player page; nothing happens on it.
+    | { kind: "soundtrack"; mode: Mode }
     | {
           kind: "settings"
           // The mode of the screen it was opened from.
@@ -524,7 +515,6 @@ export type ScreenKind = Screen["kind"]
 type TitleScreen = Extract<Screen, { kind: "title" }>
 type PageScreen = Extract<Screen, { kind: Page }>
 type CardsScreen = Extract<Screen, { kind: "cards" }>
-type SoundtrackScreen = Extract<Screen, { kind: "soundtrack" }>
 type TutorialScreen = Extract<Screen, { kind: "tutorial" }>
 type PausedScreen = Extract<Screen, { kind: "paused" }>
 type SettingsScreen = Extract<Screen, { kind: "settings" }>
@@ -687,7 +677,7 @@ function updateScreen(
         case "cards":
             return updateCards(screen, input)
         case "soundtrack":
-            return updateSoundtrack(screen, input)
+            return screen
         case "settings":
             return updateSettings(screen, input, deps)
         case "controls":
@@ -795,10 +785,6 @@ export function selectItem(
         case "cards":
             return within(CARDS.length) && index !== screen.index
                 ? { ...screen, index }
-                : screen
-        case "soundtrack":
-            return within(SOUNDTRACK.length) && index !== screen.selected
-                ? { ...screen, selected: index }
                 : screen
         case "stageSelect":
             return within(STAGE_COUNT) && index !== screen.selected
@@ -931,7 +917,7 @@ function updateTitle(
 
 // A page as it opens from the title on `mode`.
 export function pageScreen(page: Page, mode: Mode): PageScreen {
-    if (page === "soundtrack") return { kind: page, mode, selected: 0 }
+    if (page === "soundtrack") return { kind: page, mode }
     if (page === "tutorial") return { kind: page, mode, page: 0 }
     return { kind: page, mode, index: 0 }
 }
@@ -969,30 +955,15 @@ function updateCards(screen: CardsScreen, input: TickInput): Screen {
         : { ...screen, index: cardStep(screen.index, delta) }
 }
 
-// Back leaves for the title (the music stops there; see sound.ts).
-// Confirm plays the track under the cursor or, if it is playing, stops it.
-// Up/down or left/right move the cursor, stopping at either end.
-function updateSoundtrack(screen: SoundtrackScreen, input: TickInput): Screen {
-    if (input.wasPressed("pause")) return pageBack(screen)
-    if (input.wasPressed("confirm")) {
-        const { playing: _, ...stopped } = screen
-        return screen.playing === screen.selected
-            ? stopped
-            : { ...screen, playing: screen.selected }
-    }
-    const count = SOUNDTRACK.length
-    const selected = moveAcross(
-        moveCursor(screen.selected, count, input),
-        count,
-        input,
-        0
-    )
-    return selected === screen.selected ? screen : { ...screen, selected }
-}
-
 // The title a page goes back to: its cursor on the page, its mode kept.
 function pageBack(screen: PageScreen): TitleScreen {
     return { kind: "title", mode: screen.mode, on: screen.kind }
+}
+
+// The title on `page`, as the game opens when that page's own page sends
+// it back (the soundtrack player's back link; see main).
+export function titleFrom(page: Page): Screen {
+    return { kind: "title", mode: MODE_CHOICES[0], on: page }
 }
 
 // The pause action resumes, as does confirm on Resume (either player's, in

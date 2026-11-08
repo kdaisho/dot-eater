@@ -11,8 +11,7 @@ import { adminScreen, loadAdmin, saveAdmin, unlockAll } from "./admin"
 import { createAdminBadge } from "./adminBadge"
 import { createAdminPanel } from "./adminPanel"
 import { browserAudioContext, createAudio, volumesOf } from "./audio"
-import { RECORDED_TRACKS, trackProgress } from "./recorded"
-import { SOUNDTRACK } from "./soundtrack"
+import { RECORDED_TRACKS } from "./recorded"
 import { createMuteButton } from "./muteButton"
 import { playEventSounds, screenSound } from "./sound"
 import { cancelCharge, energyHud } from "./breath"
@@ -59,6 +58,7 @@ import {
     gameOf,
     initialScreen,
     openingScreen,
+    titleFrom,
     PAUSE_CHOICES,
     pauseIfPlaying,
     PLAY_CHOICES,
@@ -165,9 +165,7 @@ import {
     showTutorial,
     showCards,
     showConfetti,
-    showSoundtrack,
     showToast,
-    showTrackProgress,
     type EndScreenView,
 } from "./ui"
 import { heading, isTouchDevice, isTouchFirst, TouchSource } from "./touch"
@@ -178,9 +176,27 @@ import { createOpeningLayer, openingItemAt } from "./openingView"
 
 // The game opens on the opening (opening.ts) on every load. Tests of the
 // rest of the game start on the title instead: their setup file sets
-// skipOpening (src/test/setup.ts).
+// skipOpening (src/test/setup.ts). Back from the soundtrack player page
+// (?from=soundtrack, KDA-333) opens on the title on Soundtrack, and the
+// query comes off the URL so a refresh plays the opening again.
 const skipOpening = (globalThis as { skipOpening?: boolean }).skipOpening
-let screen: Screen = skipOpening ? initialScreen() : openingScreen()
+const fromSoundtrack =
+    new URLSearchParams(location.search).get("from") === "soundtrack"
+if (fromSoundtrack) {
+    const url = new URL(location.href)
+    url.searchParams.delete("from")
+    history.replaceState(null, "", url)
+}
+let screen: Screen = fromSoundtrack
+    ? titleFrom("soundtrack")
+    : skipOpening
+      ? initialScreen()
+      : openingScreen()
+// Where the soundtrack screen goes: the player page (soundtrack/index.html,
+// next to the game's). Tests swap in their own (main.soundtrack.test.ts).
+const leaveFor =
+    (globalThis as { leaveFor?: (url: string) => void }).leaveFor ??
+    ((url: string) => location.assign(url))
 const openingLayer = createOpeningLayer(document)
 
 // Even reading window.localStorage can throw (e.g. when site data is
@@ -218,8 +234,6 @@ const muteButton = createMuteButton(document, {
         settings = { ...settings, muted }
         saveSettings(storage, settings)
         audio.setVolumes(volumesOf(settings))
-        // The soundtrack page says when sound is muted.
-        if (screen.kind === "soundtrack") showOverlay(screen)
     },
 })
 // Debug mode (admin.ts): on while this browser holds the hash of the
@@ -631,6 +645,8 @@ function applyKeyBindings() {
 
 function enter(prev: Screen, next: Screen) {
     screen = next
+    if (next.kind === "soundtrack" && prev.kind !== "soundtrack")
+        leaveFor("soundtrack/")
     // Each tutorial page plays its scenes from their start.
     if (
         next.kind === "tutorial" &&
@@ -783,7 +799,6 @@ function render(alpha: number) {
         return renderer.clear()
     }
     openingLayer.hide()
-    if (screen.kind === "soundtrack") showPlayingProgress(screen)
     if (screen.kind === "tutorial") {
         drawTutorialFrame(tutorialClock, reducedMotion?.matches ?? false)
     }
@@ -835,30 +850,6 @@ function recordingName(recording: Recording, date: Date): string {
     const outcome = final.kind === "gameOver" ? "lost" : "won"
     const time = date.toISOString().slice(0, 19).replaceAll(":", "-")
     return `dot-eater-stage${level + 1}-${mode}-${animals.join("+")}-${outcome}-${time}.json`
-}
-
-type SoundtrackScreen = Extract<Screen, { kind: "soundtrack" }>
-
-// Where soundtrack track `index` is: the music's place in its file while
-// it plays (the start until the file has loaded, or with no sound), else
-// the start.
-function soundtrackProgress(s: SoundtrackScreen, index: number) {
-    const entry = SOUNDTRACK[index]!
-    const recorded = RECORDED_TRACKS[entry.track]
-    const position =
-        index === s.playing && audio.music === entry.track
-            ? audio.musicPosition()
-            : undefined
-    return recorded
-        ? trackProgress(recorded, position)
-        : { elapsed: 0, length: 0 }
-}
-
-// The playing track's bar moves on every frame, in place.
-function showPlayingProgress(s: SoundtrackScreen) {
-    if (s.playing === undefined) return
-    const { elapsed, length } = soundtrackProgress(s, s.playing)
-    showTrackProgress(s.playing, elapsed, length)
 }
 
 function renderStoryEnd(s: Extract<Screen, { kind: "storyEnd" }>) {
@@ -914,17 +905,9 @@ function showOverlay(s: Screen) {
         }
         case "cards":
             return showCards(s.index)
+        // Leaving for the soundtrack player page (see enter).
         case "soundtrack":
-            return showSoundtrack({
-                tracks: SOUNDTRACK.map((entry, i) => ({
-                    name: entry.name,
-                    plays: entry.plays,
-                    ...soundtrackProgress(s, i),
-                })),
-                selected: s.selected,
-                ...(s.playing === undefined ? {} : { playing: s.playing }),
-                muted: settings.muted,
-            })
+            return hideOverlay()
         case "settings": {
             const context = settingsContext(s, flowDeps(0))
             return showSettings(
