@@ -7,8 +7,8 @@
 // the Media Session API: the lock screen, a car over Bluetooth and
 // headphones get the track's name and picture, play/pause, next, previous
 // and seeking. Repeat and shuffle are on the page only: Media Session has
-// no actions for them. Each file plays from its start to its end; the
-// game's loop points (recorded.ts) aren't used.
+// no actions for them. It plays each track whole, with its own ending
+// (playerTracks.ts), not the game's looping copies.
 
 import "@fontsource/press-start-2p/latin-400.css"
 import { trackArt, trackDots } from "./playerArt"
@@ -25,7 +25,7 @@ import {
     type Repeat,
 } from "./playlist"
 import { pixelSvg } from "./pixelSvg"
-import { RECORDED_TRACKS } from "./recorded"
+import { PLAYER_FILES } from "./playerTracks"
 import { formatClock, SOUNDTRACK } from "./soundtrack"
 import type { Dots, PixelArt } from "./sprites"
 
@@ -35,8 +35,8 @@ const SAVED = "dot-eater.player"
 const ARTWORK_SIZE = 512
 
 const TRACKS = SOUNDTRACK.flatMap((entry) => {
-    const recorded = RECORDED_TRACKS[entry.track]
-    return recorded ? [{ ...entry, url: recorded.url }] : []
+    const url = PLAYER_FILES[entry.track]
+    return url ? [{ ...entry, url }] : []
 })
 
 type Saved = { repeat: Repeat; shuffle: boolean }
