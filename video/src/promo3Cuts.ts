@@ -4,6 +4,7 @@ import type { CardShot, CutList, GameShot, Shot } from "./cutList"
 import type { RampOptions, Transition } from "./drama"
 import { PROMO3_EXCERPT } from "./excerpts"
 import { heroMoment, highlightsOf, type Moment } from "./highlights"
+import { STAGE_STYLES } from "../../src/tiles"
 import { LOOKS, PAPER } from "./palette"
 import type { SceneName } from "./scenes"
 
@@ -101,7 +102,7 @@ function openShots(scenes: Scenes): Shot[] {
     ]
 }
 
-// Each character, two bars, as v2 introduced them: a slam card (emoji,
+// Each character, two bars, as v2 introduced them: a slam card (sprite,
 // name, ability word) for two beats, then its charged ability for six,
 // landing in hard slow motion on the second bar's snare, with its colour,
 // caption and a zoom punch.
@@ -229,32 +230,44 @@ function montageShots(scenes: Scenes): Shot[] {
     })
 }
 
+// The end card on stage 1's floor (Toy blocks, see tiles.ts), walled in
+// red; Promo3 adds the walls and the five eating a row of dots along the
+// foot. The name in the logo's gold blocks, the rest in the title menu's
+// font.
+export const END_FLOOR = STAGE_STYLES[1]!.palette
+
 function endShots(): Shot[] {
-    const fire = LOOKS.dragon.colour
+    const floor = END_FLOOR
     return [
         {
             kind: "title",
             name: "End card",
-            // Up, to leave the foot to the emoji (see Promo3).
-            offset: -70,
+            // Up, to leave the foot to the sprites (see Promo3).
+            offset: -90,
             durationBeats: 8,
             transition: "flash",
+            background: floor.F,
             lines: [
-                { text: "DOT EATER", beat: 0, size: 280 },
+                { text: "DOT EATER", beat: 0, size: 250, logo: true },
                 {
                     text: "PLAY FREE",
                     beat: 1,
-                    size: 120,
+                    size: 70,
                     colour: PAPER,
-                    block: fire,
+                    block: floor.K,
                 },
                 {
                     text: "kdaisho.github.io/dot-eater",
                     beat: 1.5,
-                    size: 76,
-                    mono: true,
+                    size: 50,
+                    colour: floor.D,
                 },
-                { text: "Keyboard · Gamepad · Touch", beat: 2, size: 56 },
+                {
+                    text: "Keyboard · Gamepad · Touch",
+                    beat: 2,
+                    size: 34,
+                    colour: floor.S,
+                },
             ],
         },
     ]
@@ -274,6 +287,6 @@ export function promo3CutList(scenes: Scenes): CutList {
     }
 }
 
-// The end card's five emoji pop in on these beats of the edit, one per
+// The end card's five sprites step in on these beats of the edit, one per
 // character in CHARACTER_ORDER.
 export const END_EMOJI_BEATS: readonly number[] = [75, 76, 77, 78, 79]
