@@ -62,6 +62,7 @@ export const owl: BreathDef = {
         for (const cell of hit.cells) hit.addTile(cell, GUST, GUST_SECONDS)
         for (const enemy of hit.enemies) {
             hit.push(enemy, hit.facing, windPush(hit.level))
+            hit.strike(enemy)
         }
     },
 }

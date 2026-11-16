@@ -9,16 +9,17 @@ import {
     ENEMY_DAMAGE,
     MAX_ENEMIES,
     MAX_HEALTH,
+    RESPAWN_DELAY,
 } from "./constants"
 import { enemySpeed } from "./difficulty"
 import { emit } from "./events"
 import type { GameState, Player } from "./game"
 import { distanceMap, openNeighbours } from "./path"
-import { createSplitter, GONE } from "./splitter"
+import { createSplitter, GONE, isWholeSplitter } from "./splitter"
 import { samePos, vec2, type Vec2 } from "./vec2"
 
-// Present boxes (KDA-324): a strong enemy defeated by a breath may drop a
-// box on its cell, and the boss drops one as its health falls. A player
+// Present boxes (KDA-324): a strong enemy defeated or struck by a breath
+// may drop a box on its cell, and the boss drops one as its health falls. A player
 // stepping onto a box opens it, for something good (Heal, Huge dot, Speed
 // boost, Earthquake) or, now and then, bad (a Germ: a Splitter jumps out).
 // Pure, no DOM: randomness comes in as `random`, time as `dt`. game.ts
@@ -51,8 +52,13 @@ export const PRESENT_WEIGHTS: Readonly<Record<PresentContent, number>> = {
 }
 
 // The chance a strong enemy (see DROPPERS) defeated by a breath drops a
-// box.
+// box. One struck by a breath that doesn't defeat (the Penguin's, the
+// Owl's, the Skunk's) gets the same chance, so every animal earns boxes,
+// but only once every STRUCK_DROP_SECONDS: a defeated enemy is away that
+// long (RESPAWN_DELAY), so a cheap breath can't roll for a box any more
+// often than a Dragon's fire, by breathing at the same enemy again.
 export const PRESENT_DROP_CHANCE = 0.15
+export const STRUCK_DROP_SECONDS = RESPAWN_DELAY
 // The strong enemies: they may drop a box when defeated. A Splitter only
 // when whole (as it splits), not its halves; a Germ never.
 export const DROPPERS: ReadonlySet<AiType> = new Set([
@@ -124,6 +130,10 @@ export type Presents = {
     reveals: Reveal[]
     // How many of BOSS_DROP_AT the boss has dropped its box for.
     bossDrops: number
+    // Seconds until each enemy (by its index in GameState.enemies) struck
+    // by a breath may roll for a box again (STRUCK_DROP_SECONDS); an
+    // enemy not waiting isn't in it.
+    struck: Map<number, number>
 }
 
 // A player's Speed boost: `left` seconds to go, and its speed before it,
@@ -131,7 +141,7 @@ export type Presents = {
 export type SpeedBoost = { left: number; speed: number }
 
 export function createPresents(): Presents {
-    return { boxes: [], reveals: [], bossDrops: 0 }
+    return { boxes: [], reveals: [], bossDrops: 0, struck: new Map() }
 }
 
 // Tolerance for timers counting down by dt, as in game.ts.
@@ -150,6 +160,10 @@ export function tickPresents(state: GameState, dt: number) {
         return false
     })
     ageReveals(state, dt)
+    for (const [enemy, left] of presents.struck) {
+        if (left - dt > EPSILON) presents.struck.set(enemy, left - dt)
+        else presents.struck.delete(enemy)
+    }
     for (const player of state.players) {
         const boost = player.speedBoost
         if (!boost) continue
@@ -173,15 +187,27 @@ export function ageReveals(state: GameState, dt: number) {
 
 // Drop this tick's boxes, once everyone has moved: one for each strong
 // enemy a breath defeated this tick (its enemyDefeated event, on the cell
-// it stood on) with PRESENT_DROP_CHANCE, by `random`; and the boss's for
+// it stood on) with PRESENT_DROP_CHANCE, by `random`, and the same for each
+// one a breath struck (its enemyStruck event) unless it was struck less
+// than STRUCK_DROP_SECONDS ago; and the boss's for
 // each of BOSS_DROP_AT its health has fallen to since its last (see
 // bossDropCell). A cell holds one box at most: a drop on a cell that has
 // one is lost.
 export function dropPresents(state: GameState, random: Random) {
+    const { struck } = state.presents
     for (const event of state.events) {
-        if (event.type !== "enemyDefeated") continue
+        if (event.type !== "enemyDefeated" && event.type !== "enemyStruck") {
+            continue
+        }
         const enemy = state.enemies[event.enemy]
-        if (!enemy || !drops(enemy, event.split)) continue
+        if (!enemy) continue
+        if (event.type === "enemyDefeated") {
+            if (!drops(enemy, event.split)) continue
+        } else {
+            if (!drops(enemy, isWholeSplitter(enemy))) continue
+            if (struck.has(event.enemy)) continue
+            struck.set(event.enemy, STRUCK_DROP_SECONDS)
+        }
         // The top of the range, so a random source fixed at 0 never drops.
         if (random() < 1 - PRESENT_DROP_CHANCE) continue
         placeBox(state, event.at)

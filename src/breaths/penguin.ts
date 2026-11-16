@@ -79,6 +79,7 @@ export const penguin: BreathDef = {
         if (hit.cells.length === 0 && hit.enemies.length === 0) return false
         for (const enemy of hit.enemies) {
             hit.addStatus(enemy, FROZEN, freezeSeconds(hit.level))
+            hit.strike(enemy)
         }
         for (const cell of hit.cells) {
             hit.addTile(cell, BREATH_ICE, ICE_SECONDS)

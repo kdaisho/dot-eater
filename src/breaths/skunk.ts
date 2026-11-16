@@ -77,5 +77,8 @@ export const skunk: BreathDef = {
     fire(hit) {
         for (const cell of hit.cells) hit.addTile(cell, stink, DURATION)
         hit.addTile(hit.origin, stinkCentre, DURATION)
+        // The enemies caught in the cloud as it is breathed are struck:
+        // they turn back out of it.
+        for (const enemy of hit.enemies) hit.strike(enemy)
     },
 }

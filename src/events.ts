@@ -50,6 +50,11 @@ export type GameEvent =
           at: Vec2
           split: boolean
       }
+    // A player's breath struck enemy `enemy` (its index in
+    // GameState.enemies) on `at`, where it stood, without defeating it:
+    // the Penguin's freeze, the Owl's push, the Skunk's cloud (see
+    // BreathHit.strike in breath.ts). It may drop a present box.
+    | { type: "enemyStruck"; player: number; enemy: number; at: Vec2 }
     // A player's dash (KDA-304, the Boar's Rush; see BreathHit.dash in
     // breath.ts) rammed something on `at`: an enemy it knocks flying, a
     // wall, or the boss's body. `facing` is the unit step it rushed along.
