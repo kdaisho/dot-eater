@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vite-plus/test"
-import { defeatEnemy, hasStatus, inPlay } from "./breath"
+import { defeatEnemy, hasStatus, inPlay, strikeEnemy } from "./breath"
+import { owl } from "./breaths/owl"
+import { penguin } from "./breaths/penguin"
+import { skunk } from "./breaths/skunk"
 import { createCharacter } from "./character"
 import {
     AiType,
@@ -31,6 +34,7 @@ import {
     rollContent,
     SPEED_BOOST,
     SPEED_BOOST_SECONDS,
+    STRUCK_DROP_SECONDS,
     tickPresents,
 } from "./present"
 import { createSplitter, GONE } from "./splitter"
@@ -172,6 +176,89 @@ describe("the drop", () => {
             fixedRandom(DROP)
         )
         expect(state.presents.boxes.map((b) => b.pos)).toEqual([vec2(4, 1)])
+    })
+})
+
+// Report enemy `i` struck by a breath that doesn't defeat (as breathe
+// does) and drop this tick's boxes with `random`.
+function strikeAndDrop(state: GameState, i: number, random: number) {
+    state.events = []
+    strikeEnemy(state, state.enemies[i], state.players[0])
+    dropPresents(state, fixedRandom(random))
+}
+
+describe("the drop from a breath that doesn't defeat", () => {
+    it("drops a box on a struck strong enemy's cell, PRESENT_DROP_CHANCE of the time", () => {
+        const state = setup()
+        strikeAndDrop(state, 0, NO_DROP)
+        expect(state.presents.boxes).toEqual([])
+        const again = setup()
+        strikeAndDrop(again, 0, DROP)
+        expect(again.presents.boxes).toEqual([
+            { pos: vec2(5, 3), left: PRESENT_SECONDS },
+        ])
+    })
+
+    it("drops none from the weak enemies, nor a Splitter's halves", () => {
+        const weak = setup([makeEnemy(5, 3, AiType.chase)])
+        strikeAndDrop(weak, 0, DROP)
+        expect(weak.presents.boxes).toEqual([])
+        const split = setup(
+            createSplitter([ENEMY_IDS[0], ENEMY_IDS[1]], vec2(5, 3))
+        )
+        defeatEnemy(split, split.enemies[0])
+        strikeAndDrop(split, 0, DROP)
+        strikeAndDrop(split, 1, DROP)
+        expect(split.presents.boxes).toEqual([])
+    })
+
+    it("rolls once per enemy every STRUCK_DROP_SECONDS", () => {
+        expect(STRUCK_DROP_SECONDS).toBe(5)
+        const state = setup()
+        strikeAndDrop(state, 0, NO_DROP)
+        // Struck again at once: no roll, even one that would drop.
+        strikeAndDrop(state, 0, DROP)
+        expect(state.presents.boxes).toEqual([])
+        tickPresents(state, STRUCK_DROP_SECONDS - 0.1)
+        strikeAndDrop(state, 0, DROP)
+        expect(state.presents.boxes).toEqual([])
+        tickPresents(state, 0.1)
+        strikeAndDrop(state, 0, DROP)
+        expect(state.presents.boxes).toHaveLength(1)
+    })
+
+    it("lets the Penguin, the Owl and the Skunk earn a box in a real tick", () => {
+        // Where each leaves the enemy as it strikes it: frozen in place,
+        // blown 2 cells on (a tap), turned back from the cloud's cell.
+        for (const [breath, at] of [
+            [penguin, vec2(2, 1)],
+            [owl, vec2(4, 1)],
+            [skunk, vec2(2, 1)],
+        ] as const) {
+            const state = makeState(
+                room,
+                { x: 1, y: 1 },
+                [makeEnemy(2, 1, AiType.breather)],
+                { breath }
+            )
+            state.enemies[0].moveProgress = 1
+            state.players[0].breather.energy = 100
+            state.players[0].breather.facing = vec2(1, 0)
+            step(
+                state,
+                TICK,
+                { held: [], pressed: vec2(0, 0), breath: true },
+                fixedRandom(DROP)
+            )
+            expect(
+                state.events.some((e) => e.type === "breathed"),
+                breath.animal
+            ).toBe(true)
+            expect(
+                state.presents.boxes.map((b) => b.pos),
+                breath.animal
+            ).toEqual([at])
+        }
     })
 })
 

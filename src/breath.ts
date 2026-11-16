@@ -185,6 +185,12 @@ export type BreathHit = {
     // cell while its sprite is still gliding in.
     enemies: readonly Character[]
     defeat(enemy: Character): void
+    // Report that the breath struck `enemy` in play without defeating it
+    // (frozen, blown back, caught in a cloud), as an enemyStruck event: a
+    // breath that doesn't defeat calls it for each enemy it acts on, so it
+    // can earn a present box like a defeat does (see dropPresents in
+    // present.ts).
+    strike(enemy: Character): void
     addStatus(enemy: Character, status: EnemyStatus, seconds: number): void
     // Ice tiles added here show in state.ice once the hook returns.
     addTile(pos: Vec2, effect: TileEffect, seconds: number): void
@@ -505,6 +511,7 @@ export function breathe(
         level: at,
         enemies,
         defeat: (enemy) => defeatEnemy(state, enemy, who),
+        strike: (enemy) => strikeEnemy(state, enemy, who),
         addStatus,
         addTile: (pos, effect, seconds) => {
             if (placeTile(state, pos, effect, seconds) && effect.ice) {
@@ -903,6 +910,20 @@ export function defeatEnemy(
     enemy.moveProgress = 0
     enemy.routeIndex = 0
     if (isSplitterHalf(enemy)) halfDefeated(state, i)
+}
+
+// Report that `by`'s breath struck `enemy` without defeating it (see
+// BreathHit.strike). An enemy out of play isn't struck.
+export function strikeEnemy(state: GameState, enemy: Character, by: Player) {
+    if (!inPlay(enemy)) return
+    const i = state.enemies.indexOf(enemy)
+    if (i < 0) return
+    emit(state, {
+        type: "enemyStruck",
+        player: state.players.indexOf(by),
+        enemy: i,
+        at: vec2(enemy.pos.x, enemy.pos.y),
+    })
 }
 
 // Whether to draw an enemy. While defeated, only in the last RESPAWN_BLINK
